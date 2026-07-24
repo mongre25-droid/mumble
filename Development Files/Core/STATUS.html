@@ -10,7 +10,7 @@
 <header class="doc-head">
   <div class="kicker">Mumble 0.95 · Present state</div>
   <h1>STATUS</h1>
-  <div class="meta"><div><span class="ico">◆</span><b>Last refreshed:</b> 24 July 2026</div><div><span class="ico">◆</span><b>Release position:</b> pre-release hardening</div><div><span class="ico">◆</span><b>Companions:</b> <a href="README.html">README</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div></div>
+  <div class="meta"><div><span class="ico">◆</span><b>Last refreshed:</b> 25 July 2026</div><div><span class="ico">◆</span><b>Release position:</b> pre-release hardening</div><div><span class="ico">◆</span><b>Companions:</b> <a href="README.html">README</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div></div>
 </header>
 
 <div class="plain"><div class="tag">Current truth</div><div><p>Mumble is being treated as version <strong>0.95</strong>: the current product is implemented, but release confidence still depends on verification of packaging, clean installation, physical microphone/paste behaviour, signing, and publication.</p></div></div>
@@ -28,17 +28,17 @@
 </tbody></table>
 
 <h2><span class="sec">2</span>Verification and release gates</h2>
-<p>The CI-remediation programme now has clean exact-head GitHub evidence. The shared runner executes pytest, unittest, and procedural modules with actual case counts; independent security, product-test, website, packaging, and Linux lifecycle jobs all passed at the same main commit. This is trustworthy repository evidence, not a claim that physical-device or public-release gates are complete. The exact commands and interpretation are in <a href="HANDBOOK.html">HANDBOOK</a>.</p>
-<div class="callout"><strong>Exact-head result on 24 July 2026:</strong> GitHub Actions run <code>30067617990</code> passed at main commit <code>cb64f0e6</code>. Windows, macOS, and Linux test/security/package jobs passed; the website audit/build/check passed; the Linux install/smoke/uninstall lifecycle passed; and the aggregate <code>CI result</code> passed. Manual candidate promotion remained skipped as intended.</div>
+<p>The CI-remediation programme has historical clean exact-head GitHub evidence and correctly detects later dependency drift. The shared runner executes pytest, unittest, and procedural modules with actual case counts while security, product-test, website, packaging, and Linux lifecycle jobs remain independent. This is trustworthy repository evidence, not a claim that physical-device or public-release gates are complete. The exact commands and interpretation are in <a href="HANDBOOK.html">HANDBOOK</a>.</p>
+<div class="callout"><strong>Current CI gate on 25 July 2026:</strong> GitHub Actions run <code>30132517967</code> correctly failed at main commit <code>473d316e</code> after advisory <code>GHSA-r28c-9q8g-f849</code> covered the locked PostCSS 8.5.16. The lockfile-only repair to patched PostCSS 8.5.18 passes clean installation, dependency audit, website build, Astro diagnostics, and release-artifact consistency locally; a new exact-head GitHub run is still required.</div>
 <ul>
   <li><span class="badge b-done">passed locally</span> Shared runner contract checks cover pytest, unittest, procedural modules, zero collection, JSON, JUnit, and the Windows/macOS/Linux wrappers.</li>
   <li><span class="badge b-gated">development setup</span> The documented local command assumes <code>Internal/app/.venv/Scripts/python.exe</code>, but this checkout currently contains the branded <code>Mumble.exe</code> there and no Python interpreter. Reproducible development-environment setup remains open.</li>
   <li><span class="badge b-done">passed locally</span> Windows, macOS, and Linux runtime locks use Pillow 12.3.0 and all three <code>pip-audit</code> checks report no known vulnerabilities.</li>
-  <li><span class="badge b-done">exact-head CI</span> Run <code>30067617990</code> passed every required independent evidence job and the aggregate result at commit <code>cb64f0e6</code>. Promotion remained a separate manual action and was not run.</li>
+  <li><span class="badge b-gated">exact-head CI</span> Run <code>30067617990</code> remains historical green evidence at <code>cb64f0e6</code>; run <code>30132517967</code> is the current-main red evidence at <code>473d316e</code>. The locally verified PostCSS repair needs an exact-head GitHub rerun.</li>
   <li><span class="badge b-done">passed locally</span> Rebuilt <code>Internal/Releases/Mumble.zip</code> from the current source: version <code>0.95</code>, 123 entries, and all package-layout checks passed.</li>
   <li><span class="badge b-done">passed locally</span> Windows launcher verifier confirmed the current target, working directory, icon, entry script, shortcuts, and Flow Launcher paths.</li>
   <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
-  <li><span class="badge b-done">passed locally</span> Website lock installation, static build, Astro diagnostics, and dependency audit pass with zero reported audit findings.</li>
+  <li><span class="badge b-done">passed locally</span> Website clean lock installation, patched PostCSS 8.5.18 dependency audit, static build, Astro diagnostics, and release-artifact consistency pass with zero reported audit findings.</li>
   <li><span class="badge b-gated">release gate</span> Clean extraction, install, launch, update, and uninstall on a disposable Windows environment.</li>
   <li><span class="badge b-gated">release gate</span> Physical microphone, global hotkey, focus-preserving paste, and clipboard restoration checks.</li>
   <li><span class="badge b-gated">release gate</span> Signing, publisher identity, public release notes, and a tested rollback path.</li>
