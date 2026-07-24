@@ -1,8 +1,8 @@
 # Mumble Local Dictation Latency Research
 
-**Research date:** 23 July 2026  
-**Scope:** Local-first dictation responsiveness, especially activation through first visible text and the difference between cold, infrequent, and sustained use  
-**Status:** Deep source-code inspection, evidence-based recommendation, and benchmark proposal; not an implementation specification  
+**Research date:** 23–24 July 2026
+**Scope:** Local-first dictation duration, segmentation, crash recovery, activation-to-paste responsiveness, and cold/warm behaviour
+**Status:** Deep source-code inspection plus the Wayfinder duration/latency decision; research and planning only, not product implementation
 
 ## Executive conclusion
 
@@ -14,13 +14,15 @@ Other cold-path costs remain credible: microphone ownership and stream creation,
 
 The highest-confidence direction is therefore:
 
-1. add one end-to-end latency trace before changing engines;
-2. replace independent four-second chunks with a persistent streaming session that produces stable partial text;
-3. keep the selected local model, VAD, and exact inference path genuinely warm within an explicit memory/power policy;
-4. retain `faster-whisper` as the safe CPU/NVIDIA baseline while benchmarking `sherpa-onnx` for true streaming and `whisper.cpp` for broader native acceleration;
-5. show live partials in Mumble's Island first, but keep insertion into the user's application final-only until revision behaviour is proven safe.
+1. describe the **current 0.95 ten-minute foreground limit** truthfully and direct longer recording to Meetings for now;
+2. treat that cap as a limitation of current policy and architecture, not a fundamental product ceiling: the target design keeps one logical dictation running across bounded capture, decoder, and durable-recovery segments until the user stops;
+3. replace independent four-second chunks with a persistent streaming session that produces stable partial text and finalizes only the uncommitted tail;
+4. keep the selected local model, VAD, and exact inference path genuinely warm within an explicit memory/power policy;
+5. retain `faster-whisper` as the safe CPU/NVIDIA baseline while benchmarking `sherpa-onnx` for true streaming and `whisper.cpp` for broader native acceleration;
+6. show live partials in Mumble's Island first, but keep insertion into the user's application final-only until revision behaviour is proven safe; and
+7. measure the whole activation-to-paste path with an opt-in, local, content-free trace before making a speed claim.
 
-This report deliberately builds on [Mumble Optimisation Research - 2026-07-10.html](../Mumble%20Optimisation%20Research%20-%202026-07-10.html). That earlier study remains the broad performance audit. It identified routing divergence, unused platform adapters, fixed-window streaming, thread oversubscription risk, the lack of an authoritative Stop-to-Paste measure, duration-aware scheduling, and likely backend candidates. This document preserves those findings and narrows the question to **why latency changes with usage pattern and how to make the first spoken words feel immediately responsive**.
+This report deliberately builds on [Mumble Optimisation Research - 2026-07-10.html](../Archive/Reports/Mumble%20Optimisation%20Research%20-%202026-07-10.html). That earlier study remains the broad performance audit. It identified routing divergence, unused platform adapters, fixed-window streaming, thread oversubscription risk, the lack of an authoritative Stop-to-Paste measure, duration-aware scheduling, and likely backend candidates. This document preserves those findings and narrows the question to **why latency changes with usage pattern and how to make the first spoken words feel immediately responsive**.
 
 ## Evidence labels
 
@@ -36,21 +38,171 @@ This expanded pass inspected Mumble at repository commit [`cde23725e0d9eaeffe218
 
 This was source inspection, not a claim that each upstream project was built and benchmarked on Mumble's reference hardware. Code can establish architecture, defaults, and failure paths; only the proposed benchmark can establish latency, accuracy, power, and packaging quality on a supported machine.
 
+### 24 July 2026 current-checkout revalidation
+
+The Wayfinder decision pass revalidated the repository at [`6f12ed73fd9350692eab8c55b705f9910aae7e77`](https://github.com/mongre25-droid/mumble/tree/6f12ed73fd9350692eab8c55b705f9910aae7e77), which was also `origin/main` when inspected. The earlier `cde23725` source profiles remain useful pinned upstream evidence, but the following facts supersede their description of Mumble itself:
+
+- **Fact — duration is already capped:** Windows defines normal dictation as 600 seconds and trims the final callback to the exact remaining sample count before stopping from a worker thread ([`recording_limits.py`](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/recording_limits.py#L18-L36), [`mumble.py`](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/mumble.py#L1085-L1157)). The macOS and Linux ports carry the same constants and callback cap ([macOS limit](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/macOS/app/recording_limits.py#L18-L36), [Linux limit](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/Linux/app/recording_limits.py#L18-L36)).
+- **Fact — the cap is visible in-app, not on the marketing homepage:** all three Home surfaces say “Normal dictation records for up to 10 minutes at a time” ([Windows](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/webui/index.html#L323-L329), [macOS](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/macOS/app/webui/index.html#L321-L327), [Linux](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/Linux/app/webui/index.html#L330-L336)). No equivalent ten-minute wording was found in the Astro marketing homepage.
+- **Fact — memory is bounded only by the hard cap:** every platform still appends float32 callback blocks to `frames`, concatenates the complete recording at Stop, and only then clears the list ([Windows capture/Stop](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/mumble.py#L1085-L1136), [Windows Stop](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/mumble.py#L1906-L2005), [macOS](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/macOS/app/mumble_mac.py#L499-L657), [Linux](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/Linux/app/mumble_linux.py#L680-L811)). Ten minutes of 16 kHz mono PCM16 is about 19.2 MB, but the current float32 sample payload alone is about 38.4 MB before callback-array and final-concatenation overhead. This size calculation is arithmetic from the verified format, not a measured peak-RSS result.
+- **Fact — four-second pseudo-streaming remains:** Windows, macOS, and Linux still set `STREAM_CHUNK_SECONDS = 4.0`; each worker independently transcribes enough newly accumulated blocks for the threshold, appends final text internally, and exposes no retained acoustic/decoder state ([Windows](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/mumble.py#L116-L116), [Windows worker](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/mumble.py#L1159-L1243), [macOS worker](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/macOS/app/mumble_mac.py#L586-L657), [Linux worker](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/Linux/app/mumble_linux.py#L746-L811)). The Windows trace calls these results `stable_chunks_only`; “stable” here means the whole independent chunk will no longer revise, not that a stable-prefix streaming algorithm produced it ([trace context](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/mumble.py#L310-L339)).
+- **Fact — only clean shutdown has a foreground recovery attempt:** `_quit` concatenates whatever remains in memory, tries a synchronous transcription, and adds text to History. A process crash, power loss, forced termination, decoder crash, or storage failure before that path has no durable foreground-audio recovery record ([Windows shutdown](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/mumble.py#L6081-L6111), [macOS shutdown](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/macOS/app/mumble_mac.py#L4055-L4080), [Linux shutdown](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/Ports/Linux/app/mumble_linux.py#L5005-L5059)).
+- **Fact — final history is atomic but not a live journal:** the completed transcript is saved before paste through a temporary-file replacement, but the JSON writer does not flush and `fsync` before replacement; its secondary plain-text append is best-effort ([`History.add`](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/history.py#L114-L142), [`History._save_json`](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/history.py#L393-L417)). This is not an incremental dictation recovery protocol.
+- **Fact — the opt-in trace is a useful privacy baseline:** Windows tracing uses an event allowlist and metadata allowlist, rejects transcript/audio/free-text fields, writes completed local JSONL records with `flush` plus `fsync`, rotates at a byte cap, and exports through an atomic temporary replacement ([`dictation_trace.py`](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/dictation_trace.py#L21-L98), [session and sink](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Internal/app/dictation_trace.py#L114-L255)). It is absent from the macOS and Linux controllers in this checkout, and the Windows event named `island_render` is recorded after scheduling/setting state rather than after a renderer acknowledgement, so it does not yet prove pixels were painted.
+- **Unmeasured:** no physical-device run in this task established peak memory, crash-loss window, first stable partial, target-application paint, cold/warm distributions, battery use, or platform parity. The source facts above define what must be measured; they are not performance results.
+
+## Wayfinder decision: duration, segmentation, recovery, and latency contract
+
+This section resolves the planning question. Statements labelled **Decision** are the contract to carry into a later specification. They describe intended behaviour; they are not claims about the current product unless a separate **Fact** says so.
+
+### Current ten-minute limit, target continuation, and the meaning of “segment”
+
+**Decision — current 0.95 truth:** Normal foreground dictation currently stops at ten minutes. At 10:00 the present product must stop accepting new samples, preserve the exact captured prefix, tell the user why it stopped, finish transcription, save the result, and paste once. Current documentation and the homepage must say that longer recording should use Meetings. This is a description of shipped behaviour, not the destination architecture.
+
+**Decision — target architecture:** Remove ten minutes as the normal technical product ceiling. One foreground dictation continues across bounded recovery and recognition segments until the user stops. A visible, configurable safety guard must protect against accidental indefinite capture, and hard storage/backpressure limits must prevent resource exhaustion. The guard’s enabled state, default duration, warning cadence, maximum configurable value, and battery policy require measurements and explicit owner approval; this report deliberately does **not** invent them. If a configured guard or hard capacity limit is reached, Mumble must warn visibly, preserve the exact captured prefix, stop safely, and still produce one recoverable logical result.
+
+The present ten-minute policy bounds accidental microphone capture and current memory growth; it is not a streaming chunk size and is not fundamental to local transcription. Ten minutes of the current 16 kHz mono PCM16 representation also fits below the present 25 MB direct-upload ceiling of Groq’s free tier and the legacy OpenAI `whisper-1` route ([Groq Speech-to-Text limits](https://console.groq.com/docs/speech-to-text), [OpenAI Audio API FAQ](https://help.openai.com/en/articles/7031512-whisper-audio-api-faq)). That provider fact must not become a user-duration ceiling: cloud transcription should split the same logical dictation into provider-valid overlapping requests, merge them under the shared sample/timestamp contract, and validate the selected route at request time because quotas can change.
+
+Use four different terms in the implementation specification:
+
+1. **Logical dictation:** the one user activation through the user’s Stop (or a visible configured/capacity safety stop), spanning as many bounded internal segments as needed, with one history result and at most one target-app paste.
+2. **Capture block:** the small callback-owned PCM block; enqueue/copy only, with no disk I/O or model work inside the real-time callback.
+3. **Recognition window:** the bounded audio/context region presented to a decoder. For the first faster-whisper experiment, use a one-second scheduling cadence, a rolling window capped at 15 seconds, and two-hypothesis stable-prefix confirmation; these values are experiment defaults, not product promises. The pinned Whisper-Streaming implementation likewise retranscribes a bounded buffer, defaults to a one-second minimum chunk, trims after the buffer exceeds 15 seconds, and commits only agreeing word prefixes ([online processor](https://github.com/ufal/whisper_streaming/blob/6da90b44b7e50d79695e68166d2a2c7609c75abb/whisper_online.py#L426-L575), [hypothesis buffer](https://github.com/ufal/whisper_streaming/blob/6da90b44b7e50d79695e68166d2a2c7609c75abb/whisper_online.py#L359-L417)).
+4. **Recovery segment:** an immutable local PCM16 file covering at most 30 seconds, plus one small manifest record. Thirty seconds is a proposed internal engineering bound chosen to limit rewrite/recovery work; it must be fault-injection tested and may change without changing the logical-dictation duration contract.
+
+**Rejected:** treating the existing four-second independent decode as the long-term segment contract. It has no overlap, state, stable-prefix reconciliation, incremental display, or crash durability. Groq’s official larger-file guidance itself recommends overlapping chunks and overlap-aware recombination rather than blind disjoint append ([Groq Speech-to-Text, “Working with Larger Audio Files”](https://console.groq.com/docs/speech-to-text)).
+
+### Bounded memory and incremental persistence
+
+**Decision:** One capture owner feeds two bounded consumers:
+
+- a recognition queue capped by **audio age**, not merely item count; and
+- a local recovery writer that converts float32 callbacks to PCM16 and seals immutable segments.
+
+The capture callback must never wait on inference or storage. If the recovery queue reaches its small bound, the session enters an explicit `recovery_degraded` state and tells the user that crash recovery is unavailable; it must not silently discard live audio or pretend the session is fully protected. If recognition falls behind, preserve the durable audio, stop publishing stale partials, and let a bounded catch-up or final batch path recover—never drop uncommitted samples.
+
+Only the active recognition window, a short preroll/overlap, the current unsealed recovery segment, and queue bounds remain in RAM. Already sealed PCM and committed transcript prefixes leave the hot path. This makes memory approximately constant with logical-dictation duration rather than relying on a ten-minute stop to cap growth. Disk use still grows with duration, so the later specification must set a measured, visible local-storage budget and minimum-free-space rule rather than calling segmented storage “unlimited.”
+
+The recovery directory is per-user and local. Windows should use Mumble’s existing Local App Data location; Microsoft describes `FOLDERID_LocalAppData` as the place for machine-specific application data such as local performance state ([Microsoft Windows app data guidance](https://learn.microsoft.com/en-us/windows/apps/develop/windows-app-restore#machine-specific-app-data)). macOS should resolve the user Application Support directory rather than hard-code it ([Apple `applicationSupportDirectory`](https://developer.apple.com/documentation/foundation/url/applicationsupportdirectory)). Linux should use `$XDG_STATE_HOME` for restart-recovery state, creating a missing directory with user-only permissions as the XDG specification directs ([XDG Base Directory Specification 0.8](https://specifications.freedesktop.org/basedir/)).
+
+**Decision:** seal a recovery segment using `write temporary → flush → fsync file → atomic replace within the same directory → fsync directory where supported`, then append/update the content-free manifest. Python documents `os.replace` as the cross-platform overwrite operation and POSIX rename as atomic when successful on one filesystem; Windows’ `ReplaceFile` API performs replacement as one operation but has platform-specific access/ACL failure modes ([Python `os.replace`/`os.fsync`](https://docs.python.org/3/library/os.html#os.replace), [Microsoft `ReplaceFile`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilea)). Therefore the implementation must test real crash points on NTFS, APFS, and the supported Linux filesystems; “atomic API call” must not be inflated into an unmeasured whole-session durability guarantee.
+
+The manifest may contain only session ID, schema version, platform/build, sample rate/channels/encoding, monotonically increasing segment number, sample start/end, byte count, checksum, state (`writing`, `sealed`, `transcribed`, `committed`, `complete`), and timestamps. It must not contain audio-derived text unless the user’s normal History policy already permits saving that transcript.
+
+### Merge, finalization, and one-paste ownership
+
+**Decision:** merge by sample/timestamp identity, not by concatenating strings:
+
+1. Assign every decoder hypothesis a source sample range and monotonically increasing revision number.
+2. Keep two surfaces: `committed_text`, which is append-only inside one session, and `tentative_text`, which may be replaced.
+3. Commit only the longest word prefix confirmed by two consecutive overlapping hypotheses for the faster-whisper experiment. At a recovery-segment seam, deduplicate words only when normalized text and timestamp overlap agree; otherwise keep the boundary tentative and include more overlap in the next decode. This follows the pinned LocalAgreement and timestamp-aware boundary logic rather than assuming the same word count means the same audio ([`HypothesisBuffer.insert`/`flush`](https://github.com/ufal/whisper_streaming/blob/6da90b44b7e50d79695e68166d2a2c7609c75abb/whisper_online.py#L359-L417)).
+4. On Stop, drain only work already claimed, decode from the last committed sample through the exact captured end, flush tentative text, then run formatting once over the complete logical dictation.
+5. Save one final History entry durably before insertion. Insert into the target application once, using the existing clipboard-preserving final-paste path. Island partials are feedback, not target-app edits.
+
+**Decision:** if recognition is slower than real time, never keep an unbounded audio or websocket queue. Mark partials `paused_catching_up`, continue durable segmented capture while the configured storage/backpressure contract remains healthy, and finish from sealed audio. Apply backpressure by suspending live partial work before risking capture loss. If durable capture cannot continue within the measured storage/free-space bound, warn and stop safely rather than silently dropping samples. The application may trade first-visible latency for correctness; it may not trade away samples without an explicit failed-session outcome.
+
+### Crash recovery semantics
+
+**Decision:** recovery is local, bounded, explicit, and idempotent:
+
+- On normal successful save, delete recovery audio only after the final History record is durable; cleanup failure leaves an orphan eligible for the next cleanup pass, never a second history entry.
+- On user Cancel, close capture and delete the recovery set. If deletion fails, show a local cleanup warning and retry next launch.
+- On restart after a crash, validate manifest schema, contiguous sample ranges, file sizes, and checksums. Ignore/delete an incomplete final temporary file; never guess missing audio.
+- Offer **Recover and transcribe**, **Keep for later**, or **Delete**. Do not auto-paste recovered text because focus and cursor ownership are gone.
+- Use a stable session ID in History so retrying recovery cannot create duplicate entries. Mark the recovery set `complete` only after History’s durable commit, then delete it.
+- Auto-delete abandoned recovery audio after a proposed seven days, with the retention period visible in Settings and an immediate “Delete recovery audio” action. Seven days is a proposal requiring owner/privacy review, not a current promise.
+- A valid manifest prefix is recoverable even if the last segment is absent; the UI must state the exact recovered duration and that the ending is incomplete.
+
+**Privacy consequence:** the current homepage statement “Short dictation buffers are discarded after transcription” can remain true only if recovery audio is described as temporary local recording data and deletion occurs after successful transcription/history save. “No telemetry” can coexist with an opt-in local diagnostics file, but “no usage tracking of any kind” is too absolute once duration/timing/resource traces exist—even locally and disabled by default ([current `LocalAI.astro`](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Development%20Files/Marketing/Website/src/components/LocalAI.astro#L27-L49), [current `Privacy.astro`](https://github.com/mongre25-droid/mumble/blob/6f12ed73fd9350692eab8c55b705f9910aae7e77/Development%20Files/Marketing/Website/src/components/Privacy.astro#L55-L66)).
+
+### Privacy-safe activation-to-paste spans
+
+**Decision:** tracing stays disabled by default, local-only, bounded, user-exported, and content-free. No event or attribute may store audio, transcript text, partial text, clipboard content, prompt/context, file path, device display name, provider response, exception message, or a stable machine/user identifier. Use per-session random IDs and coarse hardware classes in ordinary traces; exact machine details belong only in a separately consented benchmark export.
+
+Required monotonic spans and boundaries:
+
+| Span | Start | End | Current coverage | Required correction |
+|---|---|---|---|---|
+| Activation → feedback visible | hotkey/command callback entry | renderer acknowledgement after paint | Windows records activation and a state call | Add a real acknowledgement; do not label a queued call “visible” |
+| Activation → capture | activation | first audio callback | Windows covered | Add open/start subspans, actual stream format, overflow flag, and route-safe error class |
+| First speech → first tentative/stable partial | local VAD speech-start frame | distinct tentative and committed emissions | No speech-start event; four-second completed chunk only | Add speech onset and true partial contract/version |
+| Partial ready → Island visible | controller emission | render acknowledgement | Not covered | Add revision ID and acknowledgement without words |
+| Stop/end speech → final raw | user Stop and VAD endpoint separately | final decoder text available | Stop → final covered | Preserve both origins so endpoint delay is not mistaken for inference |
+| Final raw → durable History | raw ready | file commit acknowledged | Broad persistence span covered | Split formatting, recovery finalize, History commit, and optional stats |
+| Durable History → paste sent | durable commit | input event sent | Covered | Keep target paint as `unknown` unless an owned test harness acknowledges it |
+| Paste sent → target acknowledged | input event sent | synthetic/owned target reports inserted text | Not generally observable | Benchmark-only; never claim this from Ctrl+V dispatch in arbitrary apps |
+
+The trace should preserve event order and numeric durations while constraining fields with the existing allowlist approach. Errors use a short class/code, never `str(exception)`. Rotation, export, and delete must be reachable in Settings before tracing can become a supported diagnostic feature.
+
+### Cold/warm classifications
+
+**Decision:** classify state from facts the process can record; never infer “GPU warm” merely from app uptime:
+
+| Classification | Required evidence | Notes |
+|---|---|---|
+| `process_first` | first activation ordinal for this process | Separate from machine reboot |
+| `model_absent` | no selected model object before activation | Includes cloud mode awaiting local fallback |
+| `model_loaded_unwarmed` | model loaded; exact-path warm-up generation absent/failed | Match model hash, backend, device, compute type, VAD/options |
+| `model_exact_warm` | exact signature warm-up completed successfully | Warm-up is evidence of execution, not a latency guarantee |
+| `audio_first_open` | selected device has not produced a callback in this process generation | Reset on device change and resume |
+| `audio_reused` | same selected device generation produced a recent successful callback | Record time since close; do not imply the OS driver stayed warm |
+| `post_resume` | operating-system resume generation changed | First success after resume gets its own class |
+| `recent_inference` | same exact model/backend signature and seconds since last successful decode | Report raw seconds plus bins: `<30`, `30–300`, `300–1800`, `>1800` |
+| `sequence_ordinal` | 1st, 2nd, 5th, 20th controlled trial | Benchmark label, not automatic product causality |
+| `machine_cold` | benchmark harness records a controlled reboot protocol | Cannot be established reliably by Mumble alone |
+| `cloud_remote_state_unknown` | cloud route selected | Mumble can measure local preparation/network/request spans, not provider internals |
+
+NVIDIA’s lazy-loading documentation remains evidence that first-use CUDA work can exist, and Windows power/QoS documentation remains evidence that scheduling/power state can vary; neither proves the model, GPU, or power plan causes Mumble’s observed delay ([CUDA lazy loading](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/lazy-loading.html), [Windows processor policy](https://learn.microsoft.com/en-us/windows/win32/power/processor-performance-control-policy-constants), [Windows QoS](https://learn.microsoft.com/en-us/windows/win32/procthread/quality-of-service)). The four-second scheduler is verified; hardware warm-up remains a hypothesis until the above classifications produce distributions on named machines.
+
+### Homepage wording consequence
+
+**Decision:** after continuation across recovery/recognition segments is implemented and verified, remove ten minutes as a selling claim. Use bounded wording such as:
+
+> **Keep dictating until you stop.** Mumble transcribes locally by default, continues safely across small local segments, shows progress while you speak, and saves your finished text before pasting. A visible safety guard protects against accidental ongoing recording. During recording Mumble may keep a temporary recovery copy on this device; that audio is deleted after the dictation is safely saved or when you cancel. Cloud Transcription sends audio only when you explicitly choose it.
+
+This future wording must not ship until physical continuation, recovery, memory, storage, accuracy, and cross-platform tests pass. It also must not say “unlimited”: the configurable safety guard and storage/backpressure limits are real boundaries even though ten minutes is no longer the ordinary ceiling.
+
+Until implementation, the public homepage should **not** claim continuation, live partials, crash recovery, bounded memory, or automatic recovery. The current truthful short form is:
+
+> **Mumble 0.95 currently records normal dictation for up to 10 minutes at a time; use Meetings for longer recording. Local Transcription keeps audio on this device; Cloud Transcription sends the clip only when you explicitly choose it.**
+
+Replace the absolute “No telemetry, no usage tracking of any kind” with:
+
+> **No accounts and no remote analytics. Optional diagnostics stay on this device unless you choose to export them.**
+
+That wording distinguishes remote collection from local, opt-in performance evidence and preserves the existing local-first promise.
+
+### Platform implications and release gates
+
+- **Shared contract:** duration constants, manifest schema, segment merger, trace vocabulary, and fault-injection fixtures must live in shared modules. Controllers own only capture, microphone permission/indicator, paste, paths, and lifecycle seams. Copying the contract into three controllers invites drift.
+- **Windows:** keep the current exact-sample cap and clipboard-safe final paste. Validate atomic replacement, ACL preservation, long-path behaviour, sleep/resume, device loss, and crash points on NTFS. Do not claim target-visible text from `SendInput`/Ctrl+V alone.
+- **macOS:** store recovery data in Application Support, request microphone access with `NSMicrophoneUsageDescription`, and ensure any keep-open microphone experiment matches the operating system’s visible recording indicator and user expectation ([Apple microphone usage description](https://developer.apple.com/documentation/bundleresources/information-property-list/nsmicrophoneusagedescription), [Apple recording-indicator guidance](https://developer.apple.com/videos/play/wwdc2021/10085/?time=1439)).
+- **Linux:** place restart state under `$XDG_STATE_HOME`, enforce user-only directory/file permissions, and test native PipeWire/PulseAudio plus sandboxed packaging separately. Filesystem rename/directory-flush behaviour must be tested on supported distributions rather than assumed from one development machine.
+- **Parity gate:** preserve a regression test for the current 0.95 exact ten-minute stop while it ships; separately prove that the target architecture continues one logical dictation across the old ten-minute boundary and many internal segment boundaries. Run configured-safety-stop, storage-exhaustion, bounded-queue, overlap merge, crash-at-every-transition, recovery-idempotence, trace-redaction, sleep/resume, and final-only-paste tests on all three platforms. A green Windows unit test is not evidence of macOS/Linux runtime parity.
+- **Performance gate:** publish p50/p90/p95/max for the defined spans and cold/warm states on named weak, average, and strong machines; pair every latency result with seam errors, WER/term errors, clipped endpoints, revisions, RAM/VRAM, idle CPU, battery/power, and recovery success.
+
+### Decision status
+
+- **Verified fact:** the current cap, in-memory float32 accumulation, four-second independent chunks, current final persistence, Windows trace schema, and cross-platform source gaps described above.
+- **Decision/proposal:** truthful current ten-minute wording; removal of ten minutes as the target logical-dictation ceiling; continuation until user Stop across bounded segments; a visible configurable safety guard whose default remains undecided; measured storage/backpressure limits; the one-second/15-second recognition experiment; 30-second immutable recovery segments; merge rules; seven-day recovery retention; trace extensions; cold/warm taxonomy; and staged homepage wording.
+- **Hypothesis:** retained exact-path state, smaller stable-prefix windows, audio reuse, or another backend will improve specific latency percentiles.
+- **Unmeasured:** actual peak memory, recovery loss window, latency distributions, target paint, accuracy, power, thermals, and physical-device parity.
+
 ## The current Mumble latency pipeline
 
-The production Windows path is primarily in [`Internal/app/mumble.py`](../../../Internal/app/mumble.py). Relevant current behaviour includes:
+The production Windows path is primarily in [`Internal/app/mumble.py`](../../Internal/app/mumble.py). Relevant current behaviour includes:
 
-- The audio format is 16 kHz mono and the live chunk threshold is four seconds (`STREAM_CHUNK_SECONDS = 4.0`) ([mumble.py, lines 110-116](../../../Internal/app/mumble.py#L110-L116)).
-- On activation, Mumble first pauses the optional wake-word microphone owner, resets recording state, shows the listening Island, opens the selected input stream, starts it, and then launches a transcription worker ([mumble.py, lines 1320-1442](../../../Internal/app/mumble.py#L1320-L1442)).
-- The worker waits until at least four seconds of new samples exist, concatenates them, and performs a complete local transcription of that independent piece ([mumble.py, lines 1062-1132](../../../Internal/app/mumble.py#L1062-L1132)).
+- The audio format is 16 kHz mono and the live chunk threshold is four seconds (`STREAM_CHUNK_SECONDS = 4.0`) ([mumble.py, lines 110-116](../../Internal/app/mumble.py#L110-L116)).
+- On activation, Mumble first pauses the optional wake-word microphone owner, resets recording state, shows the listening Island, opens the selected input stream, starts it, and then launches a transcription worker ([mumble.py, lines 1320-1442](../../Internal/app/mumble.py#L1320-L1442)).
+- The worker waits until at least four seconds of new samples exist, concatenates them, and performs a complete local transcription of that independent piece ([mumble.py, lines 1062-1132](../../Internal/app/mumble.py#L1062-L1132)).
 - Worker results are appended to `_stream_results`; no result is sent to the Island, main window, or target application as live partial text.
-- After Stop, Mumble waits for in-flight work, joins recorded buffers, and either transcribes the remaining tail or performs one complete pass when the worker produced nothing ([mumble.py, lines 1787-1881](../../../Internal/app/mumble.py#L1787-L1881); [mumble.py, lines 2114-2208](../../../Internal/app/mumble.py#L2114-L2208)).
-- Local `faster-whisper` decoding uses greedy search (`beam_size=1`), an explicit language, Silero VAD, and serialized access to the model ([mumble.py, lines 1956-2079](../../../Internal/app/mumble.py#L1956-L2079)).
-- Local mode normally loads its model at boot. Mumble deliberately runs one decoder warm-up and one VAD warm-up pass ([mumble.py, lines 4065-4207](../../../Internal/app/mumble.py#L4065-L4207)). Cloud transcription intentionally leaves the local model unloaded until a local fallback is needed ([mumble.py, lines 6054-6071](../../../Internal/app/mumble.py#L6054-L6071)).
-- The boot audio warm-up calls `sounddevice.query_devices()`, which enumerates devices but does not open and start the user's selected recording stream ([mumble.py, lines 6033-6043](../../../Internal/app/mumble.py#L6033-L6043)).
-- Plain Text normally takes an `instant_text` path: deterministic transcript formatting replaces optional network polishing ([mumble.py, lines 2251-2309](../../../Internal/app/mumble.py#L2251-L2309)). Prompt and other deliberate AI lanes can add local or cloud generation time.
-- A history entry and statistics are persisted before paste. Web-interface refresh is asynchronous, then Mumble sets the clipboard, waits 40 ms, sends Ctrl+V, and waits at least another 180 ms before restoring the previous clipboard ([mumble.py, lines 2325-2400](../../../Internal/app/mumble.py#L2325-L2400); [mumble.py, lines 2528-2595](../../../Internal/app/mumble.py#L2528-L2595)). The latter wait protects clipboard correctness but occurs after Ctrl+V has been sent.
-- Existing timing reports release-to-paste with drain, tail, shaping, and paste subspans. It does not cover hotkey-to-first-callback, first speech, first stable partial, partial rendering, or warm-state/resource evidence ([mumble.py, lines 2371-2392](../../../Internal/app/mumble.py#L2371-L2392)).
+- After Stop, Mumble waits for in-flight work, joins recorded buffers, and either transcribes the remaining tail or performs one complete pass when the worker produced nothing ([mumble.py, lines 1787-1881](../../Internal/app/mumble.py#L1787-L1881); [mumble.py, lines 2114-2208](../../Internal/app/mumble.py#L2114-L2208)).
+- Local `faster-whisper` decoding uses greedy search (`beam_size=1`), an explicit language, Silero VAD, and serialized access to the model ([mumble.py, lines 1956-2079](../../Internal/app/mumble.py#L1956-L2079)).
+- Local mode normally loads its model at boot. Mumble deliberately runs one decoder warm-up and one VAD warm-up pass ([mumble.py, lines 4065-4207](../../Internal/app/mumble.py#L4065-L4207)). Cloud transcription intentionally leaves the local model unloaded until a local fallback is needed ([mumble.py, lines 6054-6071](../../Internal/app/mumble.py#L6054-L6071)).
+- The boot audio warm-up calls `sounddevice.query_devices()`, which enumerates devices but does not open and start the user's selected recording stream ([mumble.py, lines 6033-6043](../../Internal/app/mumble.py#L6033-L6043)).
+- Plain Text normally takes an `instant_text` path: deterministic transcript formatting replaces optional network polishing ([mumble.py, lines 2251-2309](../../Internal/app/mumble.py#L2251-L2309)). Prompt and other deliberate AI lanes can add local or cloud generation time.
+- A history entry and statistics are persisted before paste. Web-interface refresh is asynchronous, then Mumble sets the clipboard, waits 40 ms, sends Ctrl+V, and waits at least another 180 ms before restoring the previous clipboard ([mumble.py, lines 2325-2400](../../Internal/app/mumble.py#L2325-L2400); [mumble.py, lines 2528-2595](../../Internal/app/mumble.py#L2528-L2595)). The latter wait protects clipboard correctness but occurs after Ctrl+V has been sent.
+- Existing timing reports release-to-paste with drain, tail, shaping, and paste subspans. It does not cover hotkey-to-first-callback, first speech, first stable partial, partial rendering, or warm-state/resource evidence ([mumble.py, lines 2371-2392](../../Internal/app/mumble.py#L2371-L2392)).
 
 ### Why it appears to warm up
 
@@ -610,7 +762,9 @@ Also provisional:
 - the retained microphone option must show a persistent privacy indicator and its measured power impact;
 - fall back to a lighter local model before unloading/reloading repeatedly when that gives a better latency/resource balance.
 
-## Architecture decisions required before implementation
+## Architecture question checklist after the issue #3 decision
+
+The issue #3 contract above resolves first-visible text as committed Island text, permits separately styled tentative Island revisions, keeps target-app insertion final-only, requires durable History before paste, defines a content-free local trace, and sets latency/accuracy/privacy/recovery release gates. Items 1–3, 13–14, and 20 below are therefore answered by this report. The other items remain inputs to later specification or owner decisions; keeping the checklist here prevents the duration/latency contract from being mistaken for a complete implementation specification.
 
 1. What precisely counts as “first visible text”: provisional Island text, committed Island text, or text already inserted into the target application?
 2. May provisional words revise, and how will revisions be shown without visual instability?
@@ -640,6 +794,7 @@ All upstream repositories were inspected from local clones at the commits below,
 | Repository | Inspected revision | Important files and symbols inspected | Inspection result |
 |---|---|---|---|
 | Mumble | [`cde23725`](https://github.com/mongre25-droid/mumble/tree/cde23725e0d9eaeffe218e02c225ff5f8a499312) | [`Internal/app/mumble.py`](https://github.com/mongre25-droid/mumble/blob/cde23725e0d9eaeffe218e02c225ff5f8a499312/Internal/app/mumble.py): `start_recording`, `_open_input_stream`, `_audio_cb`, `_stream_worker`, `stop_recording`, `_process`, `_local_transcribe`, `_try_load`, `_warm_model`, `_paste_impl`; `Internal/app/transcription.py`; `Internal/app/formatting.py`; `Internal/app/platform/__init__.py`; `Internal/app/platform/windows_dml.py`; `Internal/app/perf/optimizer.py`; `Internal/app/settings.py`; `Internal/app/requirements.txt`; `Internal/app/THIRD_PARTY_NOTICES.md` | Complete trace of the currently called Windows dictation path, dormant adapter, warm-up, persistence, and paste path. One unrelated working-copy startup-cleanup edit was excluded from the analysis. |
+| Mumble issue #3 revalidation | [`6f12ed73`](https://github.com/mongre25-droid/mumble/tree/6f12ed73fd9350692eab8c55b705f9910aae7e77) | Windows controller, duration constants, trace, History, stats, cloud transcription, tests and Web UI; macOS/Linux controllers, duration constants, cloud transcription, tests and Web UI; Astro homepage privacy and duration wording | Revalidated the current called Windows path plus both maintained port seams. The checkout has the ten-minute exact cap and an opt-in Windows trace, while retaining full float32 accumulation and four-second independent chunks. No uncommitted source change affected the pass. |
 | faster-whisper | Mumble tag [`65882eee`](https://github.com/SYSTRAN/faster-whisper/tree/65882eee9f5cdbeeb2d877f1131d48cf241b327d) and current [`ed9a06cd`](https://github.com/SYSTRAN/faster-whisper/tree/ed9a06cd89a93e47838f564998a6c09b655d7f43) | `faster_whisper/transcribe.py`: `WhisperModel`, `transcribe`, window/fallback loops, `BatchedInferencePipeline`; `audio.py`: `decode_audio`; `feature_extractor.py`; `vad.py`: `VadOptions`, `get_speech_timestamps`, `SileroVADModel`; `utils.py`: `download_model`; `LICENSE` | Full reachable model/VAD/decode path. No microphone, token callback, stable prefix, or application lifecycle/recovery exists in this library. Exact Mumble tag and newer source were kept separate where VAD assets/defaults differ. |
 | CTranslate2 | Current v4.8.1 [`0d8bcd36`](https://github.com/OpenNMT/CTranslate2/tree/0d8bcd362ac75ef860ef161d6f0efad0ae439ff0); Mumble environment v4.8.0 [`54a546ce`](https://github.com/OpenNMT/CTranslate2/tree/54a546cec4262f9770d4674a0bfb4ac3c4f05698) | `python/cpp/replica_pool.h`, `python/cpp/whisper.cc`, `include/ctranslate2/replica_pool.h`, `src/models/whisper.cc`, `src/layers/transformer.cc`, `src/devices.cc`, `src/types.cc`, `src/models/model.cc`, `model_reader.cc`, CPU/CUDA utilities, `LICENSE` | Worker/queue, load/unload, decoder-cache, device/compute, lazy runtime and validation paths inspected. No source support found for Mumble's runtime “JIT-compiles kernels” wording. |
 | whisper.cpp | [`080bbbe8`](https://github.com/ggml-org/whisper.cpp/tree/080bbbe85230f624f0b52127f1ae1218247989f9) | `examples/stream/stream.cpp`, `examples/common-sdl.cpp`, `examples/common.cpp`, `examples/server/server.cpp`, `include/whisper.h`, `src/whisper.cpp`, `examples/quantize/quantize.cpp`, `ggml/CMakeLists.txt`, Vulkan/Metal/OpenVINO backend sources, `models/download-ggml-model.sh`, `LICENSE` | Capture-to-decode example, core VAD/context, server reload/cancel, backend pipeline/cache and download paths inspected. The sample stream is not production dictation and lacks stable partials/device recovery. |
@@ -661,18 +816,26 @@ All upstream repositories were inspected from local clones at the commits below,
 
 ## Recommended decision
 
-Do not replace Mumble's transcription engine first. The current evidence points to orchestration as the immediate problem: short speech misses the four-second overlap, internal partials are invisible, and the critical path is only partly timed.
+For current 0.95, state the existing ten-minute limit plainly and direct longer recording to Meetings. For the target architecture, remove ten minutes as the normal foreground-dictation ceiling: keep one logical dictation running until the user stops across bounded queues and immutable local recovery segments, with sample/timestamp-based overlap merging, append-only committed prefixes, replaceable Island-only tentative text, exact-tail finalization, one durable History entry, and one final target-app paste.
 
-Implement the full trace and benchmark it. Then build a persistent, backend-aware streaming interface with stable Island partials, retaining `faster-whisper` as the reference implementation. In parallel, run bounded comparison spikes for `sherpa-onnx` and `whisper.cpp` on named weak, average, and strong machines. Adopt another backend only where measured latency, accuracy, resource use, packaging, and licence compliance are all better for a defined tier.
+Protect the longer-running design with a visible, configurable safety guard and measured storage/free-space/backpressure limits. Do not choose or market a default safety duration until physical tests and owner approval establish it. A reached guard or capacity limit must warn, preserve the exact prefix, stop safely, and remain recoverable.
+
+Do not replace Mumble's transcription engine first. The verified immediate problem remains orchestration: short speech misses the four-second overlap, current “partials” are invisible independent chunks, the complete float32 recording remains resident, foreground crash recovery is not durable, and the trace does not yet classify every cold/warm state or prove UI/target visibility.
+
+Extend and validate the content-free trace, then run the stable-prefix faster-whisper experiment against the defined fault, latency, accuracy, resource, and platform gates. Keep `faster-whisper` as the reference while running bounded `sherpa-onnx` and `whisper.cpp` comparisons on named weak, average, and strong machines. Adopt another backend only where measured latency, accuracy, resource use, packaging, recovery behaviour, platform support, and licence compliance are all better for a defined tier.
 
 ## Primary sources
 
 ### Mumble repository evidence
 
-- [Current Windows dictation controller](../../../Internal/app/mumble.py)
-- [Existing Mumble optimization research](../Mumble%20Optimisation%20Research%20-%202026-07-10.html)
-- [Cloud transcription implementation](../../../Internal/app/transcription.py)
-- [Deterministic transcript formatting](../../../Internal/app/formatting.py)
+- [Issue #3 revalidation checkout](https://github.com/mongre25-droid/mumble/tree/6f12ed73fd9350692eab8c55b705f9910aae7e77)
+- [Current Windows dictation controller](../../Internal/app/mumble.py)
+- [Current recording limits](../../Internal/app/recording_limits.py)
+- [Current privacy-safe trace](../../Internal/app/dictation_trace.py)
+- [Current History persistence](../../Internal/app/history.py)
+- [Existing Mumble optimization research](../Archive/Reports/Mumble%20Optimisation%20Research%20-%202026-07-10.html)
+- [Cloud transcription implementation](../../Internal/app/transcription.py)
+- [Deterministic transcript formatting](../../Internal/app/formatting.py)
 
 ### Upstream architecture and performance
 
@@ -692,6 +855,13 @@ Implement the full trace and benchmark it. Then build a persistent, backend-awar
 - NVIDIA, [CUDA guidance for latency-sensitive eager loading and warm-up](https://docs.nvidia.com/cuda/archive/13.1.1/cuda-programming-guide/03-advanced/advanced-host-programming.html)
 - Microsoft, [processor performance control policies](https://learn.microsoft.com/en-us/windows/win32/power/processor-performance-control-policy-constants)
 - Microsoft, [Windows thread Quality of Service](https://learn.microsoft.com/en-us/windows/win32/procthread/quality-of-service)
+- Groq, [Speech-to-Text limits, preprocessing, and overlapping-chunk guidance](https://console.groq.com/docs/speech-to-text)
+- OpenAI, [Audio API FAQ and legacy `whisper-1` upload limit](https://help.openai.com/en/articles/7031512-whisper-audio-api-faq)
+- Python, [`os.replace` and `os.fsync`](https://docs.python.org/3/library/os.html#os.replace)
+- Microsoft, [`ReplaceFile` semantics](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilea)
+- Apple, [Application Support directory](https://developer.apple.com/documentation/foundation/url/applicationsupportdirectory)
+- Apple, [microphone usage description](https://developer.apple.com/documentation/bundleresources/information-property-list/nsmicrophoneusagedescription)
+- freedesktop.org, [XDG Base Directory Specification 0.8](https://specifications.freedesktop.org/basedir/)
 
 ### Licence texts
 
