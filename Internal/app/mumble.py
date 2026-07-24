@@ -78,6 +78,7 @@ import foreign_boost  # local (offline) Foreign-Mode phonetic term correction
 import formatting
 import islamic_terms  # Foreign mode: slash-candidate annotation for Arabic/Islamic terms
 import local_engine  # cloud-dominance routing gate (cloud-primary-when-key, local degrade)
+import processing_route  # immutable, privacy-enforcing text-shaping decisions
 import recording_limits
 import transcription  # optional cloud STT (advanced); local faster-whisper is default
 import ui
@@ -2319,6 +2320,14 @@ class Mumble:
             "foreign_languages": self.settings.get("foreign_languages"),
             "format_enabled": self.settings.get("format_enabled", True),
             "instant_text": self.settings.get("instant_text", True),
+            "cerebras_api_key": self.settings.get("cerebras_api_key", ""),
+            "cerebras_model": self.settings.get("cerebras_model", "gpt-oss-120b"),
+            "openrouter_api_key": self.settings.get("openrouter_api_key", ""),
+            "openrouter_model": self.settings.get(
+                "openrouter_model", "openai/gpt-oss-120b"
+            ),
+            "local_api_key": self.settings.get("local_api_key", ""),
+            "local_model": self.settings.get("local_model", "llama3"),
         }
 
         # Consume the search request up front so an error or early return can
@@ -2432,12 +2441,9 @@ class Mumble:
             # local_only_mode privacy toggle. Uses the _snap config captured at
             # process start so settings changes mid-run don't affect the route
             # (VAL-CROSS-020).
-            _route = local_engine.route(
-                det_mode,
-                cloud_key_present=bool(
-                    _snap["pro_mode"] and self._ai_key()),
-                local_only_mode=bool(_snap["local_only_mode"]),
-                local_llm_ready=local_engine.local_llm_ready(),
+            _feature = det_mode if det_mode in ("prompt", "email", "reply") else "dictation"
+            _route = processing_route.snapshot(
+                _snap, feature=_feature, lane=det_mode
             )
             will_cloud = _route.cloud_augmented
             instant_text = bool(_snap.get("instant_text", True)) and not mode_active
@@ -3041,21 +3047,28 @@ class Mumble:
             directive = _presets.MODE_DIRECTIVES.get(mode)
             if directive:
                 instruction += "\n\nOUTPUT FORM:\n" + directive
-        key = self._ai_key()
+        route_decision = processing_route.snapshot(
+            self.settings, feature="deck", lane=mode or "deck_reason"
+        )
+        key = route_decision.api_key
         if self.island:
             build = ["context", mode] if mode else "context"
             self._tk_schedule(self.island.set_building, build,
-                              offline=not (self.settings.get("pro_mode", True)
-                                           and key))
+                              offline=not route_decision.cloud_augmented)
         out, used_offline = "", True
-        if self.settings.get("pro_mode", True) and key:
+        provider_ready = route_decision.ready and (
+            route_decision.cloud_augmented or route_decision.provider == "local"
+        )
+        if provider_ready:
             last_err = None
             for attempt in (1, 2):
                 try:
-                    cfg = self._ai_cfg()
-                    gen = ai.cerebras_intent(
-                        instruction, ctx_block, "", key, cfg["model"],
-                        url=cfg["url"]
+                    info = ai.PROVIDERS[route_decision.provider]
+                    gen = processing_route.call_provider(
+                        route_decision,
+                        ai.cerebras_intent,
+                        instruction, ctx_block, "", key, route_decision.model,
+                        url=info["url"],
                     )
                     raw_out = self._collect_text(gen)
                     if raw_out and raw_out.strip():
@@ -3091,10 +3104,11 @@ class Mumble:
             # NEVER dump the raw material (the old context bug). Say so — with the
             # SPECIFIC reason so the fix is obvious (the reported "presets don't
             # work" is almost always a missing key, not a broken preset).
-            if not (self.settings.get("pro_mode", True) and key):
+            if not provider_ready:
                 self._notify("Deck presets need AI",
-                             "Add your free Cerebras key in Settings → AI to run "
-                             "presets like Summarise, Merge or Answer it.")
+                             "This action stayed on this device. Enable hosted "
+                             "text processing with a supported provider and key "
+                             "to run presets like Summarise, Merge or Answer it.")
             else:
                 self._notify("The Deck couldn't reach the AI",
                              "Nothing was generated — check your connection and "
@@ -5222,11 +5236,26 @@ class Mumble:
         spoken trigger.) Returns (mode, text, used_offline)."""
         name = self.settings.get("user_name", "")
         prefs = self.settings.get("prompt_prefs")
+        if route_decision is None:
+            feature = det_mode if det_mode in ("prompt", "email", "reply") else "dictation"
+            route_decision = processing_route.snapshot(
+                self.settings, feature=feature, lane=det_mode
+            )
         # Capture the AI config ONCE at the start of this dictation so that
         # an in-flight cloud request always uses the key it was launched with,
         # even if the user changes/deletes the key mid-call (VAL-CROSS-011).
         # _cloud_generate() receives this snapshot and never re-reads settings.
-        cfg = self._ai_cfg()
+        if isinstance(route_decision, processing_route.RouteDecision):
+            provider_info = ai.PROVIDERS.get(route_decision.provider) or {}
+            cfg = {
+                "key": route_decision.api_key,
+                "provider": route_decision.provider,
+                "model": route_decision.model,
+                "url": provider_info.get("url", ""),
+                "supported": route_decision.provider_supported,
+            }
+        else:
+            cfg = self._ai_cfg()
         prompt_cfg = cfg
         key = cfg["key"]
         # Use snapshot config if provided (for settings-change isolation).
@@ -5249,26 +5278,22 @@ class Mumble:
             except Exception:
                 pass
         cloud_allowed = bool(pro_mode and key)
-        if route_decision is not None:
-            cloud_allowed = cloud_allowed and bool(route_decision.cloud_augmented)
+        if isinstance(route_decision, processing_route.RouteDecision):
+            cloud_allowed = bool(route_decision.ready and (
+                route_decision.cloud_augmented or route_decision.provider == "local"
+            ))
         elif config_snap and config_snap.get("local_only_mode", False):
             cloud_allowed = False
         if cloud_allowed:
             try:
-                mode, out = self._cloud_generate(
-                    raw,
-                    name,
-                    context,
-                    det_mode,
-                    det_request,
-                    mode_active=mode_active,
-                    prefs=prefs,
+                mode, out = processing_route.call_provider(
+                    route_decision,
+                    self._cloud_generate,
+                    raw, name, context, det_mode, det_request,
+                    mode_active=mode_active, prefs=prefs,
                     context_strict=context_strict,
-                    keyword_template=keyword_template,
-                    words=words,
-                    window_words=window_words,
-                    cfg=cfg,
-                    prompt_cfg=prompt_cfg,
+                    keyword_template=keyword_template, words=words,
+                    window_words=window_words, cfg=cfg, prompt_cfg=prompt_cfg,
                 )
                 if out and out.strip():
                     self._mark_llm_ok()

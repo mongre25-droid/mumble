@@ -47,10 +47,18 @@
   <li><span class="badge b-done">promotion boundary</span> Verified that candidate promotion remains a separate manual action; the successful push run did not publish or release anything.</li>
 </ul>
 
-<h2><span class="sec">5</span>Current product snapshot</h2>
+<h2><span class="sec">5</span>24 July 2026 â€” processing route truth implemented</h2>
+<ul>
+  <li><span class="badge b-done">single policy</span> Added one immutable requested/effective route decision for Dictation, Prompt, Email, Reply, Deck, Meetings, and Reader text shaping.</li>
+  <li><span class="badge b-done">privacy boundary</span> Added a final hosted-call guard that prevents provider code from running under device-only, hosted-off, missing-key, or unsupported-provider states.</li>
+  <li><span class="badge b-done">Settings truth</span> Added explicit loading, ready, and error states; suppressed stale hydration and save responses; and separated Speech to text, Text shaping, and Light/Standard/Full visual effects.</li>
+  <li><span class="badge b-done">browser evidence</span> Exercised the real Edge/Chromium Settings page with delayed, rejected, and out-of-order bridge responses without making a provider request.</li>
+</ul>
+
+<h2><span class="sec">6</span>Current product snapshot</h2>
 <p>At this baseline Mumble is a local-first desktop voice workspace with hotkey dictation, local faster-whisper transcription, optional cloud transcription, optional local/cloud text shaping, clipboard-safe paste, the Deck, meetings, Reader, statistics, and supported-platform local search. The golden-black liquid-glass Web UI and floating Island are the current interface surfaces.</p>
 
-<h2><span class="sec">6</span>How to keep this log useful</h2>
+<h2><span class="sec">7</span>How to keep this log useful</h2>
 <ul><li>Use one dated entry for a meaningful completed milestone.</li><li>State what changed and where, without copying a full investigation into this page.</li><li>Put current risks, unfinished tasks, and release gates in <a href="STATUS.html">STATUS</a>.</li><li>Put stable procedures and architecture changes in <a href="HANDBOOK.html">HANDBOOK</a>.</li><li>Keep README focused on the stable product and working agreement.</li></ul>
 
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>

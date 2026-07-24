@@ -23,6 +23,7 @@
   <tr><td>Deck</td><td><span class="badge b-done">implemented</span></td><td>History, clipboard capture, favourites, search, presets, and real job execution are part of the current Web UI and controller.</td></tr>
   <tr><td>Meetings</td><td><span class="badge b-done">implemented</span></td><td>Meeting recording, transcription, storage, search, retry, and export paths are present; hardware and long-session validation remain separate gates.</td></tr>
   <tr><td>Reader</td><td><span class="badge b-done">implemented</span></td><td>Document import, parsing, progress, statistics, and optional text-to-speech are present.</td></tr>
+  <tr><td>Processing truth</td><td><span class="badge b-done">implemented</span></td><td>Dictation, Prompt, Email, Reply, Deck, Meetings, and Reader share one immutable local-or-hosted route decision. Device-only, hosted-off, missing-key, and unsupported-provider states are denied again at final hosted egress.</td></tr>
   <tr><td>Search</td><td><span class="badge b-exist">supported on Windows/Linux</span></td><td>Local app, file, and folder indexing is bounded and local; macOS does not load this surface.</td></tr>
   <tr><td>Ports</td><td><span class="badge b-gated">maintained seams</span></td><td>macOS and Linux have separate launch, input, paste, overlay, storage, and packaging seams. They are not a substitute for release validation.</td></tr>
 </tbody></table>
@@ -46,7 +47,7 @@
 
 <h2><span class="sec">3</span>Active priorities</h2>
 <ol>
-  <li>Work the implementation frontier in issues 14, 15, and 20: processing-route truth, target-bound insertion, and the production Focus Stage foundation.</li>
+  <li>Work the remaining implementation frontier in issues 15 and 20: target-bound insertion and the production Focus Stage foundation.</li>
   <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>

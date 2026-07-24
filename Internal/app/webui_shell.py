@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai  # noqa: E402
 import branding  # noqa: E402
 import local_engine as _local_engine  # noqa: E402
+import processing_route  # noqa: E402
 import presets as presets_mod  # noqa: E402
 import recording_limits  # noqa: E402
 import reader_store  # noqa: E402
@@ -880,18 +881,18 @@ class Api:
         text = (text or "").strip()
         if not text:
             return {"ok": False, "message": "Nothing to summarize."}
+        decision = processing_route.snapshot(
+            self.settings, feature="reader", lane="reader_summary"
+        )
+        if not decision.ready:
+            return {
+                "ok": False,
+                "message": "This summary stayed on this device because the selected text-processing route is not ready.",
+                "route": decision.public_dict(),
+            }
         try:
-            provider = self.settings.get("llm_provider", "cerebras") or "cerebras"
-            if provider not in ("cerebras", "openrouter"):
-                return {"ok": False,
-                        "message": "Choose a supported processing provider in Settings first."}
+            provider = decision.provider
             info = ai.PROVIDERS[provider]
-            key = self.settings.get(info.get("key_setting", ""), "") or ""
-            model = (self.settings.get(info.get("model_setting", ""), "")
-                     or info.get("default_model", "gpt-oss-120b")).strip()
-            if not key and provider != "local":
-                return {"ok": False,
-                        "message": "Add your %s API key in Settings to summarize." % provider}
             # Token-limit policy: Cerebras' free tier is rate-limited (~30k
             # tokens/min), so cap the input to stay inside one request and ask
             # for a tight summary. Paid providers (OpenAI, Anthropic, OpenRouter,
@@ -907,13 +908,18 @@ class Api:
                 "information. Add nothing that isn't in the text. Output only the summary, "
                 "no preamble.")
             user = "Summarize the following:\n\n" + doc
-            summary = ai.cerebras_chat(
-                system, user, key, model=model or "gpt-oss-120b",
-                url=info.get("url"), max_tokens=out_budget, timeout=t_out)
+            summary = processing_route.call_provider(
+                decision,
+                ai.cerebras_chat,
+                system, user, decision.api_key,
+                model=decision.model, url=info.get("url"),
+                max_tokens=out_budget, timeout=t_out,
+            )
             summary = (summary or "").strip()
             if not summary:
                 return {"ok": False, "message": "The summary came back empty."}
-            return {"ok": True, "summary": summary}
+            return {"ok": True, "summary": summary,
+                    "route": decision.public_dict()}
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
@@ -1572,33 +1578,29 @@ class Api:
         else:
             stt_effective, stt_reason = "cloud", "selected"
 
-        llm_provider = (self.settings.get("llm_provider", "cerebras") or "").strip().lower()
-        llm_key_names = {
-            "cerebras": "cerebras_api_key",
-            "openrouter": "openrouter_api_key",
+        route_facts = processing_route.settings_state(self.settings)
+        plain_decision = route_facts["plain_processing"]
+        action_decision = route_facts["action_processing"]
+        reason_compat = {
+            "device_only": "local_only",
+            "hosted_processing_off": "pro_off",
+            "missing_key": "no_key",
+            "ready": "selected",
         }
-        llm_supported = llm_provider in llm_key_names
-        llm_has_key = bool(llm_supported and (
-            self.settings.get(llm_key_names[llm_provider], "") or ""
-        ).strip())
-        pro_mode = bool(self.settings.get("pro_mode", True))
-        if local_only:
-            processing_effective, processing_reason = "local", "local_only"
-        elif not pro_mode:
-            processing_effective, processing_reason = "local", "pro_off"
-        elif not llm_supported:
-            processing_effective, processing_reason = "local", "unsupported_provider"
-        elif not llm_has_key:
-            processing_effective, processing_reason = "local", "no_key"
-        else:
-            processing_effective, processing_reason = "cloud", "selected"
-        plain_effective = (
-            "local" if self.settings.get("instant_text", True)
-            else processing_effective
+        llm_provider = action_decision["provider"]
+        llm_supported = action_decision["provider_supported"]
+        llm_has_key = action_decision["key_present"]
+        processing_effective = (
+            "cloud" if action_decision["effective_route"] == "hosted" else "local"
         )
-        plain_reason = (
-            "instant_text" if self.settings.get("instant_text", True)
-            else processing_reason
+        processing_reason = reason_compat.get(
+            action_decision["reason"], action_decision["reason"]
+        )
+        plain_effective = (
+            "cloud" if plain_decision["effective_route"] == "hosted" else "local"
+        )
+        plain_reason = reason_compat.get(
+            plain_decision["reason"], plain_decision["reason"]
         )
         return {
             "transcription": {
@@ -1614,6 +1616,7 @@ class Api:
                 "effective": plain_effective,
                 "reason": plain_reason,
                 "sends_text": plain_effective == "cloud",
+                "decision": plain_decision,
             },
             "action_processing": {
                 "provider": llm_provider,
@@ -1622,6 +1625,7 @@ class Api:
                 "effective": processing_effective,
                 "reason": processing_reason,
                 "sends_text": processing_effective == "cloud",
+                "decision": action_decision,
             },
             "local_only": local_only,
         }
