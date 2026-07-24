@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Mumble centred experience — prototype</title>
+  <link rel="stylesheet" href="prototype.css">
+</head>
+<body>
+  <div class="prototype-watermark" aria-hidden="true">Prototype · not product</div>
+  <div id="prototypeApp" class="prototype-app">
+    <header class="app-header">
+      <a class="brand" href="?variant=A&surface=home&state=ready" aria-label="Mumble prototype home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span><strong>Mumble</strong><small>Local-first voice workspace</small></span>
+      </a>
+      <div class="app-status" role="status"><i aria-hidden="true"></i><span>Ready on this device</span></div>
+      <button class="utility-find" type="button" data-open-find aria-haspopup="dialog">
+        <span aria-hidden="true">⌕</span><span>Find apps &amp; files</span><kbd>Ctrl Alt F</kbd>
+      </button>
+    </header>
+
+    <nav class="primary-nav" aria-label="Primary destinations">
+      <button type="button" data-surface="home" aria-current="page">Home</button>
+      <button type="button" data-surface="deck">Deck</button>
+      <button type="button" data-surface="stats">Stats</button>
+      <button type="button" data-surface="meetings">Meetings</button>
+      <button type="button" data-surface="reader">Reader</button>
+      <button type="button" data-surface="settings">Settings</button>
+    </nav>
+
+    <aside class="lab-controls" aria-label="Prototype controls">
+      <strong>Prototype state</strong>
+      <label>Surface
+        <select id="surfaceControl">
+          <option value="home">Home</option>
+          <option value="deck">Deck</option>
+          <option value="stats">Stats</option>
+          <option value="meetings">Meetings</option>
+          <option value="reader">Reader</option>
+          <option value="settings">Settings</option>
+          <option value="find">Mumble Find overlay</option>
+        </select>
+      </label>
+      <label>State
+        <select id="stateControl">
+          <option value="ready">Ready</option>
+          <option value="loading">Loading</option>
+          <option value="empty">Empty</option>
+          <option value="error">Error</option>
+          <option value="recording">Recording</option>
+          <option value="processing">Processing</option>
+        </select>
+      </label>
+      <label class="motion-control"><input id="motionControl" type="checkbox"> Reduce motion</label>
+      <button id="islandControl" type="button" aria-pressed="true">Island shown</button>
+    </aside>
+
+    <main id="surfaceRoot" tabindex="-1"></main>
+    <div id="findRoot"></div>
+    <div id="islandRoot"></div>
+
+    <div class="variant-switcher" role="group" aria-label="Prototype variant switcher">
+      <button type="button" id="previousVariant" aria-label="Previous design variant">←</button>
+      <span><small>Compare direction</small><strong id="variantLabel">A</strong></span>
+      <button type="button" id="nextVariant" aria-label="Next design variant">→</button>
+    </div>
+
+    <p id="stateReadout" class="state-readout" role="status" aria-live="polite"></p>
+    <pre id="selfTestOutput" class="self-test" hidden></pre>
+  </div>
+  <script src="prototype.js"></script>
+</body>
+</html>
