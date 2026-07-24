@@ -1,8 +1,8 @@
 # Mumble Local Dictation Latency Research
 
 **Research date:** 23–24 July 2026
-**Scope:** Local-first dictation duration, segmentation, crash recovery, activation-to-paste responsiveness, and cold/warm behaviour
-**Status:** Deep source-code inspection plus the Wayfinder duration/latency decision; research and planning only, not product implementation
+**Scope:** Local-first dictation duration, segmentation, crash recovery, activation-to-paste responsiveness, cold/warm behaviour, and open-source architecture adoption
+**Status:** Deep source-code inspection plus the Wayfinder duration/latency and open-source adoption decisions; research and planning only, not product implementation
 
 ## Executive conclusion
 
@@ -20,7 +20,8 @@ The highest-confidence direction is therefore:
 4. keep the selected local model, VAD, and exact inference path genuinely warm within an explicit memory/power policy;
 5. retain `faster-whisper` as the safe CPU/NVIDIA baseline while benchmarking `sherpa-onnx` for true streaming and `whisper.cpp` for broader native acceleration;
 6. show live partials in Mumble's Island first, but keep insertion into the user's application final-only until revision behaviour is proven safe; and
-7. measure the whole activation-to-paste path with an opt-in, local, content-free trace before making a speed claim.
+7. measure the whole activation-to-paste path with an opt-in, local, content-free trace before making a speed claim; and
+8. reuse open-source applications as bounded evidence: adapt Whisper-Streaming's stability policy and selected OpenWhispr/Handy lifecycle mechanisms, use GPL TypeWhisper/nerd-dictation only as clean-room test references by default, and retain Mumble's stronger launcher/icon-cache boundary.
 
 This report deliberately builds on [Mumble Optimisation Research - 2026-07-10.html](../Archive/Reports/Mumble%20Optimisation%20Research%20-%202026-07-10.html). That earlier study remains the broad performance audit. It identified routing divergence, unused platform adapters, fixed-window streaming, thread oversubscription risk, the lack of an authoritative Stop-to-Paste measure, duration-aware scheduling, and likely backend candidates. This document preserves those findings and narrows the question to **why latency changes with usage pattern and how to make the first spoken words feel immediately responsive**.
 
@@ -565,6 +566,132 @@ This matrix separates first-visible-text latency from final latency and throughp
 | Production model supply chain | Mumble downloads/caches existing selected models and has a notice file | Handy verifies catalog hashes; SimulStreaming verifies official Whisper SHA-256; whisper.cpp/OpenWhispr examples have weaker checks | Reliability/security only, not steady-state latency; prevents corrupt/changed model surprises | Design idea | Pin repository revision and SHA-256 for one benchmark model; test interrupted/corrupt download recovery |
 | Partial insertion ownership | Final clipboard insertion is serialized, restores modifiers/clipboard, and preserves durable history | nerd-dictation rewrites target text; Handy/OpenWhispr keep tentative text in owned UI | Island partials improve perceived latency without corrupting external edits | Reuse design boundary | Add tentative/committed Island renderer with no target-app mutation; test rapid revisions and cancellation |
 
+## Wayfinder issue #4 decision: ranked open-source adoption register
+
+This register resolves which inspected open-source patterns Mumble should adopt, adapt, benchmark, or reject. It ranks **bounded adoption packages**, not whole applications. A high rank means the evidence is strong and the experiment is useful early; it does not mean Mumble should import that project's architecture wholesale.
+
+The candidate screen also preserves the broader pinned census in the archived [Mumble Voice-to-Text Audit](../Archive/Research/legacy-research/Mumble_Voice_to_Text_Audit.html). That audit identified TypeWhisper Windows, whisrs, Voxtype, Buzz, WhisperLive, and other useful references; this register promotes only the projects and exact paths that materially change the current duration/latency decision, rather than duplicating the full ecosystem census.
+
+The decision was made from the pinned execution paths in the [source-code inspection appendix](#source-code-inspection-appendix), not project descriptions. The 24 July 2026 pass began from report checkout [`5e19b1ef`](https://github.com/mongre25-droid/mumble/tree/5e19b1ef87e1276803d0fbb5090c7fa593339c8d); the relevant Mumble runtime and launcher-verifier paths were unchanged from the `6f12ed73` product-source revalidation above. It also rechecked the pinned upstream repository trees and the Windows paste, launcher, and icon paths named below. No candidate was executed on Mumble hardware, so every latency statement remains a falsifiable hypothesis rather than a product claim.
+
+Decision terms:
+
+- **Adopt:** retain or directly use the pattern as part of Mumble's target contract, subject to ordinary implementation and verification.
+- **Adapt:** reproduce the mechanism behind a Mumble-owned interface; copy source only where the exact pinned licence and notices are accepted.
+- **Benchmark:** keep it outside the production route until the named test proves a material benefit.
+- **Reject:** do not carry the pattern into the specification unless new evidence changes the stated reason.
+
+### 1. Adapt Whisper-Streaming's stable-prefix control plane above the existing backend
+
+**Evidence coverage.** The pinned Whisper-Streaming processor keeps its backend resident, accepts caller-supplied 16 kHz audio, schedules on a one-second minimum cadence, retranscribes a bounded rolling buffer, optionally wraps Silero voice activity control, commits only the longest word prefix agreed by two timestamped hypotheses, and flushes the unconfirmed tail at finalization. It supplies no microphone owner, bounded application queue, crash recovery, Windows insertion, launcher, or icon system ([processor and buffer](https://github.com/ufal/whisper_streaming/blob/6da90b44b7e50d79695e68166d2a2c7609c75abb/whisper_online.py#L359-L627)).
+
+- **Adopt:** Mumble's final-only target-app insertion boundary and separate committed/tentative Island states.
+- **Adapt:** the two-hypothesis word agreement, timestamp-aware seam deduplication, rolling context, and exact final-tail flush as a small Mumble coordinator over the already resident faster-whisper model.
+- **Reject:** treating each provisional hypothesis as safe to paste, or calling repeated rolling Whisper inference “true streaming.”
+- **Benchmark hypothesis OSS-H1:** against the existing four-second independent chunks, a one-second cadence and 15-second maximum window should reduce median activation-to-first-committed-Island-text by at least 50%, without increasing reference-corpus word error rate by more than 2 absolute percentage points or producing any duplicated/dropped seam words. Measure first tentative, first committed, revisions per word, real-time factor, energy, final-tail time, and seam errors separately.
+
+**Licence boundary.** The inspected coordinator is MIT, so copied substantial portions require its copyright and permission notice. faster-whisper and CTranslate2 are separately MIT; their binaries, tokenizers, Silero runtime/weight, and the selected Whisper model snapshot still require their own pinned inventory. An independent Mumble implementation of the published behaviour reduces dependency surface but does not remove model/runtime compliance.
+
+### 2. Adapt OpenWhispr's readiness, online-final, and recovery contracts
+
+**Evidence coverage.** The pinned OpenWhispr paths demonstrate resident whisper.cpp/sherpa sidecars, exact silent inference warm-up, selected-microphone open/close warm-up, explicit after-resume server reload, 50 ms online PCM forwarding, one replaceable online partial, clean-stream final acceptance, full-audio batch fallback after an unclean flush, device recovery, helper supervision, and backend retry. They also demonstrate two anti-patterns: disjoint 1.5-second Whisper preview chunks and an unbounded websocket pending array ([audio and online paths](https://github.com/OpenWhispr/openwhispr/blob/ab201b3900caf582e9d70448414c83935fd7c595/src/helpers/ipcHandlers.js#L5893-L5994), [websocket queue](https://github.com/OpenWhispr/openwhispr/blob/ab201b3900caf582e9d70448414c83935fd7c595/src/helpers/parakeetWsServer.js#L379-L518), [clean flush and fallback](https://github.com/OpenWhispr/openwhispr/blob/ab201b3900caf582e9d70448414c83935fd7c595/src/helpers/ipcHandlers.js#L6734-L6760)).
+
+- **Adopt:** streamed final text only after an acknowledged clean flush; otherwise finalize from the durable full-audio path.
+- **Adapt:** separate microphone warm-up, resume-time inference health check, supervised helper lifecycle, explicit backend fallback, changed-partial suppression, and stage-specific timing.
+- **Reject:** disjoint append-only preview, unbounded pending audio, accepting a roughly sized model archive without a cryptographic digest, or assuming a sidecar is healthy merely because its process exists.
+- **Benchmark hypothesis OSS-H2:** after a simulated sleep/resume or helper crash, an explicit health check plus representative rewarm should cut the next dictation's p95 runtime-cold penalty by at least 30% while fault injection at every flush/timeout boundary produces exactly one final transcript with no lost or duplicated committed words.
+
+**Windows boundary.** OpenWhispr's helper reads the window that is foreground when the helper runs, selects `Ctrl+V` or `Ctrl+Shift+V`, releases physically held modifiers, calls `SendInput`, and restores those modifiers. It does **not** store the activation-time target or restore focus ([native helper](https://github.com/OpenWhispr/openwhispr/blob/ab201b3900caf582e9d70448414c83935fd7c595/resources/windows-fast-paste.c#L94-L228)). Microsoft documents that `SendInput` is subject to User Interface Privilege Isolation: it can inject only into applications at an equal or lower integrity level, and a zero return does not identify UIPI as the cause ([Microsoft `SendInput`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput)). Therefore:
+
+- **Adapt:** held-modifier release/restore, foreground classification, terminal-specific paste keys, and explicit manual-paste fallback.
+- **Reject:** focus stealing, silent elevation, retrying as administrator, or claiming paste into an elevated target is supported. Mumble must remain non-elevated, must not force a different foreground window, and must preserve the user's clipboard when automatic paste cannot be proven.
+- **Benchmark hypothesis OSS-H3:** on the physical Windows matrix, normal and terminal fields at the same integrity level must receive one paste with the original clipboard and modifier state restored; an elevated target must fail safely to a visible manual-paste state without focus theft or privilege escalation.
+
+**Licence boundary.** OpenWhispr code is MIT. Electron, whisper.cpp, sherpa-onnx, FFmpeg and enabled codecs, native helpers, and every downloaded model are separate distribution items. The pinned model registry does not record model licences, so no OpenWhispr model is approved for Mumble merely because it appears in that catalog.
+
+### 3. Use TypeWhisper Windows as a GPL clean-room focus and insertion test oracle
+
+**Evidence coverage.** The archived voice audit identified TypeWhisper Windows as the strongest pinned Windows insertion reference. Its controller captures a non-self foreground window handle, and its insertion service waits for modifiers, normalizes stuck modifiers, attempts to restore the recorded target with `SetForegroundWindow`, checks the actual foreground/root-window relationship, retries after a neutral Alt input, sends paste only after the focus check, restores the prior text clipboard after success, and otherwise leaves the dictated text available for manual paste. The pinned test suite covers modifier timeout, focus failure, misleading `SetForegroundWindow` success, same-process alternate roots, paste-input failure, and clipboard restoration ([active target capture](https://github.com/TypeWhisper/typewhisper-win/blob/4200db24ee00805d4fc0dd16fe8225631ff2de38/src/TypeWhisper.Windows/Services/ActiveWindowService.cs#L26-L35), [insertion path](https://github.com/TypeWhisper/typewhisper-win/blob/4200db24ee00805d4fc0dd16fe8225631ff2de38/src/TypeWhisper.Windows/Services/TextInsertionService.cs#L55-L99), [focus logic](https://github.com/TypeWhisper/typewhisper-win/blob/4200db24ee00805d4fc0dd16fe8225631ff2de38/src/TypeWhisper.Windows/Services/TextInsertionService.cs#L183-L221), [tests](https://github.com/TypeWhisper/typewhisper-win/blob/4200db24ee00805d4fc0dd16fe8225631ff2de38/tests/TypeWhisper.PluginSystem.Tests/TextInsertionServiceTests.cs#L24-L233)).
+
+- **Adapt independently:** injectable Windows paste interfaces, exact return-count checks, stuck-modifier normalization, foreground verification, and failure tests. These are stronger than OpenWhispr's current-foreground-only helper.
+- **Owner decision before implementation:** normal Mumble dictation currently relies on its focus-neutral overlay leaving the user's field active. Restoring the activation-time target could help when Mumble itself briefly owned focus, but could also paste into an application the user intentionally left. The specification must decide whether target restoration is allowed and, if so, require a visible cancellation window and a check that no independent user focus change occurred.
+- **Reject:** copying GPL source, treating `SetForegroundWindow` success as proof of focus, bypassing UIPI through elevation, or retrying paste after the user deliberately changed applications.
+- **Benchmark hypothesis OSS-H4:** a clean-room target guard must pass TypeWhisper-equivalent unit cases plus physical same-integrity/elevated-target tests; it may restore only an eligible recorded target, must never paste after foreground verification fails, and must leave exactly the dictated text available when automatic insertion is refused.
+
+**Licence boundary.** The pinned TypeWhisper repository is GPL-3.0. It is an ideas-and-tests reference unless Mumble deliberately adopts GPL-compatible distribution terms and corresponding-source obligations. Its .NET/WPF/runtime packages, plugins, model runtimes, model files, and bundled Silero artifact still require a separate inventory; the root GPL licence does not establish model or training-data rights.
+
+### 4. Benchmark one sherpa-onnx true-streaming recognizer behind a bounded Mumble session
+
+**Evidence coverage.** The pinned engine retains online feature/decoder state, accepts incremental waveforms, exposes readiness, changed partial text, endpoint detection, stream reset, optional VAD, and batch decoding of ready streams. The microphone samples show the call order but do not supply production queue bounds, cancellation, target insertion, model download, helper supervision, or crash recovery ([online stream](https://github.com/k2-fsa/sherpa-onnx/blob/9d15a282aa79e60e0d4e5b68cdc0afb5d6b2ef9e/sherpa-onnx/csrc/online-stream.cc), [microphone example](https://github.com/k2-fsa/sherpa-onnx/blob/9d15a282aa79e60e0d4e5b68cdc0afb5d6b2ef9e/python-api-examples/speech-recognition-from-microphone.py)).
+
+- **Adopt:** the persistent-session interface shape: accept bounded PCM, drain while ready, publish changed tentative text, detect endpoint, finalize, then reset.
+- **Adapt:** put the recognizer behind Mumble's capture owner, audio-age queue cap, recovery journal, cancellation generation, and one-paste finalizer.
+- **Benchmark:** one exact int8 English model first; expand languages only after accuracy and model-term gates pass.
+- **Reject:** shipping the framework's model list as if all weights share the Apache-2.0 engine licence.
+- **Benchmark hypothesis OSS-H5:** on the weak and average CPU tiers, a chosen online model should produce p95 first tentative text within 700 ms and p95 Stop-to-final within 1,200 ms, with word error rate no more than 2 absolute percentage points worse than the faster-whisper reference and no loss of durable audio under a 2× real-time decoder slowdown.
+
+**Licence boundary.** sherpa-onnx is Apache-2.0; redistribution requires the licence, preservation of applicable notices, marking modified files, and compliance with its patent/NOTICE terms. ONNX Runtime/provider libraries and the chosen encoder/decoder/joiner/token files remain separately inventoried. No model or training dataset is approved until its exact repository, revision, hashes, attribution, commercial-use terms, and redistribution permission are recorded.
+
+### 5. Adapt Handy's capture/model lease and owned partial UI, not its whole application
+
+**Evidence coverage.** The pinned Handy controller starts model loading and capture in parallel, uses CPAL capture with resampling and Silero VAD, offers always-open or delayed microphone closure, leases a loaded transcription engine, delegates streaming commitment to an external dependency, shows partials in its own overlay, and restores text or image clipboard content after configurable paste delays. Recovery uses generation cancellation and device-cache invalidation, but its audio/worker channels are unbounded and its clipboard path sends keys to whichever application currently owns focus rather than restoring an activation-time Windows target ([start/final path](https://github.com/cjpais/Handy/blob/8a362e9eba59d4057fda79b7f38f5b0d5cbabf65/src-tauri/src/actions.rs#L463-L816), [clipboard path](https://github.com/cjpais/Handy/blob/8a362e9eba59d4057fda79b7f38f5b0d5cbabf65/src-tauri/src/clipboard.rs#L15-L95)).
+
+- **Adapt:** selected-device caching with invalidation, capture-before-model-ready, explicit microphone lease/close policy, generation cancellation, owned tentative/committed overlay, and SHA-256 verification for catalogued artifacts.
+- **Reject:** a wholesale Rust/Tauri port, unbounded audio channels, dependency-delegated partial semantics without inspecting that dependency, and running optional language-model rewriting before final insertion unless the user selected that mode.
+- **Benchmark hypothesis OSS-H6:** selected-device pre-open/close with 0-second, 30-second, and always-ready policies should reduce activation-to-first-sample p95 by at least 30% or 50 ms on a device to justify its complexity; the winning policy must also pass five-minute idle CPU, RAM, battery, device-sharing, device-change, and visible microphone-state gates.
+
+**Licence boundary.** Handy code is MIT, but its Rust crates, transcription backends, Silero artifact, and model catalog are independent. The pinned catalog includes MIT, Apache-2.0, CC-BY-4.0, “other,” and CC-BY-NC-4.0 entries; a noncommercial model is not acceptable for ordinary commercial distribution without a separate owner/legal decision. Training-data provenance remains unresolved unless the chosen model card states it precisely.
+
+### 6. Benchmark whisper.cpp for native hardware coverage, not for its sample stream policy
+
+**Evidence coverage.** The pinned source demonstrates a long-lived model context, native 16 kHz SDL capture, stateful learned VAD, abort/new-segment callbacks, quantization, and CPU/CUDA/HIP/Vulkan/Metal/SYCL/OpenVINO/Core ML backends. Its sample stream defaults to a three-second step and ten-second rolling buffer, lacks stable-prefix commitment, and can clear audio when backlog exceeds twice the step ([stream loop](https://github.com/ggml-org/whisper.cpp/blob/080bbbe85230f624f0b52127f1ae1218247989f9/examples/stream/stream.cpp#L244-L427)).
+
+- **Benchmark:** a persistent sidecar or binding on AMD/Intel GPU, CPU-only, NVIDIA, and Apple tiers using the same model family and corpus as faster-whisper.
+- **Adapt:** backend probing, representative warm-up, callback cancellation, stateful learned VAD, and validated quantized-model handling.
+- **Reject:** the sample's three-second polling, simple energy VAD, backlog clearing, unsafe model reload, and direct-to-destination model download as production patterns.
+- **Benchmark hypothesis OSS-H7:** whisper.cpp earns a tier only if it improves p95 raw decode or first-committed latency by at least 20% on that tier at equivalent model/quality, stays inside the tier's RAM/VRAM and power budget, and survives corrupt-model, backend-init, cancel, sleep/resume, and helper-crash tests.
+
+**Licence boundary.** whisper.cpp is MIT. Converted GGML/GGUF weights, the originating model, VAD artifact, optional accelerator SDK/runtime, SDL, and every shipped backend library require a pinned bill of materials. A conversion tool does not change the source model's licence or training-data restrictions.
+
+### 7. Use nerd-dictation/Vosk as an ideas-only weak-CPU control
+
+**Evidence coverage.** nerd-dictation starts capture before importing/loading Vosk, retains the model across suspend/resume, and processes Vosk's incremental 200 ms recognizer results. It also rewrites provisional target text with backspaces, has no durable history, and relies on pipe buffering rather than an explicit queue-age/backpressure contract ([capture and recognizer loop](https://github.com/ideasman42/nerd-dictation/blob/41f372789c640e01bb6650339a78312661530843/nerd-dictation#L867-L989), [progressive output](https://github.com/ideasman42/nerd-dictation/blob/41f372789c640e01bb6650339a78312661530843/nerd-dictation#L1024-L1093)).
+
+- **Adapt independently:** capture-before-ready, long-lived recognizer, unchanged-partial suppression, explicit suspend/resume, and Vosk as a weak-CPU comparison.
+- **Reject:** copying nerd-dictation code into Mumble by default, progressive backspace rewriting in external applications, and unbounded capture backlog.
+- **Benchmark hypothesis OSS-H8:** Vosk is useful only if its exact approved model gives materially earlier partials on the weak tier while meeting the agreed punctuation, language, and accuracy floor; otherwise keep the architecture lesson and reject the backend.
+
+**Licence boundary.** nerd-dictation is GPL-3.0, so direct reuse requires a deliberate reciprocal-licensing and source-distribution plan. Vosk API is separately Apache-2.0, and every Vosk model remains a separately licensed artifact. Independent implementation of the resident-process idea avoids copying GPL expression; it does not permit reuse of GPL source.
+
+### 8. Keep Mumble's launcher index and icon cache; no dictation candidate earns an import
+
+TypeWhisper does demonstrate a small Windows application-discovery cache for per-app policies: it merges running processes, uninstall-registry entries, and prior-history process names; prefers running over installed over history evidence; extracts associated executable icons; stores the resulting descriptors in one in-memory list; and supports an explicit force refresh ([Windows app discovery](https://github.com/TypeWhisper/typewhisper-win/blob/4200db24ee00805d4fc0dd16fe8225631ff2de38/src/TypeWhisper.Windows/Services/WindowsAppDiscoveryService.cs#L48-L125), [path and icon extraction](https://github.com/TypeWhisper/typewhisper-win/blob/4200db24ee00805d4fc0dd16fe8225631ff2de38/src/TypeWhisper.Windows/Services/WindowsAppDiscoveryService.cs#L162-L287)). It is a useful source-precedence and testability reference, but it is not a launcher index: the pinned path does not scan Start-menu shortcuts or files, bound icon count, expire stale entries automatically, hydrate icons lazily, or verify Flow Launcher state. Handy and OpenWhispr add packaged icon sets and launch wrappers, not those missing contracts ([Handy icon tree](https://github.com/cjpais/Handy/tree/8a362e9eba59d4057fda79b7f38f5b0d5cbabf65/src-tauri/icons), [OpenWhispr asset tree](https://github.com/OpenWhispr/openwhispr/tree/ab201b3900caf582e9d70448414c83935fd7c595/src/assets), [OpenWhispr Linux wrapper](https://github.com/OpenWhispr/openwhispr/blob/ab201b3900caf582e9d70448414c83935fd7c595/scripts/lib/linux-launcher.js)).
+
+Mumble already has a versioned, 15-minute local application/file index; background refresh; opaque result identifiers; a 16-icon hydration batch; a 128-entry least-recently-used native-icon cache; Windows shortcut/icon fallback; Explorer icon extraction; and Linux theme-path caching ([current search engine](../../Internal/app/experimental/system_search/engine.py), [bounded UI hydration](../../Internal/app/experimental/system_search/ui.js#L552-L577)). Its Windows verifier separately checks the canonical shortcut, icon resource, Flow Launcher's Start-menu source, stale/competing indexed paths, and canonical cached entry ([launcher verifier](../Tooling/verify_windows_launch.ps1#L212-L265)).
+
+- **Adopt:** keep the Mumble-native launcher/index/icon design and verification boundary.
+- **Adapt:** clean-room TypeWhisper ideas for evidence precedence and explicit refresh, plus small packaging lessons such as shipping platform-sized icons and canonical per-platform launch entries.
+- **Reject:** importing an Electron/Tauri launcher, clearing an entire Windows or Flow Launcher cache, mutating another application's cache, or claiming an icon is current without checking its canonical source path.
+- **Benchmark hypothesis OSS-H9:** on a clean install, update, moved stale install, and uninstall/reinstall, the canonical Mumble entry must become discoverable without a competing path; warm result rendering must request no more than 16 icons per batch and retain no more than 128 decoded entries; a broken or stale icon must fall back without blocking search results. This tests Mumble's existing design rather than attributing it to an upstream dictation app.
+
+**Licence boundary.** TypeWhisper's discovery code is GPL-3.0 and remains clean-room ideas-only by default. Handy and OpenWhispr icons are copyrighted assets even though their repositories use MIT; Mumble must not copy third-party app marks as decoration. Mumble should extract icons from the user's installed applications at runtime and ship only its own licensed brand assets.
+
+### Cross-cutting backpressure and recovery gate
+
+No inspected desktop candidate provides the complete contract Mumble needs: bounded real-time capture, bounded recognition age, durable audio recovery, stale-partial suppression, cancellation, crash-safe finalization, and one paste. Handy and OpenWhispr demonstrate valuable recovery pieces but use unbounded channels/arrays; whisper.cpp may drop backlog; Whisper-Streaming and sherpa-onnx leave application flow control to the integrator.
+
+**Adopt:** the issue #3 bounded-queue and immutable-recovery-segment contract remains authoritative. **Benchmark hypothesis OSS-H10:** under 0.5×, 1×, and 2× real-time artificial decoder service rates, callback time must stay within its real-time budget, durable audio must remain sample-complete, recognition queue age must never exceed its configured bound, stale partial publication must stop visibly, and final catch-up must produce exactly one transcript/paste. Any candidate that can meet latency only by dropping uncommitted audio is rejected.
+
+### Consolidated adoption decision
+
+1. **First:** adapt Whisper-Streaming's stable-prefix policy over Mumble's existing faster-whisper baseline, with the issue #3 queue/recovery contract and Island-only partials.
+2. **In parallel as bounded experiments:** adapt OpenWhispr's readiness/recovery mechanisms and Handy's selected-device/model lease, each measured independently so their costs and benefits remain attributable.
+3. **Then benchmark:** one exact sherpa-onnx online model and persistent whisper.cpp backend on named hardware tiers; neither replaces the baseline without passing latency, accuracy, resource, recovery, packaging, and licence gates.
+4. **Keep as controls and test oracles:** Vosk on the weak tier, and TypeWhisper's Windows failure cases; use nerd-dictation and TypeWhisper source as ideas-only unless the project deliberately accepts GPL-3.0 obligations.
+5. **Do not import:** disjoint append-only preview chunks, unbounded queues, dropped audio, target-app provisional rewrites, unguarded focus stealing/elevation, unhashed downloads, or external launcher/cache implementations that are weaker than Mumble's current bounded design.
+
+No model or training dataset is approved by this register. Before implementation, the selected artifact must have an exact repository and revision, cryptographic hashes, code/runtime/model/data licences, attribution and NOTICE requirements, commercial-use and redistribution permission, privacy terms, and branding/trademark boundary recorded in Mumble's third-party inventory. Repository-level MIT or Apache-2.0 does not answer those artifact questions.
+
 ## Concise comparison matrix
 
 Ratings are planning judgements, not measured Mumble results.
@@ -695,7 +822,7 @@ Open source does not mean “no conditions,” and one licence check is not enou
 
 - MIT components, including the inspected revisions of `faster-whisper`, CTranslate2, `whisper.cpp`, Handy, OpenWhispr, Whisper-Streaming, and SimulStreaming, require preservation of their copyright and permission notice in copies or substantial portions. The pinned evidence is: [faster-whisper](https://github.com/SYSTRAN/faster-whisper/blob/65882eee9f5cdbeeb2d877f1131d48cf241b327d/LICENSE), [CTranslate2](https://github.com/OpenNMT/CTranslate2/blob/0d8bcd362ac75ef860ef161d6f0efad0ae439ff0/LICENSE), [whisper.cpp](https://github.com/ggml-org/whisper.cpp/blob/080bbbe85230f624f0b52127f1ae1218247989f9/LICENSE), [Handy](https://github.com/cjpais/Handy/blob/8a362e9eba59d4057fda79b7f38f5b0d5cbabf65/LICENSE), [OpenWhispr](https://github.com/OpenWhispr/openwhispr/blob/ab201b3900caf582e9d70448414c83935fd7c595/LICENSE), [Whisper-Streaming](https://github.com/ufal/whisper_streaming/blob/6da90b44b7e50d79695e68166d2a2c7609c75abb/LICENSE), and [SimulStreaming](https://github.com/ufal/SimulStreaming/blob/077ea37d5ab4ff98bc567e4507f140dc4e5d5ad6/LICENCE.txt).
 - Apache-2.0 components such as `sherpa-onnx` and Vosk API require the licence text, preservation of applicable notices and attribution, marking modified files, and attention to NOTICE and patent provisions. Review the pinned [sherpa-onnx licence](https://github.com/k2-fsa/sherpa-onnx/blob/9d15a282aa79e60e0d4e5b68cdc0afb5d6b2ef9e/LICENSE) and [Vosk API licence](https://github.com/alphacep/vosk-api/blob/e61c01d4968b6efe6abe72909860554a3eba1c24/COPYING).
-- GPL-3.0 code such as nerd-dictation carries reciprocal source and licensing obligations when copied into or distributed as a combined/derived work. Mumble may learn from its public architecture without copying protected expression. Direct reuse requires a deliberate project/legal decision and compliance plan. See the pinned [nerd-dictation licence](https://github.com/ideasman42/nerd-dictation/blob/41f372789c640e01bb6650339a78312661530843/LICENSE).
+- GPL-3.0 code such as nerd-dictation and TypeWhisper Windows carries reciprocal source and licensing obligations when copied into or distributed as a combined/derived work. Mumble may learn from public architecture without copying protected expression. Direct reuse requires a deliberate project/legal decision and compliance plan. See the pinned [nerd-dictation licence](https://github.com/ideasman42/nerd-dictation/blob/41f372789c640e01bb6650339a78312661530843/LICENSE) and [TypeWhisper licence](https://github.com/TypeWhisper/typewhisper-win/blob/4200db24ee00805d4fc0dd16fe8225631ff2de38/LICENSE).
 - A permissively licensed engine does not make every compatible model permissive. Record the exact model repository, revision, licence, required attribution, acceptable-use terms, and redistribution permission before offering or bundling it.
 
 Mumble should maintain a shipped third-party notice file and an About-screen acknowledgement generated from a pinned dependency/model inventory. Notices are a compliance mechanism, not product branding.
@@ -800,6 +927,7 @@ All upstream repositories were inspected from local clones at the commits below,
 | whisper.cpp | [`080bbbe8`](https://github.com/ggml-org/whisper.cpp/tree/080bbbe85230f624f0b52127f1ae1218247989f9) | `examples/stream/stream.cpp`, `examples/common-sdl.cpp`, `examples/common.cpp`, `examples/server/server.cpp`, `include/whisper.h`, `src/whisper.cpp`, `examples/quantize/quantize.cpp`, `ggml/CMakeLists.txt`, Vulkan/Metal/OpenVINO backend sources, `models/download-ggml-model.sh`, `LICENSE` | Capture-to-decode example, core VAD/context, server reload/cancel, backend pipeline/cache and download paths inspected. The sample stream is not production dictation and lacks stable partials/device recovery. |
 | sherpa-onnx | [`9d15a282`](https://github.com/k2-fsa/sherpa-onnx/tree/9d15a282aa79e60e0d4e5b68cdc0afb5d6b2ef9e) | Python/C++ microphone examples; `microphone.cc`; `online-stream.cc`; `online-recognizer-ctc-impl.h`; `endpoint.h/.cc`; `silero-vad-model-config.h`; `voice-activity-detector.cc`; `provider.h/.cc`; `session.cc`; dependency CMake; `LICENSE` | Stateful online stream, batching, endpoints, VAD, provider/session configuration and example capture inspected. Application supervision, UI, downloads, backpressure and insertion remain integrator work. |
 | Handy | [`8a362e9e`](https://github.com/cjpais/Handy/tree/8a362e9eba59d4057fda79b7f38f5b0d5cbabf65) | `src-tauri/src/actions.rs`; managers `audio.rs`, `transcription.rs`, `model.rs`; recorder/resampler/VAD modules; `clipboard.rs`; `Cargo.toml/lock`; `catalog.json`; `RecordingOverlay.tsx`; `LICENSE` | End-to-end app lifecycle, CPAL capture, resampling, VAD, queue, overlay, finalization, download and recovery paths inspected. The external `transcribe-rs`/`transcribe-cpp` `CommitPolicy::Auto` implementation was not followed, so its exact confirmation algorithm remains dependency-delegated. |
+| TypeWhisper Windows | [`4200db24`](https://github.com/TypeWhisper/typewhisper-win/tree/4200db24ee00805d4fc0dd16fe8225631ff2de38) | `ActiveWindowService.cs`; `TextInsertionService.cs`; `WindowsAppDiscoveryService.cs`; `TextInsertionServiceTests.cs`; Store icon manifest/assets; `LICENSE` | Activation-time target capture, focus verification/retry, modifier normalization, clipboard fallback/restore, failure tests, and cached Windows app/icon discovery inspected. GPL-3.0 keeps its code ideas-and-tests-only by default; model/runtime/plugin terms remain separate. |
 | Whisper-Streaming | [`6da90b44`](https://github.com/ufal/whisper_streaming/tree/6da90b44b7e50d79695e68166d2a2c7609c75abb) | `whisper_online.py`: backend holders, `HypothesisBuffer`, `OnlineASRProcessor`, `VACOnlineASRProcessor`, factories/options; `silero_vad_iterator.py`; server/simulation entry paths; `LICENSE` | Rolling buffer, LocalAgreement confirmation, dedupe, trimming, VAD/VAC and lifecycle inspected. It is a research algorithm/server, not a complete desktop app. |
 | SimulStreaming | [`077ea37d`](https://github.com/ufal/SimulStreaming/tree/077ea37d5ab4ff98bc567e4507f140dc4e5d5ad6) | `simulstreaming_whisper.py`; `simulstreaming/whisper/simul_whisper/simul_whisper.py`; vendored Whisper model loader; licence and package files | Exact warm-up, buffer/context, attention-edge commitment, CIF, rewind/incomplete-token logic, cache clearing, download verification and lack of VAD inspected. Published speed claim was not treated as measured proof. |
 | nerd-dictation | [`41f37278`](https://github.com/ideasman42/nerd-dictation/tree/41f372789c640e01bb6650339a78312661530843) | `nerd-dictation`: capture subprocess creation, `text_from_vosk_pipe`, begin/end/suspend/resume, partial handler, progressive output; `LICENSE` | Linux capture-before-load, resident suspend, partial dedupe/rewrite and failure handling inspected. GPL source remains ideas-only by default for Mumble. |
@@ -834,6 +962,7 @@ Extend and validate the content-free trace, then run the stable-prefix faster-wh
 - [Current privacy-safe trace](../../Internal/app/dictation_trace.py)
 - [Current History persistence](../../Internal/app/history.py)
 - [Existing Mumble optimization research](../Archive/Reports/Mumble%20Optimisation%20Research%20-%202026-07-10.html)
+- [Archived Mumble voice-to-text source audit](../Archive/Research/legacy-research/Mumble_Voice_to_Text_Audit.html)
 - [Cloud transcription implementation](../../Internal/app/transcription.py)
 - [Deterministic transcript formatting](../../Internal/app/formatting.py)
 
@@ -848,6 +977,7 @@ Extend and validate the content-free trace, then run the stable-prefix faster-wh
 - ÚFAL, [Whisper-Streaming repository](https://github.com/ufal/whisper_streaming)
 - ÚFAL, [SimulStreaming repository](https://github.com/ufal/SimulStreaming)
 - cjpais, [Handy repository and architecture](https://github.com/cjpais/Handy)
+- TypeWhisper, [TypeWhisper Windows repository](https://github.com/TypeWhisper/typewhisper-win)
 - OpenWhispr, [OpenWhispr repository](https://github.com/OpenWhispr/openwhispr)
 - ideasman42, [nerd-dictation repository](https://github.com/ideasman42/nerd-dictation)
 - Alpha Cephei, [Vosk API repository](https://github.com/alphacep/vosk-api)
@@ -870,6 +1000,7 @@ Extend and validate the content-free trace, then run the stable-prefix faster-wh
 - [whisper.cpp MIT licence](https://github.com/ggml-org/whisper.cpp/blob/080bbbe85230f624f0b52127f1ae1218247989f9/LICENSE)
 - [sherpa-onnx Apache-2.0 licence](https://github.com/k2-fsa/sherpa-onnx/blob/9d15a282aa79e60e0d4e5b68cdc0afb5d6b2ef9e/LICENSE)
 - [Handy MIT licence](https://github.com/cjpais/Handy/blob/8a362e9eba59d4057fda79b7f38f5b0d5cbabf65/LICENSE)
+- [TypeWhisper Windows GPL-3.0 licence](https://github.com/TypeWhisper/typewhisper-win/blob/4200db24ee00805d4fc0dd16fe8225631ff2de38/LICENSE)
 - [OpenWhispr MIT licence](https://github.com/OpenWhispr/openwhispr/blob/ab201b3900caf582e9d70448414c83935fd7c595/LICENSE)
 - [Whisper-Streaming MIT licence](https://github.com/ufal/whisper_streaming/blob/6da90b44b7e50d79695e68166d2a2c7609c75abb/LICENSE)
 - [SimulStreaming MIT licence](https://github.com/ufal/SimulStreaming/blob/077ea37d5ab4ff98bc567e4507f140dc4e5d5ad6/LICENCE.txt)
