@@ -1338,6 +1338,13 @@ async function copyTextReliable(text) {
 function activateDialog(overlay, onCancel) {
   const dialog = overlay.querySelector(".modal,.uc") || overlay.firstElementChild;
   const previous = document.activeElement;
+  const background = document.getElementById("app");
+  const backgroundWasInert = !!background?.inert;
+  const backgroundAriaHidden = background?.getAttribute("aria-hidden");
+  if (background) {
+    background.inert = true;
+    background.setAttribute("aria-hidden", "true");
+  }
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
   dialog.setAttribute("tabindex", "-1");
@@ -1362,6 +1369,11 @@ function activateDialog(overlay, onCancel) {
   (focusable()[0] || dialog).focus();
   return () => {
     overlay.removeEventListener("keydown", onKey);
+    if (background) {
+      background.inert = backgroundWasInert;
+      if (backgroundAriaHidden == null) background.removeAttribute("aria-hidden");
+      else background.setAttribute("aria-hidden", backgroundAriaHidden);
+    }
     if (previous && document.contains(previous)) previous.focus();
   };
 }
@@ -1524,9 +1536,12 @@ function navTo(view) {
   if (CURRENT === "reader" && view !== "reader") readerStopForNav();
   CURRENT = view;
   $$("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== view));
-  $$(".nav-btn").forEach((b) =>
-    b.classList.toggle("active", b.dataset.nav === view),
-  );
+  $$(".nav-btn").forEach((b) => {
+    const current = b.dataset.nav === view;
+    b.classList.toggle("active", current);
+    if (current) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
   const sv = document.querySelector(`[data-view="${view}"]`);
   if (sv) sv.scrollTop = 0;
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });

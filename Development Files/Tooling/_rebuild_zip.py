@@ -138,6 +138,12 @@ def main():
         "Internal/ hidden .vbs": "Mumble/Internal/Mumble (hidden).vbs" in names,
         "app runtime (mumble.py)": "Mumble/Internal/app/mumble.py" in names,
         "webui shipped": "Mumble/Internal/app/webui/app.js" in names,
+        "Focus Stage foundation shipped": all(
+            n in names for n in (
+                "Mumble/Internal/app/webui/focus-stage-contract.json",
+                "Mumble/Internal/app/webui/focus-stage.js",
+                "Mumble/Internal/app/webui/focus-stage.css",
+            )),
         "Mumble Search runtime shipped": (
             "Mumble/Internal/app/experimental/system_search/engine.py" in names
             and "Mumble/Internal/app/experimental/system_search/ui.js" in names

@@ -35,7 +35,11 @@
 <h2><span class="sec">3</span>Privacy and safety boundaries</h2>
 <ul><li>Local transcription keeps recorded audio on the device unless Cloud transcription is selected.</li><li>Cloud processing receives text, not raw audio, unless the explicitly selected Cloud transcription path is being used.</li><li>Provider keys belong only in local settings and must never be committed or logged.</li><li>The local command channel is authenticated per session; do not replace it with unauthenticated control.</li><li>Paste must preserve the user's clipboard and modifier state when the operation completes or fails.</li></ul>
 
-<h2><span class="sec">4</span>Verification commands</h2>
+<h2><span class="sec">4</span>Shared Web UI foundation</h2>
+<p>The packaged Web UI has one Focus Stage foundation in <code>webui/focus-stage.js</code> and <code>webui/focus-stage.css</code>. It keeps the six primary destinations centred, provides reusable state and control contracts, and applies the same focus, reduced-motion, and forced-colour rules across existing pages. Individual page redesigns remain separate work; use the foundation rather than introducing an alternate application shell.</p>
+<p><code>Development Files/Tooling/focus-stage/verify-production-ui.ps1</code> opens the real packaged <code>webui/index.html</code> in a browser. It is deliberately not a prototype test: it checks navigation, state anatomy, keyboard and dialog behaviour, narrow reflow, effects, contrast, reduced motion, forced colours, and deterministic screenshots. Add <code>-Capture</code> only when refreshed evidence images are wanted; the screenshot-stability assertion always runs.</p>
+
+<h2><span class="sec">5</span>Verification commands</h2>
 <p>Run these from <code>C:\Mumble</code>. They do not publish anything.</p>
 <pre><code># Full isolated application suite with machine-readable evidence
 Internal\app\.venv\Scripts\python.exe Internal\app\run_tests.py --timeout 180 --json Internal\app\test-results.json --junit Internal\app\test-results.xml
@@ -49,6 +53,9 @@ Internal\app\.venv\Scripts\python.exe "Development Files\Tooling\_rebuild_zip.py
 # Verify Windows launcher paths and startup contract
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Development Files\Tooling\verify_windows_launch.ps1"
 
+# Exercise the real packaged Focus Stage UI in a browser
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Development Files\Tooling\focus-stage\verify-production-ui.ps1" -Case all
+
 # Website checks
 Set-Location "Development Files\Marketing\Website"
 npm ci
@@ -58,16 +65,16 @@ npm audit --audit-level=moderate</code></pre>
 <p>The runner discovers every matching module and chooses its execution protocol: pytest and unittest modules run through pytest so every collected case is counted; legacy procedural scripts run as one atomic module case because their internal checks do not expose a standard machine-readable count. A pytest/unittest module that collects zero cases fails. JSON records both module and case totals, while JUnit records each standard case for GitHub and other reporting tools.</p>
 <p>The test runner's result is evidence for the checked environment only. It does not prove physical hardware behaviour or a public release.</p>
 
-<h2><span class="sec">5</span>Continuous integration evidence</h2>
+<h2><span class="sec">6</span>Continuous integration evidence</h2>
 <p>The GitHub workflow runs security audits, application tests, website checks, platform packaging, and the Linux install lifecycle as independent jobs. Test JSON and JUnit are diagnostic artifacts and may be uploaded after failure. Package and website candidates are uploaded only by successful jobs. A candidate becomes <em>promotable</em> only in a manually started workflow where every required evidence job succeeds.</p>
 <p>Linux tests use a system-site-packages virtual environment because GTK and Ayatana AppIndicator are operating-system libraries installed through Ubuntu, while Python-only test dependencies such as <code>psutil</code> remain pinned in <code>requirements-dev.txt</code>. Installed-package smoke imports must run from the extracted <code>app/</code> directory so they verify the packaged import layout rather than the repository checkout.</p>
 <p>A green local run is not a green GitHub run. Before using CI artifacts for release preparation, verify that the successful workflow commit exactly matches the reviewed commit.</p>
 
-<h2><span class="sec">6</span>Packaging and ports</h2>
+<h2><span class="sec">7</span>Packaging and ports</h2>
 <p><code>Development Files/Tooling/_rebuild_zip.py</code> builds <code>Internal/Releases/Mumble.zip</code> from the live runtime. It includes the launcher, project licence, Internal launchers, and runtime while excluding tests, ports, caches, virtual environments, and development-only files.</p>
 <p>macOS and Linux source lives under <code>Internal/app/Ports/</code>. Each port owns its input, paste, overlay, storage, installer, and release seams. Shared behaviour should be changed in the Windows source first, then ported deliberately and tested in that platform.</p>
 
-<h2><span class="sec">7</span>Release discipline</h2>
+<h2><span class="sec">8</span>Release discipline</h2>
 <ol><li>Verify the source tree and package from a clean, reviewable state.</li><li>Run clean extraction, install, launch, update, and uninstall checks.</li><li>Test microphone, hotkeys, focus, paste, clipboard restoration, and shutdown on physical hardware.</li><li>Complete signing, publisher, release-note, and rollback checks.</li><li>Only then describe the build as a public release.</li></ol>
 
 <div class="doc-foot"><span>Mumble 0.95 · build and verification guide</span><span class="gold">HANDBOOK</span></div>

@@ -1,0 +1,68 @@
+{
+  "version": "mumble.focus-stage.v1",
+  "destinations": [
+    { "id": "home", "label": "Home" },
+    { "id": "history", "label": "Deck" },
+    { "id": "stats", "label": "Stats" },
+    { "id": "meetings", "label": "Meetings" },
+    { "id": "reader", "label": "Reader" },
+    { "id": "settings", "label": "Settings" }
+  ],
+  "primitives": [
+    "focus-stage",
+    "context-ledger",
+    "numbered-spine",
+    "command-surface",
+    "state-surface",
+    "control-rail"
+  ],
+  "effects": ["light", "standard", "full"],
+  "states": {
+    "loading": {
+      "kind": "loading",
+      "tone": "neutral",
+      "title": "Loading",
+      "message": "Mumble is getting this ready. Available content stays usable.",
+      "live": "polite",
+      "busy": true
+    },
+    "empty": {
+      "kind": "empty",
+      "tone": "neutral",
+      "title": "Nothing here yet",
+      "message": "New items will appear here when they are available.",
+      "live": "polite",
+      "busy": false
+    },
+    "degraded": {
+      "kind": "degraded",
+      "tone": "warning",
+      "title": "Some results are unavailable",
+      "message": "Working content remains available while Mumble retries the missing part.",
+      "live": "polite",
+      "busy": false
+    },
+    "error": {
+      "kind": "error",
+      "tone": "danger",
+      "title": "This could not be loaded",
+      "message": "Your existing content is unchanged. Try the action again.",
+      "live": "assertive",
+      "busy": false
+    },
+    "success": {
+      "kind": "success",
+      "tone": "positive",
+      "title": "Complete",
+      "message": "Mumble finished the action successfully.",
+      "live": "polite",
+      "busy": false
+    }
+  },
+  "controlRail": {
+    "minimumTargetPx": 28,
+    "timeCriticalTargetPx": 36,
+    "listeningOrder": ["mode-language", "deck", "stop"],
+    "processingCancelRequiresSafeContract": true
+  }
+}
