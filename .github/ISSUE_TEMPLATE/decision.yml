@@ -25,20 +25,20 @@ body:
     id: options
     attributes:
       label: Options considered
-      description: Include the realistic alternatives and why they were not chosen.
+      description: Include realistic alternatives and why they were not chosen.
     validations:
       required: true
   - type: textarea
     id: consequences
     attributes:
       label: Consequences and follow-up
-      description: State what this choice enables, what it prevents, and the implementation issues or owner actions that follow.
+      description: State what this choice enables, prevents, and requires next.
     validations:
       required: true
   - type: input
     id: review_trigger
     attributes:
       label: Review trigger
-      description: What new evidence, date, release, or changed condition would make this decision worth revisiting?
+      description: What new evidence or changed condition would justify revisiting this decision?
     validations:
       required: true

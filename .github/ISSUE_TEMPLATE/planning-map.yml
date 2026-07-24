@@ -26,19 +26,19 @@ body:
     id: slices
     attributes:
       label: Work slices
-      description: "List bounded implementation issues as GitHub task-list items, for example: - [ ] #123 Improve clean-run model test."
+      description: "List bounded work as GitHub task-list items, for example: - [ ] #123 Improve clean-run model testing."
     validations:
       required: true
   - type: textarea
     id: dependency_map
     attributes:
       label: Blocking relationships
-      description: State what is blocked by what, using issue numbers. Add the same relationships with GitHub's issue relationship control after creating the issue.
+      description: State what is blocked by what, using issue numbers. Add the same relationships with GitHub's issue relationship control when available.
       placeholder: "#124 is blocked by #123 because ..."
   - type: textarea
     id: acceptance
     attributes:
       label: Completion evidence
-      description: "Say exactly what will demonstrate completion: tests, review, a hardware check, a signed release, or another concrete result."
+      description: "Say exactly what demonstrates completion: tests, review, hardware checks, signed artefacts, or another concrete result."
     validations:
       required: true

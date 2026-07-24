@@ -1,6 +1,6 @@
 # Triage labels
 
-The engineering skills use these five workflow labels in addition to Mumble's existing `kind:`, `area:`, `priority:`, and `state:` labels.
+The engineering skills use these five workflow roles in addition to Mumble's `kind:`, `area:`, `priority:`, and `state:` labels.
 
 | Skill role | GitHub label | Meaning |
 | --- | --- | --- |
@@ -8,4 +8,6 @@ The engineering skills use these five workflow labels in addition to Mumble's ex
 | `needs-info` | `needs-info` | More information is needed from the reporter. |
 | `ready-for-agent` | `ready-for-agent` | Fully specified and ready for an agent. |
 | `ready-for-human` | `ready-for-human` | Requires human implementation. |
-| `wontfix` | `wontfix` | Will not be actioned. |
+| `wontfix` | `wontfix` | The work will not be actioned. |
+
+When a skill names a workflow role, use the corresponding label in this table.

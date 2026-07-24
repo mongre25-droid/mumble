@@ -42,4 +42,4 @@ The only special owner-selected mode is `Undisturbed mode`. Otherwise use normal
 
 ## GitHub workflow guidance
 
-The issue forms and label guidance are in `GitHub/` and the general agent documentation is in `Docs/agents/`. GitHub Issues track substantial work; the Core records remain the concise project truth and are not replaced by issue discussions.
+Label sources and synchronization tooling are in `GitHub/`; issue forms are kept at the repository-required `.github/ISSUE_TEMPLATE/` path. The Matt Pocock skill configuration is at the repository-required `docs/agents/` path. GitHub Issues track substantial work; the Core records remain the concise project truth and are not replaced by issue discussions.
