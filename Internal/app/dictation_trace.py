@@ -45,6 +45,8 @@ EVENT_NAMES = frozenset({
     "clipboard_ready",
     "paste_sent",
     "paste_finished",
+    "insertion_started",
+    "insertion_finished",
     "finished",
 })
 
@@ -69,6 +71,39 @@ ALLOWED_FIELDS = frozenset({
     "success",
     "vad_enabled",
     "wait_ms",
+    "trace_kind",
+    "operation_id",
+    "source",
+    "content_kind",
+    "requested_count",
+    "accepted_count",
+    "send_count",
+    "confirmation",
+    "fallback_reason",
+    "cleanup_warning",
+    "focus_wait_ms",
+    "clipboard_snapshot_ms",
+    "clipboard_write_ms",
+    "input_ms",
+    "confirmation_ms",
+    "settle_ms",
+    "restore_ms",
+    "target_captured",
+    "target_present",
+    "target_same",
+    "focus_present",
+    "caret_present",
+    "editable",
+    "integrity_relation",
+    "modifier_ready",
+    "modifier_wait_ms",
+    "clipboard_format_count",
+    "clipboard_format_categories",
+    "clipboard_write_attempts",
+    "clipboard_restore_attempts",
+    "clipboard_sequence_match",
+    "input_api",
+    "payload_size_bucket",
 })
 
 
@@ -182,6 +217,12 @@ class DictationTraceSink:
         if not self.enabled:
             return None
         return DictationTraceSession(self, context or {})
+
+    def start_insertion(self, context=None):
+        """Create a content-free insertion record when no dictation trace exists."""
+        values = dict(context or {})
+        values["trace_kind"] = "insertion"
+        return self.start(values)
 
     def _rotate(self, incoming_bytes):
         try:

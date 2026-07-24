@@ -1319,6 +1319,46 @@ function toast(msg, kind = "info", ms = 2600) {
   }, ms);
 }
 
+function insertionNotice(result, confirmedMessage = "Pasted") {
+  const outcome = (result && result.outcome) || "saved_only";
+  if (outcome === "confirmed" && result && result.confirmed === true) {
+    return { message: confirmedMessage, kind: "ok" };
+  }
+  if (outcome === "sent_unconfirmed") {
+    return {
+      message: (result && result.message) || "Sent—check the field.",
+      kind: "info",
+    };
+  }
+  if (outcome === "pending") {
+    return {
+      message: (result && result.message) || "Still working. Mumble will not send this twice.",
+      kind: "info",
+    };
+  }
+  return {
+    message:
+      (result && result.message) ||
+      (outcome === "uncertain"
+        ? "Paste not confirmed—check the field before trying again."
+        : "Not sent. The result remains saved in Deck and History."),
+    kind: outcome === "uncertain" ? "info" : "err",
+  };
+}
+
+function showInsertionResult(result, confirmedMessage, ms = 2200) {
+  const notice = insertionNotice(result, confirmedMessage);
+  toast(notice.message, notice.kind, ms);
+  if (result && result.cleanup_warning) {
+    toast(result.cleanup_warning, "info", 3000);
+  }
+  return result && result.outcome === "confirmed" && result.confirmed === true;
+}
+
+window.pyInsertionResult = function pyInsertionResult(result) {
+  showInsertionResult(result, "Pasted Deck result", 2600);
+};
+
 async function copyTextReliable(text) {
   try {
     if (!navigator.clipboard || !navigator.clipboard.writeText)
@@ -1469,7 +1509,7 @@ async function runConvert(text, mode) {
   ]);
   if (r && r.ok && r.live)
     toast(
-      `Converting to ${label} — the result will paste at your cursor`,
+      `Converting to ${label}—the result will be saved, then Mumble will attempt the selected field`,
       "ok",
       3000,
     );
@@ -1502,8 +1542,8 @@ function runHoverJob() {
   Promise.resolve(call("run_deck_job", HX.runPreset, HX.runMode, items))
     .then((r) => {
       if (r && r.ok && r.live)
-        toast("Working — the result will paste at your cursor", "ok", 3000);
-      else if (r && r.ok) toast("Done — result pasted", "ok");
+        toast("Working—the result will be saved, then Mumble will attempt the selected field", "info", 3000);
+      else if (r && r.ok) toast("Done — check the destination field", "info");
       else
         toast(
           (r && r.message) ||
@@ -1981,7 +2021,7 @@ async function pasteLatest() {
     ? await call("deck_paste_image", action.imagePath)
     : await call("deck_paste", action.text || "");
   if (r && r.ok) {
-    toast(`Pasted ${action.label || "Deck item"}`, "ok", 1600);
+    showInsertionResult(r, `Pasted ${action.label || "Deck item"}`, 2000);
     return;
   }
   if (!action.imagePath && action.text && await copyTextReliable(action.text)) {
@@ -2698,11 +2738,8 @@ function wireRows(root) {
     (b) =>
       (b.onclick = async () => {
         const r = await call("deck_paste_image", b.dataset.pasteimage || "");
-        toast(
-          r && r.ok ? "Pasted clipboard image" : (r && r.message) || "Couldn't paste the image",
-          r && r.ok ? "ok" : "err",
-          1800,
-        );
+        if (r && r.ok) showInsertionResult(r, "Pasted clipboard image", 2000);
+        else toast((r && r.message) || "Couldn't paste the image", "err", 1800);
       }),
   );
   $$("[data-reader]", root).forEach(
@@ -3073,10 +3110,10 @@ async function histMerge(paste) {
   if (paste && HAS_PY()) {
     const r = await call("deck_paste", combined);
     if (r && r.ok) {
-      toast(
+      showInsertionResult(
+        r,
         `Pasted ${items.length} merged entr${items.length === 1 ? "y" : "ies"}`,
-        "ok",
-        2000,
+        2200,
       );
       return;
     }
@@ -3108,8 +3145,8 @@ async function histRun() {
   try {
     const r = await call("run_deck_job", HX.runPreset, HX.runMode, items);
     if (r && r.ok && r.live)
-      toast("Working — the result will paste at your cursor", "ok", 3000);
-    else if (r && r.ok) toast("Done — result pasted", "ok");
+      toast("Working—the result will be saved, then Mumble will attempt the selected field", "info", 3000);
+    else if (r && r.ok) toast("Done — check the destination field", "info");
     else
       toast(
         (r && r.message) ||

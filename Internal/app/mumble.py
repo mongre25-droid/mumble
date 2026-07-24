@@ -12,6 +12,7 @@ locally on the CPU via the offline builder.
 """
 
 import ctypes
+from collections import OrderedDict
 import os
 import queue
 import re
@@ -83,7 +84,15 @@ import recording_limits
 import transcription  # optional cloud STT (advanced); local faster-whisper is default
 import ui
 import update
-from insertion import InsertionOutcome, InsertionRequest, InsertionResult, InsertionTransaction
+from insertion import (
+    InsertionCoordinator,
+    InsertionOutcome,
+    InsertionRequest,
+    InsertionRequestConflict,
+    InsertionResult,
+    InsertionTransaction,
+    TargetLease,
+)
 from windows_insertion import (
     WindowsClipboardAdapter,
     WindowsNativeInputAdapter,
@@ -258,8 +267,12 @@ class Mumble:
             self._insertion_native,
             trace=self._insertion_trace,
         )
-        self._dictation_insertion_target = None
+        self._insertion_coordinator = InsertionCoordinator(
+            self._insertion_transaction)
+        self._dictation_insertion_lease = None
         self._dictation_insertion_operation_id = None
+        self._deck_insertion_lease = None
+        self._prepared_insertion_leases = OrderedDict()
         self._deck_job_lock = threading.Lock()  # in-flight guard for Deck/History jobs
         self._deck_job_active = False           # True while a Deck job is running
         self._last_llm_ok = (
@@ -286,6 +299,8 @@ class Mumble:
         self._dictation_trace_seen = set()
         self._dictation_trace_lock = threading.Lock()
         self._dictation_inference_ordinal = 0
+        self._insertion_trace_sessions = {}
+        self._insertion_trace_lock = threading.Lock()
 
         # --- thread-safe Tkinter dispatch queue ---
         self._tk_queue = queue.Queue()
@@ -559,7 +574,8 @@ class Mumble:
                 return False
         return True
 
-    def _remember_correction_candidate(self, text, mode, landed):
+    def _remember_correction_candidate(self, text, mode, landed,
+                                       target_lease=None):
         """Remember one eligible paste for short-lived correction detection.
 
         Only plain/foreign dictation is eligible. Prompt, Email, Reply and Deck
@@ -582,6 +598,12 @@ class Mumble:
                     "mode": mode,
                     "created_at": time.time(),
                     "target_hwnd": self._foreground_hwnd(),
+                    "target_lease": (TargetLease(
+                        target_lease.target,
+                        "correction_replace",
+                        "confirmed_insertion",
+                        True,
+                    ) if target_lease and target_lease.target else None),
                     # Learn & replace stays hidden until a target-field observer
                     # proves the pasted span is still unchanged. HWND + elapsed
                     # time alone cannot prove Ctrl+Z would undo the paste rather
@@ -722,21 +744,21 @@ class Mumble:
         """Undo the explicitly-selected last paste, then paste the corrected text."""
         if not self._correction_can_replace(capture, capture.get("target_hwnd")):
             return False
-        target = int(capture["target_hwnd"])
         try:
-            u = ctypes.windll.user32
-            u.ShowWindow(target, 9)  # SW_RESTORE
-            u.SetForegroundWindow(target)
-            time.sleep(0.12)
-            if int(u.GetForegroundWindow() or 0) != target:
+            lease = capture.get("target_lease")
+            if not isinstance(lease, TargetLease) or lease.target is None:
                 return False
-            keyboard.send("ctrl+z")
-            time.sleep(0.14)
-            result = self._paste(corrected, source="correction_replace")
-            return result.outcome in {
-                InsertionOutcome.CONFIRMED,
-                InsertionOutcome.SENT_UNCONFIRMED,
-            }
+            result = self._paste(
+                corrected,
+                source="correction_replace",
+                target_lease=lease,
+                operation_id="correction-{}".format(capture.get("id") or uuid.uuid4().hex),
+                undo_before_paste=True,
+            )
+            # An unconfirmed replacement can never be called successful: the
+            # undo has already changed the field and only confirmed evidence can
+            # prove the corrected value replaced it exactly once.
+            return result.confirmed
         except Exception as e:
             print("[correction-learning] replace failed:", e)
             return False
@@ -1448,11 +1470,6 @@ class Mumble:
 
     def start_recording(self):
         self._trace_begin_dictation()
-        # Bind the eventual insertion to the exact window and focused child that
-        # owned activation. Processing may take seconds; a later focus switch
-        # must never redirect this dictation into a different field.
-        self._dictation_insertion_target = self._capture_insertion_target()
-        self._dictation_insertion_operation_id = uuid.uuid4().hex
         # Veto only when there is genuinely no way to transcribe. Cloud
         # transcription mode runs with NO local model resident (it's unloaded to
         # free RAM, or deferred at boot), yet recording must still work — the
@@ -1843,8 +1860,11 @@ class Mumble:
                 self._tk_schedule(self.island.flash, m,
                                   offline=used_offline,
                                   pasted=result.confirmed,
-                                  outcome=result.outcome.value)
-            self._remember_correction_candidate(out, m, result.confirmed)
+                                  outcome=result.outcome.value,
+                                  reason=result.reason, message=result.message,
+                                  cleanup_warning=result.cleanup_warning)
+            self._remember_correction_candidate(
+                out, m, result.confirmed, result.target_lease)
             self._set_state("idle")
         except Exception as e:
             print("reprocess error:", e)
@@ -1886,9 +1906,12 @@ class Mumble:
             if self.island:
                 self._tk_schedule(self.island.flash, "text",
                                   pasted=result.confirmed,
-                                  outcome=result.outcome.value)
+                                  outcome=result.outcome.value,
+                                  reason=result.reason, message=result.message,
+                                  cleanup_warning=result.cleanup_warning)
                 self._maybe_island_tip(result.confirmed)  # ITEM 19
-            self._remember_correction_candidate(clean, "text", result.confirmed)
+            self._remember_correction_candidate(
+                clean, "text", result.confirmed, result.target_lease)
             self._set_state("idle")
         except Exception as e:
             print("finalize-text error:", e)
@@ -1947,6 +1970,12 @@ class Mumble:
             # The worker uses this same lock before claiming a chunk. It may
             # finish one existing claim, but can never start another after stop.
             self._stream_done.set()
+        # Ordinary dictation belongs to the destination selected when Stop is
+        # requested. Processing may take seconds, but it must never send the
+        # result back to the field that happened to be active at Start.
+        self._dictation_insertion_lease = self._make_insertion_lease(
+            "dictation", "stop", mumble_displaced_target=False)
+        self._dictation_insertion_operation_id = uuid.uuid4().hex
         self._trace_mark("audio_stopped", audio_state="stopping")
         release_at = time.perf_counter()
         self._dictation_timing = {
@@ -2602,8 +2631,8 @@ class Mumble:
                 insertion_result = self._paste(
                     out,
                     source="dictation",
-                    activation_target=getattr(
-                        self, "_dictation_insertion_target", None),
+                    target_lease=getattr(
+                        self, "_dictation_insertion_lease", None),
                     operation_id=getattr(
                         self, "_dictation_insertion_operation_id", None),
                 )
@@ -2649,10 +2678,14 @@ class Mumble:
                     self._tk_schedule(
                         self.island.flash, mode, offline=used_offline,
                         pasted=insertion_result.confirmed,
-                        outcome=insertion_result.outcome.value)
+                        outcome=insertion_result.outcome.value,
+                        reason=insertion_result.reason,
+                        message=insertion_result.message,
+                        cleanup_warning=insertion_result.cleanup_warning)
                 self._maybe_island_tip(confirmed)  # ITEM 19
             self._remember_correction_candidate(
-                out, mode, confirmed and not bool(search_requested))
+                out, mode, confirmed and not bool(search_requested),
+                None if search_requested else insertion_result.target_lease)
             # Tray + main-window refresh AFTER the paste — isolated, never fatal.
             try:
                 self.refresh_tray_menu()
@@ -2798,6 +2831,11 @@ class Mumble:
                 self._insertion_native,
                 trace=self._insertion_trace,
             )
+        if (getattr(self, "_insertion_coordinator", None) is None
+                or getattr(self._insertion_coordinator, "_transaction", None)
+                is not self._insertion_transaction):
+            self._insertion_coordinator = InsertionCoordinator(
+                self._insertion_transaction)
         return self._insertion_transaction
 
     def _capture_insertion_target(self):
@@ -2808,30 +2846,116 @@ class Mumble:
             print("insertion target capture error:", exc)
             return None
 
+    def _make_insertion_lease(self, source, capture_phase, *,
+                              mumble_displaced_target=False, target=None):
+        return TargetLease(
+            target=target if target is not None else self._capture_insertion_target(),
+            source=str(source or "unknown"),
+            capture_phase=str(capture_phase or "unknown"),
+            mumble_displaced_target=bool(mumble_displaced_target),
+        )
+
+    def _prepare_deck_insertion_lease(self, operation_id, source,
+                                      ui_process_id=None):
+        """Freeze the external destination before the Deck is dismissed."""
+        operation_id = str(operation_id or "")
+        if not operation_id:
+            return None
+        current = self._capture_insertion_target()
+        try:
+            ui_pid = int(ui_process_id or 0)
+        except (TypeError, ValueError):
+            ui_pid = 0
+        retained = getattr(self, "_deck_insertion_lease", None)
+        target = None
+        if current is not None and (not ui_pid or current.process_id != ui_pid):
+            target = current
+        elif retained is not None:
+            target = retained.target
+        lease = TargetLease(
+            target, str(source or "deck"), "before_deck_dismiss", True)
+        leases = getattr(self, "_prepared_insertion_leases", None)
+        if leases is None:
+            leases = OrderedDict()
+            self._prepared_insertion_leases = leases
+        leases[operation_id] = lease
+        leases.move_to_end(operation_id)
+        while len(leases) > 256:
+            leases.popitem(last=False)
+        return lease
+
+    def _prepared_insertion_lease(self, operation_id, source):
+        lease = getattr(self, "_prepared_insertion_leases", {}).get(
+            str(operation_id or ""))
+        return lease or TargetLease(
+            None, str(source or "deck"), "before_deck_dismiss", True)
+
     def _insertion_trace(self, name, **fields):
         if name == "paste_sent":
             self._last_paste_sent_at = time.perf_counter()
-        self._trace_mark(name, **fields)
+        if getattr(self, "_dictation_trace_session", None) is not None:
+            return self._trace_mark(name, **fields)
+        operation_id = str(fields.get("operation_id") or "")
+        if not operation_id:
+            return None
+        lock = getattr(self, "_insertion_trace_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._insertion_trace_lock = lock
+        sessions = getattr(self, "_insertion_trace_sessions", None)
+        if sessions is None:
+            sessions = {}
+            self._insertion_trace_sessions = sessions
+        with lock:
+            session = sessions.get(operation_id)
+            if session is None:
+                sink = getattr(self, "_dictation_trace_sink", None)
+                if sink is None:
+                    return None
+                session = sink.start_insertion({
+                    "operation_id": operation_id,
+                    "source": fields.get("source"),
+                    "content_kind": fields.get("content_kind"),
+                })
+                if session is None:
+                    return None
+                sessions[operation_id] = session
+            if name == "insertion_finished":
+                sessions.pop(operation_id, None)
+        try:
+            if name == "insertion_finished":
+                session.mark(name, **fields)
+                finish_fields = dict(fields)
+                finish_outcome = finish_fields.pop("outcome", None) or "unknown"
+                return session.finish(finish_outcome, **finish_fields)
+            return session.mark(name, **fields)
+        except Exception as exc:
+            print("insertion trace skipped:", type(exc).__name__)
+            return None
 
     @staticmethod
     def _insertion_confirmed(result):
         return bool(result and result.outcome is InsertionOutcome.CONFIRMED)
 
     def _paste(self, text, keep_on_clipboard=False, *, source="dictation",
-               activation_target=None, operation_id=None):
+               activation_target=None, target_lease=None, operation_id=None,
+               undo_before_paste=False):
         """Run one idempotent, target-bound text insertion transaction."""
         text = text or ""
         self._last_paste_sent_at = None
         transaction = self._ensure_insertion_transaction()
-        target = activation_target or self._capture_insertion_target()
+        lease = target_lease or self._make_insertion_lease(
+            source, "invocation", target=activation_target)
         request = InsertionRequest(
             operation_id=operation_id or uuid.uuid4().hex,
             source=source,
             content_kind="text",
             text=text,
-            activation_target=target,
+            activation_target=lease.target,
+            target_lease=lease,
             restore_clipboard=not keep_on_clipboard,
             settle_seconds=min(1.2, 0.18 + len(text) / 20000.0),
+            undo_before_paste=bool(undo_before_paste),
         )
         if self.clipboard:
             self.clipboard.pause()
@@ -2840,6 +2964,8 @@ class Mumble:
             except Exception:
                 pass
         wait_started = time.perf_counter()
+        coordinator = self._insertion_coordinator
+        coordinator.prepare(request)
         try:
             with self._paste_lock:
                 self._trace_mark(
@@ -2847,7 +2973,7 @@ class Mumble:
                     wait_ms=(time.perf_counter() - wait_started) * 1000.0,
                     operation_id=request.operation_id,
                 )
-                return transaction.insert(request)
+                return coordinator.submit(request)
         finally:
             if self.clipboard:
                 try:
@@ -3037,7 +3163,8 @@ class Mumble:
             self._deck_job_active = True
             return True
 
-    def _run_deck_job(self, items, intent, intent_title, mode, reserved=False):
+    def _run_deck_job(self, items, intent, intent_title, mode, reserved=False,
+                      target_lease=None, operation_id=None):
         """Guard wrapper: the web flyout's Go/Convert buttons have no disabled
         state, so a fast double-click fired two `deck_job` commands → two AI calls
         and two pastes. Serialise — a second job while one is in flight is
@@ -3047,13 +3174,16 @@ class Mumble:
             return False
         self._bump_feature("preset_run")
         try:
-            self._run_deck_job_impl(items, intent, intent_title, mode)
+            self._run_deck_job_impl(
+                items, intent, intent_title, mode,
+                target_lease=target_lease, operation_id=operation_id)
         finally:
             with self._deck_job_lock:
                 self._deck_job_active = False
         return True
 
-    def _run_deck_job_impl(self, items, intent, intent_title, mode):
+    def _run_deck_job_impl(self, items, intent, intent_title, mode, *,
+                           target_lease=None, operation_id=None):
         """Run a Deck AI job: the chosen preset's instruction (and/or a MODE's
         output-form directive) over the checked items, via the intent lane —
         then paste the result. This is the Context Island's engine, now driven
@@ -3157,13 +3287,21 @@ class Mumble:
         # paste exception stranded the pill spinning on "building" forever (owner
         # v6 audit). _set_state("idle") in the finally matches the other paths.
         try:
-            result = self._paste(out, source="deck_job")
+            result = self._paste(
+                out, source="deck_job", target_lease=target_lease,
+                operation_id=operation_id)
+            self._send_webui_async({
+                "cmd": "insertion_result",
+                **result.as_dict(),
+            })
             if self.island:
                 flash = ["context", mode] if mode else "context"
                 self._tk_schedule(self.island.flash, flash,
                                   offline=used_offline,
                                   pasted=result.confirmed,
-                                  outcome=result.outcome.value)
+                                  outcome=result.outcome.value,
+                                  reason=result.reason, message=result.message,
+                                  cleanup_warning=result.cleanup_warning)
         finally:
             # Tray + main-window refresh AFTER the paste — never block it.
             try:
@@ -3175,19 +3313,24 @@ class Mumble:
             self._set_state("idle")
 
     def _paste_image(self, path, *, source="deck_image", activation_target=None,
-                     operation_id=None):
+                     target_lease=None, operation_id=None):
         """Run image insertion through the same target and clipboard contract."""
         self._last_paste_sent_at = None
         transaction = self._ensure_insertion_transaction()
+        lease = target_lease or self._make_insertion_lease(
+            source, "invocation", target=activation_target)
         request = InsertionRequest(
             operation_id=operation_id or uuid.uuid4().hex,
             source=source,
             content_kind="image",
             image_path=path or "",
-            activation_target=activation_target or self._capture_insertion_target(),
+            activation_target=lease.target,
+            target_lease=lease,
             settle_seconds=0.30,
         )
         wait_started = time.perf_counter()
+        coordinator = self._insertion_coordinator
+        coordinator.prepare(request)
         if self.clipboard:
             self.clipboard.pause()
         try:
@@ -3197,7 +3340,7 @@ class Mumble:
                     wait_ms=(time.perf_counter() - wait_started) * 1000.0,
                     operation_id=request.operation_id,
                 )
-                return transaction.insert(request)
+                return coordinator.submit(request)
         finally:
             if self.clipboard:
                 self.clipboard.resume(skip_current=True)
@@ -3301,46 +3444,67 @@ class Mumble:
                     # single-instance lock (Lite binds the same port) — a real
                     # switch, not two Mumbles fighting over the mic.
                     self.cmd_q.put("quit")
+                elif cmd == "prepare_insertion":
+                    operation_id = str(req.get("operation_id") or "")
+                    lease = self._prepare_deck_insertion_lease(
+                        operation_id,
+                        req.get("source") or "deck",
+                        req.get("ui_process_id"),
+                    )
+                    resp.update(
+                        ok=bool(lease and lease.target),
+                        operation_id=operation_id,
+                        message=("" if lease and lease.target else
+                                 "Choose an editable destination before using Deck paste."),
+                    )
                 elif cmd == "paste":
                     text = req.get("text") or ""
                     try:
                         time.sleep(0.25)  # let focus return to the target
                         result = self._paste(
                             text, source="deck_history",
-                            activation_target=self._capture_insertion_target(),
+                            target_lease=self._prepared_insertion_lease(
+                                req.get("operation_id"), "deck_history"),
                             operation_id=req.get("operation_id") or uuid.uuid4().hex,
                         )
-                        handled = result.outcome in {
-                            InsertionOutcome.CONFIRMED,
-                            InsertionOutcome.SENT_UNCONFIRMED,
-                        }
                         pasted = bool(result.confirmed)
-                        resp.update(ok=handled, pasted=pasted,
+                        resp.update(ok=True, pasted=pasted,
                                     **result.as_dict())
                     except Exception as e:
-                        print("cmd paste error:", e)
+                        print("cmd paste error:", type(e).__name__)
                         resp.update(ok=False, pasted=False, outcome="saved_only",
-                                    message=str(e))
+                                    confirmed=False, reason="internal_error",
+                                    cleanup_warning="",
+                                    message="The paste request could not be completed. The result remains saved in Deck and History.")
                 elif cmd == "paste_image":
                     path = req.get("path") or ""
                     try:
                         time.sleep(0.25)
                         result = self._paste_image(
                             path, source="deck_image",
-                            activation_target=self._capture_insertion_target(),
+                            target_lease=self._prepared_insertion_lease(
+                                req.get("operation_id"), "deck_image"),
                             operation_id=req.get("operation_id") or uuid.uuid4().hex,
                         )
-                        handled = result.outcome in {
-                            InsertionOutcome.CONFIRMED,
-                            InsertionOutcome.SENT_UNCONFIRMED,
-                        }
                         pasted = bool(result.confirmed)
-                        resp.update(ok=handled, pasted=pasted,
+                        resp.update(ok=True, pasted=pasted,
                                     **result.as_dict())
                     except Exception as e:
-                        print("cmd paste_image error:", e)
+                        print("cmd paste_image error:", type(e).__name__)
                         resp.update(ok=False, pasted=False, outcome="saved_only",
-                                    message=str(e))
+                                    confirmed=False, reason="internal_error",
+                                    cleanup_warning="",
+                                    message="The image paste request could not be completed. The image remains in Deck.")
+                elif cmd == "insertion_status":
+                    operation_id = str(req.get("operation_id") or "")
+                    try:
+                        self._ensure_insertion_transaction()
+                        status = self._insertion_coordinator.status(operation_id)
+                        resp = {"ok": status.get("state") != "missing", **status}
+                    except InsertionRequestConflict:
+                        resp = {"ok": False, "state": "rejected",
+                                "reason": "operation_id_conflict",
+                                "message": "This paste request no longer matches its operation."}
                 elif cmd == "rebind":
                     # Hotkeys are a transaction owned by the controller: validate,
                     # register the new hook, persist it, then retire only the old
@@ -3397,11 +3561,17 @@ class Mumble:
                         message="" if accepted else "A Deck job is already running.",
                     )
                     if accepted:
+                        job_lease = self._prepared_insertion_lease(
+                            req.get("operation_id"), "deck_job")
+                        job_operation_id = (req.get("operation_id")
+                                            or uuid.uuid4().hex)
                         def _wj():
                             try:
                                 time.sleep(0.25)
                                 self._run_deck_job(
-                                    items, instr, title, mode, reserved=True)
+                                    items, instr, title, mode, reserved=True,
+                                    target_lease=job_lease,
+                                    operation_id=job_operation_id)
                             except Exception as e:
                                 print("cmd deck_job error:", e)
                                 with self._deck_job_lock:
@@ -3726,7 +3896,8 @@ class Mumble:
         island message when there is nothing to paste or the paste can't land. (The
         tray "Re-paste last" item calls this too.)"""
         self._bump_feature("quick_paste")
-        activation_target = self._capture_insertion_target()
+        target_lease = self._make_insertion_lease(
+            "paste_latest", "invocation", mumble_displaced_target=False)
         operation_id = uuid.uuid4().hex
         with self.lock:
             if self.busy or self.recording or self.paused:
@@ -3744,20 +3915,17 @@ class Mumble:
                 try:
                     result = self._paste(
                         text, source="paste_latest",
-                        activation_target=activation_target,
+                        target_lease=target_lease,
                         operation_id=operation_id,
                     )
                 except Exception as e:
                     print("quick-paste error:", e)
                 if result is None:
                     self._quick_status("Not sent — open Deck to copy the latest result")
-                elif result.outcome is InsertionOutcome.SENT_UNCONFIRMED:
-                    self._quick_status("Sent — check the field; the result is saved in Deck")
-                elif result.outcome is InsertionOutcome.UNCERTAIN:
-                    self._quick_status("Check the field before retrying — saved in Deck")
-                elif result.outcome in {
-                    InsertionOutcome.NOT_SENT, InsertionOutcome.SAVED_ONLY}:
-                    self._quick_status("Not sent — open Deck to copy or paste the latest result")
+                elif result.outcome is not InsertionOutcome.CONFIRMED:
+                    self._quick_status(result.message)
+                elif result.cleanup_warning:
+                    self._quick_status(result.cleanup_warning)
             finally:
                 self.busy = False
 
@@ -3793,6 +3961,8 @@ class Mumble:
         releases the held hotkey modifiers, restores the prior clipboard, and
         returns '' when nothing is selected — so an ordinary Deck-open (tray menu,
         no selection) is completely unaffected."""
+        self._deck_insertion_lease = self._make_insertion_lease(
+            "deck", "before_mumble_focus", mumble_displaced_target=True)
         try:
             sel = self._grab_selection_quiet()
         except Exception:

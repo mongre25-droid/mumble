@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Run Mumble's native two-field exact-once insertion fixture on Windows.
+"""Native two-field issue #15 verification fixture for normal-integrity Windows.
 
-This is intentionally a physical verification helper, not an automated CI test:
-it uses the real foreground window, Windows clipboard and SendInput APIs. It
-creates two editable fields, inserts a known value into the first field through
-the same transaction used by Mumble, and proves that the second stays empty.
+Tk focus/capture and inspection always run on the Tk event-loop thread. The
+insertion transaction runs on a worker so real SendInput events can be handled
+by Tk while the transaction waits. This is closed-loop fixture evidence only;
+it is not Office/browser/Electron/elevation evidence.
 """
 
 from __future__ import annotations
 
+import argparse
+import ctypes
+from dataclasses import replace
 import os
 import sys
+import threading
+import time
 import tkinter as tk
 import uuid
 
@@ -20,8 +25,15 @@ APP = os.path.join(ROOT, "Internal", "app")
 if APP not in sys.path:
     sys.path.insert(0, APP)
 
-from insertion import InsertionOutcome, InsertionRequest, InsertionTransaction
-from windows_insertion import (
+from insertion import (  # noqa: E402
+    InsertionOutcome,
+    InsertionRequest,
+    InsertionTransaction,
+    NativeAcceptance,
+    TargetLease,
+    TargetEditability,
+)
+from windows_insertion import (  # noqa: E402
     WindowsClipboardAdapter,
     WindowsNativeInputAdapter,
     WindowsTargetAdapter,
@@ -29,65 +41,254 @@ from windows_insertion import (
 
 
 PAYLOAD = "Mumble exact-once fixture 7d98b2"
+PRIOR_CLIPBOARD = "Mumble fixture prior clipboard"
+EXTERNAL_CLIPBOARD = "Mumble fixture external mutation"
+MODES = (
+    "normal", "delayed-focus", "swallowed-input", "clipboard-mutation",
+    "delayed-read", "zero-count", "partial-count", "restore-failure",
+    "privilege-higher", "privilege-unknown", "unintended-field",
+)
 
 
-def main():
+class FixtureTargetAdapter(WindowsTargetAdapter):
+    def __init__(self, mode, focus_state):
+        super().__init__()
+        self.mode = mode
+        self.focus_state = focus_state
+
+    def current(self):
+        target = super().current()
+        if target is None:
+            return None
+        return replace(
+            target,
+            focused_child=int(self.focus_state.get("child") or 0),
+            has_caret=bool(self.focus_state.get("child")),
+        )
+
+    def can_inject(self, target):
+        if self.mode == "privilege-higher":
+            return False
+        if self.mode == "privilege-unknown":
+            return None
+        return super().can_inject(target)
+
+    def restore(self, target, timeout_s):
+        if self.mode != "delayed-focus":
+            return super().restore(target, timeout_s)
+        deadline = time.monotonic() + max(0.0, timeout_s)
+        while time.monotonic() < deadline:
+            if target.same_destination(self.current()):
+                return True
+            time.sleep(0.01)
+        return target.same_destination(self.current())
+
+
+class FixtureClipboardAdapter(WindowsClipboardAdapter):
+    def __init__(self, mode):
+        super().__init__()
+        self.mode = mode
+
+    def _read_format_bytes(self, format_id):
+        if self.mode == "delayed-read":
+            time.sleep(0.08)
+        return super()._read_format_bytes(format_id)
+
+    def restore(self, snapshot, ownership=None):
+        if self.mode == "restore-failure":
+            return False
+        return super().restore(snapshot, ownership)
+
+
+class FixtureNativeInputAdapter(WindowsNativeInputAdapter):
+    def __init__(self, mode):
+        super().__init__()
+        self.mode = mode
+
+    def send_paste(self):
+        if self.mode == "zero-count":
+            return NativeAcceptance(4, 0, False, None, "fixture_zero_count")
+        if self.mode == "partial-count":
+            return NativeAcceptance(4, 2, True, None, "fixture_partial_count")
+        return super().send_paste()
+
+
+def _clipboard_text(root):
+    try:
+        return root.clipboard_get()
+    except tk.TclError:
+        return ""
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=MODES, default="normal")
+    parser.add_argument("--linger-ms", type=int, default=1200)
+    args = parser.parse_args(argv)
     if os.name != "nt":
         print("This verifier runs only on Windows.")
         return 2
 
     root = tk.Tk()
-    root.title("Mumble insertion fixture")
-    root.geometry("600x180")
+    root.title("Mumble insertion fixture — {}".format(args.mode))
+    root.geometry("680x220")
     root.attributes("-topmost", True)
-
-    tk.Label(root, text="Target A (must receive one payload)").pack(anchor="w", padx=18, pady=(16, 2))
-    target_a = tk.Entry(root, width=72)
+    tk.Label(root, text="Target A (intended)").pack(anchor="w", padx=18, pady=(16, 2))
+    target_a = tk.Entry(root, width=78)
     target_a.pack(padx=18, fill="x")
-    tk.Label(root, text="Target B (must stay empty)").pack(anchor="w", padx=18, pady=(12, 2))
-    target_b = tk.Entry(root, width=72)
+    tk.Label(root, text="Target B (must never receive the payload)").pack(
+        anchor="w", padx=18, pady=(12, 2))
+    target_b = tk.Entry(root, width=78)
     target_b.pack(padx=18, fill="x")
-    result_label = tk.Label(root, text="Preparing native insertion…", anchor="w")
+    result_label = tk.Label(root, text="Preparing native insertion…", anchor="w",
+                            justify="left", wraplength=640)
     result_label.pack(padx=18, pady=(14, 0), fill="x")
-    result = {"failed": False}
+    state = {"terminal": None, "failed": False, "worker": None,
+             "prior": PRIOR_CLIPBOARD}
+    focus_state = {"child": 0}
+    target_a.bind("<FocusIn>", lambda _event: focus_state.update(child=1))
+    target_b.bind("<FocusIn>", lambda _event: focus_state.update(child=2))
 
-    def execute():
-        target_a.focus_force()
-        root.update_idletasks()
-        transaction = InsertionTransaction(
-            WindowsTargetAdapter(), WindowsClipboardAdapter(),
-            WindowsNativeInputAdapter(),
-        )
-        activation_target = transaction._target.current()  # Fixture-only capture.
-        terminal = transaction.insert(InsertionRequest(
-            operation_id=uuid.uuid4().hex,
-            source="native_two_field_fixture",
-            content_kind="text",
-            text=PAYLOAD,
-            activation_target=activation_target,
-        ))
-        exact_once = target_a.get() == PAYLOAD and not target_b.get()
-        terminal_ok = terminal.outcome in {
-            InsertionOutcome.CONFIRMED, InsertionOutcome.SENT_UNCONFIRMED,
+    root.clipboard_clear()
+    root.clipboard_append(PRIOR_CLIPBOARD)
+    root.update()
+
+    def receive_native_paste(event):
+        if args.mode == "swallowed-input":
+            return "break"
+        try:
+            event.widget.insert("insert", root.clipboard_get())
+        except tk.TclError:
+            pass
+        if args.mode == "clipboard-mutation":
+            root.after(20, lambda: (
+                root.clipboard_clear(), root.clipboard_append(EXTERNAL_CLIPBOARD)))
+        return "break"
+
+    target_a.bind("<Control-v>", receive_native_paste)
+
+    def inspect_when_done():
+        worker = state["worker"]
+        if worker is not None and worker.is_alive():
+            root.after(25, inspect_when_done)
+            return
+        terminal = state["terminal"]
+        a_value, b_value = target_a.get(), target_b.get()
+        insertion_count = a_value.count(PAYLOAD) + b_value.count(PAYLOAD)
+        focus_widget = root.focus_get()
+        clipboard_value = _clipboard_text(root)
+        expected_count = 1 if args.mode in {"normal", "delayed-focus",
+                                            "delayed-read", "restore-failure",
+                                            "clipboard-mutation"} else 0
+        expected_a = expected_count == 1
+        expected_clipboard = (
+            EXTERNAL_CLIPBOARD if args.mode == "clipboard-mutation" else
+            PAYLOAD if args.mode == "restore-failure" else PRIOR_CLIPBOARD)
+        expected_outcomes = {
+            "normal": {InsertionOutcome.SENT_UNCONFIRMED},
+            "delayed-focus": {InsertionOutcome.SENT_UNCONFIRMED},
+            "swallowed-input": {InsertionOutcome.SENT_UNCONFIRMED},
+            "clipboard-mutation": {InsertionOutcome.SENT_UNCONFIRMED},
+            "delayed-read": {InsertionOutcome.SENT_UNCONFIRMED},
+            "zero-count": {InsertionOutcome.NOT_SENT},
+            "partial-count": {InsertionOutcome.UNCERTAIN},
+            "restore-failure": {InsertionOutcome.SENT_UNCONFIRMED},
+            "privilege-higher": {InsertionOutcome.SAVED_ONLY},
+            "privilege-unknown": {InsertionOutcome.SAVED_ONLY},
+            "unintended-field": {InsertionOutcome.SAVED_ONLY},
         }
-        if exact_once and terminal_ok:
-            result_label.config(
-                text="PASS — Target A received one payload; Target B stayed empty. "
-                     "Native outcome: {}.".format(terminal.outcome.value),
-                fg="#187a2f",
-            )
-        else:
-            result["failed"] = True
-            result_label.config(
-                text="FAIL — outcome {}; A={!r}; B={!r}.".format(
-                    terminal.outcome.value, target_a.get(), target_b.get()),
-                fg="#aa2020",
-            )
-        root.after(1500, root.destroy)
+        outcome_ok = bool(
+            terminal and terminal.outcome in expected_outcomes[args.mode])
+        passed = all((
+            outcome_ok,
+            insertion_count == expected_count,
+            (a_value == PAYLOAD) == expected_a,
+            b_value == "",
+            clipboard_value == expected_clipboard,
+            bool(terminal and terminal.message),
+            focus_widget in {target_a, target_b},
+        ))
+        state["failed"] = not passed
+        detail = (
+            "{} — outcome={}; count={}; A={!r}; B={!r}; focus={}; "
+            "clipboard={!r}; message={}".format(
+                "PASS" if passed else "FAIL",
+                terminal.outcome.value if terminal else "missing",
+                insertion_count, a_value, b_value,
+                str(focus_widget), clipboard_value,
+                terminal.message if terminal else "missing terminal result"))
+        result_label.config(text=detail, fg="#187a2f" if passed else "#aa2020")
+        print(detail)
+        root.after(max(100, args.linger_ms), root.destroy)
 
-    root.after(450, execute)
+    def capture_on_tk_thread():
+        child_hwnd = int(root.winfo_id())
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        top_hwnd = int(user32.GetAncestor(child_hwnd, 2) or child_hwnd)
+        foreground = int(user32.GetForegroundWindow() or 0)
+        own_tid = int(kernel32.GetCurrentThreadId())
+        foreground_tid = int(
+            user32.GetWindowThreadProcessId(foreground, None) or 0)
+        attached = bool(foreground_tid and user32.AttachThreadInput(
+            own_tid, foreground_tid, True))
+        try:
+            user32.ShowWindow(top_hwnd, 9)
+            user32.BringWindowToTop(top_hwnd)
+            user32.SetForegroundWindow(top_hwnd)
+        finally:
+            if attached:
+                user32.AttachThreadInput(own_tid, foreground_tid, False)
+        root.lift()
+        target_a.focus_force()
+        root.update()
+        target_adapter = FixtureTargetAdapter(args.mode, focus_state)
+        captured = target_adapter.current()
+        if captured is None or captured.window != top_hwnd:
+            state["failed"] = True
+            result_label.config(
+                text="FAIL — Windows did not grant the fixture foreground focus; no input was sent.",
+                fg="#aa2020")
+            print(result_label.cget("text"))
+            root.after(max(100, args.linger_ms), root.destroy)
+            return
+        # This fixture owns this exact Tk Entry and therefore has direct writable
+        # evidence. Production browser/editor support is never inferred from a
+        # class name; those surfaces remain in the separate physical matrix.
+        captured = replace(captured, editability=TargetEditability.EDITABLE)
+        lease = TargetLease(
+            captured, "native_fixture", "fixture_capture",
+            args.mode == "delayed-focus")
+        if args.mode in {"unintended-field", "delayed-focus"}:
+            target_b.focus_force()
+            root.update_idletasks()
+        if args.mode == "delayed-focus":
+            root.after(180, target_a.focus_force)
+
+        def worker():
+            transaction = InsertionTransaction(
+                target_adapter,
+                FixtureClipboardAdapter(args.mode),
+                FixtureNativeInputAdapter(args.mode),
+            )
+            state["terminal"] = transaction.insert(InsertionRequest(
+                operation_id=uuid.uuid4().hex,
+                source="native_fixture",
+                content_kind="text",
+                text=PAYLOAD,
+                activation_target=captured,
+                target_lease=lease,
+                focus_timeout_s=0.40,
+            ))
+
+        state["worker"] = threading.Thread(
+            target=worker, name="insertion-fixture-worker", daemon=True)
+        state["worker"].start()
+        root.after(25, inspect_when_done)
+
+    root.after(350, capture_on_tk_thread)
     root.mainloop()
-    return 1 if result["failed"] else 0
+    return 1 if state["failed"] else 0
 
 
 if __name__ == "__main__":

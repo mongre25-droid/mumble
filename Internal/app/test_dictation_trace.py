@@ -439,6 +439,71 @@ def cloud_inference_contract():
               "private cloud words" not in json.dumps(rows[0]))
 
 
+def insertion_only_trace_contract():
+    with tempfile.TemporaryDirectory(prefix="mumble_insertion_trace_") as temp_dir:
+        trace_path = os.path.join(temp_dir, "dictation-traces.jsonl")
+        sink = DictationTraceSink(trace_path, enabled=True)
+        session = sink.start_insertion({
+            "trace_kind": "insertion",
+            "operation_id": "opaque-operation-7",
+            "source": "paste_latest",
+            "content_kind": "text",
+            "text": "PRIVATE TRANSCRIPT",
+            "path": r"C:\Private\secret.png",
+            "title": "Private window title",
+        })
+        session.mark(
+            "insertion_started",
+            operation_id="opaque-operation-7",
+            requested_count=4,
+            target_captured=True,
+            editable=True,
+            integrity_relation="same",
+            transcript="PRIVATE TRANSCRIPT",
+            exception="PRIVATE RAW EXCEPTION",
+        )
+        session.finish(
+            "sent_unconfirmed",
+            source="paste_latest",
+            accepted_count=4,
+            send_count=1,
+            confirmation="unavailable",
+            fallback_reason="confirmation_unavailable",
+            cleanup_warning=False,
+        )
+
+        rows = read_traces(trace_path)
+        check("insertion-only operation is bounded in the strict sink", len(rows) == 1)
+        serialized = json.dumps(rows[0])
+        check("safe insertion identity and counts survive",
+              "opaque-operation-7" in serialized
+              and '"accepted_count": 4' in serialized
+              and '"send_count": 1' in serialized)
+        check("private insertion data has no trace field",
+              "PRIVATE" not in serialized and "secret.png" not in serialized)
+
+        import mumble
+        controller_path = os.path.join(temp_dir, "controller-insertions.jsonl")
+        controller = mumble.Mumble.__new__(mumble.Mumble)
+        controller._dictation_trace_session = None
+        controller._dictation_trace_sink = DictationTraceSink(
+            controller_path, enabled=True)
+        controller._insertion_trace_sessions = {}
+        controller._insertion_trace_lock = threading.Lock()
+        controller._insertion_trace(
+            "insertion_started", operation_id="controller-op",
+            source="deck_history", content_kind="text",
+            target_captured=True)
+        controller._insertion_trace(
+            "insertion_finished", operation_id="controller-op",
+            source="deck_history", outcome="not_sent", send_count=0,
+            fallback_reason="target_changed", cleanup_warning=False)
+        controller_rows = read_traces(controller_path)
+        check("controller creates a bounded record without dictation",
+              len(controller_rows) == 1
+              and controller_rows[0]["context"]["trace_kind"] == "insertion")
+
+
 if __name__ == "__main__":
     print("\n== privacy-safe exportable dictation trace ==")
     trace_contract()
@@ -448,4 +513,6 @@ if __name__ == "__main__":
     completed_dictation_contract()
     print("\n== cloud inference boundary trace ==")
     cloud_inference_contract()
+    print("\n== insertion-only trace boundary ==")
+    insertion_only_trace_contract()
     print("\nALL GREEN")
