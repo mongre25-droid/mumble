@@ -28,13 +28,13 @@
 </tbody></table>
 
 <h2><span class="sec">2</span>Verification and release gates</h2>
-<p>The first CI-remediation commit reached GitHub and failed truthfully on clean platform runners. Its follow-up repair has passed focused local structural, dependency, platform-copy, and workflow contracts but has not yet been pushed, so another exact-head GitHub Actions run is required and this record does not claim release readiness. The exact commands and interpretation are in <a href="HANDBOOK.html">HANDBOOK</a>.</p>
-<div class="callout"><strong>Exact-head result and repair on 24 July 2026:</strong> GitHub Actions run <code>30066815576</code> at main commit <code>96c1b057</code> failed truthfully. Windows exposed one canonical meeting-path assertion; macOS exposed that assertion, a stale updater assertion, and missing <code>psutil</code>; Linux exposed missing <code>psutil</code> and AppIndicator test dependencies, overlong pytest socket paths, and an installed-package smoke import launched from the wrong directory. The follow-up repair passes focused local and static contracts, but a new clean exact-head GitHub run is still required.</div>
+<p>The CI-remediation programme now has clean exact-head GitHub evidence. The shared runner executes pytest, unittest, and procedural modules with actual case counts; independent security, product-test, website, packaging, and Linux lifecycle jobs all passed at the same main commit. This is trustworthy repository evidence, not a claim that physical-device or public-release gates are complete. The exact commands and interpretation are in <a href="HANDBOOK.html">HANDBOOK</a>.</p>
+<div class="callout"><strong>Exact-head result on 24 July 2026:</strong> GitHub Actions run <code>30067617990</code> passed at main commit <code>cb64f0e6</code>. Windows, macOS, and Linux test/security/package jobs passed; the website audit/build/check passed; the Linux install/smoke/uninstall lifecycle passed; and the aggregate <code>CI result</code> passed. Manual candidate promotion remained skipped as intended.</div>
 <ul>
   <li><span class="badge b-done">passed locally</span> Shared runner contract checks cover pytest, unittest, procedural modules, zero collection, JSON, JUnit, and the Windows/macOS/Linux wrappers.</li>
   <li><span class="badge b-gated">development setup</span> The documented local command assumes <code>Internal/app/.venv/Scripts/python.exe</code>, but this checkout currently contains the branded <code>Mumble.exe</code> there and no Python interpreter. Reproducible development-environment setup remains open.</li>
   <li><span class="badge b-done">passed locally</span> Windows, macOS, and Linux runtime locks use Pillow 12.3.0 and all three <code>pip-audit</code> checks report no known vulnerabilities.</li>
-  <li><span class="badge b-gated">exact-head CI</span> Run <code>30066815576</code> proved that independent diagnostics remain available after failure. Its exposed clean-machine causes are repaired locally; the repair commit still needs its own clean exact-head run before any candidate is promotable.</li>
+  <li><span class="badge b-done">exact-head CI</span> Run <code>30067617990</code> passed every required independent evidence job and the aggregate result at commit <code>cb64f0e6</code>. Promotion remained a separate manual action and was not run.</li>
   <li><span class="badge b-done">passed locally</span> Rebuilt <code>Internal/Releases/Mumble.zip</code> from the current source: version <code>0.95</code>, 123 entries, and all package-layout checks passed.</li>
   <li><span class="badge b-done">passed locally</span> Windows launcher verifier confirmed the current target, working directory, icon, entry script, shortcuts, and Flow Launcher paths.</li>
   <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
@@ -46,7 +46,7 @@
 
 <h2><span class="sec">3</span>Active priorities</h2>
 <ol>
-  <li>Push the CI-remediation branch and require a clean exact-head GitHub run before treating its artifacts as promotable evidence.</li>
+  <li>Work the implementation frontier in issues 14, 15, and 20: processing-route truth, target-bound insertion, and the production Focus Stage foundation.</li>
   <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>
