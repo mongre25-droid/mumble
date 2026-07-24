@@ -1595,11 +1595,14 @@ async function focusDeckForKeyboard() {
    transition, shadow, blur and glass-transparency — the "works everywhere" config. */
 let CHOSEN_FX = "enhanced"; // the user's selected tier (Settings → Visual effects)
 let SAVER = false; // Resource Saver Mode
+const FOCUS_STAGE_TIERS = Object.freeze({ lite: "light", standard: "standard", enhanced: "full" });
 function applyVisual() {
   const fx = SAVER ? "lite" : CHOSEN_FX; // saver always wins → lite
   document.body.classList.toggle("saver", SAVER);
   document.body.classList.toggle("lite", fx === "lite");
   document.body.classList.toggle("enhanced", fx === "enhanced");
+  const tier = FOCUS_STAGE_TIERS[fx];
+  if (tier && window.MumbleUIFoundation) window.MumbleUIFoundation.applyEffectsTier(tier);
 }
 function applyEffects(fx) {
   if (fx) CHOSEN_FX = fx;
@@ -1750,7 +1753,23 @@ function reflectStatus(st) {
     lab.textContent = rec ? "Stop and transcribe" : "Start dictation";
   chip.classList.toggle("is-recording", rec || st.state === "transcribing");
   chip.classList.toggle("is-error", st.state === "error");
+  const recordButton = $("#record-btn");
+  if (recordButton) {
+    if (rec) recordButton.dataset.control = "stop";
+    else delete recordButton.dataset.control;
+  }
   setText("#status-text", st.text || (rec ? "Listening…" : "Ready"));
+  const stateKind = st.state === "error" ? "error" : (rec || st.state === "transcribing") ? "loading" : null;
+  const stateHost = $("#home-live-state");
+  if (stateHost && window.MumbleUIFoundation) {
+    stateHost.hidden = !stateKind;
+    const surface = stateKind ? window.MumbleUIFoundation.createStateSurface(stateKind, {
+      title: stateKind === "error" ? "Dictation could not start" : "Dictation is active",
+      message: st.text || (rec ? "Mumble is listening. Stop to transcribe your words." : "Mumble is processing your words."),
+      content: "The live status above remains the authoritative recording state.",
+    }) : null;
+    stateHost.replaceChildren(...(surface ? [surface] : []));
+  }
 }
 
 /* light live polling: keeps the chip honest while you dictate via the hotkey.

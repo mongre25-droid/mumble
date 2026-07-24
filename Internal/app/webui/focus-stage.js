@@ -16,6 +16,12 @@
       "command-surface", "state-surface", "control-rail",
     ]),
     effects: Object.freeze(["light", "standard", "full"]),
+    statusSemantics: Object.freeze({
+      gold: Object.freeze(["neutral", "warning"]),
+      green: Object.freeze(["positive"]),
+      red: Object.freeze(["danger"]),
+    }),
+    maxPrimaryActions: 1,
     states: Object.freeze({
       loading: Object.freeze({ kind: "loading", tone: "neutral", title: "Loading", message: "Mumble is getting this ready. Available content stays usable.", live: "polite", busy: true }),
       empty: Object.freeze({ kind: "empty", tone: "neutral", title: "Nothing here yet", message: "New items will appear here when they are available.", live: "polite", busy: false }),

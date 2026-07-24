@@ -17,6 +17,12 @@
     "control-rail"
   ],
   "effects": ["light", "standard", "full"],
+  "statusSemantics": {
+    "gold": ["neutral", "warning"],
+    "green": ["positive"],
+    "red": ["danger"]
+  },
+  "maxPrimaryActions": 1,
   "states": {
     "loading": {
       "kind": "loading",

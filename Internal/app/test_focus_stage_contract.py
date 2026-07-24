@@ -55,6 +55,15 @@ class FocusStageContractTests(unittest.TestCase):
                 self.assertTrue(description["message"])
                 self.assertIn(description["live"], {"polite", "assertive"})
         self.assertEqual(contract["effects"], ["light", "standard", "full"])
+        self.assertEqual(
+            contract["statusSemantics"],
+            {
+                "gold": ["neutral", "warning"],
+                "green": ["positive"],
+                "red": ["danger"],
+            },
+        )
+        self.assertEqual(contract["maxPrimaryActions"], 1)
         self.assertEqual(contract["controlRail"]["minimumTargetPx"], 28)
         self.assertEqual(contract["controlRail"]["timeCriticalTargetPx"], 36)
 

@@ -55,10 +55,18 @@
   <li><span class="badge b-done">browser evidence</span> Added an offline browser harness against the real packaged UI, including deterministic screenshot verification and package-asset coverage.</li>
 </ul>
 
-<h2><span class="sec">6</span>Current product snapshot</h2>
+<h2><span class="sec">6</span>25 July 2026 — Issue #20 review gaps implemented locally</h2>
+<ul>
+  <li><span class="badge b-done">contract</span> Connected the existing effects setting to the public Focus Stage tier API and made gold/green/red state semantics plus the one-primary-action limit explicit in the packaged contract.</li>
+  <li><span class="badge b-done">production coexistence</span> Wired the Home dictation action group to the Control Rail and its live recording/error path to the reusable State Surface without redesigning other pages.</li>
+  <li><span class="badge b-done">browser evidence</span> Added a literal 200% page-zoom check at the normal desktop viewport and kept narrow-viewport reflow as a separate check; the production harness passed all five groups.</li>
+  <li><span class="badge b-gated">boundary</span> Physical display/device validation remains unverified; this local milestone is awaiting independent review and is not a merge, release, or deployment claim.</li>
+</ul>
+
+<h2><span class="sec">7</span>Current product snapshot</h2>
 <p>At this baseline Mumble is a local-first desktop voice workspace with hotkey dictation, local faster-whisper transcription, optional cloud transcription, optional local/cloud text shaping, clipboard-safe paste, the Deck, meetings, Reader, statistics, and supported-platform local search. The golden-black liquid-glass Web UI and floating Island are the current interface surfaces.</p>
 
-<h2><span class="sec">7</span>How to keep this log useful</h2>
+<h2><span class="sec">8</span>How to keep this log useful</h2>
 <ul><li>Use one dated entry for a meaningful completed milestone.</li><li>State what changed and where, without copying a full investigation into this page.</li><li>Put current risks, unfinished tasks, and release gates in <a href="STATUS.html">STATUS</a>.</li><li>Put stable procedures and architecture changes in <a href="HANDBOOK.html">HANDBOOK</a>.</li><li>Keep README focused on the stable product and working agreement.</li></ul>
 
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>

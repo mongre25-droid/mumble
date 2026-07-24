@@ -44,6 +44,8 @@ async function testShell(browser) {
     destinations: window.MumbleUIFoundation.contract.destinations,
     primitives: window.MumbleUIFoundation.contract.primitives,
     effects: window.MumbleUIFoundation.contract.effects,
+    statusSemantics: window.MumbleUIFoundation.contract.statusSemantics,
+    maxPrimaryActions: window.MumbleUIFoundation.contract.maxPrimaryActions,
     states: window.MumbleUIFoundation.contract.states,
     controlRail: window.MumbleUIFoundation.contract.controlRail,
   }));
@@ -52,6 +54,8 @@ async function testShell(browser) {
     destinations: packagedContract.destinations,
     primitives: packagedContract.primitives,
     effects: packagedContract.effects,
+    statusSemantics: packagedContract.statusSemantics,
+    maxPrimaryActions: packagedContract.maxPrimaryActions,
     states: packagedContract.states,
     controlRail: packagedContract.controlRail,
   }, "browser and packaged contracts drifted");
@@ -68,6 +72,8 @@ async function testShell(browser) {
   assert.equal(await page.locator(".context-ledger").count(), 1, "the Home shortcut panel must use the optional context ledger primitive");
   assert.equal(await page.locator(".numbered-spine").count(), 1, "the genuine Home sequence must use the numbered spine primitive");
   assert.equal(await page.locator(".command-surface").count(), 1, "the existing Deck toolbar must use the command surface primitive");
+  assert.equal(await page.locator(".focus-stage .control-rail").count(), 1, "the production dictation actions must use the Control Rail primitive");
+  assert.equal(await page.locator(".focus-stage .btn-gold").count(), 1, "the Focus Stage must expose one primary action");
   for (const destination of packagedContract.destinations) {
     await page.getByRole("button", { name: destination.label, exact: true }).click();
     await page.waitForTimeout(40);
@@ -218,6 +224,23 @@ async function testReflow(browser) {
   }
   await desktop.page.close();
 
+  const zoomed = await openProductionPage(browser, { viewport: { width: 1440, height: 1000 } });
+  assert.equal(zoomed.browserErrors.length, 0, zoomed.browserErrors.join(" | "));
+  const zoomEvidence = await zoomed.page.evaluate(() => {
+    document.documentElement.style.zoom = "200%";
+    return {
+      requestedZoom: document.documentElement.style.zoom,
+      computedZoom: getComputedStyle(document.documentElement).zoom,
+      viewportWidth: window.innerWidth,
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  assert.equal(zoomEvidence.requestedZoom, "200%", "the accessibility check must apply literal 200% zoom");
+  assert.equal(zoomEvidence.computedZoom, "2", "the browser must compute the page at 200% zoom");
+  assert.equal(zoomEvidence.viewportWidth, 1440, "the 200% check must not substitute a narrow viewport");
+  assert.ok(zoomEvidence.overflow <= 1, `200% zoom must reflow without horizontal overflow (${zoomEvidence.overflow}px)`);
+  await zoomed.page.close();
+
   for (const viewport of [{ width: 640, height: 900 }, { width: 430, height: 900 }]) {
     const current = await openProductionPage(browser, { viewport });
     assert.equal(current.browserErrors.length, 0, current.browserErrors.join(" | "));
@@ -232,7 +255,7 @@ async function testReflow(browser) {
     assert.deepEqual(undersized, [], `core targets smaller than 40px: ${JSON.stringify(undersized)}`);
     await current.page.close();
   }
-  record("desktop centring, 200% equivalent reflow, narrow 3x2 navigation, targets, and contrast");
+  record("desktop centring, literal 200% zoom reflow, narrow 3x2 navigation, targets, and contrast");
 }
 
 async function stableScreenshot(page, filename, options = {}) {
@@ -292,6 +315,26 @@ async function testVisual(browser) {
   assert.equal(rails.listening.controls.at(-1).minimumTargetPx, 36);
   assert.equal(rails.unsafe.controls.some(control => control.id === "cancel"), false);
   assert.equal(rails.safe.controls.find(control => control.id === "cancel").label, "Cancel processing");
+
+  const productionState = await reduced.page.evaluate(() => {
+    const record = document.querySelector("#record-btn");
+    record.click();
+    const surface = document.querySelector("#home-live-state .state-surface");
+    return {
+      state: surface?.dataset.state,
+      rail: document.querySelector("#home-dictation-actions")?.classList.contains("control-rail"),
+      stopControl: record.dataset.control,
+    };
+  });
+  assert.equal(productionState.state, "loading", "the real dictation workflow must expose a loading State Surface while recording");
+  assert.equal(productionState.rail, true, "the real dictation actions must be a Control Rail");
+  assert.equal(productionState.stopControl, "stop", "the active dictation action must be identified as the time-critical stop control");
+
+  const effectsContract = await reduced.page.evaluate(() => {
+    applyEffects("lite");
+    return document.documentElement.dataset.effectsTier;
+  });
+  assert.equal(effectsContract, "light", "the existing effects setting must exercise the public Focus Stage tier contract");
 
   if (capture) fs.mkdirSync(outputRoot, { recursive: true });
   await stableScreenshot(reduced.page, "01-focus-stage-home-desktop.png");
