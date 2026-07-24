@@ -28,16 +28,17 @@
 </tbody></table>
 
 <h2><span class="sec">2</span>Verification and release gates</h2>
-<p>The folder and version changes have passed their structural checks. The runtime test gate is not yet green, so this record does not claim release readiness. The exact commands and interpretation are in <a href="HANDBOOK.html">HANDBOOK</a>.</p>
-<div class="callout"><strong>Measured clean-runner result on 24 July 2026:</strong> GitHub Actions run <code>30060362781</code> at commit <code>6f12ed73</code> completed 70 Windows scripts with 67 passing and 3 failing. The failures are the downloader resume test not observing an HTTP <code>Range</code> request, the offline <code>base.en</code> snapshot being unavailable, and contained meeting-audio resolution. A separate local run also exited non-zero and exposed an environment-sensitive Windows Settings icon failure. These are open verification items, not evidence of a green release.</div>
+<p>The local CI-remediation branch has passed its focused structural, runner-contract, dependency, and website checks. The branch has not yet been pushed, so an exact-head GitHub Actions run is still required and this record does not claim release readiness. The exact commands and interpretation are in <a href="HANDBOOK.html">HANDBOOK</a>.</p>
+<div class="callout"><strong>Current CI remediation on 24 July 2026:</strong> the shared runner now executes pytest, unittest, and procedural modules instead of treating import-only collection as success. It reports module totals plus real pytest/unittest case totals in JSON and JUnit. Focused execution covered all 142 previously skipped named test functions as 149 expanded cases. One full local pass executed 73 modules and 648 standard cases, exposed six classification or environment-sensitive failures, and every affected module passed after focused repairs. The prior downloader and contained meeting-audio regressions pass locally; the offline lightweight check no longer depends on a developer's cached <code>base.en</code> model. Clean exact-head GitHub evidence remains pending until this branch is pushed and run.</div>
 <ul>
-  <li><span class="badge b-gated">open</span> Windows compilation, narrow linting, Bandit, and dependency audit passed on the clean runner; three isolated-suite items remain open.</li>
+  <li><span class="badge b-done">passed locally</span> Shared runner contract checks cover pytest, unittest, procedural modules, zero collection, JSON, JUnit, and the Windows/macOS/Linux wrappers.</li>
   <li><span class="badge b-gated">development setup</span> The documented local command assumes <code>Internal/app/.venv/Scripts/python.exe</code>, but this checkout currently contains the branded <code>Mumble.exe</code> there and no Python interpreter. Reproducible development-environment setup remains open.</li>
-  <li><span class="badge b-gated">platform CI</span> macOS and Linux compilation/build preparation passed, then their jobs stopped at the Pillow 12.2.0 dependency audit (20 reported findings; audit fix version 12.3.0). Their application suites and the Linux archive lifecycle were skipped.</li>
+  <li><span class="badge b-done">passed locally</span> Windows, macOS, and Linux runtime locks use Pillow 12.3.0 and all three <code>pip-audit</code> checks report no known vulnerabilities.</li>
+  <li><span class="badge b-gated">exact-head CI</span> The workflow now separates security, tests, website, platform packages, and Linux lifecycle evidence; uploads failed-run diagnostics but only successful candidate artifacts; and reserves promotion for a successful manual run. These workflow changes still need a clean GitHub run at the exact branch commit.</li>
   <li><span class="badge b-done">passed locally</span> Rebuilt <code>Internal/Releases/Mumble.zip</code> from the current source: version <code>0.95</code>, 123 entries, and all package-layout checks passed.</li>
   <li><span class="badge b-done">passed locally</span> Windows launcher verifier confirmed the current target, working directory, icon, entry script, shortcuts, and Flow Launcher paths.</li>
   <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
-  <li><span class="badge b-gated">security review</span> Website dependency installation reported 4 audit findings (1 moderate, 3 high). No automatic dependency upgrade was applied because it could change the website; review is required before public publication.</li>
+  <li><span class="badge b-done">passed locally</span> Website lock installation, static build, Astro diagnostics, and dependency audit pass with zero reported audit findings.</li>
   <li><span class="badge b-gated">release gate</span> Clean extraction, install, launch, update, and uninstall on a disposable Windows environment.</li>
   <li><span class="badge b-gated">release gate</span> Physical microphone, global hotkey, focus-preserving paste, and clipboard restoration checks.</li>
   <li><span class="badge b-gated">release gate</span> Signing, publisher identity, public release notes, and a tested rollback path.</li>
@@ -45,7 +46,7 @@
 
 <h2><span class="sec">3</span>Active priorities</h2>
 <ol>
-  <li>Resolve the three clean-runner Windows test failures and restore a reproducible local Python verification environment.</li>
+  <li>Push the CI-remediation branch and require a clean exact-head GitHub run before treating its artifacts as promotable evidence.</li>
   <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>

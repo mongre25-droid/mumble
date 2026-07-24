@@ -243,30 +243,23 @@ def test_installer_and_uninstaller_lifecycle_contract():
 def test_runner_executes_pytest_modules_instead_of_only_importing_them():
     with tempfile.TemporaryDirectory() as td:
         pytest_file = os.path.join(td, "test_pytest_style.py")
-        class_file = os.path.join(td, "test_class_style.py")
-        script_file = os.path.join(td, "test_script_style.py")
         with open(pytest_file, "w", encoding="utf-8") as handle:
             handle.write("def test_real_check():\n    assert True\n")
-        with open(script_file, "w", encoding="utf-8") as handle:
-            handle.write(
-                "def test_real_check():\n    assert True\n\n"
-                "if __name__ == '__main__':\n    test_real_check()\n"
-            )
-        with open(class_file, "w", encoding="utf-8") as handle:
-            handle.write(
-                "class TestOnlyClass:\n"
-                "    def test_real_check(self):\n        assert True\n"
-            )
-
-        pytest_cmd = run_tests._test_command(td, os.path.basename(pytest_file))
-        class_cmd = run_tests._test_command(td, os.path.basename(class_file))
-        script_cmd = run_tests._test_command(td, os.path.basename(script_file))
-        assert pytest_cmd[1:4] == ["-m", "pytest", "-q"]
-        assert class_cmd[1:4] == ["-m", "pytest", "-q"]
-        assert script_cmd == [run_tests.sys.executable, script_file]
+        report = os.path.join(td, "linux-runner.json")
+        result = subprocess.run(
+            [sys.executable, run_tests.__file__, "--all", "--test-dir", td,
+             "--json", report],
+            check=False,
+        )
+        assert result.returncode == 0
+        with open(report, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        assert payload["module_count"] == 1
+        assert payload["case_count"] == 1
+        assert payload["results"][0]["style"] == "pytest"
 
 
-def test_runner_creates_nested_json_report_directory():
+def test_runner_creates_nested_json_report_directory_and_fails_empty_discovery():
     with tempfile.TemporaryDirectory() as td:
         report = os.path.join(td, "nested", "reports", "linux.json")
         result = subprocess.run(
@@ -274,10 +267,11 @@ def test_runner_creates_nested_json_report_directory():
              "definitely-no-such-test", "--json", report],
             check=False,
         )
-        assert result.returncode == 0
+        assert result.returncode != 0
         with open(report, encoding="utf-8") as handle:
             payload = json.load(handle)
         assert payload["total"] == 0
+        assert payload["failed"] == 1
 
 
 def test_linux_updater_rejects_paths_outside_declared_parent():

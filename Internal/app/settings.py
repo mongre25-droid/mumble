@@ -581,6 +581,17 @@ class Settings:
                 self.data["search_hotkey"] = SEARCH_HOTKEY_DEFAULT
             self.data["search_hotkey_find_default_applied"] = True
 
+        # Repair only the known incompatible legacy pair: ``onyx`` is an
+        # OpenAI voice and cannot be sent to Gemini. Deliberately preserve every
+        # other selected voice and every OpenAI configuration.
+        if not self.data.get("reader_tts_voice_contract_applied"):
+            if (self.data.get("reader_tts_provider") == "openrouter"
+                    and self.data.get("reader_tts_model") ==
+                    "google/gemini-3.1-flash-tts-preview"
+                    and self.data.get("reader_voice") == "onyx"):
+                self.data["reader_voice"] = "Fenrir"
+            self.data["reader_tts_voice_contract_applied"] = True
+
         # Guard values are internal bookkeeping only.  Mark old migrations as
         # complete while deliberately leaving all associated user values alone.
         guards = {

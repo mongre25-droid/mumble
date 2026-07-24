@@ -6,7 +6,7 @@ numpy==2.2.6
 pynput==1.8.2
 pyperclip==1.11.0
 pystray==0.19.5
-Pillow==12.2.0
+Pillow==12.3.0
 pywebview==6.2.1
 
 # Meeting import/resampling.

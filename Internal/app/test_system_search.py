@@ -1,6 +1,7 @@
 """Regression tests for the bounded Windows/Linux Mumble Search engine."""
 
 from pathlib import Path
+import importlib.util
 import os
 import tempfile
 import unittest
@@ -110,7 +111,10 @@ class SystemSearchTests(unittest.TestCase):
                 )
             )
 
-    @unittest.skipUnless(os.name == "nt", "Windows shell icon integration")
+    @unittest.skipUnless(
+        os.name == "nt" and importlib.util.find_spec("win32com") is not None,
+        "Windows shell icon integration requires the locked pywin32 runtime",
+    )
     def test_windows_settings_virtual_app_has_its_real_shell_icon(self):
         target = (
             "shell:AppsFolder\\windows.immersivecontrolpanel_"

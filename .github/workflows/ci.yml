@@ -3,106 +3,110 @@ name: Mumble CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  windows-offline:
-    runs-on: windows-latest
+  python-security:
+    name: Security / ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            python: "3.13"
+            app-dir: Internal/app
+            excludes: .venv,Ports,__pycache__,test_*.py
+          - platform: macos
+            os: macos-15
+            python: "3.12"
+            app-dir: Internal/app/Ports/macOS/app
+            excludes: .venv,__pycache__,test_*.py
+          - platform: linux
+            os: ubuntu-latest
+            python: "3.12"
+            app-dir: Internal/app/Ports/Linux/app
+            excludes: .venv,__pycache__,test_*.py
     defaults:
       run:
-        working-directory: Internal/app
-    env:
-      PYTHONUTF8: "1"
-      MUMBLE_OFFLINE_TESTS: "1"
+        working-directory: ${{ matrix.app-dir }}
     steps:
       - uses: actions/checkout@v4
-      - name: Configure isolated test data
-        shell: pwsh
-        run: |
-          "MUMBLE_TEST_DATA_DIR=$env:RUNNER_TEMP\mumble-ci-data" |
-            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: Internal/app/requirements-dev.txt
-      - run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
-      - run: python -m compileall -q -x "(^|[\\/])(.venv|__pycache__)([\\/]|$)" .
-      - run: python -m flake8 . --select=E9,F63,F7,F82 --exclude=.venv,Ports
-      - run: python -m bandit -r . -x .venv,Ports,__pycache__,test_*.py -lll -ii
-      - run: python -m pip_audit -r requirements.txt --progress-spinner off
-      - run: python run_tests.py --json test-results.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: windows-offline-test-results
-          path: Internal/app/test-results.json
+          cache-dependency-path: ${{ matrix.app-dir }}/requirements-dev.txt
+      - name: Install security tools
+        run: python -m pip install --disable-pip-version-check pip-audit==2.10.1 bandit==1.9.4
+      - name: Audit runtime dependency lock
+        run: python -m pip_audit -r requirements.txt --progress-spinner off
+      - name: Scan application source
+        run: python -m bandit -r . -x "${{ matrix.excludes }}" -lll -ii
 
-  macos-offline:
-    # macos-15 is the current arm64 hosted image; macos-14 entered
-    # deprecation in July 2026 and would make this gate short-lived.
-    runs-on: macos-15
-    timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: Internal/app/Ports/macOS/app
-    env:
-      PYTHONUTF8: "1"
-      MUMBLE_OFFLINE_TESTS: "1"
-      HF_HUB_OFFLINE: "1"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure isolated test data
-        run: echo "MUMBLE_TEST_DATA_DIR=$RUNNER_TEMP/mumble-ci-data" >> "$GITHUB_ENV"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: Internal/app/Ports/macOS/app/requirements-dev.txt
-      - run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
-      - name: Validate and build the macOS release archive
-        run: |
-          bash -n "../Install Mumble.command" "../Uninstall Mumble.command" \
-            "../Launch Mumble.command" ../build_mac_release.sh
-          cd ..
-          bash build_mac_release.sh
-          shasum -a 256 -c Mumble-v*-macos.zip.sha256
-      - run: python -m compileall -q -x "(^|/)(.venv|__pycache__)(/|$)" .
-      - run: python -m flake8 . --select=E9,F63,F7,F82 --exclude=.venv,__pycache__
-      - run: python -m bandit -r . -x .venv,__pycache__,test_*.py -lll -ii
-      - run: python -m pip_audit -r requirements.txt --progress-spinner off
-      - run: python run_tests.py --all --json test-results.json
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: macos-offline-test-results
-          path: |
-            Internal/app/Ports/macOS/app/test-results.json
-            Internal/app/Ports/macOS/Mumble-v*-macos.zip
-            Internal/app/Ports/macOS/Mumble-v*-macos.zip.sha256
-
-  linux-offline-and-packaging:
-    runs-on: ubuntu-latest
+  python-tests:
+    name: Tests / ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            python: "3.13"
+            app-dir: Internal/app
+            test-command: python run_tests.py --json test-results.json --junit test-results.xml
+            flake-excludes: .venv,Ports
+          - platform: macos
+            os: macos-15
+            python: "3.12"
+            app-dir: Internal/app/Ports/macOS/app
+            test-command: python run_tests.py --all --json test-results.json --junit test-results.xml
+            flake-excludes: .venv,__pycache__
+          - platform: linux
+            os: ubuntu-latest
+            python: "3.12"
+            app-dir: Internal/app/Ports/Linux/app
+            test-command: xvfb-run -a python run_tests.py --all --json test-results.json --junit test-results.xml
+            flake-excludes: .venv,__pycache__
     defaults:
       run:
-        working-directory: Internal/app/Ports/Linux/app
+        working-directory: ${{ matrix.app-dir }}
     env:
       PYTHONUTF8: "1"
       MUMBLE_OFFLINE_TESTS: "1"
       HF_HUB_OFFLINE: "1"
     steps:
       - uses: actions/checkout@v4
-      - name: Configure isolated test data
-        run: echo "MUMBLE_TEST_DATA_DIR=$RUNNER_TEMP/mumble-ci-data" >> "$GITHUB_ENV"
-      - name: Install Linux system dependencies and packaging validators
+      - name: Install Linux desktop test dependencies
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential desktop-file-utils gir1.2-gtk-3.0 \
-            gir1.2-webkit2-4.1 libportaudio2 python3-dev python3-gi \
-            python3-gi-cairo python3-pip python3-venv shellcheck xdg-utils xvfb
-      - name: Create system-site-packages test environment
+            gir1.2-gtk-3.0 gir1.2-webkit2-4.1 libportaudio2 \
+            python3-gi python3-gi-cairo xvfb
+      - uses: actions/setup-python@v5
+        if: matrix.platform != 'linux'
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: ${{ matrix.app-dir }}/requirements-dev.txt
+      - name: Install non-Linux test dependencies
+        if: matrix.platform != 'linux'
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Create Linux system-integrated test environment
+        if: matrix.platform == 'linux'
+        shell: bash
         run: |
           python3 -c 'import sys; assert sys.version_info >= (3, 12), sys.version'
           python3 -m venv --system-site-packages "$RUNNER_TEMP/mumble-linux-test-venv"
@@ -110,11 +114,131 @@ jobs:
             --disable-pip-version-check -r requirements-dev.txt
           echo "$RUNNER_TEMP/mumble-linux-test-venv/bin" >> "$GITHUB_PATH"
           test ! -e .venv
-      - name: Validate shell packaging scripts
+      - name: Compile source
+        run: python -m compileall -q -x "(^|[\\/])(.venv|__pycache__)([\\/]|$)" .
+      - name: Reject fatal lint errors
+        run: python -m flake8 . --select=E9,F63,F7,F82 --exclude="${{ matrix.flake-excludes }}"
+      - name: Execute every offline module and real test case
+        run: ${{ matrix.test-command }}
+      - name: Upload test diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnostic-${{ matrix.platform }}-tests
+          path: |
+            ${{ matrix.app-dir }}/test-results.json
+            ${{ matrix.app-dir }}/test-results.xml
+          if-no-files-found: warn
+
+  website-security:
+    name: Security / website
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Development Files/Marketing/Website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: Development Files/Marketing/Website/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=moderate
+
+  website-build:
+    name: Build / website
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: Development Files/Marketing/Website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: Development Files/Marketing/Website/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npx astro check
+      - name: Upload website candidate
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: candidate-website
+          path: Development Files/Marketing/Website/dist
+          if-no-files-found: error
+
+  windows-package:
+    name: Package / Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build Windows archive
+        shell: pwsh
+        run: python "Development Files/Tooling/_rebuild_zip.py" "$env:GITHUB_WORKSPACE"
+      - name: Upload Windows candidate
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: candidate-windows-package
+          path: Internal/Releases/Mumble.zip
+          if-no-files-found: error
+
+  macos-package:
+    name: Package / macOS
+    runs-on: macos-15
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Internal/app/Ports/macOS
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and build archive
         run: |
-          bash -n ../install.sh ../uninstall.sh
-          shellcheck --severity=warning ../install.sh ../uninstall.sh
-      - name: Resolve CPython 3.14 Linux STT/audio wheels
+          bash -n "Install Mumble.command" "Uninstall Mumble.command" \
+            "Launch Mumble.command" build_mac_release.sh
+          bash build_mac_release.sh
+          shasum -a 256 -c Mumble-v*-macos.zip.sha256
+      - name: Upload macOS candidate
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: candidate-macos-package
+          path: |
+            Internal/app/Ports/macOS/Mumble-v*-macos.zip
+            Internal/app/Ports/macOS/Mumble-v*-macos.zip.sha256
+          if-no-files-found: error
+
+  linux-package:
+    name: Package / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: Internal/app/Ports/Linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install package validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      - name: Validate packaging scripts
+        run: |
+          bash -n install.sh uninstall.sh
+          shellcheck --severity=warning install.sh uninstall.sh
+      - name: Build deterministic archives
+        run: |
+          python build_release.py --output-dir "$RUNNER_TEMP/linux-release"
+          python test_build_release.py
+      - name: Resolve CPython 3.14 Linux STT and audio wheels
         run: |
           python -m pip install --dry-run --ignore-installed --only-binary=:all: \
             --platform manylinux_2_28_x86_64 \
@@ -124,20 +248,37 @@ jobs:
             --implementation cp --python-version 3.14 --abi cp314 \
             --target "$RUNNER_TEMP/py314-resolution" \
             numpy==2.5.1 scipy==1.18.0 soundfile==0.14.0 faster-whisper==1.2.1
-      - name: Build and verify deterministic Linux release archives
+      - name: Upload Linux candidate
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: candidate-linux-package
+          path: ${{ runner.temp }}/linux-release/*
+          if-no-files-found: error
+
+  linux-lifecycle:
+    name: Lifecycle / Linux package
+    needs: linux-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-linux-package
+          path: ${{ runner.temp }}/linux-release
+      - name: Install lifecycle dependencies
         run: |
-          python ../build_release.py --output-dir "$RUNNER_TEMP/linux-release"
-          python ../test_build_release.py
-      - run: python -m compileall -q -x "(^|/)(.venv|__pycache__)(/|$)" .
-      - run: python -m flake8 . --select=E9,F63,F7,F82 --exclude=.venv,__pycache__
-      - run: python -m bandit -r . -x .venv,__pycache__,test_*.py -lll -ii
-      - run: python -m pip_audit -r requirements.txt --progress-spinner off
-      - run: xvfb-run -a python run_tests.py --all --json test-results.json
-      - name: Exercise built-archive install and uninstall lifecycle
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 libportaudio2 python3-gi python3-gi-cairo xvfb
+      - name: Exercise archive install, smoke import, and uninstall
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/mumble-release-extract"
-          archive="$(find "$RUNNER_TEMP/linux-release" -maxdepth 1 \
-            -type f -name '*.tar.gz' -print -quit)"
+          archive="$(find "$RUNNER_TEMP/linux-release" -maxdepth 1 -type f \
+            -name '*.tar.gz' -print -quit)"
           test -n "$archive"
           tar -xzf "$archive" -C "$RUNNER_TEMP/mumble-release-extract"
           RELEASE_ROOT="$(find "$RUNNER_TEMP/mumble-release-extract" \
@@ -160,36 +301,72 @@ jobs:
           test -f "$HOME/.local/share/icons/hicolor/256x256/apps/mumble-voice-to-text.png"
           test ! -e "$HOME/.local/share/applications/mumble.desktop"
           printf '%s\n' '[Desktop Entry]' 'Type=Application' \
-            'Name=Mumble VoIP' 'Exec=mumble' \
-            > "$HOME/.config/autostart/mumble.desktop"
+            'Name=Mumble VoIP' 'Exec=mumble' > "$HOME/.config/autostart/mumble.desktop"
           bash "$RELEASE_ROOT/uninstall.sh" --purge-data
           test ! -e "$RELEASE_ROOT/mumble"
           test ! -e "$HOME/.config/autostart/mumble-voice-to-text.desktop"
           test -f "$HOME/.config/autostart/mumble.desktop"
           test ! -e "$HOME/.local/share/applications/mumble-voice-to-text.desktop"
           test ! -e "$HOME/.local/share/Mumble"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: linux-offline-and-release-results
-          path: |
-            Internal/app/Ports/Linux/app/test-results.json
-            ${{ runner.temp }}/linux-release/*
 
-  website:
-    runs-on: windows-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: Development Files/Marketing/Website
+  ci-result:
+    name: CI result
+    if: always()
+    needs:
+      - python-security
+      - python-tests
+      - website-security
+      - website-build
+      - windows-package
+      - macos-package
+      - linux-package
+      - linux-lifecycle
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Require every independent evidence job
+        env:
+          PYTHON_SECURITY: ${{ needs.python-security.result }}
+          PYTHON_TESTS: ${{ needs.python-tests.result }}
+          WEBSITE_SECURITY: ${{ needs.website-security.result }}
+          WEBSITE_BUILD: ${{ needs.website-build.result }}
+          WINDOWS_PACKAGE: ${{ needs.windows-package.result }}
+          MACOS_PACKAGE: ${{ needs.macos-package.result }}
+          LINUX_PACKAGE: ${{ needs.linux-package.result }}
+          LINUX_LIFECYCLE: ${{ needs.linux-lifecycle.result }}
+        run: |
+          python - <<'PY'
+          import os
+          names = [
+              "PYTHON_SECURITY", "PYTHON_TESTS", "WEBSITE_SECURITY",
+              "WEBSITE_BUILD", "WINDOWS_PACKAGE", "MACOS_PACKAGE",
+              "LINUX_PACKAGE", "LINUX_LIFECYCLE",
+          ]
+          failed = [name for name in names if os.environ[name] != "success"]
+          if failed:
+              raise SystemExit("Required CI evidence failed: " + ", ".join(failed))
+          print("Every required CI evidence job passed.")
+          PY
+
+  promote-candidate:
+    name: Promote verified candidate
+    if: ${{ github.event_name == 'workflow_dispatch' && needs.ci-result.result == 'success' }}
+    needs:
+      - ci-result
+      - website-build
+      - windows-package
+      - macos-package
+      - linux-package
+      - linux-lifecycle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: Development Files/Marketing/Website/package-lock.json
-      - run: npm ci
-      - run: npm audit --audit-level=moderate
-      - run: npm run build
-      - run: npx astro check
+          pattern: candidate-*
+          path: verified-candidate
+          merge-multiple: false
+      - name: Upload manually promoted candidate bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: promotable-mumble-${{ github.sha }}
+          path: verified-candidate
+          if-no-files-found: error

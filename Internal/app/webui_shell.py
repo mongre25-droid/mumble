@@ -2591,6 +2591,11 @@ class Api:
             return {"ok": True, "live": True,
                     "message": "Working — the result will paste at your cursor."}
         self._restore_after_failed_paste()
+        # A stale or differently authenticated controller is not usable by this
+        # window. Present the same actionable tray guidance as an absent
+        # controller instead of leaking the internal protocol word.
+        if str((r or {}).get("message") or "").strip().casefold() == "unauthorized":
+            r = None
         return {
             "ok": False, "live": False,
             "message": (r or {}).get("message") or

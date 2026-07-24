@@ -78,8 +78,7 @@ def test_ai_transport_blocks_non_http_and_assert_survives_optimization():
     assert "raise RuntimeError(\"stream completion markers" in source
     assert Path(ai.__file__).name == "__init__.py"
     assert Path(ai.__file__).parent.name == "ai"
-    legacy = Path(__file__).with_name("ai.py").read_text(encoding="utf-8")
-    assert "refusing legacy ai.py fallback" in legacy
+    assert not Path(__file__).with_name("ai.py").exists()
 
 
 def test_cache_does_not_evict_external_models(tmp_path):

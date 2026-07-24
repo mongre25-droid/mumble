@@ -186,7 +186,9 @@ def test_retired_mac_runtime_duplicates_are_not_shipped():
 
 def test_mac_test_runner_and_release_archive_are_honest():
     runner = (APP_DIR / "run_tests.py").read_text(encoding="utf-8")
-    assert "os.makedirs" in runner and "json_path" in runner
+    shared_runner = (APP_DIR.parents[2] / "runner_core.py").read_text(encoding="utf-8")
+    assert "from runner_core import main as run_main" in runner
+    assert "os.makedirs" in shared_runner and "json_path" in shared_runner
     assert "test_mac_audit_regressions.py" in runner
 
     build = (PORT_DIR / "build_mac_release.sh").read_text(encoding="utf-8")
