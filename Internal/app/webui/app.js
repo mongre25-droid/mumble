@@ -1762,13 +1762,22 @@ function reflectStatus(st) {
   const stateKind = st.state === "error" ? "error" : (rec || st.state === "transcribing") ? "loading" : null;
   const stateHost = $("#home-live-state");
   if (stateHost && window.MumbleUIFoundation) {
-    stateHost.hidden = !stateKind;
-    const surface = stateKind ? window.MumbleUIFoundation.createStateSurface(stateKind, {
+    const shouldHide = !stateKind;
+    if (stateHost.hidden !== shouldHide) stateHost.hidden = shouldHide;
+    let surface = stateHost.querySelector(".state-surface");
+    const stateOptions = stateKind ? {
       title: stateKind === "error" ? "Dictation could not start" : "Dictation is active",
       message: st.text || (rec ? "Mumble is listening. Stop to transcribe your words." : "Mumble is processing your words."),
       content: "The live status above remains the authoritative recording state.",
-    }) : null;
-    stateHost.replaceChildren(...(surface ? [surface] : []));
+      action: st.recoveryAction && st.recoveryAction.label ? st.recoveryAction : null,
+    } : null;
+    if (stateKind && !surface) {
+      surface = window.MumbleUIFoundation.createStateSurface(stateKind, stateOptions);
+      surface.setAttribute("aria-atomic", "true");
+      stateHost.append(surface);
+    } else if (stateKind) {
+      window.MumbleUIFoundation.updateStateSurface(surface, stateKind, stateOptions);
+    }
   }
 }
 

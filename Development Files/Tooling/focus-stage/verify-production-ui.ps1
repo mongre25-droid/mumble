@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$Capture,
-    [ValidateSet('all', 'shell', 'states', 'keyboard', 'reflow', 'visual')]
+    [ValidateSet('all', 'shell', 'states', 'keyboard', 'reflow', 'zoom', 'visual')]
     [string]$Case = 'all'
 )
 

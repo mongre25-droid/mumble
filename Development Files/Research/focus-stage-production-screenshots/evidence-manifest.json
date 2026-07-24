@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "command": "verify-production-ui.ps1 -Case visual -Capture",
+  "renderer": {
+    "browserVersion": "150.0.7871.186",
+    "platform": "win32-x64"
+  },
+  "sources": {
+    "Development Files/Tooling/focus-stage/browser-zoom-extension/manifest.json": "b22c8dc668d3ee9bc0361cbde18ad7ee2f4e34cb2615ef623de18237a42f89c7",
+    "Development Files/Tooling/focus-stage/browser-zoom-extension/service-worker.js": "d491d0dea04a54c58faec2703005416c438d8d47e641e8b8f704b7c5377673c0",
+    "Development Files/Tooling/focus-stage/verify-production-ui.cjs": "94549e3487318d04d7a14d895bbca22189031328d487a2a6ccc794a22f3cadac",
+    "Development Files/Tooling/focus-stage/verify-production-ui.ps1": "0f3eefca7a2a15ef8d63d93ddf2f1afde295748b008d7c18cbd7a01ab1f1beed",
+    "Internal/app/webui/app.css": "a3f0ddcf6cb03b54793ac339e622dce6aff7a33d6ef03381da83857a9b39e7c3",
+    "Internal/app/webui/app.js": "889f3761f05daef3969eade37406d7982d2eb1b2a35b297f6b9ae1d29f4ab14e",
+    "Internal/app/webui/enhanced.css": "d1ee641efc235bb0588dccfac3e934f6da0b029277d261affb7580f47659f0b4",
+    "Internal/app/webui/focus-stage-contract.json": "d2b1b7038c921aed75fc067951ca2c55314a60ad52711aea217eb2d8a8b1d060",
+    "Internal/app/webui/focus-stage.css": "300a325d07ee7e921992b8f590bfc4f06cf6ced40c06eb4d9f24bd8d928cf45b",
+    "Internal/app/webui/focus-stage.js": "bf37e9f567e8c202b4e2edbc7c63ea927951196400a13b0a0bd02cbb47ca364b",
+    "Internal/app/webui/index.html": "df781b76a8079e9322ecdab9a2658107cc97e749ff9d1f0e481bf46a57a73c4e",
+    "Internal/app/webui/mumble.png": "4f9b794bdabfbbaea6cc0e14523ea850d64d4c0591c4cdf69f5426556c15a842",
+    "Internal/app/webui/remaster.css": "55c998de5bf36081d78a331474b1625ea29926c0c17e2643f9888893e80b769f",
+    "Internal/app/webui/system-search-loader.js": "4354fbd2e62b477db05cf27bf45f42bb2e4f390909ca5120a68c0bd39db928dc"
+  },
+  "screenshots": {
+    "01-focus-stage-home-desktop.png": "373d26ee38d8338a85a44aefc1013d853f43bed9dc1df93ea46fb40bc2e873b6",
+    "02-focus-stage-navigation-narrow.png": "3f8fb6ab121c9185af02573f463eddff95b3f2e5fd67e1bd3ee0939ffd9e34ab",
+    "03-shared-state-surfaces.png": "a5ca98c513cb14dc64741d1aeb9eb3401aea63fdec67ab87c0cbcda7336d5e83",
+    "04-forced-colours-focus.png": "ccd85f2fb44063876f4996ccf433b5fbfb163dfc6b0948a100818c0e4d05277a"
+  }
+}

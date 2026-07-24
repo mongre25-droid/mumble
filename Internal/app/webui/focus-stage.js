@@ -73,8 +73,63 @@
       button.type = "button";
       button.className = "btn btn-gold state-surface__action";
       button.textContent = state.action.label;
-      if (typeof state.action.onActivate === "function") button.addEventListener("click", state.action.onActivate);
+      button._focusStageActivate = state.action.onActivate;
+      button.addEventListener("click", () => {
+        if (typeof button._focusStageActivate === "function") button._focusStageActivate();
+      });
       section.append(button);
+    }
+    return section;
+  }
+
+  function updateStateSurface(section, kind, overrides) {
+    if (!section || !section.classList?.contains("state-surface")) {
+      throw new TypeError("A Focus Stage state surface is required");
+    }
+    const state = describeState(kind, overrides);
+    const setAttribute = (name, value) => {
+      if (value == null || value === false) {
+        if (section.hasAttribute(name)) section.removeAttribute(name);
+        return;
+      }
+      const next = value === true ? "true" : String(value);
+      if (section.getAttribute(name) !== next) section.setAttribute(name, next);
+    };
+    if (section.dataset.state !== state.kind) section.dataset.state = state.kind;
+    if (section.dataset.tone !== state.tone) section.dataset.tone = state.tone;
+    setAttribute("role", state.live === "assertive" ? "alert" : "status");
+    setAttribute("aria-live", state.live);
+    setAttribute("aria-busy", state.busy);
+    const title = section.querySelector(".state-surface__copy h2");
+    const message = section.querySelector(".state-surface__copy p");
+    if (title && title.textContent !== state.title) title.textContent = state.title;
+    if (message && message.textContent !== state.message) message.textContent = state.message;
+    const content = section.querySelector(".state-surface__content");
+    if (content && typeof state.content === "string" && content.textContent !== state.content) {
+      content.textContent = state.content;
+    }
+    const action = state.action && state.action.label ? state.action : null;
+    let button = section.querySelector(".state-surface__action");
+    if (action && !button) {
+      button = section.ownerDocument.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-gold state-surface__action";
+      button.addEventListener("click", () => {
+        if (typeof button._focusStageActivate === "function") button._focusStageActivate();
+      });
+      section.append(button);
+    }
+    if (action && button) {
+      if (button.hidden) button.hidden = false;
+      if (button.textContent !== action.label) button.textContent = action.label;
+      button._focusStageActivate = action.onActivate;
+    } else if (button) {
+      button._focusStageActivate = null;
+      if (section.ownerDocument.activeElement === button) {
+        if (!section.hasAttribute("tabindex")) section.setAttribute("tabindex", "-1");
+        section.focus({ preventScroll: true });
+      }
+      if (!button.hidden) button.hidden = true;
     }
     return section;
   }
@@ -113,10 +168,20 @@
       button.type = "button";
       button.setAttribute("aria-label", destination.label);
     });
+    const liveHost = doc.querySelector("#home-live-state");
+    if (liveHost && !liveHost.querySelector(".state-surface")) {
+      const liveSurface = createStateSurface("loading", {
+        title: "Dictation is active",
+        message: "Mumble is listening. Stop to transcribe your words.",
+        content: "The live status above remains the authoritative recording state.",
+      }, doc);
+      liveSurface.setAttribute("aria-atomic", "true");
+      liveHost.append(liveSurface);
+    }
     doc.documentElement.dataset.focusStageContract = contract.version;
   }
 
-  const api = Object.freeze({ contract, describeState, createStateSurface, describeControlRail, applyEffectsTier, initialise });
+  const api = Object.freeze({ contract, describeState, createStateSurface, updateStateSurface, describeControlRail, applyEffectsTier, initialise });
   root.MumbleUIFoundation = api;
   if (root.document) {
     if (root.document.readyState === "loading") root.document.addEventListener("DOMContentLoaded", () => initialise(root.document), { once: true });
