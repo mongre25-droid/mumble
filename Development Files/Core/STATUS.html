@@ -29,9 +29,11 @@
 
 <h2><span class="sec">2</span>Verification and release gates</h2>
 <p>The folder and version changes have passed their structural checks. The runtime test gate is not yet green, so this record does not claim release readiness. The exact commands and interpretation are in <a href="HANDBOOK.html">HANDBOOK</a>.</p>
-<div class="callout"><strong>Measured local result on 24 July 2026:</strong> the isolated runner completed 70 scripts with 68 passing and 2 failing. <code>test_webui_api.py</code> failed at the existing “deck job returns honest notice” assertion; the earlier recorded pre-reorganization run also failed that same assertion. <code>test_bug_audit_regressions.py</code> hit the concurrency assertion <code>test_meeting_store_serialises_controller_and_webview_writers</code> in the full run and did not complete cleanly when isolated. These are open verification items, not evidence of a green release.</div>
+<div class="callout"><strong>Measured clean-runner result on 24 July 2026:</strong> GitHub Actions run <code>30060362781</code> at commit <code>6f12ed73</code> completed 70 Windows scripts with 67 passing and 3 failing. The failures are the downloader resume test not observing an HTTP <code>Range</code> request, the offline <code>base.en</code> snapshot being unavailable, and contained meeting-audio resolution. A separate local run also exited non-zero and exposed an environment-sensitive Windows Settings icon failure. These are open verification items, not evidence of a green release.</div>
 <ul>
-  <li><span class="badge b-gated">open</span> Isolated application test runner, Python compilation, and relevant JavaScript syntax checks. Compilation passed; two runtime test items remain open.</li>
+  <li><span class="badge b-gated">open</span> Windows compilation, narrow linting, Bandit, and dependency audit passed on the clean runner; three isolated-suite items remain open.</li>
+  <li><span class="badge b-gated">development setup</span> The documented local command assumes <code>Internal/app/.venv/Scripts/python.exe</code>, but this checkout currently contains the branded <code>Mumble.exe</code> there and no Python interpreter. Reproducible development-environment setup remains open.</li>
+  <li><span class="badge b-gated">platform CI</span> macOS and Linux compilation/build preparation passed, then their jobs stopped at the Pillow 12.2.0 dependency audit (20 reported findings; audit fix version 12.3.0). Their application suites and the Linux archive lifecycle were skipped.</li>
   <li><span class="badge b-done">passed locally</span> Rebuilt <code>Internal/Releases/Mumble.zip</code> from the current source: version <code>0.95</code>, 123 entries, and all package-layout checks passed.</li>
   <li><span class="badge b-done">passed locally</span> Windows launcher verifier confirmed the current target, working directory, icon, entry script, shortcuts, and Flow Launcher paths.</li>
   <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
@@ -43,7 +45,7 @@
 
 <h2><span class="sec">3</span>Active priorities</h2>
 <ol>
-  <li>Investigate the two remaining application-test items and update this page with their measured resolution.</li>
+  <li>Resolve the three clean-runner Windows test failures and restore a reproducible local Python verification environment.</li>
   <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>
