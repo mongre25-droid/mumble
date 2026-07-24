@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""Privacy-safe, local-only end-to-end dictation timing traces.
+
+The trace deliberately accepts only a small metadata vocabulary. Audio,
+transcripts, clipboard contents, prompts, file paths, provider payloads, and
+exception messages have no field through which they can be persisted.
+"""
+
+import datetime
+import json
+import os
+import threading
+import time
+import uuid
+
+
+SCHEMA = "mumble.dictation-trace.v1"
+DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+DEFAULT_BACKUPS = 2
+
+EVENT_NAMES = frozenset({
+    "activation",
+    "island_render",
+    "audio_opening",
+    "audio_recording",
+    "first_audio",
+    "audio_stopped",
+    "audio_closed",
+    "stable_partial_ready",
+    "unstable_partial_ready",
+    "stream_drain_finished",
+    "transcription_lock_acquired",
+    "model_load_started",
+    "model_load_finished",
+    "model_warmup_started",
+    "model_warmup_finished",
+    "inference_started",
+    "inference_finished",
+    "final_transcript_ready",
+    "formatting_started",
+    "formatting_ready",
+    "persistence_started",
+    "persistence_finished",
+    "paste_lock_acquired",
+    "clipboard_ready",
+    "paste_sent",
+    "paste_finished",
+    "finished",
+})
+
+ALLOWED_FIELDS = frozenset({
+    "audio_duration_ms",
+    "audio_state",
+    "compute_type",
+    "device",
+    "error_class",
+    "inference_ordinal",
+    "mode",
+    "model",
+    "model_resident",
+    "outcome",
+    "partial_contract",
+    "provider",
+    "processed_samples",
+    "resource_saver",
+    "route",
+    "state",
+    "stream_chunks",
+    "success",
+    "vad_enabled",
+    "wait_ms",
+})
+
+
+def _safe_value(value):
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and (value != value or abs(value) == float("inf")):
+            return None
+        return round(value, 3) if isinstance(value, float) else value
+    if isinstance(value, str):
+        value = value.strip()
+        if not value or len(value) > 80:
+            return "<redacted>"
+        # Metadata is identifier/state vocabulary, never a path or free text.
+        allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:- ")
+        return value if all(char in allowed for char in value) else "<redacted>"
+    return None
+
+
+def _safe_fields(fields):
+    return {
+        key: _safe_value(value)
+        for key, value in fields.items()
+        if key in ALLOWED_FIELDS
+    }
+
+
+def _default_resource_sample():
+    sample = {
+        "cpu_ms": round(sum(os.times()[:2]) * 1000.0, 3),
+        "threads": threading.active_count(),
+    }
+    try:
+        import psutil
+        sample["rss_mb"] = round(
+            psutil.Process().memory_info().rss / (1024 * 1024), 3)
+    except Exception:
+        sample["rss_mb"] = None
+    return sample
+
+
+class DictationTraceSession:
+    """One thread-safe dictation trace created by :class:`DictationTraceSink`."""
+
+    def __init__(self, sink, context):
+        self._sink = sink
+        self._clock = sink.clock
+        self._started = self._clock()
+        self._lock = threading.Lock()
+        self._finished = False
+        self._record = {
+            "schema": SCHEMA,
+            "session_id": uuid.uuid4().hex,
+            "started_utc": datetime.datetime.fromtimestamp(
+                sink.wall_clock(), datetime.timezone.utc
+            ).isoformat(),
+            "context": _safe_fields(context),
+            "events": [],
+        }
+
+    def mark(self, name, **fields):
+        if name not in EVENT_NAMES or name == "finished":
+            raise ValueError("unsupported dictation trace event")
+        with self._lock:
+            if self._finished:
+                return None
+            event = {
+                "name": name,
+                "elapsed_ms": round((self._clock() - self._started) * 1000.0, 3),
+                "resources": self._sink.resource_sampler(),
+            }
+            event.update(_safe_fields(fields))
+            self._record["events"].append(event)
+            return dict(event)
+
+    def finish(self, outcome, **fields):
+        with self._lock:
+            if self._finished:
+                return dict(self._record)
+            event = {
+                "name": "finished",
+                "elapsed_ms": round((self._clock() - self._started) * 1000.0, 3),
+                "resources": self._sink.resource_sampler(),
+                "outcome": _safe_value(outcome),
+            }
+            event.update(_safe_fields(fields))
+            self._record["events"].append(event)
+            self._finished = True
+            record = json.loads(json.dumps(self._record))
+        self._sink.persist(record)
+        return record
+
+
+class DictationTraceSink:
+    """Creates sessions and appends completed records to a bounded local JSONL file."""
+
+    def __init__(self, path, enabled=False, clock=None, wall_clock=None,
+                 resource_sampler=None, max_bytes=DEFAULT_MAX_BYTES,
+                 backups=DEFAULT_BACKUPS):
+        self.path = os.path.abspath(path)
+        self.enabled = bool(enabled)
+        self.clock = clock or time.perf_counter
+        self.wall_clock = wall_clock or time.time
+        self.resource_sampler = resource_sampler or _default_resource_sample
+        self.max_bytes = max(1024, int(max_bytes))
+        self.backups = max(0, int(backups))
+        self._write_lock = threading.Lock()
+
+    def start(self, context=None):
+        if not self.enabled:
+            return None
+        return DictationTraceSession(self, context or {})
+
+    def _rotate(self, incoming_bytes):
+        try:
+            current = os.path.getsize(self.path)
+        except OSError:
+            current = 0
+        if current + incoming_bytes <= self.max_bytes:
+            return
+        for index in range(self.backups, 0, -1):
+            source = self.path if index == 1 else "{}.{}".format(self.path, index - 1)
+            target = "{}.{}".format(self.path, index)
+            if not os.path.exists(source):
+                continue
+            if index == self.backups and os.path.exists(target):
+                os.remove(target)
+            os.replace(source, target)
+
+    def persist(self, record):
+        payload = json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+        encoded = payload.encode("utf-8")
+        directory = os.path.dirname(self.path)
+        with self._write_lock:
+            os.makedirs(directory, exist_ok=True)
+            self._rotate(len(encoded))
+            with open(self.path, "ab") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            try:
+                os.chmod(self.path, 0o600)
+            except OSError:
+                pass
+
+
+def read_traces(path, limit=None):
+    """Read valid completed trace records, skipping interrupted or corrupt lines."""
+    rows = []
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    row = json.loads(line)
+                except (TypeError, ValueError):
+                    continue
+                if row.get("schema") == SCHEMA and isinstance(row.get("events"), list):
+                    rows.append(row)
+    except OSError:
+        return []
+    if limit is not None:
+        rows = rows[-max(0, int(limit)):]
+    return rows
+
+
+def export_traces(source_path, destination_path, limit=None):
+    """Write a standalone JSON export and return its completed-session count."""
+    rows = read_traces(source_path, limit=limit)
+    destination_path = os.path.abspath(destination_path)
+    directory = os.path.dirname(destination_path)
+    os.makedirs(directory, exist_ok=True)
+    temp_path = destination_path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(rows, handle, indent=2, sort_keys=True)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temp_path, destination_path)
+    try:
+        os.chmod(destination_path, 0o600)
+    except OSError:
+        pass
+    return len(rows)

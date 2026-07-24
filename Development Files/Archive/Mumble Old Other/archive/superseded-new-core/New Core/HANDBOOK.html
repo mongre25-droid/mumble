@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Mumble architecture, runtime flows and development handbook.">
+  <title>Mumble Core — Handbook</title>
+  <link rel="stylesheet" href="_assets/core.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="README.html" aria-label="Mumble Core home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="brand-copy"><b>Mumble Core</b><span>Development system</span></span></a>
+    <div class="top-meta"><span>HANDBOOK / Architecture</span><span class="freshness">Current 20 July 2026</span></div>
+  </header>
+  <aside class="rail" aria-label="Documentation navigation">
+    <p class="rail-label">Core set</p>
+    <nav class="doc-switch">
+      <a href="README.html"><span>README</span><small>START</small></a>
+      <a class="active" href="HANDBOOK.html"><span>Handbook</span><small>BUILD</small></a>
+      <a href="STATUS.html"><span>Status</span><small>NOW</small></a>
+      <a href="LOGS.html"><span>Logs</span><small>DONE</small></a>
+    </nav>
+    <p class="rail-label">On this page</p>
+    <nav class="section-nav">
+      <a href="#orientation">Orientation</a>
+      <a href="#topology">Runtime topology</a>
+      <a href="#startup">Startup</a>
+      <a href="#dictation">Dictation flow</a>
+      <a href="#routing">Processing routes</a>
+      <a href="#background">Background work</a>
+      <a href="#data">Data model</a>
+      <a href="#modules">Source map</a>
+      <a href="#change">Change playbooks</a>
+      <a href="#verification">Verification</a>
+      <a href="#release">Release gates</a>
+    </nav>
+    <div class="rail-note">Architecture describes the checked-out canonical source. Read <a href="STATUS.html">STATUS</a> before assuming a path is release-ready.</div>
+  </aside>
+
+  <main class="main" id="main"><div class="content">
+    <header class="hero">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="eyebrow">02 · Builder’s map</div>
+      <h1>Inside Mumble.</h1>
+      <p class="lede">A current model of the processes, threads, state transitions, privacy routes, stores and operating-system seams behind the application.</p>
+      <div class="hero-meta">
+        <span class="pill"><span class="dot gold"></span>Canonical source: Windows</span>
+        <span class="pill"><span class="dot blue"></span>Python + Web UI</span>
+        <span class="pill"><span class="dot green"></span>Local-first, route-aware</span>
+      </div>
+    </header>
+
+    <section id="orientation">
+      <div class="section-head"><div class="section-no">01</div><div><h2>Orientation</h2><p class="section-intro">Mumble is one background controller with two UI bodies, specialised engines and JSON-based local persistence.</p></div></div>
+      <div class="grid-3">
+        <article class="card"><span class="label">Runtime root</span><h3><code>Internal/app/</code></h3><p>Canonical controller, UI bridge, engines, stores, platform helpers, tests and release assets.</p></article>
+        <article class="card"><span class="label">Primary entry</span><h3><code>mumble.py</code></h3><p>Owns lifecycle, application state, audio capture, orchestration, hotkeys, tray, island and authenticated commands.</p></article>
+        <article class="card"><span class="label">Web surfaces</span><h3><code>webui_shell.py</code></h3><p>One separate pywebview host lazily owns the full workspace and the compact Search launcher, each with a narrow Python bridge.</p></article>
+      </div>
+      <div class="callout" style="margin-top:14px"><div class="callout-icon">◎</div><div><h3>The architectural pressure point</h3><p>The controller, Web bridge, island and Lite UI remain large and coupled. New work should move toward explicit services and thin platform adapters; it should not add another parallel implementation.</p></div></div>
+    </section>
+
+    <section id="topology">
+      <div class="section-head"><div class="section-no">02</div><div><h2>Runtime topology</h2><p class="section-intro">The controller is the authority. The Web UI is a separate process. The island lives in the controller’s Tk process.</p></div></div>
+      <div class="diagram">
+        <div class="diagram-title"><b>Process and boundary model</b><span>Windows canonical runtime</span></div>
+        <svg viewBox="0 0 1120 590" width="100%" role="img" aria-labelledby="topology-title topology-desc" style="min-width:860px">
+          <title id="topology-title">Mumble runtime process topology</title>
+          <desc id="topology-desc">Launcher starts controller. Controller owns Tk island, tray, audio, engines and stores. It launches a pywebview process with WebView2 children. Authenticated loopback IPC connects the controller and Web UI.</desc>
+          <defs>
+            <linearGradient id="panelG" x1="0" x2="1"><stop stop-color="#171a17"/><stop offset="1" stop-color="#0d0f0d"/></linearGradient>
+            <linearGradient id="goldG" x1="0" x2="1"><stop stop-color="#f4c76a"/><stop offset="1" stop-color="#9d7028"/></linearGradient>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#f4c76a"/></marker>
+            <style>.bx{fill:url(#panelG);stroke:#343834;stroke-width:1}.bxg{fill:url(#panelG);stroke:#8b713d;stroke-width:1.2}.t{fill:#f7f5ef;font:600 14px Inter,Segoe UI,sans-serif}.s{fill:#8e8a82;font:11px Inter,Segoe UI,sans-serif}.k{fill:#f4c76a;font:700 10px Inter,Segoe UI,sans-serif;letter-spacing:1px}.ln{fill:none;stroke:#f4c76a;stroke-width:1.3;marker-end:url(#arrow)}.dl{fill:none;stroke:#696d68;stroke-width:1;stroke-dasharray:5 6}</style>
+          </defs>
+          <rect x="18" y="28" width="170" height="72" rx="16" class="bxg"/><text x="39" y="58" class="k">ENTRY</text><text x="39" y="79" class="t">Mumble.exe / launchers</text>
+          <path d="M188 64 H246" class="ln"/>
+          <rect x="246" y="18" width="522" height="484" rx="24" class="bxg"/><text x="274" y="50" class="k">CONTROLLER PROCESS · mumble.py</text>
+          <rect x="274" y="76" width="214" height="88" rx="15" class="bx"/><text x="292" y="106" class="t">Tk main thread</text><text x="292" y="128" class="s">island · dispatch queue</text><text x="292" y="146" class="s">lifecycle · state authority</text>
+          <rect x="514" y="76" width="226" height="88" rx="15" class="bx"/><text x="532" y="106" class="t">OS-facing services</text><text x="532" y="128" class="s">hotkeys · paste · tray</text><text x="532" y="146" class="s">autostart · single instance</text>
+          <rect x="274" y="190" width="214" height="104" rx="15" class="bx"/><text x="292" y="220" class="t">Audio + work queues</text><text x="292" y="242" class="s">sounddevice callback</text><text x="292" y="260" class="s">streaming STT · processing</text><text x="292" y="278" class="s">meeting writer + recovery</text>
+          <rect x="514" y="190" width="226" height="104" rx="15" class="bx"/><text x="532" y="220" class="t">Engines</text><text x="532" y="242" class="s">STT · formatting · AI route</text><text x="532" y="260" class="s">Reader · Meetings · Search</text><text x="532" y="278" class="s">models · evaluation · perf</text>
+          <rect x="274" y="320" width="466" height="88" rx="15" class="bx"/><text x="292" y="350" class="t">Local stores</text><text x="292" y="372" class="s">settings · history · stats · clipboard · context · prompts</text><text x="292" y="390" class="s">reader library · meetings metadata + private WAV files</text>
+          <rect x="274" y="434" width="466" height="44" rx="12" class="bx"/><text x="292" y="461" class="s">Authenticated command server · 127.0.0.1:49519</text>
+          <path d="M768 455 H834" class="ln"/>
+          <rect x="834" y="172" width="268" height="330" rx="24" class="bxg"/><text x="860" y="205" class="k">WEB WINDOW PROCESS</text>
+          <rect x="858" y="229" width="220" height="82" rx="15" class="bx"/><text x="878" y="260" class="t">webui_shell.py</text><text x="878" y="282" class="s">pywebview host + Python API</text>
+          <rect x="858" y="337" width="220" height="82" rx="15" class="bx"/><text x="878" y="368" class="t">HTML · CSS · JavaScript</text><text x="878" y="390" class="s">Home · Deck · Search · Reader</text>
+          <rect x="858" y="445" width="220" height="34" rx="10" class="bx"/><text x="878" y="467" class="s">WebView2 renderer child processes</text>
+          <path d="M858 326 H803 V455 H834" class="dl"/>
+          <text x="792" y="320" text-anchor="end" class="s">controller → UI events</text>
+          <text x="792" y="339" text-anchor="end" class="s">127.0.0.1:49520</text>
+          <rect x="18" y="154" width="170" height="82" rx="16" class="bx"/><text x="39" y="185" class="t">Second launch</text><text x="39" y="207" class="s">49517 lock + “open” signal</text>
+          <path d="M188 195 H246" class="ln"/>
+          <rect x="18" y="288" width="170" height="92" rx="16" class="bx"/><text x="39" y="319" class="t">External providers</text><text x="39" y="341" class="s">Only on selected cloud routes</text><text x="39" y="359" class="s">STT · LLM · TTS · sync</text>
+          <path d="M246 265 C205 265 205 334 188 334" class="ln"/>
+          <rect x="18" y="432" width="170" height="70" rx="16" class="bx"/><text x="39" y="462" class="t">OS data directory</text><text x="39" y="484" class="s">Per-user files and models</text>
+          <path d="M246 364 C214 364 214 466 188 466" class="ln"/>
+        </svg>
+      </div>
+      <div class="callout critical" style="margin-top:14px"><div class="callout-icon">!</div><div><h3>Shutdown is intentionally forceful</h3><p>The controller tears down the Web UI process tree, closes runtime resources and ultimately uses <code>os._exit(0)</code> because UI/input libraries can leave non-daemon threads alive. Irreplaceable data must therefore be durable before shutdown reaches that point.</p></div></div>
+    </section>
+
+    <section id="startup">
+      <div class="section-head"><div class="section-no">03</div><div><h2>Startup sequence</h2><p class="section-intro">UI appears early; expensive model loading is deliberately moved behind the visible shell.</p></div></div>
+      <div class="steps">
+        <article class="step"><div><h3>Acquire single-instance ownership</h3><p>Bind loopback port <code>49517</code>. A later launch authenticates and asks the running instance to open its window.</p></div></article>
+        <article class="step"><div><h3>Create the controller UI spine</h3><p>Start the hidden Tk root, in-process island, tray thread and Tk dispatch queue.</p></div></article>
+        <article class="step"><div><h3>Recover durable work</h3><p>Create the Meeting recorder and start recovery for pending or interrupted recordings already on disk.</p></div></article>
+        <article class="step"><div><h3>Register essential input and IPC</h3><p>Register record, latest-paste, Deck, search and mode bindings independently; start the authenticated command server.</p></div></article>
+        <article class="step"><div><h3>Open the main window</h3><p>Spawn <code>webui_shell.py</code> before the speech model finishes loading, so the product becomes visible quickly.</p></div></article>
+        <article class="step"><div><h3>Warm audio and resolve models</h3><p>Probe PortAudio, choose a hardware/language-aware local model and load it unless cloud transcription deliberately defers local loading.</p></div></article>
+        <article class="step"><div><h3>Begin non-blocking services</h3><p>Start clipboard monitoring when enabled, validate configured AI access and check updates only if a signed publisher channel is configured.</p></div></article>
+      </div>
+    </section>
+
+    <section id="dictation">
+      <div class="section-head"><div class="section-no">04</div><div><h2>Dictation state and data flow</h2><p class="section-intro">State must describe reality. UI feedback is a projection of controller state, not a separate source of truth.</p></div></div>
+      <div class="diagram">
+        <div class="diagram-title"><b>Controller state machine</b><span>Primary happy path + recovery</span></div>
+        <div class="state-machine" role="img" aria-label="Loading to idle to listening to transcribing to processing to done to idle state machine">
+          <div class="state"><b>Loading</b><small>boot services</small></div><div class="state-arrow">→</div>
+          <div class="state"><b>Idle</b><small>ready / hidden</small></div><div class="state-arrow">→</div>
+          <div class="state"><b>Listening</b><small>audio capture</small></div><div class="state-arrow">→</div>
+          <div class="state"><b>Transcribing</b><small>STT route</small></div><div class="state-arrow">→</div>
+          <div class="state"><b>Building</b><small>shape output</small></div><div class="state-arrow">→</div>
+          <div class="state"><b>Done</b><small>save + paste</small></div><div class="state-arrow">↺</div>
+          <div class="state"><b>Idle</b><small>ready again</small></div>
+        </div>
+        <p style="margin:18px 0 0;color:var(--dim);font-size:10px">Any operational failure → <span class="red">Error</span> → user-visible notice/recovery → Idle. Mumble Search is a separate UI/controller route, not a dictation or island listening state; its shortcut is ignored while recording or processing so the dictation target keeps focus. The shell can cold-start either its compact Search window or its full workspace and lazily create the other without surfacing the wrong window.</p>
+      </div>
+      <div class="diagram" style="margin-top:14px">
+        <div class="diagram-title"><b>End-to-end dictation path</b><span>Persistence precedes user-facing paste</span></div>
+        <svg viewBox="0 0 1160 500" width="100%" role="img" aria-labelledby="dict-title dict-desc" style="min-width:900px">
+          <title id="dict-title">Mumble dictation pipeline</title><desc id="dict-desc">Hotkey triggers capture, optional streaming transcription, STT route, text shaping, history and stats persistence, then paste or save, with island feedback throughout.</desc>
+          <defs><marker id="da" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f4c76a"/></marker><style>.db{fill:#141714;stroke:#363a36}.dg{fill:#161712;stroke:#8b713d}.dt{fill:#f7f5ef;font:600 12px Inter,Segoe UI,sans-serif}.ds{fill:#88847c;font:10px Inter,Segoe UI,sans-serif}.dk{fill:#f4c76a;font:700 9px Inter,Segoe UI,sans-serif;letter-spacing:1px}.dp{fill:none;stroke:#f4c76a;marker-end:url(#da)}.dd{fill:none;stroke:#626762;stroke-dasharray:4 5}</style></defs>
+          <rect x="18" y="40" width="132" height="68" rx="14" class="dg"/><text x="36" y="68" class="dk">INPUT</text><text x="36" y="90" class="dt">Global shortcut</text>
+          <path d="M150 74H190" class="dp"/><rect x="190" y="40" width="150" height="68" rx="14" class="db"/><text x="208" y="68" class="dt">Capture audio</text><text x="208" y="89" class="ds">16 kHz · mono · float32</text>
+          <path d="M340 74H380" class="dp"/><rect x="380" y="40" width="150" height="68" rx="14" class="db"/><text x="398" y="68" class="dt">Stream chunks</text><text x="398" y="89" class="ds">local partial STT when active</text>
+          <path d="M530 74H570" class="dp"/><rect x="570" y="40" width="164" height="68" rx="14" class="dg"/><text x="588" y="68" class="dt">Finish capture</text><text x="588" y="89" class="ds">join partials + exact tail</text>
+          <path d="M734 74H774" class="dp"/><rect x="774" y="40" width="164" height="68" rx="14" class="db"/><text x="792" y="68" class="dt">STT decision</text><text x="792" y="89" class="ds">local or explicit cloud</text>
+          <path d="M938 74H978" class="dp"/><rect x="978" y="40" width="164" height="68" rx="14" class="dg"/><text x="996" y="68" class="dt">Raw transcript</text><text x="996" y="89" class="ds">normalise + vocabulary</text>
+          <path d="M1060 108V170" class="dp"/><rect x="774" y="170" width="368" height="84" rx="16" class="db"/><text x="795" y="198" class="dk">SHAPING ROUTER</text><text x="795" y="221" class="dt">Deterministic rules · local model · cloud provider</text><text x="795" y="240" class="ds">Mode, context and selected privacy route decide the lane</text>
+          <path d="M774 212H708" class="dp"/><rect x="500" y="170" width="208" height="84" rx="16" class="dg"/><text x="519" y="198" class="dk">FINISHED TEXT</text><text x="519" y="221" class="dt">Clean output</text><text x="519" y="240" class="ds">quality + via metadata attached</text>
+          <path d="M500 212H434" class="dp"/><rect x="218" y="170" width="216" height="84" rx="16" class="db"/><text x="237" y="198" class="dk">DURABLE FIRST</text><text x="237" y="221" class="dt">History + stats</text><text x="237" y="240" class="ds">save before paste/window refresh</text>
+          <path d="M326 254V322" class="dp"/>
+          <rect x="112" y="322" width="188" height="74" rx="15" class="db"/><text x="131" y="350" class="dt">Paste at cursor</text><text x="131" y="372" class="ds">clipboard + focused target</text>
+          <rect x="352" y="322" width="188" height="74" rx="15" class="db"/><text x="371" y="350" class="dt">Save without paste</text><text x="371" y="372" class="ds">explicit or safe fallback</text>
+          <path d="M326 300L206 322" class="dd"/><path d="M326 300L446 322" class="dd"/>
+          <rect x="650" y="322" width="246" height="74" rx="15" class="dg"/><text x="669" y="350" class="dt">Island result</text><text x="669" y="372" class="ds">Pasted or Saved · never false success</text>
+          <path d="M300 359H650" class="dd"/><path d="M540 359H650" class="dd"/>
+          <rect x="948" y="322" width="194" height="74" rx="15" class="db"/><text x="967" y="350" class="dt">Async UI refresh</text><text x="967" y="372" class="ds">Deck + tray after paste</text>
+          <path d="M896 359H948" class="dp"/>
+          <rect x="18" y="442" width="1124" height="38" rx="12" class="db"/><text x="40" y="466" class="ds">Island observes: listening → transcribing → building → done/error. It never owns business state.</text>
+        </svg>
+      </div>
+    </section>
+
+    <section id="routing">
+      <div class="section-head"><div class="section-no">05</div><div><h2>Processing and privacy routes</h2><p class="section-intro">“Local-first” describes a preference and a default, not every possible configured path.</p></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Operation</th><th>Local route</th><th>Cloud route</th><th>Data crossing device</th><th>Required UI truth</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Dictation STT</strong></td><td>faster-whisper; also the effective fallback when Cloud lacks a supported provider/key or the device-only override is on</td><td>Groq, OpenAI or OpenRouter STT when explicitly selected and ready</td><td>Effective Cloud route sends the voice clip</td><td>Show requested and effective route, provider and no-key/override reason</td></tr>
+            <tr><td><strong>Text shaping</strong></td><td>instant plain formatting, deterministic rules or configured local model backend</td><td>selected supported LLM provider when Pro, its matching key and route policy permit it</td><td>Transcript text plus selected context; never the original audio</td><td>Keep this route separate from STT and show no-key/unsupported fallback</td></tr>
+            <tr><td><strong>Reader speech</strong></td><td>No general local TTS path is guaranteed</td><td>OpenRouter TTS route</td><td>Document chunks</td><td>Disclose provider and document payload</td></tr>
+            <tr><td><strong>Reader summary</strong></td><td>Only when an appropriate local route is explicitly active</td><td>selected LLM route</td><td>Document text/chunks</td><td>Ask or disclose before transmission</td></tr>
+            <tr><td><strong>Meeting STT</strong></td><td>selected local transcription</td><td>selected cloud transcription</td><td>Meeting audio on cloud STT route</td><td>Never label all Meetings “local”</td></tr>
+            <tr><td><strong>Cloud sync</strong></td><td>disabled</td><td>configured Supabase backend</td><td>Enabled selected stores</td><td>Feature is currently hidden from consumers</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout" style="margin-top:14px"><div class="callout-icon">i</div><div><h3>Settings route contract</h3><p>The saved selection and effective route are different facts. A missing key, unsupported saved provider or device-only override keeps processing on-device without deleting provider, key, model or language choices. Settings exposes the reason and lets the user resolve it in the relevant Transcription or Processing section.</p></div></div>
+      <div class="callout ok" style="margin-top:14px"><div class="callout-icon">✓</div><div><h3>Safe wording pattern</h3><p>“Audio stays on this device in Local transcription. Cloud transcription sends the clip to [provider]. AI shaping sends transcript text and selected context, not the original audio.”</p></div></div>
+    </section>
+
+    <section id="background">
+      <div class="section-head"><div class="section-no">06</div><div><h2>Background work</h2><p class="section-intro">Know which thread or process owns a responsibility before changing state or UI.</p></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Worker</th><th>Lifetime</th><th>Responsibility</th><th>Communication / constraint</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Tk main thread</strong></td><td>application</td><td>Island, Tk lifecycle and queued UI calls</td><td>All Tk mutations marshal through <code>_tk_queue</code></td></tr>
+            <tr><td><strong>Tray thread</strong></td><td>application</td><td>pystray menu and notifications</td><td>Must not own controller state</td></tr>
+            <tr><td><strong>Boot thread</strong></td><td>startup</td><td>bindings, IPC, Web UI spawn, model loading, warm-up</td><td>UI opens before slow model load completes</td></tr>
+            <tr><td><strong>Audio callback</strong></td><td>recording</td><td>Capture blocks and level samples</td><td>Keep work tiny; queue UI updates</td></tr>
+            <tr><td><strong>Streaming STT worker</strong></td><td>dictation</td><td>Transcribe complete chunks during capture</td><td>Exact sample seam prevents gaps/duplication</td></tr>
+            <tr><td><strong>Processing worker</strong></td><td>dictation</td><td>Final STT, shaping, persistence and paste</td><td><code>_processing</code> prevents overlapping capture</td></tr>
+            <tr><td><strong>Command server</strong></td><td>application</td><td>Controller API on <code>49519</code></td><td>Loopback + per-session token</td></tr>
+            <tr><td><strong>Web UI process</strong></td><td>window</td><td>pywebview host for lazy main + Search windows and JS↔Python bridges</td><td>Both share one local asset root; hidden Search stays warm; whole tree is killed on quit</td></tr>
+            <tr><td><strong>Clipboard monitor</strong></td><td>setting-dependent</td><td>Capture text/images for Deck context</td><td>Persistent history; avoid self-capture loops</td></tr>
+            <tr><td><strong>Meeting writer</strong></td><td>recording</td><td>Journal the capture, then stream 16-bit PCM to private WAV</td><td>Writer is explicitly joined when capture ends; a hard-exit WAV header is repaired from the canonical PCM layout</td></tr>
+            <tr><td><strong>Meeting processor</strong></td><td>after capture</td><td>Transcribe bounded WAV chunks, diarise and update the durable record</td><td>Pending, interrupted and crash-repaired captures resume on the next boot</td></tr>
+            <tr><td><strong>Update checker</strong></td><td>background</td><td>Fetch signed release manifest</td><td>Disabled until a publisher key/channel exists</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="data">
+      <div class="section-head"><div class="section-no">07</div><div><h2>Persistent data</h2><p class="section-intro">Per-user data lives in the OS-native application-data directory. Most stores use atomic temporary-file replacement.</p></div></div>
+      <div class="grid-3">
+        <article class="card"><span class="label">Windows</span><h3><code>%APPDATA%\Mumble</code></h3><p>Canonical current runtime.</p></article>
+        <article class="card"><span class="label">macOS</span><h3><code>~/Library/Application Support/Mumble</code></h3><p>Source-defined; native verification still required.</p></article>
+        <article class="card"><span class="label">Linux</span><h3><code>$XDG_DATA_HOME/Mumble</code></h3><p>Falls back to <code>~/.local/share/Mumble</code>.</p></article>
+      </div>
+      <div class="table-wrap" style="margin-top:14px">
+        <table>
+          <thead><tr><th>Store</th><th>File / directory</th><th>Contains</th><th>Important invariant</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Settings</strong></td><td><code>settings.json</code></td><td>Preferences and user-supplied provider keys</td><td>Validated load/write; atomic private primary + backup; visible recovery; fail-closed top-level and nested dirty-key merge</td></tr>
+            <tr><td><strong>Dictation</strong></td><td><code>history.json</code>, <code>transcripts.txt</code></td><td>Finished output, raw text and metadata</td><td>Save before paste; failed writes roll back and never claim success</td></tr>
+            <tr><td><strong>Statistics</strong></td><td><code>stats.json</code></td><td>Cumulative dictation and Reader metrics</td><td>Independent of transcript retention; atomic save, last-good backup recovery and failed-mutation rollback</td></tr>
+            <tr><td><strong>Clipboard</strong></td><td><code>clipboard.json</code> + images</td><td>Captured text/image context</td><td>Cross-process atomic save; delete image only after durable metadata removal</td></tr>
+            <tr><td><strong>Prompt/context</strong></td><td><code>prompts.json</code>, <code>conv_store.json</code></td><td>Completed prompt artefacts and captured conversation context</td><td>Prompt writers serialise across processes; corruption preserves recoverable history</td></tr>
+            <tr><td><strong>Reader</strong></td><td><code>reader_library.json</code></td><td>Documents, position, collections and reading history</td><td>Document payload routes need explicit privacy treatment</td></tr>
+            <tr><td><strong>Meetings</strong></td><td><code>meetings.json</code>, <code>meetings_audio/*.wav</code></td><td>Metadata, transcript segments, speakers and raw recording</td><td>Cross-process atomic generations; metadata durable before audio deletion</td></tr>
+            <tr><td><strong>Runtime</strong></td><td><code>mumble.log</code>, token files</td><td>Diagnostics and local IPC authentication</td><td>Never log secrets; token files are per-session/private</td></tr>
+            <tr><td><strong>Local models</strong></td><td><code>models/</code></td><td>User-selected GGUF files</td><td>Large assets remain outside source and release archive</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="modules">
+      <div class="section-head"><div class="section-no">08</div><div><h2>Source map</h2><p class="section-intro">Open the narrowest relevant module first, then trace outward to the controller and UI.</p></div></div>
+      <div class="grid-2">
+        <details open><summary>Application spine</summary><div class="details-body"><pre>mumble.py           controller, lifecycle, audio, orchestration, IPC
+webui_shell.py      pywebview host and Python API bridge
+webui/              zero-CDN workspace + standalone Search shell
+experimental/system_search/  bounded local Search engine + launcher UI
+overlay.py          floating island controller
+island_render.py    Pillow → Win32 layered-window renderer
+app_window.py       Tk Lite fallback
+bindings.py         keyboard and mouse binding boundary
+branding.py         names, version, paths and shared tokens</pre></div></details>
+        <details open><summary>Text and AI engines</summary><div class="details-body"><pre>formatting.py        deterministic cleanup + mode inference
+transcription.py     cloud STT route
+ai/                  providers, HTTP transport, STT/TTS and prompts
+local_engine.py      rules/local/cloud shaping router
+pipeline/            grammar, punctuation, formatting and cleanup stages
+models/              model registry, cache, download and backend management
+prompt_constitution.py  prompt construction rules
+foreign_boost.py     local foreign-term boosting</pre></div></details>
+        <details><summary>Feature workflows</summary><div class="details-body"><pre>meeting.py           durable capture and processing
+meeting_diarise.py   speaker assignment
+meeting_store.py     meeting metadata + audio lifecycle
+reader_parser.py     document extraction
+reader_store.py      Reader library and progress
+presets.py           Deck actions
+tips.py              usage-aware, self-retiring island hints</pre></div></details>
+        <details><summary>Stores and operations</summary><div class="details-body"><pre>settings.py          defaults, non-destructive migration, validation, merge and recovery
+history.py           transcript history and cumulative totals
+stats.py             independent product statistics
+clipboard.py         system clipboard monitor and assets
+context_store.py     captured conversation context
+prompt_memory.py     prompt thread/history
+update.py            signed-manifest update path
+cloud_sync.py        optional Supabase sync foundation
+autostart.py         OS login integration
+install.ps1          Windows installation</pre></div></details>
+        <details><summary>Quality systems</summary><div class="details-body"><pre>test_*.py            co-located procedural and behavioural tests
+run_tests.py         isolated subprocess runner; offline by default
+requirements-dev.txt development/test dependency entry point
+eval/                scenario harness, metrics and reporting
+perf/                profiling, diagnostics and optimisation
+platform/            shared platform probes/helpers
+Ports/macOS/         copied macOS application tree
+Ports/Linux/         copied Linux application tree</pre></div></details>
+        <details><summary>Platform direction</summary><div class="details-body"><p><strong>Current:</strong> Windows is canonical; macOS and Linux are copied trees with drift. <strong>Target:</strong> one shared core and one shared Web UI, with capability-based adapters for audio, global input, paste, windows, tray, paths and packaging.</p></div></details>
+      </div>
+    </section>
+
+    <section id="change">
+      <div class="section-head"><div class="section-no">09</div><div><h2>Change playbooks</h2><p class="section-intro">Trace the complete responsibility chain for the type of work you are doing.</p></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Change</th><th>Trace first</th><th>Minimum verification</th><th>Documentation</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Dictation / STT</strong></td><td>binding → capture → streaming seam → final STT → history → paste → island</td><td>mocked production-path behavioural test + one safe runtime smoke when possible</td><td>HANDBOOK if route/state changes; STATUS if readiness changes</td></tr>
+            <tr><td><strong>Smart Mode / AI</strong></td><td>UI selection → settings snapshot → route decision → provider/local engine → fallback → output</td><td>offline fallback, chosen provider contract, no-key path, context payload review</td><td>Privacy matrix + STATUS</td></tr>
+            <tr><td><strong>Meeting</strong></td><td>capture journal → disk writer → stop/repair → pending processing → recovery → delete</td><td>stop/quit/hard-exit recovery, delete audio, pause failure, long capture memory, Local/Cloud route truth</td><td>HANDBOOK data/background + STATUS</td></tr>
+            <tr><td><strong>Reader</strong></td><td>parser → store → chunking → TTS/summary provider → playback/progress</td><td>format fixture, long document, provider failure, disclosure path</td><td>Privacy matrix + STATUS</td></tr>
+            <tr><td><strong>Web UI</strong></td><td>HTML semantics → JS state → pywebview API → controller command</td><td>JS syntax, narrow/desktop layout, keyboard/focus and failure states</td><td>HANDBOOK only for changed contracts</td></tr>
+            <tr><td><strong>Search / shortcut</strong></td><td>settings default/migration → semantic collision check → controller registration → acknowledged UI command → Search engine → target opener</td><td>migration/custom preservation, transactional rollback, dictation isolation, keyboard/modal/error states and native Windows target smoke</td><td>HANDBOOK for route/default changes; STATUS for native readiness</td></tr>
+            <tr><td><strong>Persistence</strong></td><td>load → migration → mutation lock → atomic write → recovery → deletion</td><td>corrupt file, concurrent writers, interrupted write, privacy permissions</td><td>Data inventory + STATUS</td></tr>
+            <tr><td><strong>Port</strong></td><td>shared behaviour → capability seam → OS adapter</td><td>shared contract tests + native target run</td><td>STATUS platform evidence</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="verification">
+      <div class="section-head"><div class="section-no">10</div><div><h2>Verification discipline</h2><p class="section-intro">The isolated subprocess runner is the authoritative Windows offline entry point. Its complete baseline was green on 15 July 2026.</p></div></div>
+      <div class="grid-2">
+        <div>
+          <h3>Always safe and useful</h3>
+          <ul class="checklist">
+            <li><code>python -m compileall Internal/app</code> for Python syntax/import bytecode generation.</li>
+            <li><code>node --check Internal/app/webui/app.js</code> for JavaScript syntax when Node is available.</li>
+            <li><code>git diff --check</code> for whitespace and conflict artifacts.</li>
+            <li><code>python run_tests.py --list</code> to inspect the offline set without executing it.</li>
+            <li><code>python run_tests.py --pattern core_regressions</code> for the real local/cloud STT regression seam.</li>
+            <li><code>python run_tests.py --json test-results.json</code> for the full isolated offline baseline.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Use deliberately</h3>
+          <ul class="checklist block">
+            <li>Do not bypass <code>run_tests.py</code> with broad discovery in a user-configured data directory; procedural scripts can have import-time behaviour.</li>
+            <li>The runner sets a separate <code>MUMBLE_TEST_DATA_DIR</code> per script and strips credential-shaped environment variables in offline mode.</li>
+            <li>Live-provider tests require both <code>--live</code> and <code>MUMBLE_RUN_LIVE_TESTS=1</code>.</li>
+            <li>Do not count a source-inspection test as end-to-end behavioural coverage.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout ok" style="margin-top:14px"><div class="callout-icon">✓</div><div><h3>Windows baseline recorded</h3><p><code>run_tests.py --timeout 180 --json windows-audit-final.json</code> completed 65/65 offline scripts in 402.14 seconds on 15 July 2026. This proves the isolated software seams, not physical microphone/paste, live providers or release-package lifecycle.</p></div></div>
+    </section>
+
+    <section id="release">
+      <div class="section-head"><div class="section-no">11</div><div><h2>Release gates</h2><p class="section-intro">A source change is not a shipped release. Version 1.0 requires all of these gates, not a subset.</p></div></div>
+      <div class="grid-3">
+        <article class="card bad"><h3>Product correctness</h3><p>Core loop green; privacy copy route-aware; no false success; Meeting and Reader durability tested.</p></article>
+        <article class="card bad"><h3>Build integrity</h3><p>Clean environment, locked dependencies, archive rebuilt from current source and install/uninstall smoke-tested.</p></article>
+        <article class="card bad"><h3>Trust chain</h3><p>Signed application artifacts; Ed25519-signed update manifest; live HTTPS feed; no unsigned downgrade.</p></article>
+        <article class="card good"><h3>Test authority</h3><p>The Windows offline gate has one runner, isolated data, explicit live opt-in, timeouts and machine-readable results.</p></article>
+        <article class="card warn"><h3>Platform claim</h3><p>Shared-core parity or clearly scoped platform support, verified on native Windows, macOS and Linux.</p></article>
+        <article class="card warn"><h3>Documentation truth</h3><p>User guide, onboarding, settings, privacy statements and this Core agree with the released build.</p></article>
+      </div>
+      <p style="margin-top:16px;color:var(--muted);font-size:12px">The live gate status and ordered remediation plan are in <a href="STATUS.html">STATUS</a>.</p>
+    </section>
+
+    <footer class="foot"><span>Architecture is a model of current source, not a substitute for runtime evidence.</span><strong>HANDBOOK / 02</strong></footer>
+  </div></main>
+</div>
+<script src="_assets/core.js"></script>
+</body>
+</html>

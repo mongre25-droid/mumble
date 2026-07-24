@@ -1,0 +1,44 @@
+name: Engineering decision
+description: Record a costly-to-reverse technical or product choice and why it was made.
+title: "decision: "
+labels: ["kind: decision"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Decisions record the reason behind a choice. Do not use one for ordinary implementation detail. Link it from the planning map and affected implementation issues.
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision
+      description: What is decided, and what is explicitly not decided yet?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and evidence
+      description: Link the audit, Core records, measurements, and relevant source locations.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options considered
+      description: Include the realistic alternatives and why they were not chosen.
+    validations:
+      required: true
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Consequences and follow-up
+      description: State what this choice enables, what it prevents, and the implementation issues or owner actions that follow.
+    validations:
+      required: true
+  - type: input
+    id: review_trigger
+    attributes:
+      label: Review trigger
+      description: What new evidence, date, release, or changed condition would make this decision worth revisiting?
+    validations:
+      required: true

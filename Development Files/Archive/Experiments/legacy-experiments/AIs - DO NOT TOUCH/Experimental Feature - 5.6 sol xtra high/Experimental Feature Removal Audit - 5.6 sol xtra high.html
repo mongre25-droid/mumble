@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Experimental Feature Removal Audit — 5.6 sol xtra high</title>
+  <style>:root{--bg:#0a0a0b;--s:#121110;--b:#2a2820;--g:#d4af37;--gh:#ebcb65;--t:#f3eee1;--d:#b6ae99;--m:#8b826d;--ok:#5ab85a;font-family:"Segoe UI",system-ui,sans-serif;color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:radial-gradient(60% 30% at 20% 0,rgba(212,175,55,.08),transparent),var(--bg);color:var(--t);font-size:14px;line-height:1.65}.w{width:min(930px,calc(100% - 36px));margin:auto;padding:60px 0 80px}h1{margin:5px 0 8px;font-size:clamp(32px,6vw,52px);line-height:1.05;letter-spacing:-.04em}h2{margin-top:38px;font-size:22px}h3{margin-top:24px}.k{color:var(--g);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}.lead{max-width:760px;color:var(--d);font-size:16px}.box{padding:16px 18px;border:1px solid var(--b);border-radius:16px;background:linear-gradient(145deg,rgba(30,28,23,.9),rgba(18,17,16,.95));box-shadow:inset 0 1px rgba(245,238,222,.08)}code{padding:2px 5px;border-radius:6px;color:var(--g);background:rgba(212,175,55,.07);font:12px Consolas,monospace}pre{overflow:auto;padding:15px;border:1px solid var(--b);border-radius:14px;background:#080809;color:var(--d)}pre code{padding:0;background:none}li,p,td{color:var(--d)}li{margin:7px 0}strong,th{color:var(--t)}table{width:100%;border-collapse:collapse}th,td{padding:11px;border-bottom:1px solid var(--b);text-align:left;vertical-align:top}th{color:var(--g);font-size:10px;text-transform:uppercase;letter-spacing:.06em}.ok{color:var(--ok);font-weight:700}footer{margin-top:45px;padding-top:17px;border-top:1px solid var(--b);color:var(--m);font-size:11px}</style>
+</head>
+<body><main class="w">
+  <header><div class="k">Removal audit · AI-specific</div><h1>Experimental Feature Removal Audit — 5.6 sol xtra high</h1><p class="lead">Exact deletion and cleanup instructions for the Mumble Operator experiment. This audit covers only the implementation created by AI identity <strong>5.6 sol xtra high</strong>.</p></header>
+
+  <div class="box"><strong>Removal difficulty: one directory plus four documentation entries.</strong> No production runtime, release asset, dependency list, settings schema, user-data store, port, installer, launcher, or Mumble keyboard binding was modified.</div>
+
+  <h2>New files introduced</h2>
+  <p>All feature code and feature documentation live under one root:</p>
+  <pre><code>Development Files/Other/experiments/
+└── AIs - DO NOT TOUCH/
+    └── Experimental Feature - 5.6 sol xtra high/
+        ├── index.html
+        ├── styles.css
+        ├── app.js
+        ├── assistant_core.py
+        ├── desktop_host.py
+        ├── test_assistant_core.py
+        ├── Launch Experiment.bat
+        ├── README.html
+        └── Experimental Feature Removal Audit - 5.6 sol xtra high.html</code></pre>
+  <p>No file in this tree is imported by Mumble. The optional host starts only when a person explicitly launches it and stores no files.</p>
+
+  <h2>Existing files modified</h2>
+  <table>
+    <thead><tr><th>Existing file</th><th>Why it changed</th><th>Removal action</th></tr></thead>
+    <tbody>
+      <tr><td><code>Development Files/Core/README.html</code></td><td>A short architecture-map note identifies the isolated experiment directory and says it is excluded from production.</td><td>Remove only the paragraph labelled <strong>Isolated experiments (not shipped)</strong> that names <code>5.6 sol xtra high</code>.</td></tr>
+      <tr><td><code>Development Files/Core/STATUS.html</code></td><td>A present-state note records the prototype’s isolated status and honest limitations.</td><td>Remove only the subsection headed <strong>Isolated experiment — Operator (5.6 sol xtra high)</strong>.</td></tr>
+      <tr><td><code>Development Files/Core/HANDBOOK.html</code></td><td>A narrow experiment-boundary paragraph records that this code must not be treated as a production binding or engine.</td><td>Remove only the paragraph beginning <strong>Experimental isolation boundary (5.6 sol xtra high)</strong>.</td></tr>
+      <tr><td><code>Development Files/Core/LOGS.html</code></td><td>A dated append-only entry records completion of the isolated experiment.</td><td>Remove only the <strong>2026-07-10 — Isolated Operator experiment</strong> entry.</td></tr>
+    </tbody>
+  </table>
+  <p>Those core files already contained unrelated, uncommitted edits from other work before this experiment. Do not revert or replace either whole file; remove only the exact labelled blocks above.</p>
+
+  <h2>Dependencies introduced</h2>
+  <ul>
+    <li><span class="ok">No package dependency.</span> Python modules use only the standard library.</li>
+    <li><span class="ok">No CDN dependency.</span> HTML, CSS, SVG icons and JavaScript are local.</li>
+    <li><span class="ok">No runtime import.</span> Nothing under <code>Internal/app/</code> imports this experiment.</li>
+    <li><span class="ok">No startup dependency.</span> The host is not a service, scheduled task, startup entry or tray process.</li>
+    <li><span class="ok">No external account.</span> Newsletter and social actions are explicitly non-networked placeholders.</li>
+  </ul>
+
+  <h2>Exact removal procedure</h2>
+  <ol>
+    <li>If <code>desktop_host.py</code> is running, focus its terminal and press Ctrl+C. Confirm <code>http://127.0.0.1:8765/api/health</code> no longer responds. This stops the Right Shift watcher.</li>
+    <li>Delete the directory <code>Development Files/Other/experiments/AIs - DO NOT TOUCH/Experimental Feature - 5.6 sol xtra high/</code>.</li>
+    <li>If <code>AIs - DO NOT TOUCH</code> and then <code>experiments</code> are empty, delete those empty directories too.</li>
+    <li>Perform the four narrowly labelled core-document removals listed above. Preserve every unrelated line and concurrent edit.</li>
+    <li>Optionally clear the three experiment-only browser local-storage keys listed below. This is not necessary for Mumble because its production UI never reads them.</li>
+    <li>Run the residue checks and the normal documentation link check. No production build or port sync is required because production code never changed.</li>
+  </ol>
+
+  <h3>Optional browser cleanup</h3>
+  <pre><code>mumble-exp-56-saved-hours
+mumble-exp-56-milestone-seen
+mumble-exp-56-newsletter-preview</code></pre>
+
+  <h2>Residue checks</h2>
+  <p>From the repository root, both searches should return no results after the core-doc entries and directory are removed:</p>
+  <pre><code>rg -n -i "5\.6 sol xtra high|mumble-exp-56|Mumble Operator" "Development Files" "Internal"
+rg -n "desktop_host|assistant_core" "Internal"</code></pre>
+
+  <h2>Leftover hooks and cleanup assessment</h2>
+  <ul>
+    <li><strong>Keyboard hook:</strong> process-local polling only; disappears when the optional host exits. There is no Mumble binding to unregister.</li>
+    <li><strong>Local port:</strong> <code>127.0.0.1:8765</code> exists only while the host process runs. No firewall rule is added.</li>
+    <li><strong>Processes:</strong> the host may have opened a normal browser tab. Close it manually if still open.</li>
+    <li><strong>User files:</strong> none created. The host opens requested apps/paths/URLs but does not persist action history.</li>
+    <li><strong>Registry / startup / scheduled tasks:</strong> none.</li>
+    <li><strong>Mumble data:</strong> no access to <code>%APPDATA%\Mumble</code>, transcripts, stats, settings, API keys or clipboard stores.</li>
+    <li><strong>Ports:</strong> macOS and Linux copies were not made, so there is nothing to remove there.</li>
+    <li><strong>Release packaging:</strong> <code>Development Files/</code> is already excluded, so no release artefact contains the experiment.</li>
+  </ul>
+
+  <h2>Removal verification</h2>
+  <p>Removal is complete when the feature directory is absent, the exact four core-doc blocks are absent, both residue searches are empty, port 8765 is closed, and Mumble’s existing tests behave exactly as before. No database migration, settings migration, dependency uninstall or cache purge is required.</p>
+
+  <footer>Audit owner: 5.6 sol xtra high · Scope: this implementation only · Created 2026-07-10</footer>
+</main></body></html>

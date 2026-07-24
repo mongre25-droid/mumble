@@ -1,0 +1,310 @@
+---
+// LocalAI.astro — Unified local AI + privacy + BYO-AI section.
+// Includes: on-device transcription flow diagram, all 6 AI providers,
+// local model support, data residency, open-source transparency,
+// offline capability, no telemetry, no accounts, Pro Mode text-only,
+// no built-in/shared API key, Island behavioral properties,
+// Deck behavioral properties. Green-tinted privacy band preserved.
+---
+
+<section class="section" id="privacy">
+  <div class="container">
+
+    <!-- ================================================================== -->
+    <!-- 1. GREEN-TINTED PRIVACY BAND — "Private by architecture"           -->
+    <!-- ================================================================== -->
+    <div class="privacy-band reveal">
+      <div class="privacy-grid">
+        <!-- Left: claims -->
+        <div>
+          <span class="h-kicker shield-kicker">Private by architecture</span>
+          <h2>Your voice stays local by default.</h2>
+          <p class="section-lead">
+            Local Transcription is the default. Cloud Transcription is available
+            only when you deliberately select it and provide a provider key.
+            Speech-to-text runs on your machine with
+            <a href="https://github.com/SYSTRAN/faster-whisper" target="_blank" rel="noopener" style="color:var(--green);text-decoration:underline;text-underline-offset:3px">faster-whisper</a>.
+            Only finished text can ever reach a provider, and only
+            if you opt in with your own key.
+          </p>
+          <ul class="privacy-points">
+            <li>
+              <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>
+              </svg>
+              <span><b>Local mode keeps audio on-device.</b> Short dictation buffers are discarded after transcription; meeting recordings remain local until you delete them.</span>
+            </li>
+            <li>
+              <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>
+              </svg>
+              <span><b>Works fully offline</b> &mdash; turn Pro Mode off and nothing touches the network. Mumble keeps working with zero internet.</span>
+            </li>
+            <li>
+              <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>
+              </svg>
+              <span><b>No telemetry, no accounts</b> &mdash; Mumble doesn&rsquo;t phone home. No sign-up, no analytics, no usage tracking of any kind.</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Right: the audio-vs-text flow diagram (preserved from existing) -->
+        <div class="flowdiagram" aria-hidden="true">
+          <div class="fd-node audio">
+            <div class="fd-ic">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="3" width="6" height="11" rx="3"/>
+                <path d="M5 11a7 7 0 0014 0M12 18v3"/>
+              </svg>
+            </div>
+            <div>
+              <h4>Your audio</h4>
+              <p>Recorded &amp; transcribed on-device with faster-whisper</p>
+            </div>
+            <span class="fd-stay">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>
+              </svg>
+              Stays
+            </span>
+          </div>
+          <div class="fd-divider">
+            <span>then, only if you opt in&hellip;</span>
+            <span class="ln"></span>
+          </div>
+          <div class="fd-node text">
+            <div class="fd-ic">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 5h14M5 10h14M5 15h9"/>
+              </svg>
+            </div>
+            <div>
+              <h4>Just the text</h4>
+              <p>Sent to <em>your</em> AI, with <em>your</em> key</p>
+            </div>
+            <span class="fd-opt">Optional</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- 2. PRO-MODE — text-only transmission (your own key)                 -->
+    <!-- ================================================================== -->
+    <div class="privacy-points" style="margin-top: 28px; max-width: 680px;">
+      <div class="reveal">
+        <p style="color:var(--text-dim);font-size:.96rem;line-height:1.65">
+          <b style="color:var(--text)">Pro Mode itself sends text &mdash; not audio.</b>
+          When you enable AI polish, only the transcribed text is sent for polish.
+          The separate Cloud Transcription option sends audio only when you opt in.
+          Every key you use is yours,
+          stored only on your machine &mdash; you bring your own, or run a model
+          entirely locally. Mumble never ships with a key, never bundles a
+          default, and never supplies a key on your behalf.
+        </p>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- 3. BRING YOUR OWN AI — provider logos + local model support         -->
+    <!-- ================================================================== -->
+    <div style="margin-top: clamp(50px, 7vw, 90px);" class="reveal">
+      <span class="h-kicker">Your AI, your choice</span>
+      <h2 class="section-title">Bring your own AI keys.</h2>
+      <p class="section-lead" style="margin-bottom: 40px;">
+        Connect the provider you trust &mdash; or none at all.
+        Mumble works with six AI back-ends, including running a model
+        entirely on your own hardware.
+      </p>
+
+      <!-- Provider grid: 6 providers -->
+      <div class="provider-grid">
+        <!-- Cerebras -->
+        <div class="provider">
+          <svg class="pv-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
+          </svg>
+          <span class="pv-name">Cerebras</span>
+          <span class="pv-tag">Fast inference</span>
+        </div>
+
+        <!-- OpenAI -->
+        <div class="provider">
+          <svg class="pv-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3l2 4 4 .6-3 3 .7 4-3.7-2-3.7 2 .7-4-3-3 4-.6 2-4z"/>
+          </svg>
+          <span class="pv-name">OpenAI</span>
+          <span class="pv-tag">GPT models</span>
+        </div>
+
+        <!-- Anthropic -->
+        <div class="provider">
+          <svg class="pv-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4" y="4" width="16" height="16" rx="3"/>
+            <path d="M12 8v8M8 12h8"/>
+          </svg>
+          <span class="pv-name">Anthropic</span>
+          <span class="pv-tag">Claude models</span>
+        </div>
+
+        <!-- DeepSeek -->
+        <div class="provider">
+          <svg class="pv-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 12h4l2-6 4 12 3-6h7"/>
+          </svg>
+          <span class="pv-name">DeepSeek</span>
+          <span class="pv-tag">Reasoning</span>
+        </div>
+
+        <!-- Groq -->
+        <div class="provider">
+          <svg class="pv-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+          <span class="pv-name">Groq</span>
+          <span class="pv-tag">LPU speed</span>
+        </div>
+
+        <!-- Local (on-device) — gold accent -->
+        <div class="provider local">
+          <svg class="pv-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="14" rx="2"/>
+            <path d="M3 8h18M7 21h10"/>
+          </svg>
+          <span class="pv-name">Local</span>
+          <span class="pv-tag">On your machine</span>
+        </div>
+      </div>
+
+      <!-- Sub-points below the provider grid -->
+      <ul class="byoai-features">
+        <li>
+          <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>
+          </svg>
+          <span><b>20 one-tap AI presets</b> &mdash; 17 built-in (Summarise, Reply, Improve, Make formal, Extract action items, and more) plus 3 custom slots you define yourself.</span>
+        </li>
+        <li>
+          <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>
+          </svg>
+          <span><b>Your keys, and only yours</b> &mdash; every key is yours. Mumble never ships with a key, never bundles a default, and never supplies one on your behalf. No lock-in, no middleman.</span>
+        </li>
+        <li>
+          <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>
+          </svg>
+          <span><b>Run models locally</b> &mdash; connect a local model and keep everything &mdash; transcription, AI polish, and all data &mdash; on your own hardware.</span>
+        </li>
+        <li>
+          <svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>
+          </svg>
+          <span><b>Open source</b> &mdash; released under the MIT License and built on 22 open-source libraries. The code is yours to inspect, fork, and trust.</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- 4. ISLAND & DECK — behavioral properties                             -->
+    <!-- ================================================================== -->
+    <div style="margin-top: clamp(50px, 7vw, 90px);" class="reveal">
+      <span class="h-kicker">Built to stay out of your way</span>
+      <h2 class="section-title">Island and Deck — floating tools that never steal focus</h2>
+      <p class="section-lead" style="margin-bottom: 36px;">
+        These aren&rsquo;t ordinary windows. They&rsquo;re designed
+        to float above your work without interrupting it.
+      </p>
+
+      <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Island card -->
+        <article class="card sheen lift pad">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+            <div style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(160deg,rgba(212,175,55,.16),rgba(212,175,55,.04));border:1px solid rgba(212,175,55,.24);color:var(--gold);flex-shrink:0;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="22" height="22">
+                <rect x="3" y="3" width="18" height="18" rx="5"/>
+                <path d="M8 12h8"/>
+              </svg>
+            </div>
+            <h3 style="font-size:1.15rem;margin:0;">The Island</h3>
+          </div>
+          <p style="color:var(--text-dim);font-size:.95rem;line-height:1.6;margin-bottom:16px;">
+            A small floating pill that appears while you dictate. It sits above
+            every other window and is <b style="color:var(--text)">click-through</b>
+            &mdash; you can click right through it to the app behind.
+            <b style="color:var(--text)">Always on top</b>, it never steals focus
+            from what you&rsquo;re working on. It changes colour and label to
+            show what&rsquo;s happening: Listening, Transcribing, the current mode,
+            or Pasted.
+          </p>
+          <div class="chip-row">
+            <span class="chip-sm">Click-through</span>
+            <span class="chip-sm">Always on top</span>
+            <span class="chip-sm gold">Never steals focus</span>
+          </div>
+        </article>
+
+        <!-- Deck card -->
+        <article class="card sheen lift pad">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+            <div style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(160deg,rgba(212,175,55,.16),rgba(212,175,55,.04));border:1px solid rgba(212,175,55,.24);color:var(--gold);flex-shrink:0;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="22" height="22">
+                <rect x="3" y="4" width="18" height="5" rx="1.5"/>
+                <rect x="3" y="11" width="18" height="5" rx="1.5"/>
+                <path d="M6 18.5h12"/>
+              </svg>
+            </div>
+            <h3 style="font-size:1.15rem;margin:0;">The Deck</h3>
+          </div>
+          <p style="color:var(--text-dim);font-size:.95rem;line-height:1.6;margin-bottom:16px;">
+            The Deck is your command centre: every transcript, clipboard item,
+            and saved prompt in one searchable place. It is <b style="color:var(--text)">pinned by default</b>,
+            floating on top of other windows. While pinned it becomes
+            <b style="color:var(--text)">non-activating</b> &mdash; clicking it
+            never steals focus, so whatever you have highlighted in another app
+            stays live. Press <b style="color:var(--text)">Capture</b> in the Deck
+            header to pull that highlighted text straight into the Deck as a new item.
+          </p>
+          <div class="chip-row">
+            <span class="chip-sm">Pinned by default</span>
+            <span class="chip-sm">Non-activating</span>
+            <span class="chip-sm gold">Capture highlighted text</span>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- 5. DATA RESIDENCY + TRUST FOOTER                                     -->
+    <!-- ================================================================== -->
+    <div style="margin-top: clamp(40px, 5vw, 64px); text-align: center;" class="reveal">
+      <div class="card pad" style="border-color: rgba(90,184,90,.22); background: radial-gradient(ellipse 50% 60% at 50% 10%, rgba(90,184,90,.04), transparent 60%), var(--glass-grad);">
+        <div style="display:flex;flex-wrap:wrap;gap:12px 32px;justify-content:center;align-items:center;font-size:.9rem;color:var(--text-dim);">
+          <span style="display:inline-flex;align-items:center;gap:7px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="18" height="18">
+              <path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>
+            Everything stored locally in <code style="font-family:var(--mono);color:var(--gold);font-size:.84rem;">%APPDATA%\Mumble</code>
+          </span>
+          <span style="display:inline-flex;align-items:center;gap:7px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="18" height="18">
+              <path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>
+            No telemetry, no accounts, no sign-up
+          </span>
+          <span style="display:inline-flex;align-items:center;gap:7px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="18" height="18">
+              <path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>
+              <path d="M9 12l2 2 4-4"/>
+            </svg>
+            MIT Licensed &mdash; built on 22 open-source libraries
+          </span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>

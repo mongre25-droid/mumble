@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en" data-resolution="custom">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mumble — Launch</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #08080a;
+        font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        color: #f4efe3;
+      }
+      #master-root {
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+      }
+      .bg {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(1100px 700px at 50% 24%, rgba(235, 195, 92, 0.10), rgba(8, 8, 10, 0) 60%),
+          linear-gradient(165deg, #0b0b0d 0%, #08080a 60%, #0a0a0c 100%);
+      }
+      .vignette {
+        position: absolute;
+        inset: 0;
+        box-shadow: inset 0 0 200px rgba(0, 0, 0, 0.7);
+        pointer-events: none;
+        z-index: 50;
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+
+      /* logo / end */
+      .logo {
+        width: 132px;
+        height: 132px;
+        display: block;
+        filter: drop-shadow(0 14px 34px rgba(0, 0, 0, 0.55));
+      }
+      .wordmark {
+        font-size: 76px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin: 22px 0 0;
+        line-height: 1;
+      }
+      .wordmark em {
+        font-style: normal;
+        color: #ebc35c;
+      }
+      .end-rule {
+        width: 0;
+        height: 4px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, #c99a38, #f8dd8a);
+        margin: 26px 0 20px;
+      }
+      .end-tag {
+        font-size: 30px;
+        font-weight: 500;
+        letter-spacing: 0.05em;
+        color: #ebc35c;
+        margin: 0;
+      }
+      .end-ver {
+        margin: 16px 0 0;
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: 17px;
+        color: #807a6c;
+      }
+
+      /* full-bleed real screen */
+      .cover {
+        display: block;
+        width: 1340px;
+        height: auto;
+      }
+
+      /* mid-size real UI assets */
+      .ui-island {
+        display: block;
+        width: 660px;
+        height: auto;
+        filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.6));
+      }
+      .ui-bar {
+        display: block;
+        width: 660px;
+        height: auto;
+        filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.6));
+      }
+      .ui-cards {
+        display: block;
+        width: 1180px;
+        height: auto;
+        border-radius: 10px;
+        filter: drop-shadow(0 22px 46px rgba(0, 0, 0, 0.6));
+      }
+
+      .cap {
+        font-size: 40px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        margin: 0 0 38px;
+        text-align: center;
+      }
+      .cap em {
+        font-style: normal;
+        color: #ebc35c;
+      }
+      .cap-sub {
+        margin-top: 34px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="master-root"
+      data-composition-id="master"
+      data-width="1280"
+      data-height="720"
+      data-start="0"
+      data-duration="10"
+    >
+      <div class="bg"></div>
+
+      <!-- S1 logo -->
+      <section id="s1" class="scene">
+        <img class="logo" src="assets/ui/mumble.png" alt="" />
+        <h1 class="wordmark">Mum<em>ble</em></h1>
+      </section>
+
+      <!-- S2 hero (real home screen) -->
+      <section id="s2" class="scene">
+        <img class="cover" id="hero-img" src="assets/ui/screen_hero.png" alt="" />
+      </section>
+
+      <!-- S3 island listening -->
+      <section id="s3" class="scene">
+        <p class="cap">Press a key. <em>Speak.</em></p>
+        <img class="ui-island" src="assets/ui/island_listening.png" alt="" />
+      </section>
+
+      <!-- S4 smart modes -->
+      <section id="s4" class="scene">
+        <p class="cap">One voice. <em>Every format.</em></p>
+        <img class="ui-bar" src="assets/ui/bar_email.png" alt="" />
+      </section>
+
+      <!-- S5 pasted -->
+      <section id="s5" class="scene">
+        <p class="cap">Clean text — <em>instantly.</em></p>
+        <img class="ui-island" src="assets/ui/island_pasted.png" alt="" />
+      </section>
+
+      <!-- S6 cards -->
+      <section id="s6" class="scene">
+        <p class="cap">A deck for <em>your words.</em></p>
+        <img class="ui-cards" src="assets/ui/screen_cards.png" alt="" />
+      </section>
+
+      <!-- S7 end -->
+      <section id="s7" class="scene">
+        <img class="logo" src="assets/ui/mumble.png" alt="" />
+        <h1 class="wordmark">Mum<em>ble</em></h1>
+        <div class="end-rule" id="end-rule"></div>
+        <p class="end-tag">Speak. It types.</p>
+        <p class="end-ver">v0.9</p>
+      </section>
+
+      <div class="vignette"></div>
+
+      <script>
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+
+        const W = {
+          s1: [0.0, 1.3],
+          s2: [1.3, 3.0],
+          s3: [3.0, 4.5],
+          s4: [4.5, 6.0],
+          s5: [6.0, 7.4],
+          s6: [7.4, 8.4],
+          s7: [8.4, 10.0],
+        };
+        const F = 0.22;
+
+        function scene(id, win, hold) {
+          const [a, b] = win;
+          tl.fromTo("#" + id, { opacity: 0 }, { opacity: 1, duration: F, ease: "power2.out" }, a);
+          if (!hold) tl.to("#" + id, { opacity: 0, duration: F, ease: "power2.in" }, b - F);
+        }
+        ["s1", "s2", "s3", "s4", "s5", "s6"].forEach((id) => scene(id, W[id], false));
+        scene("s7", W.s7, true);
+
+        // S1 — logo pop + wordmark
+        tl.fromTo("#s1 .logo", { scale: 0.6, y: 6 }, { scale: 1, y: 0, duration: 0.5, ease: "back.out(1.8)" }, W.s1[0] + 0.05);
+        tl.fromTo("#s1 .wordmark", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, W.s1[0] + 0.28);
+
+        // S2 — hero cover slow zoom (premium drift)
+        tl.fromTo("#hero-img", { scale: 1.12 }, { scale: 1.0, duration: W.s2[1] - W.s2[0] + 0.2, ease: "power1.out" }, W.s2[0]);
+
+        // S3 — caption up + island pop
+        tl.fromTo("#s3 .cap", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, W.s3[0] + 0.1);
+        tl.fromTo("#s3 .ui-island", { scale: 0.82, y: 14 }, { scale: 1, y: 0, duration: 0.45, ease: "back.out(1.7)" }, W.s3[0] + 0.12);
+
+        // S4 — caption + bar pop
+        tl.fromTo("#s4 .cap", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" }, W.s4[0] + 0.1);
+        tl.fromTo("#s4 .ui-bar", { scale: 0.82, y: 14 }, { scale: 1, y: 0, duration: 0.45, ease: "back.out(1.7)" }, W.s4[0] + 0.12);
+
+        // S5 — caption + pasted pop (satisfying)
+        tl.fromTo("#s5 .cap", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "power3.out" }, W.s5[0] + 0.08);
+        tl.fromTo("#s5 .ui-island", { scale: 0.78 }, { scale: 1, duration: 0.42, ease: "back.out(2)" }, W.s5[0] + 0.1);
+
+        // S6 — caption + cards slide
+        tl.fromTo("#s6 .cap", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, W.s6[0] + 0.06);
+        tl.fromTo("#s6 .ui-cards", { scale: 0.9, y: 24 }, { scale: 1, y: 0, duration: 0.5, ease: "power3.out" }, W.s6[0] + 0.08);
+
+        // S7 — end card: logo pop, rule sweep, tagline
+        tl.fromTo("#s7 .logo", { scale: 0.7 }, { scale: 1, duration: 0.5, ease: "back.out(1.8)" }, W.s7[0] + 0.45);
+        tl.fromTo("#s7 .wordmark", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, W.s7[0] + 0.6);
+        tl.to("#end-rule", { width: 320, duration: 0.5, ease: "power3.out" }, W.s7[0] + 0.8);
+        tl.fromTo("#s7 .end-tag", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, W.s7[0] + 1.0);
+        tl.fromTo("#s7 .end-ver", { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, W.s7[0] + 1.15);
+
+        window.__timelines["master"] = tl;
+      </script>
+    </div>
+
+    <!-- sound design only: whooshes, sub-impacts, UI ticks (no voice, no instruments) -->
+    <audio id="sfx" src="assets/sfx.wav" data-start="0" data-track-index="10" data-volume="0.85"></audio>
+  </body>
+</html>

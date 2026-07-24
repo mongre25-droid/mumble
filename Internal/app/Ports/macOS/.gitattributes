@@ -1,0 +1,6 @@
+# macOS scripts and bundled source must retain LF endings even when the
+# repository is edited from a Windows checkout.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary

@@ -1,0 +1,15 @@
+{
+  "mode": "offline",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "seconds": 15.29,
+  "results": [
+    {
+      "test": "test_api_stability.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 15.29
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+---
+// Solution.astro — Solution narrative using PAS framework.
+// Bridges from Problem section, positions Mumble as the unified answer.
+// Outcome-focused copy: local-first, works anywhere, privacy by architecture.
+// Uses existing .card, .problem-turn, and glass-card styling from global.css.
+---
+
+<section class="section" id="solution">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="h-kicker center">The Solution</span>
+      <h2 class="section-title">
+        Mumble is the unified answer.
+      </h2>
+      <p class="section-lead">
+        One tool that listens to you in any app, captures every meeting, and
+        keeps your voice on your machine. No trade-offs between privacy and
+        productivity.
+      </p>
+    </div>
+
+    <!-- Bridging callout card -->
+    <div class="card sheen lift pad reveal d1" style="text-align:center; padding: clamp(32px, 4vw, 52px); margin-top: 42px;">
+      <div class="problem-turn">
+        There&rsquo;s a better way.{" "}
+        <span class="t-gold">Mumble bridges the gap.</span>
+      </div>
+
+      <div class="grid solution-pillars">
+        <!-- Local-first pillar -->
+        <div style="display: flex; gap: 14px; align-items: flex-start;">
+          <span style="width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; flex: 0 0 auto; color: var(--green); background: rgba(90,184,90,.12); border: 1px solid rgba(90,184,90,.28);">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="5" y="11" width="14" height="9" rx="2"/>
+              <path d="M8 11V8a4 4 0 018 0v3"/>
+            </svg>
+          </span>
+          <div>
+            <h4 style="font-size:1.05rem; margin-bottom:4px; letter-spacing:-.01em;">Stays on your machine</h4>
+            <p style="color:var(--text-dim); font-size:.93rem; line-height:1.55;">
+              In the default Local mode, faster-whisper transcribes audio on your
+              machine with no upload. Cloud Transcription is a separate opt-in.
+            </p>
+          </div>
+        </div>
+
+        <!-- Works anywhere pillar -->
+        <div style="display: flex; gap: 14px; align-items: flex-start;">
+          <span style="width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; flex: 0 0 auto; color: var(--gold); background: rgba(212,175,55,.12); border: 1px solid rgba(212,175,55,.24);">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 3H3v12h18V3z"/>
+              <path d="M7 19h10M9 15v4M15 15v4"/>
+            </svg>
+          </span>
+          <div>
+            <h4 style="font-size:1.05rem; margin-bottom:4px; letter-spacing:-.01em;">Works in every app</h4>
+            <p style="color:var(--text-dim); font-size:.93rem; line-height:1.55;">
+              Email, chat, docs, code editors, anywhere your cursor blinks.
+              Press a hotkey, speak, and clean text lands where you need it.
+            </p>
+          </div>
+        </div>
+
+        <!-- AI-optional pillar -->
+        <div style="display: flex; gap: 14px; align-items: flex-start;">
+          <span style="width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; flex: 0 0 auto; color: var(--mode-prompt); background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.24);">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l1.6 4L18 8.5l-4.4 1.5L12 14l-1.6-4L6 8.5 10.4 7 12 3z"/>
+            </svg>
+          </span>
+          <div>
+            <h4 style="font-size:1.05rem; margin-bottom:4px; letter-spacing:-.01em;">AI optional, always yours</h4>
+            <p style="color:var(--text-dim); font-size:.93rem; line-height:1.55;">
+              Polish and reshape with your own AI keys &mdash; or skip the cloud
+              entirely and work fully offline. No lock-in, no middleman.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outcome-focused closing -->
+      <p style="margin-top: 36px; color: var(--text-dim); font-size: 1rem; line-height: 1.65; max-width: 56ch; margin-inline: auto;">
+        <strong style="color: var(--text);">One hotkey. Every app. Local by default.</strong>
+        Mumble replaces scattered tools, slow typing, and privacy compromises with
+        a single, local-first voice layer that works everywhere you write.
+      </p>
+    </div>
+  </div>
+</section>

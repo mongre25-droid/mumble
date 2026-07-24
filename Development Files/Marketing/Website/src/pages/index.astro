@@ -1,0 +1,18 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Hero from '../components/Hero.astro';
+import ProductExperience from '../components/ProductExperience.astro';
+import Privacy from '../components/Privacy.astro';
+import Download from '../components/Download.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<BaseLayout>
+  <Header slot="header" />
+  <Hero />
+  <ProductExperience />
+  <Privacy />
+  <Download />
+  <Footer slot="footer" />
+</BaseLayout>

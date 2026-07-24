@@ -1,0 +1,16 @@
+---
+export interface Props {
+  compact?: boolean;
+}
+
+const { compact = false } = Astro.props;
+---
+
+<span class:list={['logo', { 'logo-compact': compact }]} aria-hidden="true">
+  <span class="logo-mark">
+    <svg viewBox="0 0 28 28" fill="none">
+      <path d="M5 12v4M9.5 8.5v11M14 5v18M18.5 8.5v11M23 12v4" />
+    </svg>
+  </span>
+  <span class="logo-word">Mumble</span>
+</span>

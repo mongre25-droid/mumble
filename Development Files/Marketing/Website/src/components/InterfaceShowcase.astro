@@ -1,0 +1,278 @@
+---
+// InterfaceShowcase.astro — App interface showcase with tabbed panes.
+// Tabs switch between Home, Deck, Stats, Reader, and Settings views.
+// JS logic in demos.js handles tab switching client-side.
+---
+
+<section class="section" id="interface">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="h-kicker center">The interface</span>
+      <h2 class="section-title">A window designed for how you work</h2>
+      <p class="section-lead">
+        A resizable window that opens as a tall column and returns to that
+        default on every launch. Every view is keyboard-navigable with ARIA
+        labels and managed focus.
+      </p>
+    </div>
+
+    <!-- Showcase tabs (external to the window) -->
+    <div class="showcase-tabs reveal" role="tablist" aria-label="App screens">
+      <button class="sc-tab" data-pane="home" role="tab" aria-selected="false">Home</button>
+      <button class="sc-tab" data-pane="deck" role="tab" aria-selected="false">Deck</button>
+      <button class="sc-tab" data-pane="stats" role="tab" aria-selected="false">Stats</button>
+      <button class="sc-tab" data-pane="reader" role="tab" aria-selected="false">Reader</button>
+      <button class="sc-tab" data-pane="settings" role="tab" aria-selected="false">Settings</button>
+    </div>
+
+    <!-- Window mockup -->
+    <div class="window reveal d1">
+      <!-- Title bar -->
+      <div class="win-titlebar">
+        <div class="brand">
+          <div class="brand-row">
+            <span class="brand-badge" style="width:30px;height:30px">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <g stroke="#D4AF37" stroke-width="2.4" stroke-linecap="round">
+                  <line x1="4" y1="10" x2="4" y2="14"/>
+                  <line x1="8" y1="7" x2="8" y2="17"/>
+                  <line x1="12" y1="4" x2="12" y2="20"/>
+                  <line x1="16" y1="7" x2="16" y2="17"/>
+                  <line x1="20" y1="10" x2="20" y2="14"/>
+                </g>
+              </svg>
+            </span>
+            <span class="brand-name">Mumble</span>
+          </div>
+          <span class="win-status" id="winStatus">
+            <span class="sd"></span>
+            <span class="st">Ready</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Pane nav -->
+      <div class="win-nav">
+        <div class="pills">
+          <button class="np" data-pane="home">Home</button>
+          <button class="np" data-pane="deck">Deck</button>
+          <button class="np" data-pane="stats">Stats</button>
+          <button class="np" data-pane="reader">Reader</button>
+          <button class="np" data-pane="settings">Settings</button>
+        </div>
+      </div>
+
+      <!-- Panes -->
+      <div class="win-body">
+        <!-- HOME -->
+        <div class="win-pane" data-pane="home">
+          <div class="sc-hero">
+            <span class="eyebrow">Voice-first AI productivity</span>
+            <h3>Speak. <span class="t-gold">Get clean text pasted.</span></h3>
+            <p>Transcribed locally &mdash; clean text pasted wherever you're writing. Open the Deck to shape and repurpose your words.</p>
+            <div class="wave-wrap" style="padding:6px 0">
+              <div class="waveform" id="scWave" style="height:46px"></div>
+            </div>
+          </div>
+          <div class="sc-cards">
+            <div class="sc-card">
+              <div class="ci">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="5" rx="1.5"/>
+                  <rect x="3" y="11" width="18" height="5" rx="1.5"/>
+                </svg>
+              </div>
+              <h4>The Deck</h4>
+              <p>Everything you've said &amp; copied</p>
+            </div>
+            <div class="sc-card">
+              <div class="ci">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 6c-2-1.3-5-1.3-7 0v11c2-1.3 5-1.3 7 0m0-11c2-1.3 5-1.3 7 0v11c-2-1.3-5-1.3-7 0"/>
+                </svg>
+              </div>
+              <h4>Reader Mode</h4>
+              <p>Any document, read aloud</p>
+            </div>
+            <div class="sc-card">
+              <div class="ci">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7"/>
+                  <path d="M21 21l-4.3-4.3"/>
+                </svg>
+              </div>
+              <h4>Web Search</h4>
+              <p>Speak &rarr; search in one press</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- DECK -->
+        <div class="win-pane" data-pane="deck">
+          <div class="deck-mock">
+            <div class="deck-row">
+              <div class="dr-main">
+                <div class="dr-meta">
+                  <span class="mode-dot" style="background:var(--mode-prompt)"></span>
+                  <span class="tag" style="color:var(--mode-prompt);background:color-mix(in srgb,var(--mode-prompt) 14%,transparent)">Prompt</span>
+                  <span>Today &middot; 4:31pm &middot; 64 words</span>
+                </div>
+                <div class="dr-text">Write a concise launch announcement for a privacy-first dictation app aimed at knowledge workers, friendly but confident&hellip;</div>
+              </div>
+              <button class="star on" aria-label="favourited">&#9733;</button>
+            </div>
+            <div class="deck-row">
+              <div class="dr-main">
+                <div class="dr-meta">
+                  <span class="mode-dot" style="background:var(--mode-email)"></span>
+                  <span class="tag" style="color:var(--mode-email);background:color-mix(in srgb,var(--mode-email) 14%,transparent)">Email</span>
+                  <span>Today &middot; 2:14pm &middot; 48 words</span>
+                </div>
+                <div class="dr-text">Hi Sarah, thanks for the quick turnaround &mdash; the latest revision looks great. Let's ship Friday. Best, Alex</div>
+              </div>
+              <button class="star" aria-label="favourite">&#9733;</button>
+            </div>
+            <div class="deck-row">
+              <div class="dr-main">
+                <div class="dr-meta">
+                  <span class="mode-dot" style="background:var(--mode-text)"></span>
+                  <span class="tag" style="color:var(--mode-text);background:color-mix(in srgb,var(--mode-text) 14%,transparent)">Text</span>
+                  <span>Yesterday &middot; 6:05pm &middot; 22 words</span>
+                </div>
+                <div class="dr-text">Quick note from the call: they want the beta by end of month and a pricing page before launch.</div>
+              </div>
+              <button class="star" aria-label="favourite">&#9733;</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STATS -->
+        <div class="win-pane" data-pane="stats">
+          <div class="sc-stats">
+            <div class="sc-stat">
+              <div class="n">128,440</div>
+              <div class="l">Total words</div>
+              <div class="d">&#9650; 12% this week</div>
+            </div>
+            <div class="sc-stat">
+              <div class="n">~9h</div>
+              <div class="l">Time saved</div>
+              <div class="d">vs typing</div>
+            </div>
+            <div class="sc-stat">
+              <div class="n">137</div>
+              <div class="l">Avg WPM</div>
+            </div>
+            <div class="sc-chart" id="scChart" aria-hidden="true"></div>
+          </div>
+        </div>
+
+        <!-- READER -->
+        <div class="win-pane sc-reader" data-pane="reader">
+          <p class="reader-text" id="ifReaderText">
+            <span class="w">Mumble</span>
+            <span class="w"> reads</span>
+            <span class="w"> any</span>
+            <span class="w"> document</span>
+            <span class="w"> aloud,</span>
+            <span class="w"> lighting</span>
+            <span class="w"> each</span>
+            <span class="w"> word</span>
+            <span class="w"> in</span>
+            <span class="w"> gold</span>
+            <span class="w"> as</span>
+            <span class="w"> it's</span>
+            <span class="w"> spoken.</span>
+          </p>
+          <div class="reader-controls">
+            <span class="play">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+            </span>
+            <span class="mono t-mute" style="font-size:.8rem">0:08</span>
+            <span class="track-line"></span>
+            <span class="mono t-mute" style="font-size:.8rem">0:24</span>
+          </div>
+        </div>
+
+        <!-- SETTINGS -->
+        <div class="win-pane" data-pane="settings">
+          <div class="sc-set">
+            <div class="set-row">
+              <div>
+                <div class="set-label">Local transcription (default)</div>
+                <div class="set-sub">Runs on your device; cloud is opt-in</div>
+              </div>
+              <div class="switch on" aria-hidden="true">
+                <span class="track"></span>
+                <span class="thumb"></span>
+              </div>
+            </div>
+            <div class="set-row">
+              <div>
+                <div class="set-label">Pro Mode (AI polish)</div>
+                <div class="set-sub">Sends only text, with your own key</div>
+              </div>
+              <div class="switch" aria-hidden="true">
+                <span class="track"></span>
+                <span class="thumb"></span>
+              </div>
+            </div>
+            <div class="set-row">
+              <div>
+                <div class="set-label">Keep the Deck pinned</div>
+                <div class="set-sub">Floats on top; never steals focus</div>
+              </div>
+              <div class="switch on" aria-hidden="true">
+                <span class="track"></span>
+                <span class="thumb"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div><!-- .win-body -->
+    </div><!-- .window -->
+  </div>
+</section>
+
+<script>
+  import '../scripts/demos.js';
+
+  // Build waveform bars for the showcase Home pane
+  (function () {
+    "use strict";
+    var el = document.getElementById("scWave");
+    if (!el) return;
+    var rand = function (a: number, b: number) { return a + Math.random() * (b - a); };
+    var waveClasses = ["wv-a", "wv-b", "wv-c", "wv-d", "wv-e"];
+    var count = 18;
+    var maxH = 40;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < count; i++) {
+      var b = document.createElement("span");
+      b.className = "wb " + waveClasses[i % waveClasses.length];
+      var t = 1 - Math.abs(i - (count - 1) / 2) / ((count - 1) / 2);
+      var h = (0.32 + 0.68 * t) * maxH * rand(0.62, 1);
+      b.style.height = Math.max(8, h).toFixed(0) + "px";
+      b.style.setProperty("--dur", rand(0.8, 1.4).toFixed(2) + "s");
+      b.style.animationDelay = (i * 0.045).toFixed(2) + "s";
+      frag.appendChild(b);
+    }
+    el.appendChild(frag);
+  })();
+
+  // Build stats chart bars
+  (function () {
+    var chart = document.getElementById("scChart");
+    if (!chart) return;
+    var rand = function (a: number, b: number) { return a + Math.random() * (b - a); };
+    var n = 16;
+    for (var i = 0; i < n; i++) {
+      var bar = document.createElement("div");
+      bar.className = "bar" + (i === n - 1 ? " today" : "");
+      var t = i / (n - 1);
+      var base = 24 + Math.sin(i * 0.9) * 16 + t * 46 + rand(-8, 8);
+      bar.style.height = Math.max(8, Math.min(100, base)).toFixed(0) + "%";
+      chart.appendChild(bar);
+    }
+  })();
+</script>

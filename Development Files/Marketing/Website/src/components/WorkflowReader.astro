@@ -1,0 +1,81 @@
+---
+// WorkflowReader.astro — Reader workflow section with word-highlight demo
+// and supported formats list. All copy verified against Internal/README.md.
+---
+
+<section class="section" id="reader-workflow">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="h-kicker center">Reader</span>
+      <h2 class="section-title">Have any document read aloud</h2>
+      <p class="section-lead">
+        Open PDFs, Word docs, EPUBs, and more. Mumble reads them in a natural
+        AI voice, with each word highlighted in gold as it's spoken.
+        Your library remembers where you left off.
+      </p>
+    </div>
+
+    <div class="grid" style="grid-template-columns: 1.1fr 0.9fr; gap: clamp(34px,5vw,64px); align-items: center; margin-top: 50px;">
+      <!-- left: word-highlight demo -->
+      <div class="card sheen pad reveal d1" style="text-align:center">
+        <div class="reader-mini">
+          <p class="reader-text" id="readerDemo">
+            <span class="w">Have</span>
+            <span class="w"> any</span>
+            <span class="w"> document</span>
+            <span class="w"> read</span>
+            <span class="w"> aloud</span>
+            <span class="w"> in</span>
+            <span class="w"> a</span>
+            <span class="w"> natural</span>
+            <span class="w"> AI</span>
+            <span class="w"> voice,</span>
+            <span class="w"> with</span>
+            <span class="w"> each</span>
+            <span class="w"> word</span>
+            <span class="w"> highlighted</span>
+            <span class="w"> as</span>
+            <span class="w"> it's</span>
+            <span class="w"> spoken.</span>
+          </p>
+          <div class="reader-controls">
+            <span class="play" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </span>
+            <span class="track-line"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- right: supported formats + library -->
+      <div class="reveal d1">
+        <h3 style="font-size:1.2rem;margin-bottom:16px">Supported formats</h3>
+        <div class="chip-row" style="margin-bottom:24px">
+          <span class="chip-sm">PDF</span>
+          <span class="chip-sm">DOCX</span>
+          <span class="chip-sm">EPUB</span>
+          <span class="chip-sm">HTML</span>
+          <span class="chip-sm">RTF</span>
+          <span class="chip-sm">Markdown</span>
+          <span class="chip-sm">TXT</span>
+          <span class="chip-sm">CSV</span>
+          <span class="chip-sm">ODT</span>
+          <span class="chip-sm">PPTX</span>
+          <span class="chip-sm">XLSX</span>
+        </div>
+
+        <h3 style="font-size:1.2rem;margin-bottom:16px">Your library remembers</h3>
+        <p class="t-dim" style="font-size:.95rem;line-height:1.6">
+          Open a document, start reading, and Mumble tracks your position.
+          Come back anytime &mdash; your library picks up right where you left
+          off. Tables render as proper HTML tables, and the view is fully
+          keyboard-navigable with ARIA labels and managed focus.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import '../scripts/demos.js';
+</script>

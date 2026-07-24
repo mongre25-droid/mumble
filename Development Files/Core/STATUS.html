@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble 0.95 — STATUS</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body><div class="wrap">
+<header class="doc-head">
+  <div class="kicker">Mumble 0.95 · Present state</div>
+  <h1>STATUS</h1>
+  <div class="meta"><div><span class="ico">◆</span><b>Last refreshed:</b> 24 July 2026</div><div><span class="ico">◆</span><b>Release position:</b> pre-release hardening</div><div><span class="ico">◆</span><b>Companions:</b> <a href="README.html">README</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div></div>
+</header>
+
+<div class="plain"><div class="tag">Current truth</div><div><p>Mumble is being treated as version <strong>0.95</strong>: the current product is implemented, but release confidence still depends on verification of packaging, clean installation, physical microphone/paste behaviour, signing, and publication.</p></div></div>
+
+<div class="tiles"><div class="tile"><div class="n">0.95</div><div class="l">Current source version</div></div><div class="tile"><div class="n">Local</div><div class="l">Default transcription path</div></div><div class="tile"><div class="n">Windows</div><div class="l">Product-contract platform</div></div><div class="tile"><div class="n">Gated</div><div class="l">Public release readiness</div></div></div>
+
+<h2><span class="sec">1</span>What is current</h2>
+<table><thead><tr><th>Area</th><th>State</th><th>Evidence boundary</th></tr></thead><tbody>
+  <tr><td>Dictation</td><td><span class="badge b-done">implemented</span></td><td>Hotkey capture, local faster-whisper transcription, formatting, optional shaping, clipboard-safe paste, and local history exist in <code>Internal/app/</code>.</td></tr>
+  <tr><td>Deck</td><td><span class="badge b-done">implemented</span></td><td>History, clipboard capture, favourites, search, presets, and real job execution are part of the current Web UI and controller.</td></tr>
+  <tr><td>Meetings</td><td><span class="badge b-done">implemented</span></td><td>Meeting recording, transcription, storage, search, retry, and export paths are present; hardware and long-session validation remain separate gates.</td></tr>
+  <tr><td>Reader</td><td><span class="badge b-done">implemented</span></td><td>Document import, parsing, progress, statistics, and optional text-to-speech are present.</td></tr>
+  <tr><td>Search</td><td><span class="badge b-exist">supported on Windows/Linux</span></td><td>Local app, file, and folder indexing is bounded and local; macOS does not load this surface.</td></tr>
+  <tr><td>Ports</td><td><span class="badge b-gated">maintained seams</span></td><td>macOS and Linux have separate launch, input, paste, overlay, storage, and packaging seams. They are not a substitute for release validation.</td></tr>
+</tbody></table>
+
+<h2><span class="sec">2</span>Verification and release gates</h2>
+<p>The folder and version changes have passed their structural checks. The runtime test gate is not yet green, so this record does not claim release readiness. The exact commands and interpretation are in <a href="HANDBOOK.html">HANDBOOK</a>.</p>
+<div class="callout"><strong>Measured local result on 24 July 2026:</strong> the isolated runner completed 70 scripts with 68 passing and 2 failing. <code>test_webui_api.py</code> failed at the existing “deck job returns honest notice” assertion; the earlier recorded pre-reorganization run also failed that same assertion. <code>test_bug_audit_regressions.py</code> hit the concurrency assertion <code>test_meeting_store_serialises_controller_and_webview_writers</code> in the full run and did not complete cleanly when isolated. These are open verification items, not evidence of a green release.</div>
+<ul>
+  <li><span class="badge b-gated">open</span> Isolated application test runner, Python compilation, and relevant JavaScript syntax checks. Compilation passed; two runtime test items remain open.</li>
+  <li><span class="badge b-done">passed locally</span> Rebuilt <code>Internal/Releases/Mumble.zip</code> from the current source: version <code>0.95</code>, 123 entries, and all package-layout checks passed.</li>
+  <li><span class="badge b-done">passed locally</span> Windows launcher verifier confirmed the current target, working directory, icon, entry script, shortcuts, and Flow Launcher paths.</li>
+  <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
+  <li><span class="badge b-gated">security review</span> Website dependency installation reported 4 audit findings (1 moderate, 3 high). No automatic dependency upgrade was applied because it could change the website; review is required before public publication.</li>
+  <li><span class="badge b-gated">release gate</span> Clean extraction, install, launch, update, and uninstall on a disposable Windows environment.</li>
+  <li><span class="badge b-gated">release gate</span> Physical microphone, global hotkey, focus-preserving paste, and clipboard restoration checks.</li>
+  <li><span class="badge b-gated">release gate</span> Signing, publisher identity, public release notes, and a tested rollback path.</li>
+</ul>
+
+<h2><span class="sec">3</span>Active priorities</h2>
+<ol>
+  <li>Investigate the two remaining application-test items and update this page with their measured resolution.</li>
+  <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
+  <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
+  <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>
+</ol>
+
+<h2><span class="sec">4</span>Documentation boundary</h2>
+<p>This page is the short present-state record. <a href="README.html">README</a> defines what Mumble is and how the project is organized. <a href="HANDBOOK.html">HANDBOOK</a> defines how to build and verify it. <a href="LOGS.html">LOGS</a> records completed milestones.</p>
+<blockquote><strong>Release truth:</strong> an updated source tree or a locally rebuilt ZIP is evidence of preparation, not evidence of a public release.</blockquote>
+
+<div class="doc-foot"><span>Mumble 0.95 · present state</span><span class="gold">STATUS</span></div>
+</div></body></html>

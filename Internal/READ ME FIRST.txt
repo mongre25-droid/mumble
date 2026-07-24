@@ -1,0 +1,50 @@
+============================================================
+  MUMBLE  -  local-first voice-to-text for Windows
+  Talk, and it types -- in any app.
+============================================================
+
+INSTALL  (one time, ~a few minutes)
+
+  1) Move this whole "Mumble" folder somewhere permanent first
+     -- for example, into your Documents folder.
+     (Don't run it from inside the .zip, and don't move it after
+      installing, or the shortcuts will break.)
+
+  2) Double-click   Install Mumble.bat
+
+     - If Windows shows a blue "Windows protected your PC" box,
+       click "More info"  ->  "Run anyway".
+       (That only appears because the file came from the internet.)
+
+     - It sets everything up by itself: it installs Python if you
+       don't already have it, downloads what it needs, and the
+       speech model. Just let it finish.
+
+  3) When it says "All done", Mumble is running in your system tray
+     (bottom-right corner -- the little microphone icon).
+     From now on it starts automatically every time you log in.
+
+
+HOW TO USE IT
+
+  - Click into any text box (browser, email, chat, anywhere).
+  - Tap   Ctrl + Windows .   Speak.   Tap   Ctrl + Windows   again.
+  - Your words are typed where your cursor is.
+
+  Click the tray microphone icon any time to open Mumble -- it has a
+  guide, settings, your history, Prompt toggle, and Deck actions.
+
+     Prompt toggle -> shapes your next dictation into a strong AI prompt
+     Deck           -> runs Email, List, Search, Reply, and other actions
+     Otherwise      -> types clean text
+
+
+REQUIREMENTS
+  - Windows 10 or 11, and an internet connection for the one-time setup.
+  - Local transcription runs on your PC. Optional Cloud transcription and
+    AI features send the disclosed audio or text to your selected provider.
+
+TO REMOVE IT LATER
+  - Double-click   Uninstall Mumble.bat , then delete the folder.
+
+Enjoy!

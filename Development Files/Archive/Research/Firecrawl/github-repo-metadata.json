@@ -1,0 +1,142 @@
+[
+    {
+        "repo":  "microsoft/UFO",
+        "stars":  9281,
+        "forks":  1038,
+        "updated":  "2026-07-12T05:17:09Z",
+        "license":  "MIT",
+        "language":  "Python",
+        "description":  "UFO³: Weaving the Digital Agent Galaxy",
+        "url":  "https://github.com/microsoft/UFO"
+    },
+    {
+        "repo":  "bytedance/UI-TARS-desktop",
+        "stars":  37934,
+        "forks":  3812,
+        "updated":  "2026-07-12T13:39:17Z",
+        "license":  "Apache-2.0",
+        "language":  "TypeScript",
+        "description":  "The Open-Source Multimodal AI Agent Stack: Connecting Cutting-Edge AI Models and Agent Infra",
+        "url":  "https://github.com/bytedance/UI-TARS-desktop"
+    },
+    {
+        "repo":  "OpenAdaptAI/OpenAdapt",
+        "stars":  1636,
+        "forks":  257,
+        "updated":  "2026-07-10T11:04:10Z",
+        "license":  "MIT",
+        "language":  "Python",
+        "description":  "Record a workflow once, compile it into a deterministic, self-healing automation that runs on your own machines. Open-source demonstration compiler for desktop workflows — local-first, model-optional, audit-ready.",
+        "url":  "https://github.com/OpenAdaptAI/OpenAdapt"
+    },
+    {
+        "repo":  "Simular-AI/Agent-S",
+        "stars":  12008,
+        "forks":  1409,
+        "updated":  "2026-07-12T11:34:47Z",
+        "license":  "Apache-2.0",
+        "language":  "Python",
+        "description":  "Agent S: an open agentic framework that uses computers like a human",
+        "url":  "https://github.com/simular-ai/Agent-S"
+    },
+    {
+        "repo":  "browser-use/browser-use",
+        "stars":  104348,
+        "forks":  11499,
+        "updated":  "2026-07-12T13:48:11Z",
+        "license":  "MIT",
+        "language":  "Python",
+        "description":  "?? Make websites accessible for AI agents. Automate tasks online with ease.",
+        "url":  "https://github.com/browser-use/browser-use"
+    },
+    {
+        "repo":  "browserbase/stagehand",
+        "stars":  23467,
+        "forks":  1613,
+        "updated":  "2026-07-12T13:43:51Z",
+        "license":  "MIT",
+        "language":  "TypeScript",
+        "description":  "The SDK For Browser Agents",
+        "url":  "https://github.com/browserbase/stagehand"
+    },
+    {
+        "repo":  "Skyvern-AI/skyvern",
+        "stars":  22202,
+        "forks":  2081,
+        "updated":  "2026-07-12T12:32:21Z",
+        "license":  "AGPL-3.0",
+        "language":  "Python",
+        "description":  "Automate browser based workflows with AI",
+        "url":  "https://github.com/Skyvern-AI/skyvern"
+    },
+    {
+        "repo":  "lavague-ai/LaVague",
+        "stars":  6379,
+        "forks":  573,
+        "updated":  "2026-07-11T15:15:58Z",
+        "license":  "Apache-2.0",
+        "language":  "Python",
+        "description":  "Large Action Model framework to develop AI Web Agents",
+        "url":  "https://github.com/lavague-ai/LaVague"
+    },
+    {
+        "repo":  "trycua/cua",
+        "stars":  19583,
+        "forks":  1287,
+        "updated":  "2026-07-12T13:44:44Z",
+        "license":  "MIT",
+        "language":  "HTML",
+        "description":  "Open-source infrastructure for Computer-Use Agents. Sandboxes, SDKs, and benchmarks to train and evaluate AI agents that can control full desktops (macOS, Linux, Windows).",
+        "url":  "https://github.com/trycua/cua"
+    },
+    {
+        "repo":  "pywinauto/pywinauto",
+        "stars":  6102,
+        "forks":  789,
+        "updated":  "2026-07-12T10:56:09Z",
+        "license":  "BSD-3-Clause",
+        "language":  "Python",
+        "description":  "Windows GUI Automation with Python (based on text properties)",
+        "url":  "https://github.com/pywinauto/pywinauto"
+    },
+    {
+        "repo":  "ggerganov/whisper.cpp",
+        "stars":  51730,
+        "forks":  5900,
+        "updated":  "2026-07-12T13:07:56Z",
+        "license":  "MIT",
+        "language":  "C++",
+        "description":  "Port of OpenAI\u0027s Whisper model in C/C++",
+        "url":  "https://github.com/ggml-org/whisper.cpp"
+    },
+    {
+        "repo":  "dscripka/openWakeWord",
+        "stars":  2520,
+        "forks":  300,
+        "updated":  "2026-07-12T10:11:29Z",
+        "license":  "Apache-2.0",
+        "language":  "Jupyter Notebook",
+        "description":  "An open-source audio wake word (or phrase) detection framework with a focus on performance and simplicity.",
+        "url":  "https://github.com/dscripka/openWakeWord"
+    },
+    {
+        "repo":  "alphacep/vosk-api",
+        "stars":  14931,
+        "forks":  1734,
+        "updated":  "2026-07-12T13:44:30Z",
+        "license":  "Apache-2.0",
+        "language":  "Jupyter Notebook",
+        "description":  "Offline speech recognition API for Android, iOS, Raspberry Pi and servers with Python, Java, C# and Node",
+        "url":  "https://github.com/alphacep/vosk-api"
+    },
+    {
+        "repo":  "microsoft/playwright",
+        "stars":  92666,
+        "forks":  6077,
+        "updated":  "2026-07-12T12:38:22Z",
+        "license":  "Apache-2.0",
+        "language":  "TypeScript",
+        "description":  "Playwright is a framework for Web Testing and Automation. It allows testing Chromium, Firefox and WebKit with a single API. ",
+        "url":  "https://github.com/microsoft/playwright"
+    }
+]

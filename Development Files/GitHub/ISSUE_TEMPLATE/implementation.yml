@@ -1,0 +1,41 @@
+name: Implementation work
+description: Define one bounded change with proof of completion and explicit blockers.
+title: "work: "
+labels: ["kind: implementation"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and intended result
+      description: Explain what is missing or wrong and what a user or developer will observe when it is fixed.
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Scope and boundaries
+      description: Name the relevant app areas and what must not change. Link the planning map and any decision ticket.
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Blocked by / blocks
+      description: Use GitHub issue numbers. Add the same links with GitHub's issue relationship control after creating the issue.
+      placeholder: "Blocked by #123. Blocks #124."
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance checks
+      description: List observable completion checks, including focused tests and any hardware or release proof needed.
+      placeholder: |
+        - [ ] A focused test covers the changed behaviour.
+        - [ ] The relevant offline checks pass.
+        - [ ] Documentation reflects the new reality.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks, assumptions, and owner decisions
+      description: Record anything not yet proven or requiring the owner (for example, credentials, signing identity, spending, or a live device).

@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble — Talk. Get clean text. Anywhere.</title>
+<meta name="description" content="Mumble is private, on-device voice-to-text for Windows, macOS & Linux. Press a key, speak, and clean text is pasted right where your cursor is. Audio never leaves your machine. Plus the Deck, Reader, and one-press voice search.">
+<meta name="theme-color" content="#0A0A0B">
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="assets/mumble.png">
+<link rel="apple-touch-icon" href="assets/mumble.png">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Mumble — Talk. Get clean text. Anywhere.">
+<meta property="og:description" content="Private, on-device voice-to-text. Speak anywhere, paste anywhere. Plus the Deck, Reader, and one-press voice search.">
+<meta property="og:image" content="assets/mumble.png">
+<meta name="twitter:card" content="summary">
+
+<!-- progressive enhancement: scroll-reveal only applies when JS is on -->
+<script>document.documentElement.classList.add('js');</script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="enhanced theme-nordic-frost">
+
+<a href="#hero" class="skip">Skip to content</a>
+<canvas id="dust" aria-hidden="true"></canvas>
+
+<!-- ============================== NAV ============================== -->
+<div class="nav-wrap" id="navWrap">
+  <nav class="nav" aria-label="Primary">
+    <a class="brand" href="#hero" aria-label="Mumble — home">
+      <span class="brand-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><g stroke="#D4AF37" stroke-width="2.4" stroke-linecap="round">
+          <line x1="4" y1="10" x2="4" y2="14"/><line x1="8" y1="7" x2="8" y2="17"/>
+          <line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="7" x2="16" y2="17"/>
+          <line x1="20" y1="10" x2="20" y2="14"/></g></svg>
+      </span>
+      <span class="brand-name">Mumble</span>
+    </a>
+    <ul class="nav-links">
+      <li><a class="nav-link" href="#how">How it works</a></li>
+      <li><a class="nav-link" href="#shift">Smart Modes</a></li>
+      <li><a class="nav-link" href="#privacy">Privacy</a></li>
+      <li><a class="nav-link" href="#inside">What's inside</a></li>
+      <li><a class="nav-link" href="#roadmap">Roadmap</a></li>
+    </ul>
+    <a class="btn btn-gold btn-sm nav-cta desk" href="#download">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+      Download
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/></svg>
+    </button>
+  </nav>
+</div>
+
+<div class="mobile-menu" id="mobileMenu">
+  <a href="#how">How it works</a>
+  <a href="#shift">Smart Modes</a>
+  <a href="#privacy">Privacy</a>
+  <a href="#inside">What's inside</a>
+  <a href="#roadmap">Roadmap</a>
+  <a class="btn btn-gold btn-block" href="#download">Download Mumble</a>
+</div>
+
+<main>
+
+<!-- ============================== HERO ============================= -->
+<section class="hero" id="hero">
+  <div class="container hero-grid">
+    <div class="hero-copy">
+      <span class="h-kicker reveal">Private, on-device voice-to-text</span>
+      <h1 class="reveal d1">Talk. Get clean text. <span class="gold-sheen">Anywhere.</span></h1>
+      <p class="hero-sub reveal d2">
+        Tap a key, speak, tap again — Mumble transcribes on your device and pastes clean,
+        shaped text right where your cursor is. In any app. Audio never leaves your machine.
+      </p>
+      <div class="hero-cta reveal d3">
+        <a class="btn btn-gold btn-lg" href="#download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+          Download for Windows
+        </a>
+        <a class="btn btn-lg btn-ghost" href="#how">See how it works</a>
+      </div>
+      <div class="value-badges reveal d4">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg> Audio transcribed locally</span>
+        <span class="vb-divider"></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v5m6-5v5M7 7h10v3a5 5 0 01-10 0V7zM12 15v5m-3 0h6"/></svg> Your own AI keys</span>
+        <span class="vb-divider"></span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 8h18M7 21h10"/></svg> Windows · macOS · Linux</span>
+      </div>
+    </div>
+
+    <div class="hero-visual reveal d2">
+      <div class="hero-stage" aria-hidden="true">
+        <div class="hero-stage-glow"></div>
+        <div class="stage-titlebar">
+          <span class="brand-badge"><svg viewBox="0 0 24 24" fill="none"><g stroke="#D4AF37" stroke-width="2.4" stroke-linecap="round"><line x1="4" y1="10" x2="4" y2="14"/><line x1="8" y1="7" x2="8" y2="17"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="7" x2="16" y2="17"/><line x1="20" y1="10" x2="20" y2="14"/></g></svg></span>
+          <span class="brand-name">Mumble</span>
+        </div>
+        <div class="wave-wrap"><div class="waveform recording" id="heroWave"></div></div>
+        <div class="stage-caption">Press <span class="kbd">Ctrl + Win</span> · speak · press again</div>
+      </div>
+      <div class="island-host">
+        <div class="island" id="heroIsland" role="status" aria-live="polite">
+          <span class="island-dot"></span>
+          <span class="island-mini-wave"><span style="--d:1.05s"></span><span style="--d:1.25s"></span><span style="--d:.95s"></span><span style="--d:1.15s"></span><span style="--d:1.3s"></span></span>
+          <span class="island-label">Listening</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= HOW IT WORKS ========================= -->
+<section class="section tight" id="how">
+  <div class="container">
+    <div class="how-strip">
+      <div class="how-step reveal">
+        <span class="how-n">1</span>
+        <div><h3>Press the hotkey</h3><p>From any app. The floating island appears — your cue it's listening.</p><span class="kbd">Ctrl + Win</span></div>
+      </div>
+      <div class="how-line" aria-hidden="true"></div>
+      <div class="how-step reveal d1">
+        <span class="how-n">2</span>
+        <div><h3>Speak naturally</h3><p>Full sentences. Transcribed on-device — punctuation and capitals handled.</p></div>
+      </div>
+      <div class="how-line" aria-hidden="true"></div>
+      <div class="how-step reveal d2">
+        <span class="how-n">3</span>
+        <div><h3>It pastes, shaped</h3><p>Press again. Clean text lands at your cursor and is saved to the Deck.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= SMART MODES (Big Shift) ============== -->
+<section class="section" id="shift">
+  <div class="container shift-grid">
+    <div class="reveal">
+      <span class="h-kicker">Smart Modes · The Big Shift</span>
+      <h2 class="section-title">It already knows the shape you meant.</h2>
+      <p class="section-lead">You don't pick a mode or learn commands. Mumble infers whether you wanted a list, an email, a reply, or clean text — and the one mode you <em>can</em> choose, Prompt, is a tap away on the island.</p>
+      <div class="mode-legend">
+        <span class="ml"><i style="background:var(--mode-list)"></i> List</span>
+        <span class="ml"><i style="background:var(--mode-email)"></i> Email</span>
+        <span class="ml"><i style="background:var(--mode-text)"></i> Text</span>
+        <span class="ml"><i style="background:var(--mode-reply)"></i> Reply</span>
+        <span class="ml"><i style="background:var(--mode-prompt)"></i> Prompt</span>
+        <span class="ml"><i style="background:var(--mode-foreign)"></i> Foreign</span>
+      </div>
+    </div>
+
+    <div class="card sheen shift-demo reveal d1">
+      <div class="shift-tabs" role="tablist" aria-label="Smart Mode examples">
+        <button class="shift-tab active" data-shift="list" style="--c:var(--mode-list)" role="tab" aria-selected="true"><span class="dot"></span>List</button>
+        <button class="shift-tab" data-shift="email" style="--c:var(--mode-email)" role="tab" aria-selected="false"><span class="dot"></span>Email</button>
+        <button class="shift-tab" data-shift="text" style="--c:var(--mode-text)" role="tab" aria-selected="false"><span class="dot"></span>Text</button>
+        <button class="shift-tab" data-shift="prompt" style="--c:var(--mode-prompt)" role="tab" aria-selected="false"><span class="dot"></span>Prompt</button>
+      </div>
+      <div class="shift-io">
+        <div class="shift-io-block">
+          <div class="io-label"><svg class="mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg> You say</div>
+          <div class="shift-said" id="shiftSaid">"milk, eggs, bread, and pick up the dry cleaning"</div>
+        </div>
+        <div class="shift-io-block">
+          <div class="io-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m0 0l-5-5m5 5l-5 5"/></svg> Mumble pastes</div>
+          <div class="shift-out" id="shiftOut" style="--oc:var(--mode-list)">
+            <span class="out-tag" id="shiftTag">List</span>
+            <div class="out-body" id="shiftBody"></div>
+          </div>
+        </div>
+      </div>
+      <p class="shift-note">Illustrative — your exact wording depends on the AI you connect.</p>
+    </div>
+  </div>
+</section>
+
+<!-- =========================== PRIVACY ============================ -->
+<section class="section" id="privacy">
+  <div class="container">
+    <div class="privacy-band reveal">
+      <div class="privacy-grid">
+        <div>
+          <span class="h-kicker shield-kicker">Private by architecture</span>
+          <h2>Your voice never leaves your device.</h2>
+          <p class="section-lead">Not a setting — it's how Mumble is built. Speech-to-text runs on your machine. Only finished text can ever reach a provider, and only if you opt in with your own key.</p>
+          <ul class="privacy-points">
+            <li><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg><span><b>Audio stays local</b> — transcribed on-device, never uploaded.</span></li>
+            <li><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg><span><b>No built-in key</b> — every key is yours, stored only on your machine.</span></li>
+            <li><svg class="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg><span><b>Works fully offline</b> — turn Pro Mode off and nothing touches the network.</span></li>
+          </ul>
+        </div>
+        <div class="flowdiagram" aria-hidden="true">
+          <div class="fd-node audio">
+            <div class="fd-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div>
+            <div><h4>Your audio</h4><p>Recorded &amp; transcribed on-device</p></div>
+            <span class="fd-stay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> Stays</span>
+          </div>
+          <div class="fd-divider"><span>then, only if you opt in…</span><span class="ln"></span></div>
+          <div class="fd-node text">
+            <div class="fd-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14M5 10h14M5 15h9"/></svg></div>
+            <div><h4>Just the text</h4><p>Sent to <i>your</i> AI, with <i>your</i> key</p></div>
+            <span class="fd-opt">Optional</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== WHAT'S INSIDE MUMBLE ==================== -->
+<section class="section" id="inside">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="h-kicker center">What's inside Mumble</span>
+      <h2 class="section-title">More than dictation</h2>
+    </div>
+
+    <div class="bento reveal">
+      <!-- Dictation -->
+      <article class="card sheen lift pad bento-item" style="--fc:var(--gold)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg></div>
+        <h3>Push-to-talk dictation</h3>
+        <p>One hotkey starts and stops recording from anywhere. Clean text appears at your cursor in any app.</p>
+        <span class="kbd">Ctrl + Win</span>
+      </article>
+
+      <!-- The Deck (featured) -->
+      <article class="card sheen lift pad bento-item span2" style="--fc:var(--gold)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/><path d="M6 18.5h12"/></svg></div>
+        <h3>The Deck <span class="kbd dim">Ctrl + Alt + H</span></h3>
+        <p>Your local workspace — every transcript, clipboard item and saved prompt in one searchable place. Tick items, pick a preset or Smart Mode, and Go to reshape them.</p>
+        <div class="feature-demo deck-mock">
+          <div class="deck-row"><div class="dr-main"><div class="dr-meta"><span class="mode-dot" style="background:var(--mode-email)"></span><span class="tag" style="color:var(--mode-email);background:color-mix(in srgb,var(--mode-email) 14%,transparent)">Email</span><span>Today · 48 words</span></div><div class="dr-text">Hi Sarah, thanks for the quick turnaround — the latest revision looks great. Let's ship Friday. Best, Alex</div></div><button class="star on" aria-label="favourited">★</button></div>
+          <div class="deck-row"><div class="dr-main"><div class="dr-meta"><span class="mode-dot" style="background:var(--mode-list)"></span><span class="tag" style="color:var(--mode-list);background:color-mix(in srgb,var(--mode-list) 14%,transparent)">List</span><span>Today · 12 words</span></div><div class="dr-text">Milk · Eggs · Bread · Pick up dry cleaning</div></div><button class="star" aria-label="favourite">★</button></div>
+        </div>
+      </article>
+
+      <!-- Reader (featured) -->
+      <article class="card sheen lift pad bento-item span2" style="--fc:var(--gold)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6c-2-1.3-5-1.3-7 0v11c2-1.3 5-1.3 7 0m0-11c2-1.3 5-1.3 7 0v11c-2-1.3-5-1.3-7 0m0-11v11"/></svg></div>
+        <h3>Reader Mode</h3>
+        <p>Have any document read aloud in a natural AI voice, with each word highlighted as it's spoken. Your library remembers where you left off.</p>
+        <div class="feature-demo reader-mini">
+          <p class="reader-text" id="readerText"><span class="w">Have</span> <span class="w">any</span> <span class="w">document</span> <span class="w">read</span> <span class="w">aloud</span> <span class="w">—</span> <span class="w">each</span> <span class="w">word</span> <span class="w">lights</span> <span class="w">up</span> <span class="w">as</span> <span class="w">it's</span> <span class="w">spoken.</span></p>
+          <div class="reader-controls"><span class="play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span><span class="track-line"></span></div>
+        </div>
+      </article>
+
+      <!-- Instant Web Search -->
+      <article class="card sheen lift pad bento-item" style="--fc:var(--mode-context)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+        <h3>Instant Web Search <span class="kbd dim">Ctrl + Alt + S</span></h3>
+        <p>Highlight text — or just speak — and your words become a search in one press. Perplexity opens with the answer already generating.</p>
+        <div class="feature-demo"><div class="chip-row"><span class="chip-sm">Google</span><span class="chip-sm">Perplexity</span><span class="chip-sm">Brave</span></div></div>
+      </article>
+
+      <!-- Smart Modes -->
+      <article class="card sheen lift pad bento-item" style="--fc:var(--mode-prompt)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4L18 8.5l-4.4 1.5L12 14l-1.6-4L6 8.5 10.4 7 12 3z"/></svg></div>
+        <h3>Smart Modes</h3>
+        <p>List, email, reply, prompt or foreign — inferred from what you said.</p>
+        <div class="feature-demo"><div class="mode-chips"><span class="mode-chip on" style="--c:var(--mode-email)">email</span><span class="mode-chip" style="--c:var(--mode-list)">list</span><span class="mode-chip" style="--c:var(--mode-reply)">reply</span><span class="mode-chip" style="--c:var(--mode-prompt)">prompt</span></div></div>
+      </article>
+
+      <!-- Pro Mode / BYO AI (featured) -->
+      <article class="card sheen lift pad bento-item span2" style="--fc:var(--gold)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v5m6-5v5M7 7h10v3a5 5 0 01-10 0V7zM12 15v5m-3 0h6"/></svg></div>
+        <h3>Pro Mode — bring your own AI</h3>
+        <p>Optional polish that hands <em>text</em> to the AI you choose. Connect Cerebras (free to start), OpenAI, Anthropic, DeepSeek or Groq — or run a model locally. No lock-in, no middleman.</p>
+        <div class="feature-demo"><div class="chip-row"><span class="chip-sm">Cerebras</span><span class="chip-sm">OpenAI</span><span class="chip-sm">Anthropic</span><span class="chip-sm">DeepSeek</span><span class="chip-sm">Groq</span><span class="chip-sm gold">Local</span></div></div>
+      </article>
+
+      <!-- Presets -->
+      <article class="card sheen lift pad bento-item" style="--fc:var(--gold)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2 4 4 .6-3 3 .7 4-3.7-2-3.7 2 .7-4-3-3 4-.6 2-4z"/></svg></div>
+        <h3>20 one-tap presets</h3>
+        <p>Summarise, reply, improve, make formal, extract action items… on any saved item.</p>
+      </article>
+
+      <!-- Stats -->
+      <article class="card sheen lift pad bento-item" style="--fc:var(--gold)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+        <h3>Real local stats</h3>
+        <p>Words, time saved, streaks and speed — computed on your machine. No invented numbers.</p>
+      </article>
+
+      <!-- Capture + Clipboard -->
+      <article class="card sheen lift pad bento-item" style="--fc:var(--mode-context)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3"/><path d="M8 12h8"/></svg></div>
+        <h3>Capture &amp; clipboard</h3>
+        <p>Pull highlighted text from any app into the Deck. Plus searchable clipboard history.</p>
+      </article>
+
+      <!-- Foreign -->
+      <article class="card sheen lift pad bento-item" style="--fc:var(--mode-foreign)">
+        <div class="feature-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg></div>
+        <h3>Foreign mode</h3>
+        <p>Speak across languages; Mumble preserves the terms others mangle, corrected on-device.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= INTERFACE SHOWCASE ===================== -->
+<section class="section" id="interface">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="h-kicker center">The interface</span>
+      <h2 class="section-title">Golden-black liquid glass</h2>
+    </div>
+
+    <div class="showcase-tabs reveal" role="tablist" aria-label="App screens">
+      <button class="sc-tab active" data-pane="home" role="tab" aria-selected="true">Home</button>
+      <button class="sc-tab" data-pane="deck" role="tab" aria-selected="false">Deck</button>
+      <button class="sc-tab" data-pane="stats" role="tab" aria-selected="false">Stats</button>
+      <button class="sc-tab" data-pane="reader" role="tab" aria-selected="false">Reader</button>
+      <button class="sc-tab" data-pane="settings" role="tab" aria-selected="false">Settings</button>
+    </div>
+
+    <div class="window reveal d1">
+      <div class="win-titlebar">
+        <div class="brand">
+          <div class="brand-row">
+            <span class="brand-badge" style="width:30px;height:30px"><svg viewBox="0 0 24 24" fill="none"><g stroke="#D4AF37" stroke-width="2.4" stroke-linecap="round"><line x1="4" y1="10" x2="4" y2="14"/><line x1="8" y1="7" x2="8" y2="17"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="7" x2="16" y2="17"/><line x1="20" y1="10" x2="20" y2="14"/></g></svg></span>
+            <span class="brand-name">Mumble</span>
+          </div>
+          <span class="win-status" id="winStatus"><span class="sd"></span><span class="st">Ready</span></span>
+        </div>
+      </div>
+      <div class="win-nav">
+        <div class="pills">
+          <button class="np active" data-pane="home">Home</button>
+          <button class="np" data-pane="deck">Deck</button>
+          <button class="np" data-pane="stats">Stats</button>
+          <button class="np" data-pane="reader">Reader</button>
+          <button class="np" data-pane="settings">Settings</button>
+        </div>
+      </div>
+      <div class="win-body">
+        <!-- HOME -->
+        <div class="win-pane active" data-pane="home">
+          <div class="sc-hero">
+            <span class="eyebrow">Voice-first AI productivity</span>
+            <h3>Speak. <span class="t-gold">Get clean text pasted.</span></h3>
+            <p>Transcribed locally — clean text pasted wherever you're writing. Open the Deck to shape and repurpose your words.</p>
+            <div class="wave-wrap" style="padding:6px 0"><div class="waveform" id="scWave" style="height:46px"></div></div>
+          </div>
+          <div class="sc-cards">
+            <div class="sc-card"><div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="11" width="18" height="5" rx="1.5"/></svg></div><h4>The Deck</h4><p>Everything you've said &amp; copied</p></div>
+            <div class="sc-card"><div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6c-2-1.3-5-1.3-7 0v11c2-1.3 5-1.3 7 0m0-11c2-1.3 5-1.3 7 0v11c-2-1.3-5-1.3-7 0"/></svg></div><h4>Reader Mode</h4><p>Any document, read aloud</p></div>
+            <div class="sc-card"><div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div><h4>Web Search</h4><p>Speak → search in one press</p></div>
+          </div>
+        </div>
+        <!-- DECK -->
+        <div class="win-pane" data-pane="deck">
+          <div class="deck-mock">
+            <div class="deck-row"><div class="dr-main"><div class="dr-meta"><span class="mode-dot" style="background:var(--mode-prompt)"></span><span class="tag" style="color:var(--mode-prompt);background:color-mix(in srgb,var(--mode-prompt) 14%,transparent)">Prompt</span><span>Today · 4:31pm · 64 words</span></div><div class="dr-text">Write a concise launch announcement for a privacy-first dictation app aimed at knowledge workers, friendly but confident…</div></div><button class="star on">★</button></div>
+            <div class="deck-row"><div class="dr-main"><div class="dr-meta"><span class="mode-dot" style="background:var(--mode-email)"></span><span class="tag" style="color:var(--mode-email);background:color-mix(in srgb,var(--mode-email) 14%,transparent)">Email</span><span>Today · 2:14pm · 48 words</span></div><div class="dr-text">Hi Sarah, thanks for the quick turnaround — the latest revision looks great. Let's ship Friday. Best, Alex</div></div><button class="star">★</button></div>
+            <div class="deck-row"><div class="dr-main"><div class="dr-meta"><span class="mode-dot" style="background:var(--mode-text)"></span><span class="tag" style="color:var(--mode-text);background:color-mix(in srgb,var(--mode-text) 14%,transparent)">Text</span><span>Yesterday · 6:05pm · 22 words</span></div><div class="dr-text">Quick note from the call: they want the beta by end of month and a pricing page before launch.</div></div><button class="star">★</button></div>
+          </div>
+        </div>
+        <!-- STATS -->
+        <div class="win-pane" data-pane="stats">
+          <div class="sc-stats">
+            <div class="sc-stat"><div class="n">128,440</div><div class="l">Total words</div><div class="d">▲ 12% this week</div></div>
+            <div class="sc-stat"><div class="n">~9h</div><div class="l">Time saved</div><div class="d">vs typing</div></div>
+            <div class="sc-stat"><div class="n">137</div><div class="l">Avg WPM</div></div>
+            <div class="sc-chart" id="scChart" aria-hidden="true"></div>
+          </div>
+        </div>
+        <!-- READER -->
+        <div class="win-pane sc-reader" data-pane="reader">
+          <p class="reader-text" id="readerText2"><span class="w">Mumble</span> <span class="w">reads</span> <span class="w">any</span> <span class="w">document</span> <span class="w">aloud,</span> <span class="w">lighting</span> <span class="w">each</span> <span class="w">word</span> <span class="w">in</span> <span class="w">gold</span> <span class="w">as</span> <span class="w">it's</span> <span class="w">spoken.</span></p>
+          <div class="reader-controls"><span class="play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span><span class="mono t-mute" style="font-size:.8rem">0:08</span><span class="track-line"></span><span class="mono t-mute" style="font-size:.8rem">0:24</span></div>
+        </div>
+        <!-- SETTINGS -->
+        <div class="win-pane" data-pane="settings">
+          <div class="sc-set">
+            <div class="set-row"><div><div class="set-label">Local transcription</div><div class="set-sub">Runs on your device — always on</div></div><div class="switch on" aria-hidden="true"><span class="track"></span><span class="thumb"></span></div></div>
+            <div class="set-row"><div><div class="set-label">Pro Mode (AI polish)</div><div class="set-sub">Sends only text, with your own key</div></div><div class="switch" aria-hidden="true"><span class="track"></span><span class="thumb"></span></div></div>
+            <div class="set-row"><div><div class="set-label">Keep the Deck pinned</div><div class="set-sub">Floats on top; never steals focus</div></div><div class="switch on" aria-hidden="true"><span class="track"></span><span class="thumb"></span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ ROADMAP =========================== -->
+<section class="section" id="roadmap">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="h-kicker center">Where it's heading</span>
+      <h2 class="section-title">Just getting started</h2>
+      <p class="section-lead">One north star: make the on-device path so good the cloud becomes truly optional.</p>
+    </div>
+    <div class="roadmap-cols">
+      <div class="card sheen rm-col now reveal">
+        <div class="rm-head"><span class="rm-badge">Now</span><h3>Shipping in v0.9</h3></div>
+        <ul class="rm-list">
+          <li>Local-first transcription &amp; the Big Shift</li>
+          <li>Deck, Reader, Search &amp; Stats</li>
+          <li>On-device foreign correction</li>
+        </ul>
+      </div>
+      <div class="card sheen rm-col next reveal d1">
+        <div class="rm-head"><span class="rm-badge">Next</span><h3>In development</h3></div>
+        <ul class="rm-list">
+          <li>Fully-local AI polish (no cloud needed)</li>
+          <li>Apple Neural Engine on Mac — far faster, far less memory</li>
+          <li>GPU acceleration for AMD &amp; Intel</li>
+          <li>PDF &amp; Word import in the Reader</li>
+        </ul>
+      </div>
+      <div class="card sheen rm-col later reveal d2">
+        <div class="rm-head"><span class="rm-badge">Later</span><h3>On the horizon</h3></div>
+        <ul class="rm-list">
+          <li>Sharper accuracy &amp; noise handling</li>
+          <li>Semantic search across your history</li>
+          <li>Opt-in cloud sync across machines</li>
+        </ul>
+      </div>
+    </div>
+    <p class="roadmap-foot reveal">Every step holds the same line: <span class="t-gold">if it touches your audio, it stays on your device.</span></p>
+  </div>
+</section>
+
+<!-- ============================= CTA ============================== -->
+<section class="section cta-final" id="download">
+  <div class="container">
+    <div class="cta-card reveal">
+      <div class="island-host"><div class="island"><span class="island-dot"></span><span class="island-mini-wave"><span style="--d:1.05s"></span><span style="--d:1.25s"></span><span style="--d:.95s"></span><span style="--d:1.15s"></span><span style="--d:1.3s"></span></span><span class="island-label">Listening</span></div></div>
+      <h2>Talk. Get clean text. <span class="gold-sheen">Anywhere.</span></h2>
+      <p>Free, local, and yours. Press the hotkey — never reformat a wall of dictation again.</p>
+
+      <div class="download-options">
+        <div class="card sheen dl-card" style="border-color:rgba(212,175,55,.3)">
+          <div class="dl-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5l7.5-1v7.2H3V5.5zm0 13l7.5 1v-7.1H3v6.1zm8.5 1.1L21 21V12.3h-9.5v8.3zm0-16.3v8.3H21V3L11.5 4.3z"/></svg></div>
+          <h4>Windows</h4><span class="dl-state ready">Ready</span>
+          <!-- Owner: replace href with the hosted release URL. Relative path resolves to repo-root Mumble.zip. -->
+          <a class="btn btn-gold btn-block" href="../Mumble.zip" download>Download .zip</a>
+        </div>
+        <div class="card sheen dl-card">
+          <div class="dl-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 3c.1 1.1-.3 2.1-1 2.9-.7.9-1.8 1.5-2.9 1.4-.1-1.1.4-2.2 1-2.9.8-.8 2-1.4 2.9-1.4zm3.2 14.6c-.5 1.2-.8 1.7-1.5 2.7-1 1.4-2.3 3.1-4 3.1-1.5 0-1.9-1-3.9-1-2 0-2.5 1-3.9 1-1.7 0-3-1.6-4-2.9C2.7 18 2.5 14 4.2 11.6c1-1.4 2.6-2.3 4.1-2.3 1.5 0 2.5 1 3.8 1 1.2 0 2-1 3.8-1 1.3 0 2.7.7 3.7 2-3.2 1.8-2.7 6.4.1 7.3z"/></svg></div>
+          <h4>macOS</h4><span class="dl-state preview">Coming soon</span>
+          <a class="btn btn-ghost btn-block" href="#roadmap">Learn more</a>
+        </div>
+        <div class="card sheen dl-card">
+          <div class="dl-ic"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c-2 0-3 1.7-3 3.6 0 1 .1 1.9-.4 2.9-.5.9-1.6 1.8-2.1 3.3-.4 1.3-.1 2.3.1 3.4.1.6-.3 1-.6 1.6-.3.6-.5 1.4.1 2 .7.6 1.8.3 2.8.6.7.2 1.2.9 2.1.9s1.4-.7 2.1-.9c1-.3 2.1 0 2.8-.6.6-.6.4-1.4.1-2-.3-.6-.7-1-.6-1.6.2-1.1.5-2.1.1-3.4-.5-1.5-1.6-2.4-2.1-3.3-.5-1-.4-1.9-.4-2.9C15 3.7 14 2 12 2z"/></svg></div>
+          <h4>Linux</h4><span class="dl-state preview">Coming soon</span>
+          <a class="btn btn-ghost btn-block" href="#roadmap">Learn more</a>
+        </div>
+      </div>
+
+      <div class="cta-meta">
+        <span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-11"/></svg> No account needed</span>
+        <span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-11"/></svg> No API key required to start</span>
+        <span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-11"/></svg> Audio never leaves your device</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============================ FOOTER ============================ -->
+<footer class="footer">
+  <div class="container footer-grid">
+    <div class="footer-brand">
+      <a class="brand" href="#hero">
+        <span class="brand-badge"><svg viewBox="0 0 24 24" fill="none"><g stroke="#D4AF37" stroke-width="2.4" stroke-linecap="round"><line x1="4" y1="10" x2="4" y2="14"/><line x1="8" y1="7" x2="8" y2="17"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="7" x2="16" y2="17"/><line x1="20" y1="10" x2="20" y2="14"/></g></svg></span>
+        <span class="brand-name">Mumble</span>
+      </a>
+      <p>Private, on-device voice-to-text for Windows, macOS &amp; Linux.</p>
+      <p class="tagline">Made for people who'd rather talk than type.</p>
+    </div>
+    <div class="footer-col">
+      <h4>Product</h4>
+      <a href="#how">How it works</a>
+      <a href="#shift">Smart Modes</a>
+      <a href="#inside">What's inside</a>
+      <a href="#interface">The interface</a>
+    </div>
+    <div class="footer-col">
+      <h4>Trust</h4>
+      <a href="#privacy">Privacy</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#download">Download</a>
+    </div>
+    <div class="footer-bottom-inline">
+      <span>© <span id="year">2026</span> Mumble · v0.9 "The Big Shift"</span>
+      <span class="privacy-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg> Local-first by architecture</span>
+    </div>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

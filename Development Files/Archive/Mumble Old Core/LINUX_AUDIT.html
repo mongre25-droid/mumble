@@ -1,0 +1,2518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LINUX_AUDIT — Mumble Linux Port Comprehensive Audit</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Comprehensive Audit</div>
+  <h1>Linux Platform Audit</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Generated:</b> 2026-07-04</div>
+    <div><span class="ico">◆</span><b>Scope:</b> Full Linux port vs Windows canonical source</div>
+    <div><span class="ico">◆</span><b>Windows source:</b> <code>Internal/app/</code> (canonical, v0.9)</div>
+    <div><span class="ico">◆</span><b>Linux port:</b> <code>Internal/app/Ports/Linux/app/</code></div>
+    <div><span class="ico">◆</span><b>Methodology:</b> Code-level comparison of all four investigation areas</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This report is a deep, honest assessment of how well the Mumble Linux port matches the Windows version. Four parallel code-level investigations examined the controller, the floating island overlay, the platform plumbing (hotkeys, clipboard, installer), and all 67 shared code files. The bottom line: <strong>the Linux port works for basic dictation but is missing major features, has several crash bugs, and carries a significant maintenance burden from ~60% code drift vs Windows.</strong> This report catalogs every issue found, explains why each one matters, and recommends exactly what to fix and in what order.</p>
+    <p><strong>Code analysis only.</strong> No live testing was performed. Every finding is backed by specific file:line references and evidence from the four audit reports. Nothing is fabricated or assumed.</p>
+  </div>
+</div>
+
+<blockquote>
+  <p><strong>Platform Health: C+</strong> — The Linux port functions for core dictation but is operationally fragile. Meeting mode is absent, the island overlay has no mode-deck UI, image clipboard is dead, Vulkan hardware acceleration is non-functional, and only 40% of shared modules are byte-identical to the canonical Windows source. The install experience is solid, and basic dictation works, but users get a significantly degraded experience compared to Windows.</p>
+</blockquote>
+
+<!-- ===== STAT TILES ===== -->
+<div class="tiles">
+  <div class="tile"><div class="n">88</div><div class="l">Issues documented</div></div>
+  <div class="tile"><div class="n">12</div><div class="l">Critical (P0)</div></div>
+  <div class="tile"><div class="n">20</div><div class="l">High (P1)</div></div>
+  <div class="tile"><div class="n">23</div><div class="l">Medium (P2)</div></div>
+  <div class="tile"><div class="n">33</div><div class="l">Low / Drift (P3)</div></div>
+  <div class="tile"><div class="n">40.3%</div><div class="l">Module sync health</div></div>
+</div>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">Executive Summary</a></li>
+    <li><a href="#s2">Critical Issues (P0)</a></li>
+    <li><a href="#s3">High-Priority Issues (P1)</a></li>
+    <li><a href="#s4">Medium-Priority Issues (P2)</a></li>
+    <li><a href="#s5">Low-Priority Issues (P3)</a></li>
+    <li><a href="#s6">Windows Feature Parity Matrix</a></li>
+    <li><a href="#s7">Missing Implementations</a></li>
+    <li><a href="#s8">Logic Flaws &amp; Bugs</a></li>
+    <li><a href="#s9">Performance &amp; Memory</a></li>
+    <li><a href="#s10">Code Quality &amp; Technical Debt</a></li>
+    <li><a href="#s11">UI/UX Inconsistencies</a></li>
+    <li><a href="#s12">Platform Integration Gaps</a></li>
+    <li><a href="#s13">Shared Module Sync Health</a></li>
+    <li><a href="#s14">Test Coverage Assessment</a></li>
+    <li><a href="#s15">Dependency Analysis</a></li>
+    <li><a href="#s16">Recommendations</a></li>
+    <li><a href="#s17">Appendix: Complete Issue Index</a></li>
+  </ol>
+</nav>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 1 — EXECUTIVE SUMMARY
+     ======================================================================== -->
+<h2 id="s1"><span class="sec">1</span>Executive Summary</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>The Linux port of Mumble is functional for basic voice dictation but falls significantly behind the Windows canonical version across several critical dimensions. The platform health grade of <strong>C+</strong> reflects an application that works in its core loop (record, transcribe, paste) but lacks full feature parity, has several crash-grade bugs, and carries substantial code drift that will make future maintenance increasingly expensive.</p>
+  </div>
+</div>
+
+<h3>Platform Health by Area</h3>
+<table>
+<thead><tr><th>Area</th><th>Health</th><th>Key Metric</th></tr></thead>
+<tbody>
+<tr><td>Core Dictation</td><td><span class="badge b-gated">B+</span></td><td>Records, transcribes, pastes correctly. Default model is outdated (base.en vs small.en). Missing confidence gating and hotword sanitization.</td></tr>
+<tr><td>Meeting Mode</td><td><span class="badge b-red">F</span></td><td>Entirely absent. No meeting recorder, no start/stop commands, no diarisation. All meeting-related code present on disk but never imported or wired.</td></tr>
+<tr><td>Island Overlay</td><td><span class="badge b-red">D</span></td><td>Basic pill renders correctly. No companion bar / mode deck, no armed_color in snapshot, suspended state dead, pure Wayland → no island at all.</td></tr>
+<tr><td>Hotkeys &amp; Input</td><td><span class="badge b-gated">B</span></td><td>Works via evdev on X11 and Wayland (with input group). Default history hotkey wrong (H vs D). Missing _processing guard and double-press crash risk.</td></tr>
+<tr><td>Clipboard</td><td><span class="badge b-gated">C+</span></td><td>Text clipboard works. Image clipboard is completely dead (Windows-only ImageGrab). Missing exception handlers in resume path.</td></tr>
+<tr><td>Platform Acceleration</td><td><span class="badge b-red">F</span></td><td>linux_fallback.py does not exist. Vulkan ARM acceleration path is dead code — silently falls back to CPU with no warning.</td></tr>
+<tr><td>Installer</td><td><span class="badge b-done">A-</span></td><td>Well-structured, 4 package manager families, good error handling. Multiple sudo prompts for optional packages is the main UX wart.</td></tr>
+<tr><td>Shared Module Sync</td><td><span class="badge b-red">F</span></td><td>40.3% byte-identical. 6 core modules with >48% drift. 27 Windows files missing from Linux entirely.</td></tr>
+<tr><td>Tests</td><td><span class="badge b-gated">C</span></td><td>11 tests in runner (well-designed). 5 tests excluded due to real API gaps. 23 Windows test files missing from Linux.</td></tr>
+<tr><td>Auto-Update</td><td><span class="badge b-gated">B-</span></td><td>Functional swap-script mechanism. Hardcoded /usr/bin/python3 path. No restart on Linux.</td></tr>
+</tbody>
+</table>
+
+<h3>Issue Distribution by Severity and Source</h3>
+<table>
+<thead><tr><th>Source Report</th><th>CRITICAL</th><th>HIGH</th><th>MEDIUM</th><th>LOW</th><th>Total</th></tr></thead>
+<tbody>
+<tr><td>Controller Audit</td><td>4</td><td>11</td><td>10</td><td>6</td><td>31</td></tr>
+<tr><td>Overlay Audit</td><td>4</td><td>0</td><td>9</td><td>5</td><td>18</td></tr>
+<tr><td>Platform Integration Audit</td><td>2</td><td>5</td><td>4</td><td>3</td><td>14</td></tr>
+<tr><td>Shared Modules Audit</td><td>2</td><td>4</td><td>0</td><td>12</td><td>18</td></tr>
+<tr><td>Platform Report</td><td>0</td><td>0</td><td>0</td><td>7</td><td>7</td></tr>
+<tr style="font-weight:650;color:var(--ink)"><td><strong>Total</strong></td><td><strong>12</strong></td><td><strong>20</strong></td><td><strong>23</strong></td><td><strong>33</strong></td><td><strong>88</strong></td></tr>
+</tbody>
+</table>
+
+<h3>Key Takeaways</h3>
+
+<blockquote>
+  <p><strong>1. Meeting mode is the single largest feature gap.</strong> The meeting module files exist on disk in the Linux port directory, but the controller (<code>mumble_linux.py</code>) never imports them. This is a structural disconnect — not a missing-code problem — that could be resolved by porting the Windows meeting-wiring logic.</p>
+</blockquote>
+
+<blockquote>
+  <p><strong>2. The island overlay has no mode selection UI.</strong> The companion bar / mode deck (Prompt, Email, Reply, Foreign chips) is entirely absent on Linux. Users can only toggle Prompt mode through the web Settings panel — there is no Email, Reply, or Foreign mode surface at all. Combined with the missing armed_color in the pill snapshot, the island UX is significantly degraded.</p>
+</blockquote>
+
+<blockquote>
+  <p><strong>3. Three crash-grade bugs are present in the controller.</strong> <code>bindings._session_type()</code> doesn't exist (will crash <code>copy_image()</code>), <code>stop_recording</code> is not idempotent (will crash on double hotkey), and <code>on_hotkey</code> lacks a <code>_processing</code> guard (can double-start recording). All three have clear Windows reference implementations ready to port.</p>
+</blockquote>
+
+<blockquote>
+  <p><strong>4. The Linux port has 59.7% code drift from Windows.</strong> Only 27 of 67 shared files are byte-identical. Six core modules (local_engine, meeting, meeting_diarise, tips, context_store, mumble_linux vs mumble) have >12% drift. Entire packages (eval/, models/, perf/, pipeline/, platform/) have no Linux counterpart. This is the primary long-term maintenance risk.</p>
+</blockquote>
+
+<blockquote>
+  <p><strong>5. The installer is the strongest part of the port.</strong> install.sh is well-structured, covers four package manager families, correctly uses --system-site-packages for PyGObject, and handles errors gracefully. The main UX concern is repeated sudo prompts for optional packages.</p>
+</blockquote>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 2 — CRITICAL ISSUES (P0)
+     ======================================================================== -->
+<h2 id="s2"><span class="sec">2</span>Critical Issues <span class="badge b-red">P0 — Fix Before Any Release</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>These are the showstoppers. Each one represents either a crash that will happen to real users, a feature that is completely absent, or a code path that is provably broken. All twelve should be fixed before the Linux port is presented to users as a supported platform.</p>
+  </div>
+</div>
+
+<!-- C-001 -->
+<h3 id="c001">C-001: Meeting Mode Entirely Absent</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> The entire meeting recording feature is absent from the Linux port. The controller does not import the <code>meeting</code> module, does not create a <code>MeetingRecorder</code>, and exposes no meeting commands. Meeting source files (<code>meeting.py</code>, <code>meeting_diarise.py</code>, <code>meeting_store.py</code>) exist in the Linux port directory but are never imported or wired.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Users cannot record, transcribe, or diarize meetings on Linux. This is a headline feature advertised on the Mumble website and present on Windows — its absence on Linux is immediately noticeable and disqualifying for many potential users.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/Ports/Linux/app/mumble_linux.py</code></p>
+<p><strong>Missing methods (present in <code>mumble.py</code> lines 207-417):</strong></p>
+<ul>
+<li><code>__init__</code> → <code>self.meeting_recorder = None; self.meeting_recording = False</code></li>
+<li><code>_meeting_island_cb</code> — island timer + speaker count display</li>
+<li><code>_meeting_start</code> — begin recording with diarisation</li>
+<li><code>_meeting_stop</code> — stop and background-process</li>
+<li><code>_meeting_import</code> — import external audio</li>
+<li>Meeting commands in cmd server: <code>meeting_record_start</code>, <code>meeting_record_stop</code>, <code>meeting_record_pause</code>, <code>meeting_record_resume</code>, <code>meeting_import_audio</code></li>
+</ul>
+<p><strong>Evidence:</strong> Controller Audit §1.1, §2.1. The <code>import meeting</code> statement at Windows <code>mumble.py</code> line 97 has no equivalent in <code>mumble_linux.py</code>.</p>
+<p><strong>Additional concern:</strong> The shared <code>meeting.py</code> file in the Linux directory is 53.1% smaller than the Windows version (14,846 vs 31,652 bytes), and <code>meeting_diarise.py</code> is 60.6% smaller (9,451 vs 23,985 bytes). Even if wired, the Linux meeting modules are severely out of date.</p>
+<p><strong>Suggested fix:</strong></p>
+<ol>
+<li>First, sync <code>meeting.py</code>, <code>meeting_diarise.py</code>, and <code>meeting_store.py</code> from Windows canonical source.</li>
+<li>Port the meeting wiring from <code>mumble.py</code> lines 207-417 into <code>mumble_linux.py</code>, adapting the island callback to use <code>_GtkIsland</code> instead of <code>_GlassPill</code>.</li>
+<li>Add meeting commands to the cmd server in <code>mumble_linux.py</code>.</li>
+<li>Add dictation veto during meetings (check <code>self.meeting_recording</code> in <code>start_recording</code>).</li>
+<li>Estimated complexity: <strong>L</strong></li>
+</ol>
+</div>
+</details>
+
+<!-- C-002 -->
+<h3 id="c002">C-002: <code>bindings._session_type()</code> Crash Bug</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> <code>copy_image()</code> in <code>mumble_linux.py</code> line 3393 calls <code>bindings._session_type()</code> to detect Wayland, but the Linux <code>bindings.py</code> module does not define <code>_session_type()</code>. This will raise <code>AttributeError</code> whenever <code>copy_image()</code> is invoked (i.e., whenever the user copies an image to the clipboard from Mumble).</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Any user who triggers image copy will hit a crash. While image copy is a secondary feature, a crash — not a graceful degradation — is unacceptable. The Wayland detection has a straightforward fix.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 3393</p>
+<pre><code>wayland = bindings._session_type() == "wayland"</code></pre>
+<p><strong>Evidence:</strong> Controller Audit §3.1. Grep of <code>bindings.py</code> confirms no <code>_session_type</code> function exists.</p>
+<p><strong>Suggested fix:</strong> Add <code>_session_type()</code> to <code>bindings.py</code> that checks <code>os.environ.get("WAYLAND_DISPLAY")</code> or <code>os.environ.get("XDG_SESSION_TYPE")</code>, or inline the check directly in <code>copy_image()</code>. Preferred: add to bindings.py for reuse.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- C-003 -->
+<h3 id="c003">C-003: <code>stop_recording</code> Not Idempotent — Double Hotkey Crash</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> Linux <code>stop_recording</code> (line 917) lacks the idempotent guard present in Windows (lines 996-1002). A double hotkey press can enter <code>stop_recording</code> twice before <code>self.recording</code> flips, causing <code>np.concatenate(self.frames)</code> on an already-cleared list, producing a <code>"need at least one array to concatenate"</code> error.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Double-tapping the hotkey is a common user behavior (nervousness, uncertainty about whether the first press registered). On Windows this is safely handled; on Linux it crashes the recording thread. This is a user-facing crash with a trivial fix.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 917 vs Windows <code>mumble.py</code> lines 996-1002</p>
+<p><strong>Windows guard (missing on Linux):</strong></p>
+<pre><code>with self.lock:
+    if not self.recording:
+        return
+    self.recording = False</code></pre>
+<p><strong>Evidence:</strong> Controller Audit §3.6. Code diff confirms missing guard.</p>
+<p><strong>Suggested fix:</strong> Copy the Windows idempotent guard into Linux <code>stop_recording</code>. One-to-one port with no adaptation needed.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- C-004 -->
+<h3 id="c004">C-004: <code>on_hotkey</code> Missing <code>_processing</code> Guard — Double-Start Recording</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> Linux <code>on_hotkey</code> (line 1497) doesn't check <code>self._processing</code>. If the hotkey is pressed while a previous dictation is still in its transcribe→AI→paste pipeline, a new recording starts on top of the in-flight one, corrupting shared stream state and potentially opening a second microphone stream.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>This can cause garbled transcription output, microphone resource conflicts, and in the worst case, corrupted audio buffers that produce nonsensical text. Windows has the guard; Linux needs it too.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 1497</p>
+<p><strong>Windows guard (missing on Linux, <code>mumble.py</code> lines 1711-1718):</strong></p>
+<pre><code>if self._processing:
+    return None</code></pre>
+<p><strong>Evidence:</strong> Controller Audit §3.7.</p>
+<p><strong>Suggested fix:</strong> Add the <code>_processing</code> guard at the top of <code>on_hotkey</code>, matching Windows. Also add the missing <code>_safe_start</code> cleanup-on-error pattern (see issue C-005).</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- C-005 -->
+<h3 id="c005">C-005: <code>linux_fallback.py</code> Missing — Vulkan Acceleration Dead</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Platform Integration</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> <code>platform/__init__.py</code> line 233 imports <code>from .linux_fallback import WhisperCppTranscriber</code>, but <code>linux_fallback.py</code> does not exist anywhere in the project. On Linux ARM with Vulkan, the import raises <code>ImportError</code> (silently caught), and the system falls back to CPU-only faster-whisper with no user-visible warning.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Linux ARM users (Raspberry Pi 5, Jetson, Snapdragon X Elite laptops) get no GPU acceleration. Transcription runs on CPU, which is significantly slower and more power-hungry. The silent fallback means users never know acceleration was attempted and failed — they just experience poor performance with no explanation.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/platform/__init__.py</code> line 233</p>
+<p><strong>Evidence:</strong> Platform Integration Audit §6. The <code>app/platform/</code> directory contains only <code>__init__.py</code>, <code>macos_audio.py</code>, and <code>windows_dml.py</code>. No <code>linux_fallback.py</code> exists in the entire repo.</p>
+<p><strong>Suggested fix:</strong></p>
+<ol>
+<li>Implement <code>linux_fallback.py</code> with a <code>WhisperCppTranscriber</code> class wrapping whisper.cpp with Vulkan compute shader support.</li>
+<li>At minimum, add a proper log warning (not silent <code>ImportError</code> pass) when the acceleration path is unavailable, so users understand why performance is degraded.</li>
+<li>Consider bundling pre-compiled whisper.cpp ARM binaries during install.</li>
+</ol>
+<p>Estimated complexity: <strong>XL</strong></p>
+</div>
+</details>
+
+<!-- C-006 -->
+<h3 id="c006">C-006: <code>keyboard</code> and <code>mouse</code> Not in <code>requirements.txt</code></h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Platform Integration</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> <code>bindings.py</code> imports <code>keyboard</code> (line 17) and <code>mouse</code> (line 21). Neither library is listed in the Linux <code>requirements.txt</code>. If these aren't pre-installed in the system Python or available as transitive dependencies, <code>pip install -r requirements.txt</code> will produce a running app that crashes with <code>ImportError</code> the moment it tries to register a hotkey.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Users who follow the documented install procedure will get a broken app. Hotkeys are the primary interaction mechanism — without them, Mumble is unusable. This is a packaging error with a trivial fix.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/Ports/Linux/app/requirements.txt</code></p>
+<p><strong>Evidence:</strong> Platform Integration Audit §9. The <code>requirements.txt</code> lists <code>pynput</code> but not <code>keyboard</code> or <code>mouse</code>. The binding layer uses <code>keyboard</code> + <code>mouse</code> exclusively — <code>pynput</code> is a dead dependency.</p>
+<p><strong>Suggested fix:</strong> Add <code>keyboard>=0.13.5</code> and <code>mouse>=0.7.1</code> to <code>requirements.txt</code>. Remove <code>pynput>=1.7.6</code> if confirmed unused (see also H-010).</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- C-007 -->
+<h3 id="c007">C-007: No Companion Bar / Mode Deck on Island</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Overlay</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> The Windows overlay has a <code>_WidgetBar</code> class that renders mode chips (Prompt, Email, Reply) and a Deck button as a companion bar next to the island pill. Linux has no bar at all. The callbacks exist (<code>on_prompt_toggle</code>, <code>on_deck</code>) but are connected to no visible UI. There is no <code>set_bar_state()</code> method and no <code>armed_color</code> tracking.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The mode deck is the primary UI for selecting processing modes. Without it, Linux users can only toggle Prompt mode through the web Settings UI — there is no way to select Email, Reply, or Foreign modes from the island. The entire "Big Shift" mode-deck UX is absent.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>overlay_linux.py</code> — <code>_WidgetBar</code> class absent. Compare with <code>overlay.py</code> lines 435-640.</p>
+<p><strong>Evidence:</strong> Overlay Audit §2.1, §2.2. The shared <code>island_render.render_bar()</code> already produces bar pixels — the rendering logic exists, just needs a GTK window to host it.</p>
+<p><strong>Suggested fix:</strong> Implement a GTK3 Cairo companion bar in a separate window or as an extension of the existing <code>_GtkIsland</code> window. The shared <code>island_render.render_bar(snap)</code> already produces the pixels. Add <code>set_bar_state()</code> to <code>_GtkIsland</code> to receive live mode deck state from the controller. Wire <code>on_prompt_toggle</code>, <code>on_deck</code>, and <code>on_foreign</code> callbacks.</p>
+<p>Estimated complexity: <strong>L</strong></p>
+</div>
+</details>
+
+<!-- C-008 -->
+<h3 id="c008">C-008: Missing <code>armed_color</code> in Island Snapshot</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Overlay</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_build_snapshot()</code> (line ~690) does not include the <code>"armed_color"</code> key in the snapshot dict. The shared <code>island_render.render()</code> function uses <code>snap.get("armed_color")</code> to color the armed ring. Without it, the ring always falls back to the Prompt mode color (purple), even when Email or Reply mode is active.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Users see the wrong color on the island ring — purple always, regardless of which mode is actually active. This is a visible UX inconsistency that contradicts the visual design system. The fix is a one-line addition.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>overlay_linux.py</code> line ~690 in <code>_build_snapshot()</code></p>
+<p><strong>Windows version (<code>overlay.py</code> line ~1050-1075):</strong></p>
+<pre><code>"armed_color": getattr(self, "armed_color", None) or MODE_COLORS.get("prompt", C.gold),</code></pre>
+<p><strong>Evidence:</strong> Overlay Audit §1.3.</p>
+<p><strong>Suggested fix:</strong> Add the <code>"armed_color"</code> key to Linux <code>_build_snapshot()</code>, reading from <code>self.armed_color</code> or falling back to <code>MODE_COLORS.get("prompt", C.gold)</code>.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- C-009 -->
+<h3 id="c009">C-009: Suspended State Not Enforced in Overlay</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Overlay</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_tick()</code> never checks <code>self.suspended</code>. The attribute exists (<code>self.suspended = False</code> at line 289, with a comment "unused on Linux, kept for parity / tick guard") but the tick loop never reads it. If the controller sets <code>island.suspended = True</code> (e.g., for interactive panels), the island will NOT hide. The 30-second self-healing safety valve is also missing.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The suspended state is how Mumble hides the island when showing the Settings panel or other interactive windows. Without it, the island pill will float on top of these panels, blocking interaction and creating a confusing visual experience.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>overlay_linux.py</code> <code>_tick()</code> line ~809</p>
+<p><strong>Windows pattern (missing on Linux):</strong></p>
+<pre><code>if self.suspended:
+    if time.time() - self._suspended_since > 30.0:
+        self.suspended = False
+        self._prev_state = ""
+    raise _Skip</code></pre>
+<p><strong>Evidence:</strong> Overlay Audit §1.5. Also, <code>wake()</code> (line 780) doesn't check <code>suspended</code> — combined with the missing <code>_tick</code> guard, there's no mechanism to pause the island.</p>
+<p><strong>Suggested fix:</strong> Port the Windows suspended check into Linux <code>_tick()</code> and <code>wake()</code>. Add the <code>_Skip</code> exception class and the 30-second self-healing timeout.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- C-010 -->
+<h3 id="c010">C-010: Pure Wayland (No XWayland) — No Island at All</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Overlay / Platform</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> <code>mumble_linux.py</code> lines 59-68 force <code>GDK_BACKEND=x11</code> for reliable overlay positioning. On a pure Wayland session without XWayland, setting this env var will cause GTK window creation to fail because no X11 display socket exists. The <code>_GtkIsland</code> degrades to <code>_NoopIsland</code>, meaning zero visual feedback during dictation.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Pure Wayland sessions are increasingly common (Fedora Workstation defaults to Wayland, GNOME on Wayland is standard on most distros). Users on these setups get no island — they can't see recording status, transcription progress, or mode indication. The app still functions but the core visual feedback mechanism is gone.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> lines 59-68</p>
+<p><strong>Evidence:</strong> Overlay Audit §6.1-6.2. The Wayland check forces XWayland but doesn't verify XWayland is available.</p>
+<p><strong>Suggested fix:</strong></p>
+<ol>
+<li>Before forcing <code>GDK_BACKEND=x11</code>, check if an X11 display is actually available (e.g., check <code>DISPLAY</code> env var or attempt to open a display connection).</li>
+<li>If XWayland is unavailable, log a clear warning and gracefully degrade to <code>_NoopIsland</code> with a notification explaining the limitation.</li>
+<li>Longer term: investigate a native Wayland positioning solution (layer-shell protocol via <code>gtk-layer-shell</code>).</li>
+</ol>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- C-011 -->
+<h3 id="c011">C-011: <code>local_engine.py</code> — 48% Code Drift (Severe)</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> The Linux <code>local_engine.py</code> is 48% smaller than Windows (20,000 vs 38,435 bytes). Windows has nearly 2x the code, suggesting significant engine improvements — model discovery, backend management, fallback logic — that never reached Linux. The Linux port may have degraded local LLM capabilities, missing model discovery paths, or different backend selection logic.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The local AI engine is the backbone of on-device processing. A 48% code gap almost certainly means missing features, different behavior, or bugs that were fixed on Windows but remain on Linux. Users on Linux get a different (and likely worse) local AI experience.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/Ports/Linux/app/local_engine.py</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §2.2. Byte-level SHA-256 comparison shows 48% difference.</p>
+<p><strong>Suggested fix:</strong> Perform a line-by-line sync from Windows <code>local_engine.py</code>. Identify which features gained on Windows (model discovery, backend management, fallback logic) need Linux adaptation. Likely requires porting the <code>models/</code> package first.</p>
+<p>Estimated complexity: <strong>L</strong></p>
+</div>
+</details>
+
+<!-- C-012 -->
+<h3 id="c012">C-012: <code>meeting.py</code> + <code>meeting_diarise.py</code> — 53-61% Code Drift (Severe)</h3>
+<p>
+  <span class="badge b-red">CRITICAL</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P0</span>
+</p>
+<p><strong>Description:</strong> Linux <code>meeting.py</code> is 53.1% smaller than Windows (14,846 vs 31,652 bytes). Linux <code>meeting_diarise.py</code> is 60.6% smaller (9,451 vs 23,985 bytes). Linux appears to have stripped-down versions missing significant meeting logic, processing stages, and recording management. Even if the controller were wired to import these modules (see C-001), they wouldn't provide the full meeting experience.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Even after wiring meeting mode into the controller, the meeting modules themselves are out of date. The Linux port would have a degraded meeting experience — potentially missing diarisation quality, fewer processing stages, or different recording management behavior.</p></div></div>
+
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/Ports/Linux/app/meeting.py</code>, <code>meeting_diarise.py</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §2.2. <code>meeting_store.py</code> additionally has 13.6% drift — Linux meeting records lack <code>key_decisions</code>, <code>open_questions</code>, and <code>processing_mode</code> fields.</p>
+<p><strong>Suggested fix:</strong> Byte-level sync of <code>meeting.py</code>, <code>meeting_diarise.py</code>, and <code>meeting_store.py</code> from Windows canonical source. Adapt any platform-specific paths (Windows uses Win32 COM for diarisation audio pipeline; Linux may need GStreamer/PulseAudio equivalents).</p>
+<p>Estimated complexity: <strong>L</strong></p>
+</div>
+</details>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 3 — HIGH-PRIORITY ISSUES (P1)
+     ======================================================================== -->
+<h2 id="s3"><span class="sec">3</span>High-Priority Issues <span class="badge b-amber">P1 — Fix in Next Release</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>These issues significantly degrade the user experience but don't crash the app. They include missing island features (mode deck, tips, conversation capture), missing AI capabilities (on-device LLM, hardware-tier model selection, pipeline orchestrator), and significant shared module drift that will compound over time. Fix these before the first "feature-complete" release.</p>
+  </div>
+</div>
+
+<!-- H-001 -->
+<h3 id="h001">H-001: Island Mode Deck Absent</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> The island mode deck — the chip-based UI for selecting processing modes — is completely absent from the Linux controller. Missing methods include <code>island_modes()</code>, <code>_push_island_bar_state()</code>, <code>set_active_mode()</code>, <code>toggle_island_foreign()</code>, <code>set_prompt_mode()</code>, <code>toggle_prompt_mode()</code>, and all island widget callback wiring.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The mode deck is the primary surface for selecting Prompt, Email, Reply, and Foreign modes from the island. Without it, Linux users can only toggle Prompt mode from Settings — no granular mode control. The <code>active_mode</code> field is set in <code>__init__</code> but never pushed to any visible UI.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> — missing methods compared to <code>mumble.py</code> lines ~3990-4054</p>
+<p><strong>Evidence:</strong> Controller Audit §2.2</p>
+<p><strong>Suggested fix:</strong> Port <code>island_modes()</code>, <code>_push_island_bar_state()</code>, <code>set_active_mode()</code>, <code>toggle_island_foreign()</code>, <code>set_prompt_mode()</code>, and <code>toggle_prompt_mode()</code> from Windows. Wire the island callbacks in <code>run()</code>: <code>self.island.set_widget_callbacks(on_mode=..., on_deck=..., on_foreign=...)</code>. This depends on C-007 (companion bar).</p>
+<p>Estimated complexity: <strong>M</strong> (depends on C-007)</p>
+</div>
+</details>
+
+<!-- H-002 -->
+<h3 id="h002">H-002: Island Tips System Absent</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> The entire island tips system — usage-aware hints that surface undiscovered features — is missing from Linux. This includes <code>_bump_feature()</code>, <code>_tip_usage()</code>, <code>_maybe_island_tip()</code>, <code>_show_island_tip()</code>, <code>_fire_island_tip()</code>, and all <code>_bump_feature()</code> calls at key interaction points.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Tips are the primary feature-discovery mechanism for new users. Without them, users never learn about the Deck, Quick Paste, Search, or other power features. Tips never show, never retire, and feature-adoption counters are never bumped — the entire onboarding experience is absent.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> — methods missing from Windows <code>mumble.py</code> lines 306-396</p>
+<p><strong>Evidence:</strong> Controller Audit §2.3. Additionally, the Linux <code>tips.py</code> is 61.8% smaller (4,146 vs 10,855 bytes) — the tips content database itself is severely stripped.</p>
+<p><strong>Suggested fix:</strong> First sync <code>tips.py</code> from Windows. Then port the tip methods into <code>mumble_linux.py</code>. Add <code>_bump_feature()</code> calls at all interaction points (quick_paste, deck, search, preset_run). Add <code>_maybe_island_tip()</code> calls in <code>_process</code> and <code>_finalize_text</code>.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-003 -->
+<h3 id="h003">H-003: Conversation Capture Absent</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> The "Capture chat" feature (ITEM 5) — grabbing focused AI conversations as prompting context — is entirely absent on Linux. Missing: <code>capture_conversation()</code>, <code>_capture_conversation_quiet()</code>, <code>_conv_context_for_prompt()</code>, conversation auto-injection in Prompt and Reply modes, and the <code>grab_selection</code> / <code>capture_conversation</code> cmd handlers.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Conversation capture is a core power-user feature. It lets users grab entire AI chat threads as context for Prompt Mode — producing better AI responses by providing conversation history. Without it, Prompt Mode quality is degraded because the AI lacks context.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> — missing <code>capture_conversation()</code> (Windows line ~3220-3245), <code>_capture_conversation_quiet()</code> (~3170-3218), <code>_conv_context_for_prompt()</code> (~3500-3515)</p>
+<p><strong>Evidence:</strong> Controller Audit §2.4</p>
+<p><strong>Suggested fix:</strong> Port the conversation capture methods. The quiet capture uses <code>Ctrl+A</code> then <code>Ctrl+C</code> — this should work via <code>keyboard</code> library on XWayland. Add cmd handlers and wire into <code>_generate</code> and <code>_gather_context</code>.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-004 -->
+<h3 id="h004">H-004: On-Device LLM Backend Absent</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> The on-device LLM backend (llama.cpp GGUF models) is not wired on Linux. Missing: <code>_init_local_llm()</code>, <code>local_llm_status()</code>, <code>_local_llm_generate()</code>, and the local LLM fallback in <code>_generate</code>. Even if a GGUF model file is present, it cannot be used for smart-mode shaping.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>On-device LLM is a key differentiator for Mumble — it enables fully offline smart-mode shaping. Linux users lose this capability entirely, making the platform less attractive for privacy-conscious users who specifically chose Linux for offline operation.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> — missing methods from Windows <code>mumble.py</code> lines ~3840-3912</p>
+<p><strong>Evidence:</strong> Controller Audit §2.5. Compounded by Linux <code>branding.py</code> missing <code>MODELS_DIR</code>, <code>LLAMA_BIN_DIR</code>, and <code>llama_cli_path()</code> (see H-009).</p>
+<p><strong>Suggested fix:</strong> Port the LLM backend wiring. First add <code>MODELS_DIR</code>, <code>LLAMA_BIN_DIR</code>, and <code>llama_cli_path()</code> to Linux <code>branding.py</code>. Then port <code>_init_local_llm()</code>, <code>local_llm_status()</code>, and <code>_local_llm_generate()</code>. Add the local LLM fallback in <code>_generate</code> before the builder.</p>
+<p>Estimated complexity: <strong>L</strong></p>
+</div>
+</details>
+
+<!-- H-005 -->
+<h3 id="h005">H-005: Hardware-Tier Model Selection Absent</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Linux always defaults to <code>"base.en"</code> (line 258). The hardware-aware auto-selection (<code>_resolved_tier()</code>, <code>_apply_hardware_model()</code>) is missing. A low-end Linux machine gets the same model default as a workstation. The Windows default is <code>"small.en"</code> (better quality), and Windows auto-adjusts based on detected CPU/RAM.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Users on weak hardware get a model too large (slow transcription, high RAM usage). Users on strong hardware get a model too small (lower quality than they could have). The default <code>"base.en"</code> is lower quality than Windows' <code>"small.en"</code> — Linux users get worse transcription out of the box for no good reason.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 258</p>
+<p><strong>Missing methods (from Windows <code>mumble.py</code> lines ~2660-2725):</strong> <code>_resolved_tier()</code>, <code>_apply_hardware_model()</code></p>
+<p><strong>Evidence:</strong> Controller Audit §2.6</p>
+<p><strong>Suggested fix:</strong></p>
+<ol>
+<li>Change default to <code>"small.en"</code> to match Windows.</li>
+<li>Port <code>_resolved_tier()</code> (CPU core count, RAM detection via <code>os.sysconf()</code> or <code>psutil</code> on Linux).</li>
+<li>Port <code>_apply_hardware_model()</code> for model selection from tier + language.</li>
+</ol>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-006 -->
+<h3 id="h006">H-006: Default Model Outdated (base.en vs small.en)</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Linux defaults to <code>"base.en"</code> (line 258) while Windows defaults to <code>"small.en"</code> (line 140). The Windows default was upgraded for better transcription quality but Linux was not updated.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Linux users get lower-quality transcription by default. The <code>small.en</code> model offers noticeably better accuracy at a modest RAM cost. There's no reason for Linux to use a worse default.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 258</p>
+<p><strong>Evidence:</strong> Controller Audit §3.2</p>
+<p><strong>Suggested fix:</strong> Change <code>"base.en"</code> to <code>"small.en"</code> in the default assignment. One-line change.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- H-007 -->
+<h3 id="h007">H-007: Default History Hotkey Mismatch (H vs D)</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller / Shared Modules</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> The history hotkey default is <code>"ctrl+alt+h"</code> on Linux (line 260) vs <code>"ctrl+alt+d"</code> on Windows (line 142). This inconsistency also appears in the flash help text, <code>bindings.py</code> docs, <code>branding.py</code> SPOKEN_COMMANDS, and several other files — at least 8 locations across the codebase.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Cross-platform documentation, tutorials, and muscle memory all break when the hotkey differs. A user switching between Windows and Linux will be confused. This is a trivial fix that propagates across many files — resolving it once and for all prevents ongoing confusion.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 260, plus <code>bindings.py</code>, <code>branding.py</code>, <code>overlay_linux.py</code> <code>_build_snapshot</code>, <code>app_window.py</code>, <code>favorites.py</code> docstring, and others.</p>
+<p><strong>Evidence:</strong> Controller Audit §3.3, Shared Modules Audit §4 (cosmetic diffs).</p>
+<p><strong>Suggested fix:</strong> Standardize on <code>"ctrl+alt+d"</code> (the Windows canonical) across all Linux port files. Search for <code>"ctrl+alt+h"</code> and replace everywhere.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- H-008 -->
+<h3 id="h008">H-008: Image Clipboard Broken on Linux</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Platform Integration</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> <code>clipboard.py</code> uses <code>ImageGrab.grabclipboard()</code> (from Pillow/PIL, line 199-208) to capture images from the system clipboard. This is a Windows-only function. On Linux it always raises an exception (caught silently), and <code>grabbed</code> is always <code>None</code>. Image clipboard history will never capture images on Linux.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The clipboard history feature — one of Mumble's headline capabilities — cannot capture screenshots or copied images on Linux. Users copying images to the clipboard will never see them in Mumble's history. This silently fails with no user-visible error.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>clipboard.py</code> lines 199-208</p>
+<p><strong>Evidence:</strong> Platform Integration Audit §2. There is no alternative Linux implementation for image clipboard.</p>
+<p><strong>Suggested fix:</strong> Implement Linux image clipboard capture using one of: (a) GTK's <code>Gtk.Clipboard</code> (already available via PyGObject), (b) <code>wl-paste --type image/png</code> for Wayland, or (c) fall back to text-only clipboard mode on Linux with a clear settings note.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-009 -->
+<h3 id="h009">H-009: Linux <code>branding.py</code> Missing Critical Functions</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Platform Integration</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Linux <code>branding.py</code> is missing several functions present in Windows: <code>MODELS_DIR</code>, <code>LLAMA_BIN_DIR</code>, <code>llama_cli_path()</code>, <code>get_hardware_info()</code>, and <code>app_info()</code>. The web UI's hardware-suggestion banner won't work, local LLM model discovery has no defined paths, and the app info endpoint is broken.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>These missing functions cascade into multiple feature failures: the web UI hardware banner shows nothing, the test <code>test_local_wiring.py</code> is excluded because <code>MODELS_DIR</code> and <code>llama_cli_path</code> are missing, and any code path that calls <code>app_info()</code> will crash.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/Ports/Linux/app/branding.py</code></p>
+<p><strong>Evidence:</strong> Platform Integration Audit §3. Direct code comparison with Windows <code>branding.py</code>.</p>
+<p><strong>Suggested fix:</strong> Add Linux-appropriate implementations: <code>MODELS_DIR</code> → <code>$XDG_DATA_HOME/Mumble/models</code>; <code>LLAMA_BIN_DIR</code> → system path or bundled; <code>llama_cli_path()</code> → <code>shutil.which("llama-cli")</code>; <code>get_hardware_info()</code> → use <code>os.cpu_count()</code> and <code>psutil</code>; <code>app_info()</code> → adapt the Windows version.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-010 -->
+<h3 id="h010">H-010: <code>pywebview</code> Unpinned in <code>requirements.txt</code></h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Platform Integration</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> <code>pywebview</code> has no version constraint in <code>requirements.txt</code>. A future breaking release could break the web settings UI on all existing Linux installations.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Unpinned dependencies are a supply-chain and reliability risk. A new major version of <code>pywebview</code> could change the API, drop WebKitGTK support, or introduce bugs. Since the web UI is the primary settings interface, this would render the app unconfigurable.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/Ports/Linux/app/requirements.txt</code> line containing <code>pywebview</code></p>
+<p><strong>Evidence:</strong> Platform Integration Audit §9</p>
+<p><strong>Suggested fix:</strong> Pin to a known-good version, e.g., <code>pywebview>=4.0,<5.0</code>, after testing against the current WebKitGTK version.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- H-011 -->
+<h3 id="h011">H-011: <code>pynput</code> is a Dead Dependency</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Platform Integration</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> <code>pynput>=1.7.6</code> is listed in <code>requirements.txt</code> but is not used in <code>bindings.py</code> or <code>mumble_linux.py</code> for any hotkey registration. The binding layer exclusively uses <code>keyboard</code> + <code>mouse</code> + <code>evdev</code>. <code>pynput</code> is dead weight — it installs unnecessarily and could conflict with other input handling.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Dead dependencies bloat installs, increase the attack surface, and create confusion about which library actually handles input. If <code>pynput</code> ever conflicts with <code>evdev</code> or <code>keyboard</code>, debugging becomes harder.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>requirements.txt</code></p>
+<p><strong>Evidence:</strong> Platform Integration Audit §1, §9. Grep of all Linux port files for <code>pynput</code> usage in the binding layer returns zero results.</p>
+<p><strong>Suggested fix:</strong> Verify <code>pynput</code> is truly unused across all Linux code paths. If confirmed, remove it from <code>requirements.txt</code>. If it IS used somewhere (e.g., mouse listener in a shared module), document where.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<!-- H-012 -->
+<h3 id="h012">H-012: <code>mumble.py</code> (shared) — 12.7% Controller Drift</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> The shared <code>mumble.py</code> (the file copied into the Linux port directory, not <code>mumble_linux.py</code>) is 12.7% smaller than the Windows canonical version (209,385 vs 239,765 bytes). A 12.7% reduction in the main orchestrator is substantial and likely affects recording pipeline, mode dispatch, or state management.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The shared <code>mumble.py</code> contains platform-agnostic logic. A 12.7% drift means features or bug fixes present on Windows are absent from the copy used by the Linux port. This is separate from the Linux-specific <code>mumble_linux.py</code> controller — it's drift in the shared core.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/Ports/Linux/app/mumble.py</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §1.2, §2.2</p>
+<p><strong>Suggested fix:</strong> Compare <code>mumble.py</code> between Windows and Linux directories. Identify the 560 lines removed. Determine whether they are intentional platform seams or accidental drift. Sync back any that should be shared.</p>
+<p>Estimated complexity: <strong>L</strong></p>
+</div>
+</details>
+
+<!-- H-013 -->
+<h3 id="h013">H-013: <code>context_store.py</code> — 26% Drift, Missing <code>ui</code> Field</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Linux <code>context_store.py</code> is 26% smaller and missing the <code>'ui'</code> field in the capture result dict. This breaks <code>test_context_store.py</code> (excluded from Linux test runner) and may affect UI integration for context capture.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The <code>'ui'</code> field is how the web UI consumes context store data. Without it, any UI feature that displays captured conversations or context will break or show incomplete data.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>context_store.py</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §2.2, TEST_PARITY.md</p>
+<p><strong>Suggested fix:</strong> Sync <code>context_store.py</code> from Windows. Add the <code>'ui'</code> field. Enable <code>test_context_store.py</code> in the test runner.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-014 -->
+<h3 id="h014">H-014: <code>reader_store.py</code> — 14% Drift, Missing <code>save_doc_parsed()</code></h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Linux <code>reader_store.py</code> is missing the <code>save_doc_parsed()</code> function. This breaks <code>test_reader_parser.py</code> (excluded from test runner). The document parsing pipeline may not store parsed results correctly on Linux.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The Reader feature (text-to-speech for documents) depends on <code>save_doc_parsed()</code> to persist parsing results. Without it, the Reader may re-parse documents on every access or fail to store results at all.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>reader_store.py</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §2.2, TEST_PARITY.md</p>
+<p><strong>Suggested fix:</strong> Sync <code>reader_store.py</code> from Windows. Add <code>save_doc_parsed()</code>. Enable <code>test_reader_parser.py</code> in the test runner.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-015 -->
+<h3 id="h015">H-015: WebUI Files Significantly Behind (app.js —18%, app.css —16%)</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Three webui files are significantly behind Windows: <code>app.js</code> (237,240 vs 290,948 bytes — 18% smaller), <code>app.css</code> (98,897 vs 118,106 bytes — 16% smaller), and <code>index.html</code> (186,712 vs 203,917 bytes — 8% smaller). Cumulative: ~1,900+ lines of CSS/JS/HTML missing from Linux.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The web UI is the primary settings and configuration interface. Missing UI code means missing features, different layout, or bugs that were fixed on Windows. Users on Linux see a different — and likely inferior — settings experience.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>Internal/app/Ports/Linux/app/webui/app.js</code>, <code>app.css</code>, <code>index.html</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §1.3. WebUI sync health: 40% (2/5 identical).</p>
+<p><strong>Suggested fix:</strong> Copy the three divergent webui files verbatim from Windows canonical source. The web UI is platform-agnostic by design — it should be identical across all platforms.</p>
+<p>Estimated complexity: <strong>S</strong> (copy + verify)</p>
+</div>
+</details>
+
+<!-- H-016 -->
+<h3 id="h016">H-016: Entire <code>eval/</code>, <code>models/</code>, <code>perf/</code>, <code>pipeline/</code>, <code>platform/</code> Packages Missing</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Windows uses Python packages for several subsystems: <code>eval/</code> (5 files), <code>models/</code> (6 files), <code>perf/</code> (4 files), <code>pipeline/</code> (6 files), <code>platform/</code> (3 files). Linux has NO counterparts — these packages are entirely absent. The Linux port uses flattened monolithic <code>.py</code> files instead.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>This is the largest architectural gap between the two ports. Linux has no eval harness, no model downloader/manager, no performance profiling, no pipeline stages (punctuation/grammar/formatting/cleanup), and no platform abstraction layer. This affects AI output quality, model management, diagnostics, and makes it impossible to run the full Windows test suite on Linux.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> Missing from <code>Internal/app/Ports/Linux/app/</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §4. The Windows <code>ai/</code> package is flattened into a single <code>ai.py</code> on Linux (111K), but the other packages have no equivalent.</p>
+<p><strong>Suggested fix:</strong> This is a structural decision. Either: (a) port the package structure to Linux (preferred for long-term maintainability), or (b) ensure the flattened Linux equivalents (<code>ai.py</code>, inline logic in the controller) cover all functionality. The <code>platform/</code> package is particularly critical because it contains the acceleration backend import that references the missing <code>linux_fallback.py</code>.</p>
+<p>Estimated complexity: <strong>XL</strong></p>
+</div>
+</details>
+
+<!-- H-017 -->
+<h3 id="h017">H-017: 23 Windows Test Files Missing from Linux</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Shared Modules / Tests</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> 23 test files present in the Windows canonical source are absent from the Linux port directory. These include tests for API stability, model cache, constitution/prompts, error recovery, eval harness, fallback modes, model backend, output quality, performance, pipelines, providers, settings recovery, STT providers, transcription diagnostics, transcription edge cases, and TTS providers. The Linux <code>TEST_PARITY.md</code> documents many exclusions as intentional but the coverage gap remains large.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Without these tests, regressions in critical subsystems (error recovery, output quality, model management) will not be caught on Linux. Bugs fixed on Windows may re-occur on Linux because the regression tests don't exist there.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> Missing from <code>Internal/app/Ports/Linux/app/</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §3.1. Full list of 23 missing test files documented there.</p>
+<p><strong>Suggested fix:</strong> Prioritize porting tests that cover shared logic: <code>test_error_recovery.py</code>, <code>test_output_quality.py</code>, <code>test_transcription_diag.py</code>, <code>test_transcription_edge_cases.py</code>, <code>test_fallback.py</code>. Some tests (e.g., <code>test_windows_dml.py</code>, <code>test_macos_audio.py</code>) are platform-specific and correctly excluded.</p>
+<p>Estimated complexity: <strong>XL</strong></p>
+</div>
+</details>
+
+<!-- H-018 -->
+<h3 id="h018">H-018: <code>_handle_second_opinion</code> Missing <code>cfg</code>/<code>prompt_cfg</code> Parameters</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_handle_second_opinion</code> (line ~3120) does not accept <code>cfg</code> and <code>prompt_cfg</code> parameters (frozen AI config snapshots). It also still handles <code>"list"</code> mode (retired on Windows) and lacks conversation context injection for the redo path.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The frozen config snapshot pattern was added to Windows for mid-call API key changes (VAL-CROSS-011). Without it, changing the API key while processing could cause the redo to use a different config than the original — a subtle correctness bug. The stale <code>"list"</code> mode handling means the redo path could route text through a retired mode.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line ~3120 vs Windows <code>mumble.py</code> line ~3520</p>
+<p><strong>Evidence:</strong> Controller Audit §1.4</p>
+<p><strong>Suggested fix:</strong> Sync the Linux method signature and body with Windows. Add <code>cfg</code> and <code>prompt_cfg</code> parameters. Remove <code>"list"</code> from the mode tuple. Add conversation context injection.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-019 -->
+<h3 id="h019">H-019: <code>_generate</code> Differs — Missing LLM/Pipeline/Context Fallbacks</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_generate</code> method differs from Windows in several important ways: no local LLM fallback before the builder, no pipeline orchestrator fallback, no conversation context injection for Prompt mode, and no frozen AI config snapshot. It also doesn't consistently use all fields from <code>config_snap</code>.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>The <code>_generate</code> method is the central AI dispatch point. Missing the local LLM fallback means no on-device smart shaping. Missing the pipeline orchestrator means no merged-model pipeline (punctuation→grammar→formatting→cleanup). Missing conversation context means Prompt Mode produces worse output. This single method controls most of the AI quality.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> <code>_generate</code> method</p>
+<p><strong>Evidence:</strong> Controller Audit §1.5</p>
+<p><strong>Suggested fix:</strong> Port the Windows <code>_generate</code> structure: add local LLM fallback, add pipeline orchestrator fallback, add conversation context injection, add frozen config snapshot, and ensure all <code>config_snap</code> fields are consumed.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+</div>
+</details>
+
+<!-- H-020 -->
+<h3 id="h020">H-020: <code>_offer_mode_pick</code> Still Has Stale "list" Mode</h3>
+<p>
+  <span class="badge b-amber">HIGH</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P1</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_offer_mode_pick</code> (line ~810) returns <code>("text", "prompt", "email", "list", "reply")</code>. Windows (line ~870) returns <code>("text", "prompt", "email", "reply")</code>. "List" mode was retired on Windows as part of The Big Shift — the mode picker should not offer it. Additionally, the <code>_cloud_generate</code> method on Linux still has a <code>if mode_hint == "list":</code> branch that Windows has removed.</p>
+<div class="plain"><div class="tag">Why it matters</div><div><p>Offering a retired mode to users creates confusion and may route text through a code path that is no longer maintained. If a user selects "list" on Linux, the behavior may differ from their expectation based on Windows documentation.</p></div></div>
+<details class="dev"><summary><span class="devchip">Detail</span> Evidence &amp; Fix</summary>
+<div class="body">
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line ~810, plus <code>_cloud_generate</code> line ~3030</p>
+<p><strong>Evidence:</strong> Controller Audit §3.4, §3.5</p>
+<p><strong>Suggested fix:</strong> Remove "list" from the <code>_offer_mode_pick</code> tuple. Remove the <code>if mode_hint == "list":</code> branch from <code>_cloud_generate</code>. Route "list" through the plain text path (as Windows does).</p>
+<p>Estimated complexity: <strong>S</strong></p>
+</div>
+</details>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 4 — MEDIUM-PRIORITY ISSUES (P2)
+     ======================================================================== -->
+<h2 id="s4"><span class="sec">4</span>Medium-Priority Issues <span class="badge b-gated">P2 — Fix When Touching Area</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>These issues are real problems that affect quality but don't block basic usage. They include missing guards and error handlers, incomplete no-op fallback classes, duplicated logic that increases maintenance burden, and minor feature gaps that users might not notice immediately. Fix these as part of larger refactoring efforts in each area.</p>
+  </div>
+</div>
+
+<!-- M-001 -->
+<h3 id="m001">M-001: <code>_NoopIsland</code> Missing <code>set_focused()</code> — Controller May Crash</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Overlay</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> <code>_NoopIsland</code> is missing <code>set_focused()</code>, <code>set_bar_state()</code>, and many attributes (<code>done_color</code>, <code>build_colors</code>, <code>focused</code>, <code>bar_state</code>, <code>armed_color</code>, etc.) that the controller may call or read. On headless/no-GTK runs, the controller could crash when calling methods that don't exist on the no-op island.</p>
+<p><strong>Location:</strong> <code>overlay_linux.py</code> <code>_NoopIsland</code> class (lines 186-258)</p>
+<p><strong>Evidence:</strong> Overlay Audit §8.1-8.2</p>
+<p><strong>Suggested fix:</strong> <code>_NoopIsland.__init__</code> should initialize every attribute that <code>_GtkIsland.__init__</code> does, and implement every method present on <code>_GtkIsland</code> as a no-op. This guarantees the controller never crashes on a degraded island.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-002 -->
+<h3 id="m002">M-002: <code>wake()</code> Doesn't Check Suspended State</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Overlay</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux <code>wake()</code> (line 780) doesn't check <code>self.suspended</code>. Combined with the missing <code>_tick</code> guard (C-009), there is no mechanism to pause the island on Linux. Windows <code>wake()</code> checks <code>if self.suspended: return</code>.</p>
+<p><strong>Location:</strong> <code>overlay_linux.py</code> line 780</p>
+<p><strong>Evidence:</strong> Overlay Audit §1.7</p>
+<p><strong>Suggested fix:</strong> Add the suspended guard to <code>wake()</code>. Depends on C-009 (suspended support in <code>_tick</code>).</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-003 -->
+<h3 id="m003">M-003: <code>_GlibRoot.after()</code> Returns Nothing — No <code>after_cancel</code></h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller / Overlay</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Tk's <code>after()</code> returns a timer ID that can be passed to <code>after_cancel()</code>. <code>_GlibRoot.after()</code> returns nothing, so <code>after_cancel</code> is not supported. If the controller calls <code>root.after_cancel(id)</code>, it will crash.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> <code>_GlibRoot.after()</code></p>
+<p><strong>Evidence:</strong> Overlay Audit §7.5</p>
+<p><strong>Suggested fix:</strong> Have <code>_GlibRoot.after()</code> return the GLib source ID. Store it and implement <code>after_cancel(id)</code> using <code>GLib.source_remove(id)</code>.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-004 -->
+<h3 id="m004">M-004: <code>_GlibRoot.mainloop()</code> Headless Fallback — Infinite Loop</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller / Overlay</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> When GTK is unavailable, <code>_GlibRoot.mainloop()</code> enters an infinite <code>while True: sleep(3600)</code> loop with no exit mechanism. There's no signal handler, no flag to break out, and no way for the app to shut down cleanly. The headless fallback is a dead end.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> <code>_GlibRoot.mainloop()</code></p>
+<p><strong>Evidence:</strong> Overlay Audit §7.4, Controller Audit §3.12</p>
+<p><strong>Suggested fix:</strong> Use a <code>threading.Event</code> to signal exit. At minimum catch <code>KeyboardInterrupt</code>. Consider whether headless operation is even a supported use case — if not, fail fast with a clear error instead of hanging.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-005 -->
+<h3 id="m005">M-005: <code>_pump</code> Won't Process <code>_tk_queue</code> in Headless Mode</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> When <code>Gtk</code> is <code>None</code>, <code>_GlibRoot.mainloop()</code> enters an infinite sleep. The <code>_pump</code> uses <code>self.root.after()</code> which falls back to a one-shot <code>threading.Timer</code>. After the first Timer fires, there's nothing scheduling the next <code>_pump</code> call — the command queue drains exactly once and then stops.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> lines 125-133, <code>_pump</code></p>
+<p><strong>Evidence:</strong> Controller Audit §3.12, §3.13</p>
+<p><strong>Suggested fix:</strong> Implement a proper GLib-free main loop that continuously drains <code>_tk_queue</code>. Or remove headless support and require GTK.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+
+<!-- M-006 -->
+<h3 id="m006">M-006: <code>set_widget_callbacks</code> Signature Mismatch (Missing <code>on_foreign</code>)</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Overlay</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux <code>set_widget_callbacks</code> accepts only <code>on_prompt</code> and <code>on_deck</code>. Windows accepts <code>on_mode</code>, <code>on_deck</code>, and <code>on_foreign</code>. The Foreign toggle callback is missing from the Linux API.</p>
+<p><strong>Location:</strong> <code>overlay_linux.py</code> line ~586</p>
+<p><strong>Evidence:</strong> Overlay Audit §2.3</p>
+<p><strong>Suggested fix:</strong> Add <code>on_foreign</code> to the callback signature. Depends on C-007 (companion bar).</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-007 -->
+<h3 id="m007">M-007: No Fade-In Appearance for Island</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Overlay</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux shows the island window instantly via <code>win.show()</code> with no fade transition. Windows uses <code>attributes("-alpha", 0.95)</code> for a semi-transparent appearance. The pill's internal dissolve animation (for done/hint states) works on both platforms, but the initial window appearance has no animation on Linux.</p>
+<p><strong>Location:</strong> <code>overlay_linux.py</code> <code>_show()</code> line ~731</p>
+<p><strong>Evidence:</strong> Overlay Audit §2.8</p>
+<p><strong>Suggested fix:</strong> Add a short opacity ramp using <code>win.set_opacity()</code> (0.0 → 1.0 over ~300ms) to smooth the initial appearance.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-008 -->
+<h3 id="m008">M-008: Duplicated <code>_build_snapshot</code> Logic (~90% Identical)</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Overlay / Shared</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> The <code>_build_snapshot()</code> methods in <code>overlay_linux.py</code> and <code>overlay.py</code> are ~90% identical — color selection, label composition, hint text, fade calculation are copy-pasted. Any snapshot schema change must be made in both files (and the macOS overlay too). This is a maintenance bug waiting to happen.</p>
+<p><strong>Location:</strong> <code>overlay_linux.py</code> line ~627, <code>overlay.py</code> line ~980</p>
+<p><strong>Evidence:</strong> Overlay Audit §10.1</p>
+<p><strong>Suggested fix:</strong> Extract the shared state-engine logic into <code>island_render.py</code> or a new <code>island_state.py</code> shared by all three platform overlays.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+
+<!-- M-009 -->
+<h3 id="m009">M-009: Wayland Env Var Set at Import Time — May Affect Other GTK Windows</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Platform Integration / Overlay</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> <code>mumble_linux.py</code> lines 59-68 set <code>GDK_BACKEND=x11</code> at module import time. This env var propagates to child processes and may affect other GTK windows (the web UI, if it uses GTK). There's no detection if XWayland is absent before forcing X11.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> lines 59-68</p>
+<p><strong>Evidence:</strong> Overlay Audit §6.1</p>
+<p><strong>Suggested fix:</strong> Check for X11 availability before forcing <code>GDK_BACKEND=x11</code>. Consider setting the env var only for the island window, not globally.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-010 -->
+<h3 id="m010">M-010: Missing <code>gc.collect()</code> After Dictation and Model Swaps</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller / Performance</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Windows calls <code>gc.collect()</code> after each dictation, after model swaps, and after boot to reclaim transient allocations. Linux does none of these. Linux may hold more idle memory than Windows, particularly after model swaps or long dictation sessions.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> — missing in <code>_process</code>, <code>_apply_hardware_model</code>, and boot sequence</p>
+<p><strong>Evidence:</strong> Controller Audit §2.10</p>
+<p><strong>Suggested fix:</strong> Add <code>gc.collect()</code> calls matching Windows placement. This may be important for VAL-PERF-003 (&lt;1GB idle target).</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-011 -->
+<h3 id="m011">M-011: <code>_quit</code> Missing Crash Recovery</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Windows <code>_quit</code> saves partial dictation history, stops local LLM backend, and cancels active model downloads before shutting down. Linux <code>_quit</code> (line 3780) does none of these. A mid-dictation quit would lose captured audio/text.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 3780</p>
+<p><strong>Evidence:</strong> Controller Audit §3.10</p>
+<p><strong>Suggested fix:</strong> Port the Windows <code>_quit</code> shutdown sequence: save partial dictation, stop LLM backend, cancel downloads.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-012 -->
+<h3 id="m012">M-012: <code>_toggle_pause</code> Missing Auto-Stop of Recording</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Windows <code>_toggle_pause</code> auto-stops any active recording when pausing. Linux (line ~3710) doesn't. If the user pauses while recording, the recording continues in the background.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line ~3710</p>
+<p><strong>Evidence:</strong> Controller Audit §3.11</p>
+<p><strong>Suggested fix:</strong> Add the auto-stop logic matching Windows: check <code>self.recording</code> and start <code>_safe_stop</code> in a daemon thread when pausing.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-013 -->
+<h3 id="m013">M-013: <code>_paste_impl</code> Clipboard Resume Missing Exception Handler</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_paste_impl</code> (line ~1420) lacks the <code>try/except</code> around <code>self.clipboard.resume(skip_current=True)</code> that Windows has. A clipboard resume error could propagate and crash the paste path.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line ~1420</p>
+<p><strong>Evidence:</strong> Controller Audit §3.9, §4.1</p>
+<p><strong>Suggested fix:</strong> Add the <code>try/except</code> guard matching Windows.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-014 -->
+<h3 id="m014">M-014: <code>_safe_start</code> Missing Cleanup on Error</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_safe_start</code> (line 1520) doesn't clean up a partially-started stream on error. Windows tries to <code>stop_recording()</code> inside a try/except to release microphone resources.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 1520</p>
+<p><strong>Evidence:</strong> Controller Audit §3.8</p>
+<p><strong>Suggested fix:</strong> Add the cleanup block matching Windows: if <code>self.recording</code>, try <code>stop_recording()</code> with exception guard.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-015 -->
+<h3 id="m015">M-015: Pipeline Orchestrator Fallback Missing</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> The merged-model pipeline (punctuation→grammar→formatting→cleanup via GGUF models) is available on Windows via <code>pipeline.get_orchestrator()</code> but not wired on Linux. The <code>_generate</code> method falls through directly to the deterministic builder.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> <code>_generate</code> method</p>
+<p><strong>Evidence:</strong> Controller Audit §2.7. Related to H-016 (pipeline package missing).</p>
+<p><strong>Suggested fix:</strong> Port the <code>pipeline/</code> package or inline the pipeline logic. Wire <code>pipeline.get_orchestrator()</code> as a fallback in <code>_generate</code> before the builder.</p>
+<p>Estimated complexity: <strong>L</strong></p>
+
+<!-- M-016 -->
+<h3 id="m016">M-016: Confidence Gating &amp; Hotword Sanitization Missing</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux doesn't call <code>formatting.sanitize_hotwords(terms)</code> before passing vocabulary terms to STT (potential prompt injection via special characters). It also doesn't check <code>confidence_gating</code> to drop low-confidence hallucination segments.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> <code>_local_transcribe</code></p>
+<p><strong>Evidence:</strong> Controller Audit §2.8</p>
+<p><strong>Suggested fix:</strong> Add <code>sanitize_hotwords()</code> call and <code>confidence_gating</code> check matching Windows in <code>_local_transcribe</code>.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-017 -->
+<h3 id="m017">M-017: <code>_snap</code> Dictionary Missing <code>llm_provider</code> and <code>prompt_provider</code></h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_snap</code> captures fewer fields than Windows. Missing: <code>llm_provider</code>, <code>prompt_provider</code>. These are used by Windows for config isolation (VAL-CROSS-020). Their absence means config snapshots are incomplete.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> lines ~1060-1070</p>
+<p><strong>Evidence:</strong> Controller Audit §7.3</p>
+<p><strong>Suggested fix:</strong> Add <code>llm_provider</code> and <code>prompt_provider</code> to the <code>_snap</code> dict.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-018 -->
+<h3 id="m018">M-018: Settings Live-Apply Gaps</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux <code>_apply_settings_change</code> is missing handlers for <code>prompt_mode_enabled</code>, <code>island_modes</code>, <code>island_foreign_toggle</code>, <code>foreign_mode</code>, <code>island_active_mode</code>, <code>hardware_tier</code>, <code>english_only</code>, and <code>primary_language</code>. Changes to these settings won't take effect until restart.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> <code>_apply_settings_change</code></p>
+<p><strong>Evidence:</strong> Controller Audit §7.7</p>
+<p><strong>Suggested fix:</strong> Add the missing handlers. Some depend on features that are themselves missing (island mode deck, hardware tier). Handlers for settings that exist but aren't live-applied should be added.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+
+<!-- M-019 -->
+<h3 id="m019">M-019: Hardcoded <code>/usr/bin/python3</code> in Update Script Relauncher</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Platform Integration</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> The auto-update swap script (generated by <code>update.py</code> line 262 in Linux port) hardcodes <code>/usr/bin/python3</code> for relaunch. This fails if Python 3 is at <code>/usr/local/bin/python3</code>, managed by pyenv, or inside a venv.</p>
+<p><strong>Location:</strong> <code>update.py</code> line 262 (Linux port)</p>
+<p><strong>Evidence:</strong> Platform Integration Audit §7</p>
+<p><strong>Suggested fix:</strong> Use <code>sys.executable</code> or <code>which python3</code> at update-script generation time, embedding the actual path.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-020 -->
+<h3 id="m020">M-020: <code>mode_select</code> Import is Dead Code</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Controller</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Both controllers import <code>mode_select</code> (Linux line 155, Windows line 93). On Windows, The Big Shift retired mode detection — the import is dead code but retained for the port controllers. Linux imports it and never uses it anywhere.</p>
+<p><strong>Location:</strong> <code>mumble_linux.py</code> line 155</p>
+<p><strong>Evidence:</strong> Controller Audit §2.13</p>
+<p><strong>Suggested fix:</strong> Remove the <code>import mode_select</code> line if confirmed unused. If the port controllers still call it, document why.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-021 -->
+<h3 id="m021">M-021: <code>island_render.py</code> — 9.6% Drift</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux <code>island_render.py</code> is 9.6% smaller than Windows (47,379 vs 52,407 bytes). This shared rendering module should be identical — any drift means different visual output between platforms.</p>
+<p><strong>Location:</strong> <code>island_render.py</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §1.2</p>
+<p><strong>Suggested fix:</strong> Sync <code>island_render.py</code> from Windows. This file is designed to be platform-independent. Any Linux-specific changes should be isolated.</p>
+<p>Estimated complexity: <strong>M</strong></p>
+
+<!-- M-022 -->
+<h3 id="m022">M-022: <code>presets.py</code> — 24.5% Drift (Linux Has MORE)</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Shared Modules</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> Linux <code>presets.py</code> is 24.5% larger than Windows (12,772 vs 9,637 bytes). Linux has MORE preset definitions. It's unclear whether these are intentional Linux additions that should be backported to Windows, or accidental drift.</p>
+<p><strong>Location:</strong> <code>presets.py</code></p>
+<p><strong>Evidence:</strong> Shared Modules Audit §2.3</p>
+<p><strong>Suggested fix:</strong> Audit the differences. Decide which set is canonical. Sync in the appropriate direction.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<!-- M-023 -->
+<h3 id="m023">M-023: Multiple Sudo Prompts During Optional Package Install</h3>
+<p>
+  <span class="badge b-gated">MEDIUM</span>
+  <span class="badge b-exist">Area: Platform Integration / Installer</span>
+  <span class="badge b-gated">P2</span>
+</p>
+<p><strong>Description:</strong> <code>install.sh</code> installs each optional package with a separate <code>sudo $INSTALL</code> call (lines 94-96). Users may be prompted for their sudo password multiple times. A single combined install call would be better UX. Additionally, the loop tries to install packages even if already installed (while idempotent, sudo prompts are still triggered).</p>
+<p><strong>Location:</strong> <code>install.sh</code> lines 94-96</p>
+<p><strong>Evidence:</strong> Platform Integration Audit §5</p>
+<p><strong>Suggested fix:</strong> Combine optional packages into one install command per package manager. Check if packages are already installed before attempting.</p>
+<p>Estimated complexity: <strong>S</strong></p>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 5 — LOW-PRIORITY ISSUES (P3)
+     ======================================================================== -->
+<h2 id="s5"><span class="sec">5</span>Low-Priority Issues <span class="badge b-exist">P3 — Nice-to-Have</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>These are minor issues — cosmetic inconsistencies, missing edge-case handling, and documentation gaps. They don't block functionality but addressing them would improve polish, maintainability, and the developer experience. Many are simple one-line fixes or documentation additions.</p>
+  </div>
+</div>
+
+<table>
+<thead><tr><th>#</th><th>Issue</th><th>Area</th><th>Location</th><th>Complexity</th></tr></thead>
+<tbody>
+<tr><td>L-001</td><td>TRUNC_MARKER handling missing — user not notified of truncated AI responses</td><td>Controller</td><td><code>mumble_linux.py</code></td><td>S</td></tr>
+<tr><td>L-002</td><td>System sleep detection missing — stale pre-sleep audio may produce garbled transcription on wake</td><td>Controller</td><td><code>mumble_linux.py</code> <code>_audio_cb</code></td><td>S</td></tr>
+<tr><td>L-003</td><td><code>_cmd_token_ok</code> race condition — if <code>_cmd_token</code> not set yet, silently accepts all requests</td><td>Controller</td><td><code>mumble_linux.py</code> line 1813</td><td>S</td></tr>
+<tr><td>L-004</td><td>Single-instance lock less robust — 1 attempt vs Windows 3 attempts with backoff</td><td>Controller</td><td><code>mumble_linux.py</code></td><td>S</td></tr>
+<tr><td>L-005</td><td><code>_on_draw</code> returns <code>False</code> — should return <code>True</code> per GTK convention</td><td>Overlay</td><td><code>overlay_linux.py</code> line 435</td><td>S</td></tr>
+<tr><td>L-006</td><td>Timer IDs not tracked — cannot cancel pending tick callbacks</td><td>Overlay</td><td><code>overlay_linux.py</code> <code>_tick()</code></td><td>S</td></tr>
+<tr><td>L-007</td><td><code>_GlibRoot</code> missing <code>update()</code>/<code>update_idletasks()</code> — controller may call these</td><td>Controller</td><td><code>mumble_linux.py</code></td><td>S</td></tr>
+<tr><td>L-008</td><td><code>_hex</code>/<code>_blend</code>/<code>_mode_names</code>/<code>_listen_timer</code> duplicated — three copies across overlay files + <code>island_render.py</code></td><td>Overlay / Shared</td><td>Multiple files</td><td>S</td></tr>
+<tr><td>L-009</td><td><code>close_picker()</code> no-op may surprise callers — controller expects picker to close</td><td>Overlay</td><td><code>overlay_linux.py</code> line ~600</td><td>S</td></tr>
+<tr><td>L-010</td><td>20 files have cosmetic drift from Ctrl+Alt+H → Ctrl+Alt+D hotkey rename</td><td>Shared Modules</td><td>20 files</td><td>S</td></tr>
+<tr><td>L-011</td><td>MODES_INFO/MODE_COLORS inconsistency — colors defined for modes without info cards</td><td>Branding</td><td><code>branding.py</code></td><td>S</td></tr>
+<tr><td>L-012</td><td>SPOKEN_COMMANDS diverged between Linux and Windows</td><td>Branding</td><td><code>branding.py</code></td><td>S</td></tr>
+<tr><td>L-013</td><td>No systemd user service autostart option — some users prefer this over XDG autostart</td><td>Platform</td><td><code>autostart.py</code></td><td>S</td></tr>
+<tr><td>L-014</td><td>No Flatpak/snap autostart awareness — different autostart mechanisms for sandboxed environments</td><td>Platform</td><td><code>autostart.py</code></td><td>M</td></tr>
+<tr><td>L-015</td><td>No check for <code>app/</code> directory integrity in installer — assumes git clone is intact</td><td>Installer</td><td><code>install.sh</code></td><td>S</td></tr>
+<tr><td>L-016</td><td>No network check before attempting model download in installer</td><td>Installer</td><td><code>install.sh</code> lines 151-162</td><td>S</td></tr>
+<tr><td>L-017</td><td>No minimum <code>keyboard</code> version pinned for <code>suppress=True</code> kwarg</td><td>Platform</td><td><code>requirements.txt</code></td><td>S</td></tr>
+<tr><td>L-018</td><td>No minimum Linux kernel version documented — evdev needs /dev/input</td><td>Documentation</td><td>N/A</td><td>S</td></tr>
+<tr><td>L-019</td><td>No CI/CD pipeline — zero automated build, test, or deploy for any platform</td><td>Infrastructure</td><td>N/A (platform-report.md §B.1)</td><td>XL</td></tr>
+<tr><td>L-020</td><td>No versioned releases or CHANGELOG — version is single string in <code>branding.py</code></td><td>Infrastructure</td><td>N/A (platform-report.md §B.6)</td><td>M</td></tr>
+<tr><td>L-021</td><td>No dedicated install framework — all platforms use shell scripts; no deb/rpm/AppImage/Flatpak</td><td>Distribution</td><td>N/A (platform-report.md §B.5)</td><td>XL</td></tr>
+<tr><td>L-022</td><td>Auto-update only works on Windows — macOS and Linux must manually download</td><td>Distribution</td><td>N/A (platform-report.md Summary #8)</td><td>M</td></tr>
+<tr><td>L-023</td><td>Three parallel codebases create maintenance burden — controllers, overlays, shared libs duplicated per platform</td><td>Architecture</td><td>All port directories (platform-report.md §A.5)</td><td>XL</td></tr>
+<tr><td>L-024</td><td>No automated Linux release packaging — users must run <code>install.sh</code> from source</td><td>Distribution</td><td>N/A (platform-report.md §C.4)</td><td>M</td></tr>
+<tr><td>L-025</td><td><code>tips.py</code> — 61.8% drift (4,146 vs 10,855 bytes). Most tips content removed from Linux</td><td>Shared Modules</td><td><code>tips.py</code></td><td>S</td></tr>
+<tr><td>L-026</td><td><code>meeting_store.py</code> — 13.6% drift. Linux meeting records lack <code>key_decisions</code>, <code>open_questions</code>, <code>processing_mode</code></td><td>Shared Modules</td><td><code>meeting_store.py</code></td><td>S</td></tr>
+<tr><td>L-027</td><td><code>webui_shell.py</code> — 8% drift. Platform seam + feature drift in web shell</td><td>Shared Modules</td><td><code>webui_shell.py</code></td><td>M</td></tr>
+<tr><td>L-028</td><td><code>stats.py</code> — 8.8% drift. Stats tracking differs between platforms</td><td>Shared Modules</td><td><code>stats.py</code></td><td>S</td></tr>
+<tr><td>L-029</td><td><code>settings.py</code> — 4.6% drift. Settings module slightly behind Windows</td><td>Shared Modules</td><td><code>settings.py</code></td><td>S</td></tr>
+<tr><td>L-030</td><td><code>overlay.py</code> (shared) — 6.4% drift. Shared overlay logic behind Windows</td><td>Shared Modules</td><td><code>overlay.py</code></td><td>M</td></tr>
+<tr><td>L-031</td><td><code>branding.py</code> — 7.6% drift. Mixed platform seams + feature drift</td><td>Shared Modules</td><td><code>branding.py</code></td><td>S</td></tr>
+<tr><td>L-032</td><td><code>app_window.py</code> — 2.3% drift. Minor feature drift in Tkinter fallback window</td><td>Shared Modules</td><td><code>app_window.py</code></td><td>S</td></tr>
+<tr><td>L-033</td><td><code>test_webui_api.py</code> — 70.8% stripped. Linux has only 29% of Windows webui test coverage</td><td>Tests</td><td><code>test_webui_api.py</code></td><td>M</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 6 — WINDOWS FEATURE PARITY MATRIX
+     ======================================================================== -->
+<h2 id="s6"><span class="sec">6</span>Windows Feature Parity Matrix</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Every feature present on Windows is compared against the Linux port. For each discrepancy, the table explains what Windows does, what Linux does (or doesn't), why the difference exists where known, and what the ideal behavior should be. This matrix is comprehensive — it covers every feature divergence documented across all four audit reports, not just the obvious ones.</p>
+  </div>
+</div>
+
+<table>
+<thead><tr><th>#</th><th>Feature</th><th>Windows</th><th>Linux</th><th>Gap</th><th>Severity</th><th>Ideal</th></tr></thead>
+<tbody>
+<tr>
+  <td>F-01</td>
+  <td>Meeting recording</td>
+  <td>Full: recorder object, start/stop/pause/resume, diarisation, import, island timer display</td>
+  <td><strong>Entirely absent.</strong> Module not imported, no recorder created, no commands exposed</td>
+  <td>Feature class missing</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Wire the meeting module with full parity</td>
+</tr>
+<tr>
+  <td>F-02</td>
+  <td>Island mode deck</td>
+  <td>Companion bar with clickable mode chips (Prompt, Email, Reply, Foreign) + Deck button</td>
+  <td><strong>No bar at all.</strong> Callbacks exist but not connected to any UI</td>
+  <td>Entire widget missing</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Implement GTK companion bar</td>
+</tr>
+<tr>
+  <td>F-03</td>
+  <td>Island tips system</td>
+  <td>Usage-aware hints surfaced on island, self-retiring, feature-adoption counter</td>
+  <td><strong>Completely absent.</strong> No tip methods, no bump_feature, no tips content (61.8% stripped)</td>
+  <td>Feature class missing</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Port tips methods + sync tips.py content</td>
+</tr>
+<tr>
+  <td>F-04</td>
+  <td>Conversation capture</td>
+  <td>Ctrl+A Ctrl+C focused chat window, restore clipboard, inject as Prompt context</td>
+  <td><strong>Entirely absent.</strong> No capture methods, no auto-injection</td>
+  <td>Feature missing</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Port conversation capture pipeline</td>
+</tr>
+<tr>
+  <td>F-05</td>
+  <td>On-device LLM backend</td>
+  <td>llama.cpp GGUF model loaded at boot, used for smart-mode shaping</td>
+  <td><strong>Not wired.</strong> No init, no status, no generate methods. branding.py missing model paths</td>
+  <td>Feature missing</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Wire LLM backend with Linux model paths</td>
+</tr>
+<tr>
+  <td>F-06</td>
+  <td>Hardware acceleration (STT)</td>
+  <td>DirectML on Windows GPU (sherpa-onnx)</td>
+  <td><strong>linux_fallback.py missing.</strong> ImportError silently caught, falls to CPU</td>
+  <td>Acceleration path dead</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Implement WhisperCppTranscriber for Vulkan</td>
+</tr>
+<tr>
+  <td>F-07</td>
+  <td>Image clipboard history</td>
+  <td>ImageGrab.grabclipboard() captures images from system clipboard</td>
+  <td><strong>Dead.</strong> ImageGrab is Windows-only. Always returns None</td>
+  <td>Feature non-functional</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Implement GTK/Wayland image clipboard capture</td>
+</tr>
+<tr>
+  <td>F-08</td>
+  <td>Island armed_color in pill</td>
+  <td>Armed ring colored by active mode (Prompt=purple, Email=blue, etc.)</td>
+  <td><strong>Always purple.</strong> armed_color key missing from snapshot</td>
+  <td>Visual bug</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Add armed_color to snapshot</td>
+</tr>
+<tr>
+  <td>F-09</td>
+  <td>Island suspended state</td>
+  <td>Island hides during interactive panels, 30s self-healing timeout</td>
+  <td><strong>Not enforced.</strong> Attribute exists but never checked</td>
+  <td>Functional gap</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Implement suspended check in tick + wake</td>
+</tr>
+<tr>
+  <td>F-10</td>
+  <td>Pure Wayland support</td>
+  <td>N/A (Windows uses Win32)</td>
+  <td><strong>No island at all.</strong> Forced GDK_BACKEND=x11 fails without XWayland</td>
+  <td>Zero visual feedback</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Detect XWayland availability; degrade gracefully</td>
+</tr>
+<tr>
+  <td>F-11</td>
+  <td>Hardware-tier model selection</td>
+  <td>Auto-detect CPU/RAM → pick model tier (tiny/small/medium)</td>
+  <td><strong>Not implemented.</strong> Always defaults to base.en</td>
+  <td>Feature missing</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Port hardware detection + model selection</td>
+</tr>
+<tr>
+  <td>F-12</td>
+  <td>Default STT model</td>
+  <td>small.en (better quality)</td>
+  <td><strong>base.en</strong> (lower quality)</td>
+  <td>Quality degradation</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Change default to small.en</td>
+</tr>
+<tr>
+  <td>F-13</td>
+  <td>Default history hotkey</td>
+  <td>Ctrl+Alt+D</td>
+  <td><strong>Ctrl+Alt+H</strong> (across 8+ files)</td>
+  <td>Cross-platform inconsistency</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Standardize on Ctrl+Alt+D</td>
+</tr>
+<tr>
+  <td>F-14</td>
+  <td>_handle_second_opinion</td>
+  <td>Accepts cfg/prompt_cfg params, has conversation context injection, no "list" mode</td>
+  <td>Missing cfg/prompt_cfg, no context injection, still has "list" mode</td>
+  <td>API divergence</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Sync method signature and body</td>
+</tr>
+<tr>
+  <td>F-15</td>
+  <td>_generate fallbacks</td>
+  <td>Local LLM → pipeline orchestrator → builder, with config snap + context injection</td>
+  <td>No local LLM fallback, no pipeline orchestrator, no context injection, incomplete config snap</td>
+  <td>AI quality gap</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Port all fallbacks to Linux _generate</td>
+</tr>
+<tr>
+  <td>F-16</td>
+  <td>Mode picker: "list" mode</td>
+  <td>Retired — not offered in mode picker</td>
+  <td>Still offered in picker and routed in _cloud_generate</td>
+  <td>Stale feature</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Remove "list" from mode picker and routing</td>
+</tr>
+<tr>
+  <td>F-17</td>
+  <td>branding.py completeness</td>
+  <td>MODELS_DIR, LLAMA_BIN_DIR, llama_cli_path(), get_hardware_info(), app_info()</td>
+  <td>All five functions missing. MODES_INFO incomplete</td>
+  <td>API gap</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Add missing branding functions for Linux</td>
+</tr>
+<tr>
+  <td>F-18</td>
+  <td>WebUI files</td>
+  <td>app.js 291K, app.css 118K, index.html 204K</td>
+  <td>app.js 237K (−18%), app.css 99K (−16%), index.html 187K (−8%)</td>
+  <td>Significant drift</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Sync webui files verbatim from Windows</td>
+</tr>
+<tr>
+  <td>F-19</td>
+  <td>local_engine.py</td>
+  <td>38,435 bytes with model discovery, backend management, fallback logic</td>
+  <td>20,000 bytes (−48%). Severely stripped</td>
+  <td>Severe drift</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Sync local_engine.py from Windows</td>
+</tr>
+<tr>
+  <td>F-20</td>
+  <td>Code organization</td>
+  <td>Modular packages: ai/, eval/, models/, perf/, pipeline/, platform/</td>
+  <td>Flattened monoliths. eval/, models/, perf/, pipeline/, platform/ absent entirely</td>
+  <td>Structural gap</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Port package structure or ensure feature parity</td>
+</tr>
+<tr>
+  <td>F-21</td>
+  <td>Meeting module sync</td>
+  <td>meeting.py 31.7K, meeting_diarise.py 24K, meeting_store.py 9.1K</td>
+  <td>meeting.py 14.8K (−53%), meeting_diarise.py 9.5K (−61%), meeting_store.py 7.9K (−14%)</td>
+  <td>Severe drift</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Sync meeting modules from Windows</td>
+</tr>
+<tr>
+  <td>F-22</td>
+  <td>context_store.py ui field</td>
+  <td>Capture result includes 'ui' field for web UI consumption</td>
+  <td>'ui' field missing. test_context_store.py excluded</td>
+  <td>API gap</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Add 'ui' field to context store</td>
+</tr>
+<tr>
+  <td>F-23</td>
+  <td>reader_store.py</td>
+  <td>Has save_doc_parsed() for persisting document parsing results</td>
+  <td>save_doc_parsed() missing. test_reader_parser.py excluded</td>
+  <td>Function missing</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Add save_doc_parsed()</td>
+</tr>
+<tr>
+  <td>F-24</td>
+  <td>stop_recording idempotency</td>
+  <td>Guarded: checks self.recording under lock, returns early if not recording</td>
+  <td>No guard. Double hotkey → np.concatenate crash</td>
+  <td>Crash bug</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Add idempotent guard</td>
+</tr>
+<tr>
+  <td>F-25</td>
+  <td>on_hotkey _processing guard</td>
+  <td>Checks self._processing, returns None if still processing previous dictation</td>
+  <td>No check. Double-start recording possible</td>
+  <td>Crash bug</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Add _processing guard</td>
+</tr>
+<tr>
+  <td>F-26</td>
+  <td>bindings._session_type()</td>
+  <td>N/A (Windows doesn't need it)</td>
+  <td>Called in copy_image() but function doesn't exist → AttributeError</td>
+  <td>Crash bug</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Implement _session_type() or inline check</td>
+</tr>
+<tr>
+  <td>F-27</td>
+  <td>Confidence gating</td>
+  <td>Gates low-confidence STT segments to reduce hallucinations</td>
+  <td>Not implemented. May produce more hallucination artifacts</td>
+  <td>Quality gap</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Add confidence gating in _local_transcribe</td>
+</tr>
+<tr>
+  <td>F-28</td>
+  <td>Hotword sanitization</td>
+  <td>Sanitizes vocabulary terms before passing to STT (prevents prompt injection via special chars)</td>
+  <td>Not implemented</td>
+  <td>Security gap</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Add sanitize_hotwords() call</td>
+</tr>
+<tr>
+  <td>F-29</td>
+  <td>Pipeline orchestrator</td>
+  <td>4-stage merged-model pipeline before builder (punctuation→grammar→formatting→cleanup)</td>
+  <td>Not wired. Falls through to builder directly</td>
+  <td>AI quality gap</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Wire pipeline orchestrator fallback</td>
+</tr>
+<tr>
+  <td>F-30</td>
+  <td>Memory GC after dictation</td>
+  <td>gc.collect() after each dictation, model swap, and boot</td>
+  <td>No explicit GC calls</td>
+  <td>Memory efficiency</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Add gc.collect() calls</td>
+</tr>
+<tr>
+  <td>F-31</td>
+  <td>_quit crash recovery</td>
+  <td>Saves partial dictation, stops LLM, cancels downloads</td>
+  <td>No recovery actions on quit</td>
+  <td>Data loss risk</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Add shutdown cleanup</td>
+</tr>
+<tr>
+  <td>F-32</td>
+  <td>Island fade-in</td>
+  <td>Semi-transparent initial appearance (attributes -alpha 0.95)</td>
+  <td>Instant appearance with no animation</td>
+  <td>Visual polish</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Add opacity ramp animation</td>
+</tr>
+<tr>
+  <td>F-33</td>
+  <td>Keyboard dependency</td>
+  <td>keyboard and mouse libraries in requirements.txt</td>
+  <td>Neither listed. pynput listed but unused</td>
+  <td>Packaging error</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Fix requirements.txt</td>
+</tr>
+<tr>
+  <td>F-34</td>
+  <td>pywebview pinning</td>
+  <td>Unpinned (same risk)</td>
+  <td>Unpinned</td>
+  <td>Supply chain risk</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Pin pywebview to known-good version</td>
+</tr>
+<tr>
+  <td>F-35</td>
+  <td>Auto-update restart</td>
+  <td>Full restart after update</td>
+  <td>Restart stubbed. "Stubbed on Linux for now" comment at line 3887</td>
+  <td>Update UX gap</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Implement restart after update</td>
+</tr>
+<tr>
+  <td>F-36</td>
+  <td>System tray fallback</td>
+  <td>pystray (Win32) always works</td>
+  <td>pystray with AyatanaAppIndicator. No fallback if run_detached() fails</td>
+  <td>Potential tray gap</td>
+  <td><span class="badge b-exist">LOW</span></td>
+  <td>Add Gtk.StatusIcon fallback</td>
+</tr>
+<tr>
+  <td>F-37</td>
+  <td>System sleep detection</td>
+  <td>Detects >2s audio callback gap as sleep, discards stale buffer</td>
+  <td>Not implemented</td>
+  <td>Edge case</td>
+  <td><span class="badge b-exist">LOW</span></td>
+  <td>Add sleep detection guard</td>
+</tr>
+<tr>
+  <td>F-38</td>
+  <td>_config_snap completeness</td>
+  <td>Captures llm_provider, prompt_provider for config isolation</td>
+  <td>Missing llm_provider and prompt_provider</td>
+  <td>Config isolation gap</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Add missing fields to _snap</td>
+</tr>
+<tr>
+  <td>F-39</td>
+  <td>Settings live-apply</td>
+  <td>Handlers for prompt_mode, island_modes, foreign_mode, hardware_tier, language</td>
+  <td>Missing handlers for 8 settings</td>
+  <td>Restart required for some settings</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Add missing live-apply handlers</td>
+</tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 7 — MISSING IMPLEMENTATIONS
+     ======================================================================== -->
+<h2 id="s7"><span class="sec">7</span>Missing Implementations</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This section catalogs every feature, method, function, file, and package that exists in the Windows canonical source but is absent from the Linux port. These are not bugs in existing code — they are things that were never implemented.</p>
+  </div>
+</div>
+
+<h3>7.1 Missing Controller Methods</h3>
+<p>The following methods exist in <code>mumble.py</code> but not in <code>mumble_linux.py</code>:</p>
+<table>
+<thead><tr><th>Method</th><th>Windows Line</th><th>Purpose</th><th>Severity</th></tr></thead>
+<tbody>
+<tr><td><code>__init__</code> → meeting state</td><td>207-209</td><td>Initialize meeting recorder and recording flag</td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>_meeting_island_cb</code></td><td>283-304</td><td>Island timer + speaker count for meetings</td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>_meeting_start</code></td><td>361-374</td><td>Start meeting recording with diarisation</td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>_meeting_stop</code></td><td>376-401</td><td>Stop meeting + background processing</td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>_meeting_import</code></td><td>403-417</td><td>Import external audio as meeting</td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td>Meeting cmd handlers</td><td>Various</td><td>Cmd server: record_start/stop/pause/resume/import</td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>_bump_feature</code></td><td>306-314</td><td>Feature-adoption counter for tips retirement</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_tip_usage</code></td><td>316-357</td><td>Usage snapshot for tip gating</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_maybe_island_tip</code></td><td>359-382</td><td>Occasionally surface island tip after dictation</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_show_island_tip</code></td><td>384-388</td><td>Show tip after flash clears</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_fire_island_tip</code></td><td>390-396</td><td>Fire the island tip hint</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_init_local_llm</code></td><td>~3840-3880</td><td>Wire on-device LLM backend at boot</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>local_llm_status</code></td><td>~3882-3893</td><td>Report on-device LLM state for diagnostics</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_local_llm_generate</code></td><td>~3895-3912</td><td>On-device smart-mode shaping</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>island_modes</code></td><td>~3990-3996</td><td>Island mode deck offerings (key, label pairs)</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_push_island_bar_state</code></td><td>~3998-4010</td><td>Push live mode-deck snapshot to island</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>set_active_mode</code></td><td>~4012-4037</td><td>Select/clear island-forced processing mode</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>toggle_island_foreign</code></td><td>~4039-4054</td><td>Flip Foreign mode from island toggle</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>set_prompt_mode</code></td><td>~3961-3965</td><td>Set sticky Prompt toggle (Big Shift)</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>toggle_prompt_mode</code></td><td>~3967-3970</td><td>Flip Prompt toggle</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>capture_conversation</code></td><td>~3220-3245</td><td>Grab focused AI conversation as context</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_capture_conversation_quiet</code></td><td>~3170-3218</td><td>Ctrl+A then Ctrl+C focused chat</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_conv_context_for_prompt</code></td><td>~3500-3515</td><td>Format conversation context for Prompt Mode</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_resolved_tier</code></td><td>~2660-2681</td><td>Auto-detect effective hardware tier (CPU/RAM)</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>_apply_hardware_model</code></td><td>~2683-2725</td><td>Hardware-aware model selection</td><td><span class="badge b-amber">HIGH</span></td></tr>
+</tbody>
+</table>
+
+<h3>7.2 Missing Overlay Components</h3>
+<table>
+<thead><tr><th>Component</th><th>Windows</th><th>Linux Status</th><th>Severity</th></tr></thead>
+<tbody>
+<tr><td><code>_WidgetBar</code> class</td><td>Full companion bar with mode chips, Deck button, Foreign toggle</td><td><strong>Not implemented</strong></td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>set_bar_state()</code></td><td>Receives live mode deck state from controller</td><td><strong>Not implemented</strong></td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>armed_color</code> in snapshot</td><td>Mode-colored armed ring on pill</td><td><strong>Missing from _build_snapshot</strong></td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>_Skip</code> exception class</td><td>Used for suspended-state control flow</td><td><strong>Not defined</strong></td><td><span class="badge b-gated">MEDIUM</span></td></tr>
+<tr><td>Suspended state check</td><td>_tick raises _Skip when suspended, 30s self-healing</td><td><strong>Attribute exists, never checked</strong></td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>on_foreign</code> callback</td><td>Foreign toggle in companion bar</td><td><strong>Missing from callback signature</strong></td><td><span class="badge b-gated">MEDIUM</span></td></tr>
+</tbody>
+</table>
+
+<h3>7.3 Missing Platform Code</h3>
+<table>
+<thead><tr><th>Missing Item</th><th>Location</th><th>Impact</th><th>Severity</th></tr></thead>
+<tbody>
+<tr><td><code>linux_fallback.py</code></td><td><code>Internal/app/platform/</code></td><td>Vulkan ARM acceleration dead</td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>MODELS_DIR</code></td><td><code>branding.py</code></td><td>Local LLM model discovery broken</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>LLAMA_BIN_DIR</code></td><td><code>branding.py</code></td><td>llama.cpp binary not locatable</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>llama_cli_path()</code></td><td><code>branding.py</code></td><td>Cannot locate llama.cpp CLI</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>get_hardware_info()</code></td><td><code>branding.py</code></td><td>Web UI hardware banner broken</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>app_info()</code></td><td><code>branding.py</code></td><td>App info endpoint broken</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td>Image clipboard capture</td><td><code>clipboard.py</code></td><td>Image clipboard history dead</td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>save_doc_parsed()</code></td><td><code>reader_store.py</code></td><td>Document parsing results not persisted</td><td><span class="badge b-amber">HIGH</span></td></tr>
+</tbody>
+</table>
+
+<h3>7.4 Missing Packages (Windows Package Structure vs Linux Flattened Monoliths)</h3>
+<table>
+<thead><tr><th>Windows Package</th><th>Files</th><th>Linux Counterpart</th><th>Severity</th></tr></thead>
+<tbody>
+<tr><td><code>eval/</code></td><td>5 files (harness, reporter, metrics, scenarios)</td><td><strong>No Linux counterpart</strong></td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>models/</code></td><td>6 files (registry, manager, downloader, cache, backend)</td><td><strong>No Linux counterpart</strong></td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>perf/</code></td><td>4 files (diagnostics, profiler, optimizer)</td><td><strong>No Linux counterpart</strong></td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>pipeline/</code></td><td>6 files (stage_punctuation, stage_grammar, stage_formatting, stage_cleanup, grammar)</td><td><strong>No Linux counterpart</strong></td><td><span class="badge b-amber">HIGH</span></td></tr>
+<tr><td><code>platform/</code></td><td>3 files (init, windows_dml, macos_audio)</td><td><strong>No Linux counterpart</strong> (missing linux_fallback.py)</td><td><span class="badge b-red">CRITICAL</span></td></tr>
+<tr><td><code>ai/</code></td><td>11 files (init, base, constitution, stt_providers, transport, tts_providers, providers/)</td><td>Flattened into <code>ai.py</code> (111K monolith)</td><td><span class="badge b-gated">MEDIUM</span></td></tr>
+</tbody>
+</table>
+
+<h3>7.5 Missing Test Files</h3>
+<p>23 test files exist in the Windows canonical source but are absent from the Linux port directory. Many are documented as intentionally excluded in <code>TEST_PARITY.md</code> due to missing API features, but the coverage gap is substantial. See <a href="#s14">§14 Test Coverage Assessment</a> for the complete list.</p>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 8 — LOGIC FLAWS & BUGS
+     ======================================================================== -->
+<h2 id="s8"><span class="sec">8</span>Logic Flaws &amp; Bugs</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>These are errors in existing Linux code — not missing features, but things that are implemented incorrectly. Each one represents incorrect behavior that users could encounter during normal operation.</p>
+  </div>
+</div>
+
+<table>
+<thead><tr><th>#</th><th>Bug</th><th>Location</th><th>Severity</th><th>Effect</th></tr></thead>
+<tbody>
+<tr>
+  <td>B-01</td>
+  <td><code>bindings._session_type()</code> doesn't exist</td>
+  <td><code>mumble_linux.py</code>:3393</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td><code>AttributeError</code> crash whenever <code>copy_image()</code> is called</td>
+</tr>
+<tr>
+  <td>B-02</td>
+  <td><code>stop_recording</code> not idempotent</td>
+  <td><code>mumble_linux.py</code>:917</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Double hotkey → <code>"need at least one array to concatenate"</code> crash</td>
+</tr>
+<tr>
+  <td>B-03</td>
+  <td><code>on_hotkey</code> missing <code>_processing</code> guard</td>
+  <td><code>mumble_linux.py</code>:1497</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Can double-start recording, corrupt shared stream state</td>
+</tr>
+<tr>
+  <td>B-04</td>
+  <td><code>_NoopIsland.set_focused()</code> missing</td>
+  <td><code>overlay_linux.py</code>:186-258</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Controller crash on headless/no-GTK runs</td>
+</tr>
+<tr>
+  <td>B-05</td>
+  <td>Default model outdated (base.en)</td>
+  <td><code>mumble_linux.py</code>:258</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Lower transcription quality vs Windows</td>
+</tr>
+<tr>
+  <td>B-06</td>
+  <td>Default history hotkey wrong (H vs D)</td>
+  <td><code>mumble_linux.py</code>:260 + 8 files</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Cross-platform inconsistency, user confusion</td>
+</tr>
+<tr>
+  <td>B-07</td>
+  <td>"list" mode still in mode picker</td>
+  <td><code>mumble_linux.py</code>:~810, :~3030</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Retired mode offered to users, stale routing</td>
+</tr>
+<tr>
+  <td>B-08</td>
+  <td><code>_handle_second_opinion</code> param mismatch</td>
+  <td><code>mumble_linux.py</code>:~3120</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Missing cfg/prompt_cfg; mid-call key changes unsafe</td>
+</tr>
+<tr>
+  <td>B-09</td>
+  <td>Armed ring always purple</td>
+  <td><code>overlay_linux.py</code>:~690</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Visual inconsistency — wrong mode color</td>
+</tr>
+<tr>
+  <td>B-10</td>
+  <td>Suspended state dead</td>
+  <td><code>overlay_linux.py</code>:~809, :780</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Island won't hide for interactive panels</td>
+</tr>
+<tr>
+  <td>B-11</td>
+  <td>Pure Wayland → no island</td>
+  <td><code>mumble_linux.py</code>:59-68</td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>Zero visual feedback for Wayland-only users</td>
+</tr>
+<tr>
+  <td>B-12</td>
+  <td><code>_GlibRoot.mainloop()</code> headless infinite loop</td>
+  <td><code>mumble_linux.py</code>:~125-133</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>App hangs forever if GTK unavailable</td>
+</tr>
+<tr>
+  <td>B-13</td>
+  <td><code>_pump</code> won't drain queue in headless mode</td>
+  <td><code>mumble_linux.py</code>:~3750</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Command queue stops after one drain</td>
+</tr>
+<tr>
+  <td>B-14</td>
+  <td><code>_paste_impl</code> missing clipboard resume try/except</td>
+  <td><code>mumble_linux.py</code>:~1420</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Clipboard resume error can propagate</td>
+</tr>
+<tr>
+  <td>B-15</td>
+  <td><code>_safe_start</code> missing cleanup on error</td>
+  <td><code>mumble_linux.py</code>:1520</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Microphone resource leak on stream error</td>
+</tr>
+<tr>
+  <td>B-16</td>
+  <td><code>_cmd_token_ok</code> race condition</td>
+  <td><code>mumble_linux.py</code>:1813</td>
+  <td><span class="badge b-exist">LOW</span></td>
+  <td>Silently accepts all requests if token not yet set</td>
+</tr>
+<tr>
+  <td>B-17</td>
+  <td>Keyboard/mouse not in requirements.txt</td>
+  <td><code>requirements.txt</code></td>
+  <td><span class="badge b-red">CRITICAL</span></td>
+  <td>ImportError on fresh install</td>
+</tr>
+<tr>
+  <td>B-18</td>
+  <td>ImageGrab.grabclipboard() Windows-only</td>
+  <td><code>clipboard.py</code>:199-208</td>
+  <td><span class="badge b-amber">HIGH</span></td>
+  <td>Image clipboard silently non-functional</td>
+</tr>
+<tr>
+  <td>B-19</td>
+  <td>Hardcoded /usr/bin/python3 in update relaunch</td>
+  <td><code>update.py</code>:262</td>
+  <td><span class="badge b-gated">MEDIUM</span></td>
+  <td>Update relaunch fails on non-standard Python paths</td>
+</tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 9 — PERFORMANCE & MEMORY
+     ======================================================================== -->
+<h2 id="s9"><span class="sec">9</span>Performance &amp; Memory</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Several performance optimizations present on Windows are absent from Linux. The Linux port may use more idle memory, lack STT performance diagnostics, and miss hardware-aware optimizations that Windows users benefit from. No live benchmarking was performed — these assessments are based on code analysis.</p>
+  </div>
+</div>
+
+<h3>9.1 Memory Management</h3>
+<ul>
+  <li><strong>Missing GC calls:</strong> Linux doesn't call <code>gc.collect()</code> after dictation, model swaps, or boot. Windows does all three. Linux may hold more idle memory, particularly after long sessions or model changes. Risk to VAL-PERF-003 (&lt;1GB idle target). <span class="badge b-gated">MEDIUM</span></li>
+  <li><strong>Missing STT performance diagnostics:</strong> ITEM 20 realtime-factor tracking (<code>_stt_device</code>, <code>_stt_compute</code>, <code>_stt_model</code>) is absent from Linux. No way to diagnose slow transcription on underpowered hardware. <span class="badge b-exist">LOW</span></li>
+  <li><strong>PIL Image reference management:</strong> <code>_cur_img</code> overwritten each frame — old PIL Image is GC'd promptly. OK. <span class="badge b-done">OK</span></li>
+  <li><strong>Pixbuf memory:</strong> GdkPixbuf objects are GLib ref-counted, freed when Python wrapper goes out of scope. OK. <span class="badge b-done">OK</span></li>
+  <li><strong>Background cache:</strong> <code>island_render._BG_CACHE</code> LRU-bounded at 8 entries. OK. <span class="badge b-done">OK</span></li>
+</ul>
+
+<h3>9.2 CPU Efficiency</h3>
+<ul>
+  <li><strong>Polling throttle:</strong> Text clipboard polls every ~2.1s (every 3rd cycle at 0.7s interval), image clipboard throttled to ~5.6s. Appropriate for Linux's fork-heavy pyperclip. <span class="badge b-done">OK</span></li>
+  <li><strong>Wayland fallback:</strong> No Vulkan acceleration means CPU-only transcription on Linux ARM. Significantly slower and more power-hungry. <span class="badge b-red">CRITICAL</span></li>
+  <li><strong>Process priority:</strong> <code>_boost_priority()</code> returns None (no-op) with documented reason (needs CAP_SYS_NICE). Correctly handled. <span class="badge b-done">OK</span></li>
+</ul>
+
+<h3>9.3 Rendering Performance</h3>
+<ul>
+  <li><strong>GLib tick scheduling:</strong> Uses <code>GLib.timeout_add()</code> with manual re-add (returns False). Correct pattern for variable-interval timers. <span class="badge b-done">OK</span></li>
+  <li><strong>Cairo surface creation:</strong> Pixbuf path is preferred (avoids byte-order issues). Both paths are correct. <span class="badge b-done">OK</span></li>
+  <li><strong>No GDI handle leaks:</strong> Linux doesn't use GDI. Windows has <code>_LayeredDC.__del__</code> finalizer; Linux has no equivalent concern. <span class="badge b-done">OK</span></li>
+</ul>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 10 — CODE QUALITY & TECHNICAL DEBT
+     ======================================================================== -->
+<h2 id="s10"><span class="sec">10</span>Code Quality &amp; Technical Debt</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>The Linux port shares the same structural problems as the overall Mumble project: large monolithic controller files (~4000 lines), copy-pasted logic across three platforms, and no automated testing. However, the Linux port introduces additional debt: a partially complete <code>_NoopIsland</code> fallback, duplicated rendering logic, an inconsistent package structure, and missing documentation markers for unimplemented features.</p>
+  </div>
+</div>
+
+<h3>10.1 File Size</h3>
+<ul>
+  <li><strong><code>mumble_linux.py</code>:</strong> 4,089 lines (~189KB). Large but structurally mirrors Windows (4,994 lines). The Linux version has ~82% the size of Windows with significantly fewer features — suggesting significant redundant code that could be factored out into shared modules.</li>
+  <li><strong><code>overlay_linux.py</code>:</strong> 962 lines (~42KB). Relatively modest compared to Windows <code>overlay.py</code> (2,194 lines), but only because the companion bar (~500 lines) is missing entirely.</li>
+  <li><strong><code>ai.py</code> (flattened):</strong> 111K monolith. Windows equivalent is 11 files in <code>ai/</code> package. The monolith approach makes it harder to diff, sync, and maintain.</li>
+</ul>
+
+<h3>10.2 Duplicated Code</h3>
+<ul>
+  <li><strong>Controller methods:</strong> <code>_ai_cfg</code>, <code>_prompt_ai_cfg</code>, <code>_pro_fallback_notice</code>, <code>_build_menu</code>, <code>_recent_items</code>, <code>_preview</code> are near-identical copies between Windows and Linux controllers.</li>
+  <li><strong>Overlay snapshot logic:</strong> <code>_build_snapshot()</code> is ~90% identical across <code>overlay.py</code> and <code>overlay_linux.py</code>. Any schema change requires edits in both files (plus macOS).</li>
+  <li><strong>Utility functions:</strong> <code>_hex()</code>, <code>_blend()</code>, <code>_mode_names()</code>, <code>_listen_timer()</code> are duplicated across both overlay files AND <code>island_render.py</code> — three copies total.</li>
+  <li><strong>Three parallel codebases:</strong> Controller (~4000 lines each), overlay modules, and shared libraries are duplicated across Windows, macOS, and Linux rather than abstracted behind interfaces. This is a structural debt that compounds with every feature addition.</li>
+</ul>
+
+<h3>10.3 Missing Error Handling</h3>
+<ul>
+  <li>No try/except around clipboard resume in <code>_paste_impl</code></li>
+  <li>No cleanup in <code>_safe_start</code> on stream error</li>
+  <li>No idempotent guard in <code>stop_recording</code></li>
+  <li>No <code>_processing</code> guard in <code>on_hotkey</code></li>
+  <li>Silent <code>ImportError</code> catch for missing <code>linux_fallback.py</code> — no warning logged</li>
+</ul>
+
+<h3>10.4 Missing Documentation Markers</h3>
+<p>Neither <code>mumble_linux.py</code> nor <code>overlay_linux.py</code> contain any TODO, FIXME, HACK, XXX, or WORKAROUND comments. This is unusual for a port of this size — it suggests comments that might flag incomplete work were never written. The suspended attribute comment ("unused on Linux, kept for parity / tick guard") is the closest thing to an implicit TODO. Several clearly incomplete areas (companion bar, suspended state, Wayland fallback) have no markers.</p>
+
+<h3>10.5 Inconsistent Patterns</h3>
+<ul>
+  <li><strong><code>_process</code> structure:</strong> Windows manages <code>_processing</code> in <code>stop_recording</code> (sets it before calling <code>_process</code>, clears in finally). Linux manages <code>_processing</code> inside <code>_process</code> itself. Structural divergence could confuse future refactoring.</li>
+  <li><strong><code>_collect_text</code>:</strong> Linux relies on shared <code>ai</code> module's version. Windows defines its own with additional TRUNC_MARKER handling. Inconsistent behavior for truncated AI responses.</li>
+  <li><strong>Package vs monolith:</strong> Linux flattens <code>ai/</code> into <code>ai.py</code> but entirely omits other packages. No clear rationale for which packages get flattened and which get dropped.</li>
+</ul>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 11 — UI/UX INCONSISTENCIES
+     ======================================================================== -->
+<h2 id="s11"><span class="sec">11</span>UI/UX Inconsistencies</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>These are visual and behavioral differences between the Linux and Windows experiences. Some are intentional platform adaptations; most are unintended gaps. Together they create a noticeably degraded experience on Linux.</p>
+  </div>
+</div>
+
+<h3>11.1 Island Visual Differences</h3>
+<table>
+<thead><tr><th>Aspect</th><th>Windows</th><th>Linux</th><th>Impact</th></tr></thead>
+<tbody>
+<tr><td>Armed ring color</td><td>Colors by active mode (Prompt=purple, Email=blue, Reply=green, Foreign=amber)</td><td>Always purple (armed_color missing from snapshot)</td><td>Users can't visually identify active mode</td></tr>
+<tr><td>Mode chips / companion bar</td><td>Clickable chips next to island pill</td><td>Absent entirely</td><td>No mode selection from island</td></tr>
+<tr><td>Deck button</td><td>Present in companion bar</td><td>Absent</td><td>No Deck access from island</td></tr>
+<tr><td>Foreign toggle</td><td>Toggle in companion bar</td><td>Absent</td><td>No Foreign mode toggle from island</td></tr>
+<tr><td>Tips / hints</td><td>Usage-aware tips on island after dictation</td><td>Absent</td><td>No feature discovery via island</td></tr>
+<tr><td>Island appearance animation</td><td>Semi-transparent fade-in (attributes -alpha 0.95)</td><td>Instant appearance, no animation</td><td>Less polished feel</td></tr>
+<tr><td>Drop shadow / gold glow</td><td>Rendered by island_render (Pillow)</td><td>Rendered identically via Cairo pipeline</td><td><span class="badge b-done">Identical</span></td></tr>
+<tr><td>Click-through</td><td>WS_EX_TRANSPARENT</td><td>input_shape_combine_region with empty region</td><td><span class="badge b-done">Same effect</span></td></tr>
+</tbody>
+</table>
+
+<h3>11.2 Interaction Differences</h3>
+<ul>
+  <li><strong>No double-press protection:</strong> Double-tapping the hotkey crashes on Linux, works safely on Windows.</li>
+  <li><strong>No processing guard:</strong> Hotkey press during in-flight processing starts a second recording on Linux, safely ignored on Windows.</li>
+  <li><strong>No suspended state:</strong> Island stays visible over Settings and other panels on Linux, hides correctly on Windows.</li>
+  <li><strong>History hotkey differs:</strong> Ctrl+Alt+H on Linux vs Ctrl+Alt+D on Windows. Muscle memory doesn't transfer.</li>
+  <li><strong>Mode picker offers stale "list" mode:</strong> Linux offers a retired mode; Windows doesn't.</li>
+</ul>
+
+<h3>11.3 Web UI Differences</h3>
+<p>The web UI files (<code>app.js</code>, <code>app.css</code>, <code>index.html</code>) are significantly behind Windows (~1,900 cumulative lines missing). Users on Linux see a different — and likely inferior — settings experience. Specific visual differences are unknown without rendering the pages side by side, but the code-size delta strongly suggests missing UI elements, layout changes, or CSS fixes present on Windows.</p>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 12 — PLATFORM INTEGRATION GAPS
+     ======================================================================== -->
+<h2 id="s12"><span class="sec">12</span>Platform Integration Gaps</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This section examines how well the Linux port integrates with the Linux desktop ecosystem: Wayland, XDG specifications, input handling, clipboard, system tray, notifications, autostart, and packaging. Many integrations are correct but incomplete — they work for the common case but lack fallbacks for edge cases.</p>
+  </div>
+</div>
+
+<h3>12.1 Wayland Support</h3>
+<table>
+<thead><tr><th>Aspect</th><th>Status</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Island positioning</td><td><span class="badge b-gated">Forced XWayland</span></td><td>Forces GDK_BACKEND=x11. Works with XWayland. Broken on pure Wayland</td></tr>
+<tr><td>Global hotkeys</td><td><span class="badge b-done">Works via evdev</span></td><td>Reads /dev/input directly. Independent of display server. Needs input group</td></tr>
+<tr><td>Mouse side buttons</td><td><span class="badge b-done">Works via evdev</span></td><td>Same as hotkeys — needs input group</td></tr>
+<tr><td>Click-through</td><td><span class="badge b-done">OK via XWayland</span></td><td>input_shape_combine_region works under XWayland</td></tr>
+<tr><td>Paste (ctrl+v)</td><td><span class="badge b-gated">XWayland only</span></td><td>keyboard.send("ctrl+v") relies on X11 keyboard simulation. Native Wayland compositors may block</td></tr>
+<tr><td>Pure Wayland (no XWayland)</td><td><span class="badge b-red">Broken</span></td><td>No island at all. Force to _NoopIsland. App still works for dictation but zero feedback</td></tr>
+</tbody>
+</table>
+
+<h3>12.2 XDG Compliance</h3>
+<ul>
+  <li><strong>Data directory:</strong> <code>$XDG_DATA_HOME/Mumble</code> with <code>~/.local/share/Mumble</code> fallback. <span class="badge b-done">Fully compliant</span></li>
+  <li><strong>Legacy migration:</strong> <code>_adopt_legacy_data_dir()</code> migrates from <code>~/Mumble</code> via atomic <code>os.replace()</code>. <span class="badge b-done">Well-implemented</span></li>
+  <li><strong>Config/cache/temp paths:</strong> All under XDG_DATA_HOME. <span class="badge b-done">Correct</span></li>
+  <li><strong>Autostart:</strong> XDG autostart <code>.desktop</code> at <code>~/.config/autostart/</code>. <span class="badge b-done">Correct</span></li>
+  <li><strong>Application menu:</strong> <code>.desktop</code> at <code>$XDG_DATA_HOME/applications/</code> with <code>update-desktop-database</code>. <span class="badge b-done">Correct</span></li>
+</ul>
+
+<h3>12.3 Clipboard</h3>
+<ul>
+  <li><strong>Text clipboard:</strong> pyperclip → xclip/xsel/wl-paste subprocess. Works. Throttled to ~2.1s. <span class="badge b-done">OK</span></li>
+  <li><strong>Image clipboard:</strong> ImageGrab.grabclipboard() is Windows-only. Always fails silently on Linux. <span class="badge b-red">BROKEN</span></li>
+  <li><strong>Paste into app:</strong> keyboard.send("ctrl+v") via XWayland. May not work on native Wayland. <span class="badge b-gated">FRAGILE</span></li>
+  <li><strong>Clipboard resume:</strong> Missing try/except guard in paste path. <span class="badge b-gated">FRAGILE</span></li>
+</ul>
+
+<h3>12.4 System Tray</h3>
+<ul>
+  <li><strong>Backend:</strong> pystray with AyatanaAppIndicator. Uses <code>run_detached()</code> to avoid second GTK main loop. <span class="badge b-done">OK</span></li>
+  <li><strong>Fallback:</strong> No fallback (e.g., Gtk.StatusIcon) if <code>run_detached()</code> fails. <span class="badge b-gated">GAP</span></li>
+  <li><strong>GNOME compat:</strong> Helpful error message if AppIndicator extension is missing. <span class="badge b-done">Good UX</span></li>
+</ul>
+
+<h3>12.5 Notifications</h3>
+<ul>
+  <li><strong>Primary:</strong> <code>notify-send</code> via subprocess.Popen (async, non-blocking). <span class="badge b-done">OK</span></li>
+  <li><strong>Fallback:</strong> Tray icon <code>notify()</code>. <span class="badge b-done">Good chain</span></li>
+</ul>
+
+<h3>12.6 Installer</h3>
+<ul>
+  <li><strong>Package managers:</strong> apt, dnf, pacman, zypper. <span class="badge b-done">Good coverage</span></li>
+  <li><strong>venv:</strong> --system-site-packages (needed for PyGObject). <span class="badge b-done">Correct</span></li>
+  <li><strong>Idempotent:</strong> Re-uses existing venv. Safe to re-run. <span class="badge b-done">Good</span></li>
+  <li><strong>Multiple sudo prompts:</strong> Each optional package gets separate sudo call. <span class="badge b-gated">UX wart</span></li>
+  <li><strong>No network check:</strong> Attempts model download without checking connectivity. <span class="badge b-exist">Minor</span></li>
+</ul>
+
+<h3>12.7 Missing Integrations</h3>
+<ul>
+  <li><strong>No systemd user service:</strong> Some users prefer systemd for autostart with restart policies. Not implemented.</li>
+  <li><strong>No Flatpak/snap:</strong> Autostart and data paths assume traditional filesystem access. Would need adaptation for sandboxed environments.</li>
+  <li><strong>No AppImage/Flatpak/Snap packaging:</strong> Only shell-script installer. No app store presence.</li>
+  <li><strong>No delta updates:</strong> Always downloads full zip for updates.</li>
+</ul>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 13 — SHARED MODULE SYNC HEALTH
+     ======================================================================== -->
+<h2 id="s13"><span class="sec">13</span>Shared Module Sync Health</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This section presents the results of a byte-level SHA-256 comparison of all 67 files that exist in both the Windows canonical source and the Linux port. The overall sync health is <strong>40.3%</strong> — only 27 of 67 files are byte-identical. The 59.7% that differ represent a mix of intentional platform seams, feature drift where Windows received ongoing development that never reached Linux, and cosmetic divergences (mostly the Ctrl+Alt+H vs D hotkey rename).</p>
+  </div>
+</div>
+
+<h3>13.1 Sync Health Overview</h3>
+<div class="tiles">
+  <div class="tile"><div class="n">67</div><div class="l">Total shared files</div></div>
+  <div class="tile"><div class="n">27</div><div class="l">Byte-identical (40.3%)</div></div>
+  <div class="tile"><div class="n">40</div><div class="l">Different (59.7%)</div></div>
+  <div class="tile"><div class="n">27</div><div class="l">Windows-only files</div></div>
+  <div class="tile"><div class="n">8</div><div class="l">Linux-only files</div></div>
+</div>
+
+<h3>13.2 Severe Drift (>10%) — Requires Immediate Sync</h3>
+<table>
+<thead><tr><th>File</th><th>Win Size</th><th>Lin Size</th><th>Delta</th><th>% Diff</th><th>Category</th></tr></thead>
+<tbody>
+<tr><td><code>tips.py</code></td><td>10,855</td><td>4,146</td><td>-6,709</td><td>61.8%</td><td><span class="badge b-red">SEVERE</span></td></tr>
+<tr><td><code>meeting_diarise.py</code></td><td>23,985</td><td>9,451</td><td>-14,534</td><td>60.6%</td><td><span class="badge b-red">SEVERE</span></td></tr>
+<tr><td><code>meeting.py</code></td><td>31,652</td><td>14,846</td><td>-16,806</td><td>53.1%</td><td><span class="badge b-red">SEVERE</span></td></tr>
+<tr><td><code>local_engine.py</code></td><td>38,435</td><td>20,000</td><td>-18,435</td><td>48.0%</td><td><span class="badge b-red">SEVERE</span></td></tr>
+<tr><td><code>context_store.py</code></td><td>21,170</td><td>15,659</td><td>-5,511</td><td>26.0%</td><td><span class="badge b-amber">SIGNIFICANT</span></td></tr>
+<tr><td><code>presets.py</code></td><td>9,637</td><td>12,772</td><td>+3,135</td><td>24.5%</td><td><span class="badge b-gated">DRIFT (Linux ahead)</span></td></tr>
+<tr><td><code>reader_store.py</code></td><td>18,424</td><td>15,847</td><td>-2,577</td><td>14.0%</td><td><span class="badge b-amber">SIGNIFICANT</span></td></tr>
+<tr><td><code>meeting_store.py</code></td><td>9,094</td><td>7,859</td><td>-1,235</td><td>13.6%</td><td><span class="badge b-amber">SIGNIFICANT</span></td></tr>
+<tr><td><code>mumble.py</code></td><td>239,765</td><td>209,385</td><td>-30,380</td><td>12.7%</td><td><span class="badge b-amber">SIGNIFICANT</span></td></tr>
+</tbody>
+</table>
+
+<h3>13.3 WebUI Sync Health</h3>
+<table>
+<thead><tr><th>File</th><th>Win Size</th><th>Lin Size</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td><code>enhanced.css</code></td><td>40,728</td><td>40,728</td><td><span class="badge b-done">IDENTICAL</span></td></tr>
+<tr><td><code>mumble.png</code></td><td>13,646</td><td>13,646</td><td><span class="badge b-done">IDENTICAL</span></td></tr>
+<tr><td><code>app.css</code></td><td>118,106</td><td>98,897</td><td><span class="badge b-amber">DIFFERENT (−16%)</span></td></tr>
+<tr><td><code>app.js</code></td><td>290,948</td><td>237,240</td><td><span class="badge b-amber">DIFFERENT (−18%)</span></td></tr>
+<tr><td><code>index.html</code></td><td>203,917</td><td>186,712</td><td><span class="badge b-amber">DIFFERENT (−8%)</span></td></tr>
+</tbody>
+</table>
+<p><strong>WebUI sync health: 40%</strong> (2/5 identical)</p>
+
+<h3>13.4 Test File Sync Health</h3>
+<p>Of 32 shared test files: 15 identical (46.9%), 17 different (53.1%). Additionally, 23 Windows test files are missing from Linux entirely.</p>
+
+<h3>13.5 Root Cause Analysis</h3>
+<p>The 59.7% drift is driven by three factors:</p>
+<ol>
+  <li><strong>Intentional platform seams (expected):</strong> <code>autostart.py</code> (47.5% diff — completely rewritten for XDG), <code>requirements.txt</code> (79.3% diff — platform-specific deps), <code>update.py</code> (21.4% diff — bash vs batch swap scripts). These are correct and should remain different.</li>
+  <li><strong>Feature drift — Windows ahead (unintended):</strong> <code>local_engine.py</code>, <code>meeting.py</code>, <code>meeting_diarise.py</code>, <code>tips.py</code>, <code>context_store.py</code>, <code>mumble.py</code>. These files received ongoing development on Windows that was never propagated to Linux. They must be synced.</li>
+  <li><strong>Cosmetic / inconsistent (should be fixed):</strong> Ctrl+Alt+H vs D hotkey text across 20 files, minor formatting differences, inconsistent field names.</li>
+</ol>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 14 — TEST COVERAGE ASSESSMENT
+     ======================================================================== -->
+<h2 id="s14"><span class="sec">14</span>Test Coverage Assessment</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>The Linux test infrastructure is well-designed but covers significantly less than Windows. 11 tests run automatically (including a well-crafted Linux-specific platform test), 5 are excluded due to real API gaps, and 23 Windows test files are entirely absent. The test runner (<code>run_tests.py</code>) is clean and produces clear output. The excluded tests represent real feature gaps, not just test gaps — fixing them requires implementing the missing production features first.</p>
+  </div>
+</div>
+
+<h3>14.1 Tests in the Linux Runner (11 files)</h3>
+<table>
+<thead><tr><th>Test File</th><th>Status</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><code>test_bindings.py</code></td><td><span class="badge b-done">Running</span></td><td>Cross-platform binding logic</td></tr>
+<tr><td><code>test_formatting.py</code></td><td><span class="badge b-done">Running</span></td><td></td></tr>
+<tr><td><code>test_mode_select.py</code></td><td><span class="badge b-done">Running</span></td><td></td></tr>
+<tr><td><code>test_presets.py</code></td><td><span class="badge b-done">Running</span></td><td></td></tr>
+<tr><td><code>test_favorites.py</code></td><td><span class="badge b-done">Running</span></td><td></td></tr>
+<tr><td><code>test_webui_api.py</code></td><td><span class="badge b-done">Running</span></td><td>Severely stripped (29% of Windows coverage)</td></tr>
+<tr><td><code>test_cmd_auth.py</code></td><td><span class="badge b-done">Running</span></td><td>VAL-PLAT-007 addition</td></tr>
+<tr><td><code>test_settings_merge.py</code></td><td><span class="badge b-done">Running</span></td><td>VAL-PLAT-007 addition</td></tr>
+<tr><td><code>test_linux_platform.py</code></td><td><span class="badge b-done">Running</span></td><td>Well-designed Linux-specific test (autostart, update, xdg-open, Big Shift sync)</td></tr>
+<tr><td><code>test_stream_seam.py</code></td><td><span class="badge b-gated">Needs GUI/ML</span></td><td>Requires full desktop + audio deps</td></tr>
+<tr><td><code>test_end_to_end.py</code></td><td><span class="badge b-gated">Needs GUI/ML</span></td><td>Requires full desktop + audio deps</td></tr>
+</tbody>
+</table>
+
+<h3>14.2 Tests Excluded Due to API Gaps (5 files)</h3>
+<table>
+<thead><tr><th>Test File</th><th>Blocking Issue</th><th>Missing Feature</th></tr></thead>
+<tbody>
+<tr><td><code>test_context_store.py</code></td><td>Missing <code>'ui'</code> field in capture result</td><td>H-013: context_store.py 26% drift</td></tr>
+<tr><td><code>test_local_wiring.py</code></td><td>Missing <code>MODELS_DIR</code> and <code>llama_cli_path</code> in branding.py</td><td>H-009: branding.py missing functions</td></tr>
+<tr><td><code>test_reader_parser.py</code></td><td>Missing <code>save_doc_parsed()</code> in reader_store.py</td><td>H-014: reader_store.py 14% drift</td></tr>
+<tr><td><code>test_meeting.py</code></td><td>Meeting records lack <code>key_decisions</code>, <code>open_questions</code>, <code>processing_mode</code></td><td>C-001: meeting mode absent</td></tr>
+<tr><td><code>test_meeting_controller.py</code></td><td>Missing <code>_meeting_start()</code> method</td><td>C-001: meeting mode absent</td></tr>
+</tbody>
+</table>
+
+<h3>14.3 Windows Test Files Missing from Linux (23 files)</h3>
+<p>These test files exist in <code>Internal/app/</code> but are absent from <code>Internal/app/Ports/Linux/app/</code>:</p>
+<details class="dev"><summary><span class="devchip">List</span> 23 missing test files</summary>
+<div class="body">
+<ul>
+<li><code>test_api_stability.py</code> (23.3K) — API stability regression tests</li>
+<li><code>test_cache.py</code> (21.1K) — Model cache tests</li>
+<li><code>test_constitution.py</code> (12.7K) — Constitution/prompt tests</li>
+<li><code>test_downloader.py</code> (37.3K) — Model downloader tests</li>
+<li><code>test_error_recovery.py</code> (37.8K) — Error recovery tests</li>
+<li><code>test_eval.py</code> (17.6K) — Eval harness tests</li>
+<li><code>test_eval_reporter.py</code> (24.2K) — Eval reporting tests</li>
+<li><code>test_fallback.py</code> (26.2K) — Fallback mode tests</li>
+<li><code>test_foreign_mode_cross.py</code> (7.4K) — Cross-mode foreign tests</li>
+<li><code>test_model_backend.py</code> (31.4K) — Model backend tests</li>
+<li><code>test_models.py</code> (16.5K) — Model infrastructure tests</li>
+<li><code>test_output_quality.py</code> (21.8K) — Output quality tests</li>
+<li><code>test_perf.py</code> (47.8K) — Performance tests</li>
+<li><code>test_pipeline.py</code> (13.6K) — Pipeline stage 1 tests</li>
+<li><code>test_pipeline_stage2_stage3.py</code> (21.7K) — Pipeline stages 2-3 tests</li>
+<li><code>test_providers.py</code> (43.3K) — AI provider tests</li>
+<li><code>test_settings_recovery.py</code> (5.8K) — Settings recovery tests</li>
+<li><code>test_stage_cleanup.py</code> (17.4K) — Stage cleanup tests</li>
+<li><code>test_stt_providers.py</code> (4.8K) — STT provider tests</li>
+<li><code>test_transcription_diag.py</code> (19.3K) — Transcription diagnostics tests</li>
+<li><code>test_transcription_edge_cases.py</code> (30.7K) — Transcription edge case tests</li>
+<li><code>test_tts_providers.py</code> (9.9K) — TTS provider tests</li>
+<li><code>test_update.py</code> (3.9K) — Update mechanism tests (Windows-specific, correct exclusion)</li>
+</ul>
+</div>
+</details>
+
+<h3>14.4 Coverage Gaps Specific to Linux</h3>
+<ul>
+  <li>No test for clipboard.py Linux behavior</li>
+  <li>No test for evdev-based hotkey registration</li>
+  <li>No test for --system-site-packages venv integrity</li>
+  <li>No test for image clipboard (dead on Linux)</li>
+  <li>No integration test for full install.sh flow</li>
+  <li>No test for pystray tray icon on Linux</li>
+  <li>No test for notify-send notification fallback</li>
+</ul>
+
+<h3>14.5 Assessment</h3>
+<p>The Linux test suite (<code>test_linux_platform.py</code>) is excellent — well-structured, covering autostart, update, xdg-open, and Big Shift sync. The problem is coverage breadth. The 5 excluded tests represent real feature gaps that need production code fixes, not test fixes. The 23 missing Windows tests would provide regression coverage for subsystems that, while not yet ported, share logic that could regress on Linux. Recommended priority: fix the 5 excluded tests (by implementing the missing features), then port the most impactful Windows tests (<code>test_error_recovery.py</code>, <code>test_output_quality.py</code>, <code>test_transcription_diag.py</code>).</p>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 15 — DEPENDENCY ANALYSIS
+     ======================================================================== -->
+<h2 id="s15"><span class="sec">15</span>Dependency Analysis</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>The Linux port has several critical dependency issues: two essential libraries (<code>keyboard</code> and <code>mouse</code>) are missing from <code>requirements.txt</code>, one listed dependency (<code>pynput</code>) appears unused, and one key package (<code>pywebview</code>) has no version constraint. The system dependency list in <code>install.sh</code> is comprehensive and well-organized.</p>
+  </div>
+</div>
+
+<h3>15.1 Missing Dependencies (Critical)</h3>
+<table>
+<thead><tr><th>Dependency</th><th>Used In</th><th>Issue</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>keyboard</code></td><td><code>bindings.py</code>:17, <code>mumble_linux.py</code>:137</td><td>Not listed in <code>requirements.txt</code></td><td>Add <code>keyboard>=0.13.5</code></td></tr>
+<tr><td><code>mouse</code></td><td><code>bindings.py</code>:21</td><td>Not listed in <code>requirements.txt</code></td><td>Add <code>mouse>=0.7.1</code></td></tr>
+</tbody>
+</table>
+
+<h3>15.2 Dead Dependencies</h3>
+<table>
+<thead><tr><th>Dependency</th><th>Listed In</th><th>Issue</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>pynput>=1.7.6</code></td><td><code>requirements.txt</code>:4</td><td>Not used in <code>bindings.py</code> or <code>mumble_linux.py</code> for hotkeys</td><td>Verify usage or remove</td></tr>
+</tbody>
+</table>
+
+<h3>15.3 Unpinned Dependencies</h3>
+<table>
+<thead><tr><th>Dependency</th><th>Risk</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td><code>pywebview</code> (no version)</td><td>Future breaking release could break web UI</td><td>Pin to <code>pywebview>=4.0,<5.0</code> after testing</td></tr>
+</tbody>
+</table>
+
+<h3>15.4 Pinned Dependencies (OK)</h3>
+<table>
+<thead><tr><th>Dependency</th><th>Constraint</th><th>Assessment</th></tr></thead>
+<tbody>
+<tr><td><code>faster-whisper</code></td><td>>=1.0.0</td><td><span class="badge b-done">OK</span></td></tr>
+<tr><td><code>numpy</code></td><td>>=1.24,<2.2</td><td><span class="badge b-done">Good — avoids numpy 2.x breaking changes</span></td></tr>
+<tr><td><code>sounddevice</code></td><td>>=0.4.6</td><td><span class="badge b-done">OK</span></td></tr>
+<tr><td><code>pyperclip</code></td><td>>=1.8.2</td><td><span class="badge b-done">OK</span></td></tr>
+<tr><td><code>pystray</code></td><td>>=0.19.5</td><td><span class="badge b-done">OK</span></td></tr>
+<tr><td><code>Pillow</code></td><td>>=10.0.0</td><td><span class="badge b-done">OK</span></td></tr>
+<tr><td><code>evdev</code></td><td>>=1.6.1</td><td><span class="badge b-done">OK</span></td></tr>
+</tbody>
+</table>
+
+<h3>15.5 System Dependencies</h3>
+<p>The <code>install.sh</code> system dependency list is comprehensive across apt, dnf, pacman, and zypper. Required packages are correctly separated from optional packages. The installer correctly uses <code>--system-site-packages</code> for the venv (PyGObject cannot be pip-installed). The only missing system dependency documentation: no minimum Linux kernel version documented, and the <code>keyboard</code> + <code>mouse</code> Python packages (which both need <code>/dev/input</code>) are absent from the pip list.</p>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 16 — RECOMMENDATIONS
+     ======================================================================== -->
+<h2 id="s16"><span class="sec">16</span>Recommendations</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>These recommendations are prioritized and include estimated implementation complexity. They address the most impactful issues first — crash bugs, missing features, and code drift that will compound over time. Each recommendation includes concrete next steps. Complexity estimates: S = hours, M = days, L = weeks, XL = month+.</p>
+  </div>
+</div>
+
+<h3>P0 — Fix Before Any Release</h3>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">1</div>
+    <div class="flow-body">
+      <div class="ft">Fix requirements.txt dependencies</div>
+      <p>Add <code>keyboard>=0.13.5</code> and <code>mouse>=0.7.1</code>. Remove <code>pynput</code> if unused. Pin <code>pywebview</code> to a known-good version. This prevents <code>ImportError</code> on fresh installs and supply chain risk. <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">2</div>
+    <div class="flow-body">
+      <div class="ft">Fix three crash bugs in controller</div>
+      <p>Add idempotent guard to <code>stop_recording</code> (C-003). Add <code>_processing</code> guard to <code>on_hotkey</code> (C-004). Implement <code>bindings._session_type()</code> or inline Wayland check in <code>copy_image()</code> (C-002). All three have clear Windows reference implementations ready to port. <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">3</div>
+    <div class="flow-body">
+      <div class="ft">Add armed_color to overlay snapshot</div>
+      <p>One-line addition to <code>_build_snapshot()</code> (C-008). Read from <code>self.armed_color</code> or fall back to <code>MODE_COLORS.get("prompt", C.gold)</code>. Fixes visible color inconsistency in island ring. <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">4</div>
+    <div class="flow-body">
+      <div class="ft">Implement suspended state in overlay</div>
+      <p>Port the Windows suspended check into Linux <code>_tick()</code> and <code>wake()</code> (C-009). Add <code>_Skip</code> exception class and 30-second self-healing timeout. Prevents island from blocking interactive panels. <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">5</div>
+    <div class="flow-body">
+      <div class="ft">Complete _NoopIsland class</div>
+      <p>Add <code>set_focused()</code>, <code>set_bar_state()</code>, and all missing attributes to <code>_NoopIsland</code> (M-001, C-004 overlay). Guarantees controller never crashes on degraded island runs. <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+</div>
+
+<h3>P1 — Fix in Next Release</h3>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">6</div>
+    <div class="flow-body">
+      <div class="ft">Sync core shared modules from Windows</div>
+      <p>Byte-level sync of <code>local_engine.py</code> (C-011), <code>meeting.py</code>, <code>meeting_diarise.py</code> (C-012), <code>meeting_store.py</code>, <code>context_store.py</code> (H-013), <code>reader_store.py</code> (H-014), <code>tips.py</code>, <code>island_render.py</code> (M-021), and <code>mumble.py</code> (H-012). Sync the webui files verbatim (H-015). This addresses the largest source of code drift. <strong>Complexity: L</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">7</div>
+    <div class="flow-body">
+      <div class="ft">Wire meeting mode into controller</div>
+      <p>Port meeting methods from Windows <code>mumble.py</code> lines 207-417 (C-001). Add meeting commands to cmd server. Add dictation veto during meetings. Depends on #6 (meeting module sync). <strong>Complexity: M (after #6)</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">8</div>
+    <div class="flow-body">
+      <div class="ft">Implement companion bar for overlay</div>
+      <p>Build GTK3 Cairo companion bar rendering mode chips, Deck button, and Foreign toggle (C-007). The shared <code>island_render.render_bar()</code> already produces pixels. Add <code>set_bar_state()</code> to <code>_GtkIsland</code>. Wire controller callbacks. <strong>Complexity: L</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">9</div>
+    <div class="flow-body">
+      <div class="ft">Port island mode deck logic into controller</div>
+      <p>Port <code>island_modes()</code>, <code>_push_island_bar_state()</code>, <code>set_active_mode()</code>, <code>toggle_island_foreign()</code>, <code>set_prompt_mode()</code>, <code>toggle_prompt_mode()</code> (H-001). Wire island callbacks. Depends on #8. <strong>Complexity: M (after #8)</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">10</div>
+    <div class="flow-body">
+      <div class="ft">Port island tips system</div>
+      <p>Port tip methods and add <code>_bump_feature()</code> calls at all interaction points (H-002). Sync <code>tips.py</code> from Windows. Depends on #6. <strong>Complexity: M</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">11</div>
+    <div class="flow-body">
+      <div class="ft">Port conversation capture</div>
+      <p>Port capture methods and wire into <code>_generate</code> and <code>_gather_context</code> (H-003). Add cmd handlers. <strong>Complexity: M</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">12</div>
+    <div class="flow-body">
+      <div class="ft">Port on-device LLM backend</div>
+      <p>Add <code>MODELS_DIR</code>, <code>LLAMA_BIN_DIR</code>, <code>llama_cli_path()</code> to branding.py (H-009). Port LLM methods. Wire into <code>_generate</code> (H-019). <strong>Complexity: L</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">13</div>
+    <div class="flow-body">
+      <div class="ft">Update defaults and fix hotkey inconsistency</div>
+      <p>Change default model from <code>base.en</code> to <code>small.en</code> (H-006). Change default history hotkey from <code>Ctrl+Alt+H</code> to <code>Ctrl+Alt+D</code> across all 8+ files (H-007). <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">14</div>
+    <div class="flow-body">
+      <div class="ft">Sync _generate and _handle_second_opinion</div>
+      <p>Add local LLM fallback, pipeline orchestrator fallback, conversation context injection, frozen config snapshot, and cfg/prompt_cfg params (H-018, H-019). Remove "list" mode from picker and routing (H-020). <strong>Complexity: M</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">15</div>
+    <div class="flow-body">
+      <div class="ft">Implement Linux image clipboard capture</div>
+      <p>Use GTK's <code>Gtk.Clipboard</code> or <code>wl-paste --type image/png</code> (H-008). Fall back to text-only mode gracefully. <strong>Complexity: M</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">16</div>
+    <div class="flow-body">
+      <div class="ft">Implement hardware-tier model selection</div>
+      <p>Port <code>_resolved_tier()</code> and <code>_apply_hardware_model()</code> (H-005). Detect CPU/RAM via <code>os.cpu_count()</code>/<code>psutil</code>. <strong>Complexity: M</strong></p>
+    </div>
+  </div>
+</div>
+
+<h3>P2 — Fix When Touching Area</h3>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">17</div>
+    <div class="flow-body">
+      <div class="ft">Add missing error handling throughout controller</div>
+      <p>Add clipboard resume try/except (M-013), <code>_safe_start</code> cleanup (M-014), <code>_quit</code> crash recovery (M-011), <code>_toggle_pause</code> auto-stop (M-012). <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">18</div>
+    <div class="flow-body">
+      <div class="ft">Fix _GlibRoot headless fallback</div>
+      <p>Add exit mechanism to mainloop (M-004), fix <code>_pump</code> scheduling (M-005), implement <code>after_cancel</code> (M-003). Or remove headless support and require GTK. <strong>Complexity: M</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">19</div>
+    <div class="flow-body">
+      <div class="ft">Add confidence gating and hotword sanitization</div>
+      <p>Add <code>sanitize_hotwords()</code> and <code>confidence_gating</code> to <code>_local_transcribe</code> (M-016). <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">20</div>
+    <div class="flow-body">
+      <div class="ft">Add gc.collect() calls for memory management</div>
+      <p>Add GC after dictation, model swaps, and boot (M-010). <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">21</div>
+    <div class="flow-body">
+      <div class="ft">Fix overlay polish issues</div>
+      <p>Add fade-in animation (M-007), add Wayland availability check (M-009), fix <code>_on_draw</code> return value, track timer IDs. <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">22</div>
+    <div class="flow-body">
+      <div class="ft">Improve installer UX</div>
+      <p>Combine optional package installs to reduce sudo prompts (M-023). Use <code>sys.executable</code> or <code>which python3</code> in update relaucher (M-019). <strong>Complexity: S</strong></p>
+    </div>
+  </div>
+</div>
+
+<h3>P3 — Long-Term Improvements</h3>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">23</div>
+    <div class="flow-body">
+      <div class="ft">Implement linux_fallback.py for Vulkan acceleration</div>
+      <p>Build <code>WhisperCppTranscriber</code> wrapping whisper.cpp with Vulkan compute (C-005). At minimum, add warning log instead of silent ImportError pass. <strong>Complexity: XL</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">24</div>
+    <div class="flow-body">
+      <div class="ft">Port package structure from Windows</div>
+      <p>Port <code>eval/</code>, <code>models/</code>, <code>perf/</code>, <code>pipeline/</code>, <code>platform/</code> packages (H-016). This is a structural decision — decide whether to port packages or ensure flattened equivalents cover all functionality. <strong>Complexity: XL</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">25</div>
+    <div class="flow-body">
+      <div class="ft">Port critical Windows tests</div>
+      <p>Port <code>test_error_recovery.py</code>, <code>test_output_quality.py</code>, <code>test_transcription_diag.py</code>, <code>test_transcription_edge_cases.py</code>, <code>test_fallback.py</code> (H-017). <strong>Complexity: XL</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">26</div>
+    <div class="flow-body">
+      <div class="ft">Add CI/CD pipeline</div>
+      <p>Set up GitHub Actions or equivalent for automated testing across platforms (L-019). Currently zero automation. <strong>Complexity: XL</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">27</div>
+    <div class="flow-body">
+      <div class="ft">Extract shared logic from duplicated code</div>
+      <p>Extract <code>_build_snapshot()</code>, <code>_mode_names()</code>, <code>_listen_timer()</code>, <code>_hex()</code>, <code>_blend()</code> into shared modules (M-008). Extract common controller logic. Reduce three-parallel-codebase maintenance burden (L-023). <strong>Complexity: XL</strong></p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">28</div>
+    <div class="flow-body">
+      <div class="ft">Add Linux distribution packaging</div>
+      <p>Consider AppImage, Flatpak, or deb/rpm packaging (L-021, L-024). Add systemd user service autostart option. <strong>Complexity: XL</strong></p>
+    </div>
+  </div>
+</div>
+
+<h3>Summary by Complexity</h3>
+<table>
+<thead><tr><th>Complexity</th><th>Count</th><th>Items</th></tr></thead>
+<tbody>
+<tr><td>S (hours)</td><td>15</td><td>1, 2, 3, 4, 5, 13, 17, 19, 20, 21, 22, L-001 through L-012, L-015-018, L-025-026, L-028-029, L-031-032</td></tr>
+<tr><td>M (days)</td><td>8</td><td>7, 9, 10, 11, 14, 15, 16, 18</td></tr>
+<tr><td>L (weeks)</td><td>4</td><td>6, 8, 12, C-011, C-012</td></tr>
+<tr><td>XL (month+)</td><td>6</td><td>23, 24, 25, 26, 27, 28</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<!-- ========================================================================
+     SECTION 17 — APPENDIX: COMPLETE ISSUE INDEX
+     ======================================================================== -->
+<h2 id="s17"><span class="sec">17</span>Appendix: Complete Issue Index</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Every documented issue, numbered and cross-referenced to its report section. Use this as a master checklist for triage and tracking. Issues are listed in the order they appear in the report, with severity badges and cross-references to related issues.</p>
+  </div>
+</div>
+
+<table>
+<thead><tr><th>#</th><th>Issue</th><th>Severity</th><th>Area</th><th>Section</th><th>Related</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Meeting mode entirely absent</td><td><span class="badge b-red">CRITICAL</span></td><td>Controller</td><td><a href="#c001">§2 C-001</a></td><td>C-012, H-012</td></tr>
+<tr><td>2</td><td>bindings._session_type() crash bug</td><td><span class="badge b-red">CRITICAL</span></td><td>Controller</td><td><a href="#c002">§2 C-002</a></td><td>—</td></tr>
+<tr><td>3</td><td>stop_recording not idempotent</td><td><span class="badge b-red">CRITICAL</span></td><td>Controller</td><td><a href="#c003">§2 C-003</a></td><td>—</td></tr>
+<tr><td>4</td><td>on_hotkey missing _processing guard</td><td><span class="badge b-red">CRITICAL</span></td><td>Controller</td><td><a href="#c004">§2 C-004</a></td><td>—</td></tr>
+<tr><td>5</td><td>linux_fallback.py missing</td><td><span class="badge b-red">CRITICAL</span></td><td>Platform</td><td><a href="#c005">§2 C-005</a></td><td>H-016</td></tr>
+<tr><td>6</td><td>keyboard/mouse not in requirements.txt</td><td><span class="badge b-red">CRITICAL</span></td><td>Platform</td><td><a href="#c006">§2 C-006</a></td><td>H-011</td></tr>
+<tr><td>7</td><td>No companion bar / mode deck</td><td><span class="badge b-red">CRITICAL</span></td><td>Overlay</td><td><a href="#c007">§2 C-007</a></td><td>H-001</td></tr>
+<tr><td>8</td><td>Missing armed_color in snapshot</td><td><span class="badge b-red">CRITICAL</span></td><td>Overlay</td><td><a href="#c008">§2 C-008</a></td><td>—</td></tr>
+<tr><td>9</td><td>Suspended state not enforced</td><td><span class="badge b-red">CRITICAL</span></td><td>Overlay</td><td><a href="#c009">§2 C-009</a></td><td>M-002</td></tr>
+<tr><td>10</td><td>Pure Wayland → no island</td><td><span class="badge b-red">CRITICAL</span></td><td>Overlay/Platform</td><td><a href="#c010">§2 C-010</a></td><td>M-009</td></tr>
+<tr><td>11</td><td>local_engine.py 48% drift</td><td><span class="badge b-red">CRITICAL</span></td><td>Shared Modules</td><td><a href="#c011">§2 C-011</a></td><td>H-016, H-019</td></tr>
+<tr><td>12</td><td>meeting.py + meeting_diarise.py 53-61% drift</td><td><span class="badge b-red">CRITICAL</span></td><td>Shared Modules</td><td><a href="#c012">§2 C-012</a></td><td>C-001, L-026</td></tr>
+<tr><td>13</td><td>Island mode deck absent</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h001">§3 H-001</a></td><td>C-007</td></tr>
+<tr><td>14</td><td>Island tips system absent</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h002">§3 H-002</a></td><td>L-025</td></tr>
+<tr><td>15</td><td>Conversation capture absent</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h003">§3 H-003</a></td><td>—</td></tr>
+<tr><td>16</td><td>On-device LLM backend absent</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h004">§3 H-004</a></td><td>H-009, H-019</td></tr>
+<tr><td>17</td><td>Hardware-tier model selection absent</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h005">§3 H-005</a></td><td>H-006</td></tr>
+<tr><td>18</td><td>Default model outdated (base.en)</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h006">§3 H-006</a></td><td>H-005</td></tr>
+<tr><td>19</td><td>Default history hotkey mismatch</td><td><span class="badge b-amber">HIGH</span></td><td>Controller/Shared</td><td><a href="#h007">§3 H-007</a></td><td>L-010</td></tr>
+<tr><td>20</td><td>Image clipboard broken</td><td><span class="badge b-amber">HIGH</span></td><td>Platform</td><td><a href="#h008">§3 H-008</a></td><td>—</td></tr>
+<tr><td>21</td><td>branding.py missing critical functions</td><td><span class="badge b-amber">HIGH</span></td><td>Platform</td><td><a href="#h009">§3 H-009</a></td><td>H-004, H-005</td></tr>
+<tr><td>22</td><td>pywebview unpinned</td><td><span class="badge b-amber">HIGH</span></td><td>Platform</td><td><a href="#h010">§3 H-010</a></td><td>—</td></tr>
+<tr><td>23</td><td>pynput is dead dependency</td><td><span class="badge b-amber">HIGH</span></td><td>Platform</td><td><a href="#h011">§3 H-011</a></td><td>C-006</td></tr>
+<tr><td>24</td><td>mumble.py 12.7% controller drift</td><td><span class="badge b-amber">HIGH</span></td><td>Shared Modules</td><td><a href="#h012">§3 H-012</a></td><td>C-011, C-012</td></tr>
+<tr><td>25</td><td>context_store.py 26% drift</td><td><span class="badge b-amber">HIGH</span></td><td>Shared Modules</td><td><a href="#h013">§3 H-013</a></td><td>—</td></tr>
+<tr><td>26</td><td>reader_store.py 14% drift</td><td><span class="badge b-amber">HIGH</span></td><td>Shared Modules</td><td><a href="#h014">§3 H-014</a></td><td>—</td></tr>
+<tr><td>27</td><td>WebUI files significantly behind</td><td><span class="badge b-amber">HIGH</span></td><td>Shared Modules</td><td><a href="#h015">§3 H-015</a></td><td>L-033</td></tr>
+<tr><td>28</td><td>eval/models/perf/pipeline/platform packages missing</td><td><span class="badge b-amber">HIGH</span></td><td>Shared Modules</td><td><a href="#h016">§3 H-016</a></td><td>C-005, C-011</td></tr>
+<tr><td>29</td><td>23 Windows tests missing from Linux</td><td><span class="badge b-amber">HIGH</span></td><td>Shared/Tests</td><td><a href="#h017">§3 H-017</a></td><td>—</td></tr>
+<tr><td>30</td><td>_handle_second_opinion param mismatch</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h018">§3 H-018</a></td><td>H-020</td></tr>
+<tr><td>31</td><td>_generate differs — missing fallbacks</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h019">§3 H-019</a></td><td>H-004, H-016, H-018</td></tr>
+<tr><td>32</td><td>_offer_mode_pick still has "list"</td><td><span class="badge b-amber">HIGH</span></td><td>Controller</td><td><a href="#h020">§3 H-020</a></td><td>H-018</td></tr>
+<tr><td>33</td><td>_NoopIsland missing set_focused()</td><td><span class="badge b-gated">MEDIUM</span></td><td>Overlay</td><td><a href="#m001">§4 M-001</a></td><td>C-004 overlay</td></tr>
+<tr><td>34</td><td>wake() doesn't check suspended</td><td><span class="badge b-gated">MEDIUM</span></td><td>Overlay</td><td><a href="#m002">§4 M-002</a></td><td>C-009</td></tr>
+<tr><td>35</td><td>_GlibRoot.after() no after_cancel</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller/Overlay</td><td><a href="#m003">§4 M-003</a></td><td>M-005, M-007 low</td></tr>
+<tr><td>36</td><td>_GlibRoot.mainloop() infinite loop</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller/Overlay</td><td><a href="#m004">§4 M-004</a></td><td>M-005</td></tr>
+<tr><td>37</td><td>_pump won't process queue in headless</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m005">§4 M-005</a></td><td>M-004</td></tr>
+<tr><td>38</td><td>set_widget_callbacks signature mismatch</td><td><span class="badge b-gated">MEDIUM</span></td><td>Overlay</td><td><a href="#m006">§4 M-006</a></td><td>C-007, H-001</td></tr>
+<tr><td>39</td><td>No fade-in appearance</td><td><span class="badge b-gated">MEDIUM</span></td><td>Overlay</td><td><a href="#m007">§4 M-007</a></td><td>—</td></tr>
+<tr><td>40</td><td>Duplicated _build_snapshot logic</td><td><span class="badge b-gated">MEDIUM</span></td><td>Overlay/Shared</td><td><a href="#m008">§4 M-008</a></td><td>L-008</td></tr>
+<tr><td>41</td><td>Wayland env var set at import time</td><td><span class="badge b-gated">MEDIUM</span></td><td>Platform/Overlay</td><td><a href="#m009">§4 M-009</a></td><td>C-010</td></tr>
+<tr><td>42</td><td>Missing gc.collect() calls</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller/Perf</td><td><a href="#m010">§4 M-010</a></td><td>—</td></tr>
+<tr><td>43</td><td>_quit missing crash recovery</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m011">§4 M-011</a></td><td>—</td></tr>
+<tr><td>44</td><td>_toggle_pause missing auto-stop</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m012">§4 M-012</a></td><td>—</td></tr>
+<tr><td>45</td><td>_paste_impl missing try/except</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m013">§4 M-013</a></td><td>—</td></tr>
+<tr><td>46</td><td>_safe_start missing cleanup</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m014">§4 M-014</a></td><td>—</td></tr>
+<tr><td>47</td><td>Pipeline orchestrator fallback missing</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m015">§4 M-015</a></td><td>H-016, H-019</td></tr>
+<tr><td>48</td><td>Confidence gating / hotword sanitization missing</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m016">§4 M-016</a></td><td>—</td></tr>
+<tr><td>49</td><td>_snap missing llm_provider / prompt_provider</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m017">§4 M-017</a></td><td>—</td></tr>
+<tr><td>50</td><td>Settings live-apply gaps</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m018">§4 M-018</a></td><td>—</td></tr>
+<tr><td>51</td><td>Hardcoded /usr/bin/python3 in update</td><td><span class="badge b-gated">MEDIUM</span></td><td>Platform</td><td><a href="#m019">§4 M-019</a></td><td>—</td></tr>
+<tr><td>52</td><td>mode_select import is dead code</td><td><span class="badge b-gated">MEDIUM</span></td><td>Controller</td><td><a href="#m020">§4 M-020</a></td><td>—</td></tr>
+<tr><td>53</td><td>island_render.py 9.6% drift</td><td><span class="badge b-gated">MEDIUM</span></td><td>Shared Modules</td><td><a href="#m021">§4 M-021</a></td><td>—</td></tr>
+<tr><td>54</td><td>presets.py 24.5% drift (Linux has more)</td><td><span class="badge b-gated">MEDIUM</span></td><td>Shared Modules</td><td><a href="#m022">§4 M-022</a></td><td>—</td></tr>
+<tr><td>55</td><td>Multiple sudo prompts in installer</td><td><span class="badge b-gated">MEDIUM</span></td><td>Platform/Installer</td><td><a href="#m023">§4 M-023</a></td><td>—</td></tr>
+<tr><td colspan="6" style="background:var(--panel-2);color:var(--gold-bri);font-weight:650;text-align:center">Low-priority issues (L-001 through L-033) — see <a href="#s5" style="color:var(--gold-bri)">§5</a> for full details</td></tr>
+<tr><td>56-88</td><td>33 low-priority issues</td><td><span class="badge b-exist">LOW</span></td><td>Various</td><td><a href="#s5">§5</a></td><td>See table above</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<footer class="doc-foot">
+  <div><span class="gold">◆</span> Linux Platform Audit — Generated 2026-07-04</div>
+  <div>Code analysis only. No live testing performed.</div>
+  <div>88 issues documented across 17 sections.</div>
+</footer>
+
+</div><!-- .wrap -->
+</body>
+</html>

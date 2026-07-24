@@ -1,0 +1,48 @@
+---
+// CTAButton.astro — Reusable call-to-action button component.
+// Props: href (required), text (required), variant, size, block, download, icon.
+// Uses existing .btn / .btn-gold / .btn-ghost / .btn-outline-gold CSS classes.
+export interface Props {
+  href: string;
+  text: string;
+  variant?: 'gold' | 'ghost' | 'outline-gold';
+  size?: 'lg' | 'sm';
+  block?: boolean;
+  download?: boolean;
+  icon?: 'download' | 'none';
+  id?: string;
+}
+
+const {
+  href,
+  text,
+  variant = 'gold',
+  size = 'lg',
+  block = false,
+  download: isDownload = false,
+  icon = 'download',
+  id,
+} = Astro.props;
+
+const classes = [
+  'btn',
+  `btn-${variant}`,
+  `btn-${size}`,
+  block ? 'btn-block' : '',
+].filter(Boolean).join(' ');
+---
+
+<a
+  class={classes}
+  href={href}
+  {...(isDownload ? { download: true } : {})}
+  {...(id ? { id } : {})}
+>
+  {icon === 'download' && (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 3v12m0 0l-4-4m4 4l4-4"/>
+      <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+    </svg>
+  )}
+  {text}
+</a>

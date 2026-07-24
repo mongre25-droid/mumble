@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Post-Processing Engine — Engineering Blueprint</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Engineering Blueprint</div>
+  <h1>Local Post-Processing Engine</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Date:</b> 2026-06-27</div>
+    <div><span class="ico">◆</span><b>Target app:</b> Mumble (Python desktop, faster-whisper speech-to-text, CPU-first, Windows is the source of truth)</div>
+    <div><span class="ico">◆</span><b>Companion research:</b> <a href="local_nlp.html">local_nlp</a> — the lightweight-language-tech survey this builds on</div>
+    <div><span class="ico">◆</span><b>Status:</b> a design spec, plus two finished and offline-tested modules (<code>Internal/foreign_boost.py</code> and <code>Internal/local_engine.py</code>), plus the owner-approval-gated plan for the rest</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble turns your speech into text. When you have an internet API key, the heavy "make it read well" work happens in the <strong>cloud</strong>. But lots of people have <strong>no key</strong> or want everything to stay <strong>on their own computer</strong>. This document is the plan for giving those offline users a genuinely good experience — done entirely on their machine — without ever weakening the cloud experience for people who paid for it.</p>
+    <p>"Post-processing" just means the clean-up that happens <em>after</em> the raw words are recognised: fixing punctuation, formatting an email, repairing a foreign word the recogniser misheard, and so on.</p>
+  </div>
+</div>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s0">What already exists vs. what this adds</a></li>
+    <li><a href="#s1">Cloud-vs-local routing</a></li>
+    <li><a href="#s2">Loading the right speech model</a></li>
+    <li><a href="#s3">Foreign Mode — repairing misheard words</a></li>
+    <li><a href="#s4">Smart modes &amp; grammar steering</a></li>
+    <li><a href="#s5">Integration, phasing &amp; risks</a></li>
+    <li><a href="#s6">The full Mumble flow, start to finish</a></li>
+    <li><a href="#s7">Appendix — file manifest</a></li>
+  </ol>
+</nav>
+
+<blockquote>
+  <p><strong>One-line thesis.</strong> Give the <strong>no-key / offline</strong> user a genuinely capable on-device engine for the five primary lanes (Prompt, Email, List, Reply, Foreign) instead of weak templated output — while keeping the <strong>cloud the primary authority whenever a key is present</strong> (the legacy pipeline the paying user opted into). Never load a model the user's hardware or language doesn't need.</p>
+</blockquote>
+
+<blockquote>
+  <p><strong>Cloud-dominance hierarchy (owner directive, 2026-06-27 — supersedes any "local-first by default" framing below).</strong> Cloud is the primary authority for final text transformation. Local post-processing is <strong>gated</strong>: it runs only when there is <strong>no cloud key</strong> OR the user has flipped an explicit <strong>Local-Only</strong> toggle. When a key is present, the pipeline is the legacy one — local does <strong>raw speech-to-text + inline <code>//</code> uncertainty marking only</strong>, then the raw transcript goes straight to cloud; no intermediate local reasoning intervenes. Local-only <strong>never hard-blocks</strong>: it best-efforts every task and <strong>appends</strong> (never interrupts) a notice when a task exceeds edge capability. This reconciles the original "make local the default" brief (true for the offline majority) with the owner's quality bar for key-holders.</p>
+</blockquote>
+
+<hr>
+
+<h2 id="s0"><span class="sec">0</span>What already exists vs. what this blueprint adds</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Before writing new code, we checked what Mumble already does. The honest answer: <strong>a lot of this is already built</strong>. So the new work is small and surgical, not a rewrite. The table below is "what was asked for" → "what the code already does" → "the small gap we still need to fill".</p></div>
+</div>
+
+<p>A surprising amount of the brief is <strong>already built</strong>. Honest grounding matters here, so the new work is surgical rather than a rewrite (HANDBOOK §6: "touch the smallest surface").</p>
+
+<table>
+  <thead><tr><th>Brief asks for</th><th>Reality in the code today</th><th>Gap this blueprint closes</th></tr></thead>
+  <tbody>
+    <tr><td>Lightweight local post-processing</td><td><code>formatting.py</code> already does filler-strip, capitalisation, comma insertion, hallucination blocklist, delooping, phonetic vocab matching, segment-confidence gating, optional lazy ML punctuation</td><td>Not "weak" — but <strong>templated</strong> for smart modes. Add a local-LLM lane for fluent Prompt/Email/List/Reply.</td></tr>
+    <tr><td>Monolingual vs multilingual model loading</td><td><code>branding.MODEL_BY_TIER</code> × <code>english_only</code>; <code>mumble._apply_hardware_model</code>/<code>_try_load</code> already <strong>release the old model before swapping</strong> (single-resident guarantee), lazy-load, unload, warm</td><td>Add the <strong>explicit onboarding question</strong>, a <strong>per-target-language</strong> fine-tuned map, and the <strong>primary-language swap</strong>.</td></tr>
+    <tr><td>Foreign-word phonetic repair</td><td><code>islamic_terms.annotate_foreign</code> emits <code>a//b//c</code> candidates — but <strong>Islamic-only</strong> and <strong>defers the decision to the cloud</strong> (<code>ai.cerebras_foreign</code>)</td><td><span class="badge b-done">✓ Built</span> &nbsp;<code>foreign_boost.py</code> — multi-language, decides high-confidence boosts <strong>on-device</strong>, emits <code>//JUZ</code>.</td></tr>
+    <tr><td>Cloud-dominance matrix + graceful notice</td><td>Provider plumbing exists; there is <strong>no discrete router</strong>, no dominance gate, no graceful degrade</td><td><span class="badge b-done">✓ Built</span> &nbsp;<code>local_engine.route()</code> (cloud-primary-when-key, local-only gating, degrade-not-block) + Cerebras hint.</td></tr>
+    <tr><td>GGUF grammar models + context injection</td><td>None (cloud lanes use long text prompts)</td><td><span class="badge b-done">✓ Built (seam + assets)</span> &nbsp;<code>local_engine</code> GBNF grammars, style sheets, <code>LlamaCppBackend</code>. Model download is owner-gated.</td></tr>
+  </tbody>
+</table>
+
+<h3>Shipped in this pass (pure-standard-library, offline-tested, no new dependency)</h3>
+<div class="tiles">
+  <div class="tile"><div class="n">20/20</div><div class="l"><code>foreign_boost.py</code> tests passing (incl. <code>mark_only</code> cloud mode)</div></div>
+  <div class="tile"><div class="n">18/18</div><div class="l"><code>local_engine.py</code> tests passing (cloud-dominance routing)</div></div>
+  <div class="tile"><div class="n">0</div><div class="l">new third-party dependencies added</div></div>
+</div>
+
+<p><strong>Owner-gated</strong> (needs a heavy dependency <em>and</em> a deliberately-reversed product decision — see §4.6): adding <code>llama-cpp-python</code> and a GGUF model to actually run the <code>local_llm</code> lane. The seam, grammars, style sheets and router are all in place so this is a drop-in, not a rebuild.</p>
+
+<hr>
+
+<h2 id="s1"><span class="sec">1</span>Cloud-vs-local routing <span style="font-size:.62em;color:var(--muted);font-weight:400">(Brief §1 + the dominance directive)</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Every time you dictate, Mumble has to decide one thing: <strong>who does the final clean-up — the cloud, or your own computer?</strong> The rule is simple. If you have a key and haven't asked to stay offline, the cloud does it (best quality). If you have no key, or you flipped the "Local-Only" switch, your computer does it. That single decision is made in one place, by a function called <code>route()</code>.</p></div>
+</div>
+
+<h3>1.1 The gate — one branch decides everything</h3>
+<p>One yes/no question — "is this a local-only run?" — picks the path. It's local-only when there's no cloud key, or when you turned on the Local-Only switch.</p>
+<details class="dev"><summary><span class="devchip">Logic</span> The exact rule</summary>
+<pre><code>local_only = (no cloud key)  OR  (explicit Local-Only toggle)
+
+  cloud-augmented  (key present, toggle off)  ->  CLOUD is primary
+  local-only       (no key, or toggle on)     ->  LOCAL engine, best-effort</code></pre>
+</details>
+<p><code>local_engine.route()</code> is the single source of truth. The controller asks <em>where does final transformation happen?</em> and never hard-codes provider logic in the hot path.</p>
+
+<h3>1.2 Cloud-augmented (a key is present) — the legacy pipeline</h3>
+<p>Cloud is the authority. The <strong>only</strong> local work is at the transcription stage:</p>
+<ol>
+  <li>Local faster-whisper produces the <strong>raw</strong> transcript.</li>
+  <li>Low-confidence / foreign tokens are marked inline with <code>//</code> (<code>formatting.annotate_uncertain</code>, <code>foreign_boost.mark_uncertainty</code> — <em>marking</em>, not resolving).</li>
+  <li>The raw transcript <strong>+ markers</strong> is packaged and sent straight to the cloud lane (<code>ai.py</code>) for all final formatting/cleanup. <strong>No intermediate local reasoning or restructuring runs.</strong></li>
+</ol>
+<p>So when a key is present, <code>route(lane, cloud_key_present=True)</code> returns <code>CLOUD</code> for <strong>every</strong> lane — <code>text</code>, <code>foreign</code>, <code>prompt</code>, <code>email</code>, <code>list</code>, <code>reply</code>, and every Deck preset. This preserves the earlier architecture exactly for users who opted into Pro Mode.</p>
+
+<h3>1.3 Local-only (no key, or the offline toggle) — best-effort, never blocks</h3>
+<table>
+  <thead><tr><th>Lane</th><th>Engine</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>text</code>, <code>foreign</code></td><td><strong>LOCAL</strong></td><td><code>formatting.py</code> / <code>foreign_boost.py</code> resolve fully on-device.</td></tr>
+    <tr><td><code>prompt</code>, <code>email</code>, <code>list</code>, <code>reply</code></td><td><strong>LOCAL_LLM</strong> if ready, else <strong>LOCAL</strong></td><td>Local GGUF (Strategy B) if installed; else the deterministic <code>formatting.build_*</code> builder.</td></tr>
+    <tr><td>heavy / oversize (deck extract, multi-doc, &gt; <code>HEAVY_WORDS</code>)</td><td>best-effort <strong>LOCAL(+LLM)</strong> <strong>+ appended notice</strong></td><td>Runs anyway, <code>degraded=True</code>, <code>notice=UPGRADE_NOTICE</code>.</td></tr>
+  </tbody>
+</table>
+<p><code>classify_task()</code> flags a job as <em>heavy</em> when a preset is tagged <code>requires="cloud"</code>, the lane is a heavy Deck lane, there are <strong>≥ 2 source documents</strong>, or a reasoning input exceeds the edge budget (<code>HEAVY_WORDS = 1500</code>).</p>
+
+<h3>1.4 The graceful notification — appended, never interrupts (directive §3)</h3>
+<p>Local-only <strong>never hard-blocks</strong>. When a task exceeds edge capability it still produces best-effort output, and the result carries a notice the UI <strong>appends</strong> at the output stage:</p>
+<details class="dev"><summary><span class="devchip">Code</span> The decision object that carries the notice</summary>
+<pre><code>RouteDecision(engine="local" | "local_llm",      # it still runs
+              reason="local-best-effort-degraded",
+              degraded=True,
+              notice="For enhanced results on this task, enable AI Pro Mode "
+                     "or connect a cloud API key.",
+              suggested_provider="cerebras", suggested_key_setting="cerebras_api_key")</code></pre>
+</details>
+<p><code>cloud_fallback_hint()</code> returns the structured form for a "Link Cerebras (free)" affordance that deep-links to <strong>Settings → Pro Mode → Cerebras key</strong> (<code>settings.cerebras_api_key</code>; Cerebras = fastest free tier, gpt-oss-120b ~0.4–0.5 s). <code>cloud_fallback_hint(strong=True)</code> returns the original exact phrasing — <em>"This specific preset requires cloud acceleration. Please link a cloud API key."</em> — preserved as <code>CLOUD_REQUIRED_MESSAGE</code> for any UI that wants it.</p>
+
+<h3>1.5 Privacy invariant is untouched</h3>
+<p>The matrix changes <em>where text is processed</em>, never <em>what leaves the device</em>. Audio is still 100% local. <code>local</code>/<code>local_llm</code> send nothing anywhere. <code>cloud</code> sends <strong>only text</strong> (raw + <code>//</code> markers), only with a user key (HANDBOOK §5.1). The local-only user sends nothing at all.</p>
+
+<h3>1.6 Integration points</h3>
+<table>
+  <thead><tr><th>Call site</th><th>Change</th></tr></thead>
+  <tbody>
+    <tr><td><code>mumble._process</code></td><td>Compute <code>local_only</code> from key-presence + the Local-Only setting; call <code>route(lane, cloud_key_present=…, local_only_mode=…, local_llm_ready=…)</code>; branch on <code>engine</code>.</td></tr>
+    <tr><td><code>mumble._cloud_generate</code></td><td>The cloud-augmented path is the existing <code>ai.*</code> legacy pipeline (now primary when a key is present). The <code>local_llm</code>/<code>local</code> branches handle the local-only case.</td></tr>
+    <tr><td>Foreign lane</td><td>cloud-augmented → <code>foreign_boost.mark_uncertainty()</code> (mark <code>//</code>, cloud resolves). local-only → <code>foreign_boost.boost()</code> + <code>strip_flags()</code> (on-device).</td></tr>
+    <tr><td>Deck preset run (<code>_run_hub_job</code>)</td><td>Presets carry <code>requires</code>; local-only heavy → run best-effort + append <code>decision.notice</code>.</td></tr>
+    <tr><td>Boot</td><td><code>set_backend(LlamaCppBackend(...))</code> if and only if <code>local_ai_enabled</code> + the model is present; else leave <code>NullBackend</code>.</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="s2"><span class="sec">2</span>Loading the right speech model <span style="font-size:.62em;color:var(--muted);font-weight:400">(Brief §2)</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The "model" is the AI brain that turns sound into words. There are small ones (fast, light, but English-only) and big ones (understand 99 languages, but use more memory). The goal: load the <em>smallest</em> model that fits the user's computer <strong>and</strong> the language they actually speak — never waste memory on a 99-language brain for someone who only dictates in English. Most of this is already built; we just add a clearer onboarding question and per-language tuning.</p></div>
+</div>
+
+<h3>2.1 What already exists (don't rebuild it)</h3>
+<ul>
+  <li><strong>Resolver:</strong> <code>branding.resolve_model(tier, english_only)</code> maps a PC class × language scope to a concrete faster-whisper id via <code>MODEL_BY_TIER</code>:</li>
+</ul>
+<table>
+  <thead><tr><th>Tier</th><th>English-only (<code>.en</code>)</th><th>Multilingual</th></tr></thead>
+  <tbody>
+    <tr><td>weak</td><td><code>base.en</code></td><td><code>base</code></td></tr>
+    <tr><td>mid</td><td><code>small.en</code></td><td><code>small</code></td></tr>
+    <tr><td>powerful</td><td><code>distil-large-v3</code></td><td><code>large-v3-turbo</code></td></tr>
+  </tbody>
+</table>
+<ul>
+  <li><strong>Single-resident guarantee (already enforced):</strong> <code>mumble._try_load</code> releases the old model <strong>before</strong> assigning the new one, then <code>gc.collect()</code> — so Mumble is <em>never</em> holding two whisper models at once. This is precisely the "don't hold multiple idle models" requirement, already done.</li>
+  <li><strong>Lazy + unload:</strong> <code>_ensure_local_model</code> (load on demand), <code>_unload_local_model</code> (drop when cloud speech-to-text is active), <code>_warm_model</code> (two-pass warm so the first dictation is full-speed).</li>
+  <li><strong>Auto-probe:</strong> <code>branding.detect_hardware_tier</code> (cores/RAM) → cached in <code>hardware_tier_resolved</code>.</li>
+</ul>
+<p>The "English-only client must not allocate a 99-language model" waste is therefore <strong>already avoided</strong>: an English user on <code>small.en</code> never loads the multilingual <code>small</code>.</p>
+
+<h3>2.2 The gaps to close</h3>
+<p><strong>(a) The explicit onboarding question.</strong> Today onboarding step <code>#ob-lang</code> is a language <em>card</em> that sets <code>english_only = (lang === "en")</code>. Reframe it as the brief's question and make the consequence legible:</p>
+<blockquote>
+  <p><strong>"Do you speak more than one language while dictating?"</strong><br>
+  • <em>No — I dictate in English.</em> → loads the fast English-only engine (lighter RAM, more accurate for English).<br>
+  • <em>Yes — I switch languages mid-sentence.</em> → loads the multilingual engine so foreign phrases decode correctly.</p>
+</blockquote>
+<p>This sets <code>english_only</code> (already wired through <code>finish_onboarding</code> → <code>_apply_hardware_model</code>). No new plumbing — a copy + UX change in <code>webui/app.js</code> + <code>index.html</code>.</p>
+
+<p><strong>(b) Primary-language fine-tuned swap.</strong> The brief wants: <em>primary language = French/German → load a model optimised for that tongue, swapping memory maps so idle models aren't held.</em> The resolver currently only branches English-only vs generic-multilingual. Add a <strong>language-targeted</strong> tier so a committed French user gets a French-leaning model rather than the generic multilingual:</p>
+<details class="dev"><summary><span class="devchip">Code</span> Proposed <code>branding.py</code> addition</summary>
+<pre><code># branding.py — proposed addition
+MODEL_BY_LANGUAGE = {
+    # language -> {tier: model_id}.  faster-whisper has no per-language *.fr builds,
+    # so "fine-tuned for a tongue" means: the multilingual model PINNED to that
+    # language (decoder language token forced) + the matching initial_prompt +
+    # that language's vocabulary/foreign pack. Distil/CTranslate2 community models
+    # (e.g. distil-large-v3-fr) drop in here as they appear.
+    "en": {"weak": "base.en",  "mid": "small.en",       "powerful": "distil-large-v3"},
+    "__multi__": {"weak": "base", "mid": "small",        "powerful": "large-v3-turbo"},
+}
+
+def resolve_model(tier, english_only=True, primary_language="en"):
+    if english_only or primary_language == "en":
+        return MODEL_BY_LANGUAGE["en"][tier]
+    return MODEL_BY_LANGUAGE["__multi__"][tier]   # pinned to primary_language at transcribe time</code></pre>
+</details>
+<p>The real lever for a single target language is not a different <em>file</em> (faster-whisper ships one multilingual model) but <strong>forcing the decoder language token</strong> + a language-specific <code>initial_prompt</code>. <code>mumble._warm_model</code> already computes <code>lang</code>; the live transcribe call passes <code>language=</code>. So "swap to the French model" = (multilingual model resident) + <code>language="fr"</code> + French vocabulary/foreign pack. The swap is <strong>memory-cheap</strong> because the multilingual weights are shared; only the decode-time language token and the prompt change. When a <em>true</em> per-language distilled model exists (community CTranslate2 builds), it slots into <code>MODEL_BY_LANGUAGE</code> and the existing <code>set_model</code> hot-swap (with its single-resident guarantee) handles the rest.</p>
+
+<p><strong>(c) Track <code>primary_language</code>.</strong> Add <code>settings.primary_language</code> (default <code>"en"</code>); on change in Settings, call <code>_apply_hardware_model(force=True)</code> (already the handler shape at <code>mumble.py:1924</code>, which watches <code>hardware_tier</code>/<code>english_only</code>). The dashboard's "Primary Spoken Language" dropdown writes this; the resolver reads it.</p>
+
+<h3>2.3 Memory budget (why this matters on low-end hardware)</h3>
+<table>
+  <thead><tr><th>Model</th><th>Disk</th><th>RAM (int8)</th><th>Loaded for</th></tr></thead>
+  <tbody>
+    <tr><td><code>tiny.en</code></td><td>~75 MB</td><td>~0.2 GB</td><td>Resource-Saver / weak fallback</td></tr>
+    <tr><td><code>base.en</code></td><td>~145 MB</td><td>~0.4 GB</td><td>weak + English</td></tr>
+    <tr><td><code>small.en</code></td><td>~480 MB</td><td>~0.6 GB</td><td><strong>mid + English (default)</strong></td></tr>
+    <tr><td><code>small</code> (multi)</td><td>~480 MB</td><td>~0.7 GB</td><td>mid + multilingual</td></tr>
+    <tr><td><code>large-v3-turbo</code></td><td>~1.6 GB</td><td>~2.0 GB</td><td>powerful + multilingual</td></tr>
+  </tbody>
+</table>
+<p>The single-resident policy caps speech-to-text memory at <strong>one</strong> of these rows. With the optional local LLM (§4) the budget becomes <code>STT + one small GGUF</code>; §4.2 sizes that so a mid PC stays under ~2 GB.</p>
+
+<hr>
+
+<h2 id="s3"><span class="sec">3</span>Foreign Mode — repairing misheard words <span style="font-size:.62em;color:var(--muted)">(Brief §3)</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>An English speech model has never "heard" the word <em>juz</em> (a part of the Quran), so when you say it, the model writes down the closest English word it knows — "<em>just</em>". The real foreign word vanishes. <strong>Foreign Mode</strong> catches these and puts the right word back.</p>
+    <p>The hard part: do it <strong>without breaking ordinary English</strong>. If you actually said "I <em>just</em> left", it must stay "just". The pipeline below uses several clues — a dictionary of known mishearings, surrounding foreign context words, and how unsure the recogniser was — to decide safely.</p>
+  </div>
+</div>
+
+<blockquote>
+  <p><strong>Shipped:</strong> <code>Internal/foreign_boost.py</code> (+ 18 passing tests). This section is both the design and the as-built parsing-workflow breakdown the brief asks for.</p>
+</blockquote>
+
+<h3>3.1 The algorithmic problem</h3>
+<p>An English-tuned acoustic model has no token for "juz", "gracias" or "croissant". It force-maps the foreign acoustics onto the nearest English string it <em>does</em> have: <code>juz → "just"</code>, <code>gracias → "grassy us"</code>, <code>croissant → "kwasont"</code>. The foreign word never appears in the output; a plausible English word sits in its acoustic slot.</p>
+
+<h3>3.2 The repair pipeline, stage by stage</h3>
+<p>Input is the stream of recognised words, plus (optionally) a per-word confidence score the recogniser already produces. It flows through seven stages:</p>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">1</div>
+    <div class="flow-body"><div class="ft">Tokenise</div>
+      <p><code>_WORD_RE</code> runs over the stream and splits it into an ordered list of individual word-tokens.</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">2</div>
+    <div class="flow-body"><div class="ft">Lexicon match</div>
+      <p>Check each token against the user's chosen secondary-language packs:</p>
+      <p><strong>(a)</strong> exact known-mishearing hit → start at <strong>BOOST</strong> (high precision). &nbsp;<strong>(b)</strong> phonetic-signature hit (a ≥4-character consonant skeleton, exact) → start at <strong>OFFER</strong>. &nbsp;<strong>(c)</strong> token already equals the canonical word → <strong>LEAVE</strong> it (don't re-flag a correct "juz").</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">3</div>
+    <div class="flow-body"><div class="ft">Context strength</div>
+      <p>Scan the sentence for unmistakably-foreign anchor words ("quran", "imam", "amigo"…). One or more present ⇒ the engine can be bolder about a repair.</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">4</div>
+    <div class="flow-body"><div class="ft">Acoustic slot</div>
+      <p>If the recogniser's confidence for that word (<code>word.prob</code>) is below the threshold (0.6), it was <em>unsure</em> — that slot is a strong candidate for being a misheard foreign word.</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">5</div>
+    <div class="flow-body"><div class="ft">Decision gate</div>
+      <p>The heart of the system. Combines the three clues above to choose BOOST, OFFER, or LEAVE — see the table in §3.3.</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">6</div>
+    <div class="flow-body"><div class="ft">Flag injection</div>
+      <p><strong>BOOST</strong> → <code>//Juz</code> (applied; leading flag). &nbsp;<strong>OFFER</strong> → <code>just//Juz</code> (candidate; infix flag). &nbsp;<strong>LEAVE</strong> → untouched.</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">7</div>
+    <div class="flow-body"><div class="ft">Render</div>
+      <p><strong>Offline:</strong> <code>strip_flags()</code> → <code>"Juz"</code> for applied boosts. &nbsp;<strong>Cloud on:</strong> hand the <code>//</code>-marked stream to <code>ai.cerebras_foreign()</code> to resolve the remaining OFFERs.</p></div>
+  </div>
+</div>
+
+<h3>3.3 The decision gate (Stage 5)</h3>
+<p>The crux is <strong>never silently corrupting ordinary English</strong> while still catching genuine foreign interjections. The gate combines three signals — lexicon tier, foreign-context, acoustic confidence — and a hard guard on common English words:</p>
+<table>
+  <thead><tr><th>Token is…</th><th>Lexicon</th><th>Context</th><th>Low-conf slot</th><th>→ Decision</th></tr></thead>
+  <tbody>
+    <tr><td>not an English word</td><td>exact mishearing</td><td>any</td><td>any</td><td><span class="badge b-done">BOOST</span> <code>//Term</code></td></tr>
+    <tr><td>not an English word</td><td>phonetic-only</td><td>+ gateway</td><td>+ low-conf</td><td><span class="badge b-done">BOOST</span></td></tr>
+    <tr><td>not an English word</td><td>phonetic-only</td><td>else</td><td>—</td><td><span class="badge b-gated">OFFER</span> <code>heard//Term</code></td></tr>
+    <tr><td><strong>common English word</strong></td><td>exact mishearing</td><td>+ gateway</td><td>+ low-conf</td><td><span class="badge b-done">BOOST</span> (the <code>juz→//Juz</code> case)</td></tr>
+    <tr><td><strong>common English word</strong></td><td>exact mishearing</td><td>gateway <em>or</em> low-conf</td><td>—</td><td><span class="badge b-gated">OFFER</span></td></tr>
+    <tr><td><strong>common English word</strong></td><td>any</td><td>none</td><td>normal</td><td><span class="badge b-exist">LEAVE</span> (<code>"I just left"</code> stays)</td></tr>
+  </tbody>
+</table>
+<p>This is why <code>foreign_boost.boost("I just left the room", ["arabic"])</code> returns the text <strong>unchanged</strong>, but <code>boost("I memorized the first just of the Quran", word_probs=[…0.40…])</code> returns <code>"…the first //Juz of the Quran"</code> — gateway <em>Quran</em> + low-confidence slot promote the homophone to an applied boost. Both are covered by tests.</p>
+
+<h3>3.4 The <code>//JUZ</code> notation (two tiers, one stream)</h3>
+<ul>
+  <li><strong><code>//Term</code></strong> (leading slashes) = an <strong>applied</strong> boost. The engine was confident; the token was replaced. <code>strip_flags("//Juz") → "Juz"</code>.</li>
+  <li><strong><code>heard//Term</code></strong> (infix slashes) = an <strong>offered</strong> candidate, the existing <code>islamic_terms.annotate_foreign</code> notation. Resolved downstream — offline <code>strip_flags</code> keeps the recognizer's word (safe); with the cloud on, <code>ai.cerebras_foreign</code> picks from context.</li>
+</ul>
+<p>So the local engine <em>upgrades</em> the existing system: high-confidence cases resolve <strong>on-device</strong> (an offline user finally gets "Juz"), and the cloud lane only ever sees the residual ambiguous offers — fewer tokens, cheaper, higher hit-rate.</p>
+
+<h3>3.5 Language packs (multilingual by data, not code)</h3>
+<p>A pack is <code>(canonical, [known_mishearings])</code> + a gateway set. Adding a language = adding a list.</p>
+<ul>
+  <li><strong>Arabic</strong> reuses <code>islamic_terms.ISLAMIC_TERMS</code> <strong>verbatim</strong> (~250 entries) — single source of truth, no fork.</li>
+  <li><strong>Spanish / French</strong> ship as compact, high-precision starter packs (amigo, gracias, señor, jalapeño; croissant, café, rendez-vous, déjà vu…).</li>
+  <li>Packs are selected from <code>settings.foreign_languages</code> (already a list, default <code>["arabic"]</code>), with aliases (<code>es</code>/<code>español</code>, <code>fr</code>/<code>français</code>, <code>ar</code>).</li>
+</ul>
+
+<h3>3.6 Phonetic signature (zero-dependency)</h3>
+<p>A cross-lingual consonant skeleton folds the spelling variation that separates a foreign term from its English mis-map (j/g, k/c/q, s/z, f/v, silent vowels): <code>juz/juzz</code>, <code>café/cafe</code>, <code>croissant/kroissant</code> collapse to one key. Indexed only at length ≥ 4 (short skeletons collide: <code>saw</code> and <code>Sa'i</code> both reduce to <code>s</code> — the source of every false positive in the first test run, now gated out). Recall path = exact signature match; precision path = the curated mishearing table.</p>
+
+<h3>3.7 Integration</h3>
+<p>In code, Foreign Mode is just a few lines added where Mumble already handles the foreign lane: run the booster, then either hand the result to the cloud (if a key is present) or strip the flags and finish on-device.</p>
+<details class="dev"><summary><span class="devchip">Code</span> The <code>mumble._cloud_generate</code> foreign lane</summary>
+<pre><code># mumble._cloud_generate, foreign lane — augment the existing two lines:
+if mode_hint == "foreign":
+    langs = self.settings.get("foreign_languages") or ["arabic"]
+    result = foreign_boost.boost(content, languages=langs, word_probs=words_probs)
+    if self._cloud_available():
+        # cloud resolves the residual OFFERs; applied //Term boosts already done
+        return self._collect(ai.cerebras_foreign(result.text, name, key, context,
+                                                 model, url=url, languages=langs), "foreign")
+    return "foreign", foreign_boost.strip_flags(result.text, keep="heard")  # fully offline</code></pre>
+</details>
+<p><code>words_probs</code> is the per-word <code>word.prob</code> list faster-whisper already exposes (used today by <code>formatting.annotate_uncertain</code>). Offline, Foreign Mode now works with <strong>no key at all</strong>.</p>
+
+<hr>
+
+<h2 id="s4"><span class="sec">4</span>Smart modes &amp; grammar steering <span style="font-size:.62em;color:var(--muted)">(Brief §4)</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>"Smart modes" are when Mumble doesn't just transcribe but <em>reshapes</em> your words — into an email, a bulleted list, a reply. Offline, it currently does this with fixed templates (correct, but stiff). A small AI model running on your computer can make it read naturally. The trick that makes a tiny model reliable is a <strong>grammar</strong>: a rule that makes a wrong shape literally impossible to produce (e.g. "you may only output bullet points"). This is an <strong>opt-in</strong>, owner-approved feature because it needs a sizeable download.</p></div>
+</div>
+
+<h3>4.1 The real gap</h3>
+<p>The offline builders (<code>formatting.build_prompt/email/list</code>) produce <strong>correct but templated</strong> output — <code>build_prompt</code> emits a fixed <code>You are {role}. # Task … # Instructions …</code> scaffold. The cloud lanes produce <strong>fluent</strong> output. A small on-device LLM, <strong>constrained by a grammar</strong>, closes most of that gap for the structured lanes without the cloud.</p>
+
+<h3>4.2 Runtime package selection</h3>
+<table>
+  <thead><tr><th>Option</th><th>Verdict</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><strong>llama.cpp / <code>llama-cpp-python</code> (GGUF)</strong></td><td><span class="badge b-done">✓ CHOSEN</span></td><td>CPU-first, mature, <strong>GBNF grammar sampling</strong> (the key feature), tiny wheel, broad model support, OpenAI-compatible chat shape.</td></tr>
+    <tr><td>ONNX Runtime GenAI</td><td>Reasonable alt</td><td>Good CPU perf, but grammar/structured-decoding story weaker; heavier setup.</td></tr>
+    <tr><td><code>candle</code> (Rust)</td><td>No</td><td>Adds a Rust toolchain; not a Python-native drop-in.</td></tr>
+    <tr><td>Ollama / LM Studio as a <em>dependency</em></td><td>No</td><td>A second app to install/run — the exact "non-technical user" failure that got local LLM <strong>removed in v3.17.0</strong>. (Still supported as an <em>optional</em> OpenAI-compatible endpoint via the <code>local</code> provider in <code>ai.PROVIDERS</code> for power users.)</td></tr>
+  </tbody>
+</table>
+<p><strong>Models per tier</strong> (GGUF, Q4_K_M; latencies are order-of-magnitude CPU estimates, to be measured):</p>
+<table>
+  <thead><tr><th>Tier</th><th>Model</th><th>Size</th><th>RAM</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td>weak</td><td>—</td><td>—</td><td>—</td><td>No local LLM; offline builder + cloud only.</td></tr>
+    <tr><td>mid</td><td>Qwen2.5-1.5B-Instruct or Llama-3.2-1B</td><td>~0.9–1.1 GB</td><td>~1.3 GB</td><td>List/Email (grammar-constrained, short output).</td></tr>
+    <tr><td>powerful</td><td>Qwen2.5-3B / Llama-3.2-3B</td><td>~2.0 GB</td><td>~2.6 GB</td><td>+ Reply; Prompt still cloud-preferred.</td></tr>
+  </tbody>
+</table>
+<p><code>local_nlp.md</code> §2d is right to caution that a 1 B model free-running on CPU is multi-second. The mitigation is structural: <strong>grammar-constrained, short, structured lanes</strong> (List, Email) are where small models are both fast enough and good enough; free-form Prompt/Reply stay cloud-preferred. This is encoded in <code>LANE_POLICY</code> (all four prefer local_llm but fall back to cloud) and the phasing in §5.</p>
+
+<h3>4.3 GBNF grammar models (structural constraint)</h3>
+<p>GBNF binds the sampler so a malformed shape is <strong>impossible</strong> — not merely discouraged by the prompt. <code>local_engine.GBNF</code> ships three production grammars:</p>
+<ul>
+  <li><strong><code>list</code></strong> — output is forced to <code>"- " text "\n"</code> items. The model literally cannot emit a paragraph; it can only emit bullets.</li>
+  <li><strong><code>json_object</code></strong> — a minimal valid-JSON grammar for structured-extraction presets (the only way to guarantee a parseable object from a 1 B model).</li>
+  <li><strong><code>email</code></strong> — <code>Subject?</code> → greeting → body → sign-off skeleton.</li>
+</ul>
+<p><code>grammar_for(lane)</code> returns the grammar (or <code>None</code> for free-form prose lanes). <code>LlamaCppBackend</code> compiles it via <code>LlamaGrammar.from_string</code> and caches it.</p>
+
+<h3>4.4 Context-injected reference documents (style steering)</h3>
+<p><code>local_engine.STYLE_SHEETS</code> are compact, <strong>byte-stable</strong> system fragments (one per lane) + a shared UK-English rule. Stability matters: a llama.cpp <strong>prompt cache</strong> keeps the fixed prefix warm, so the style guidance costs ~0 tokens per dictation after the first. This is the local mirror of <code>ai.py</code>'s system prompts, trimmed to what a small model can actually follow. <code>build_local_request(lane, text, prefs, context)</code> assembles the <code>(system, user, grammar)</code> triple — the same framing discipline <code>ai.py</code> uses (delimited transcript, "output ONLY…"), so behaviour is consistent across engines.</p>
+
+<h3>4.5 The backend seam (shipped)</h3>
+<p>A "seam" is a clean swap-point. By default Mumble uses a do-nothing backend, so the whole feature is present but dormant — it only activates if someone installs the optional engine and a model. Nothing breaks if they don't.</p>
+<details class="dev"><summary><span class="devchip">Architecture</span> The backend class shape</summary>
+<pre><code>LocalLLMBackend (abstract)         available() / generate(system, user, grammar, max_tokens)
+ ├─ NullBackend          DEFAULT — available()=False → router routes to cloud/builder
+ └─ LlamaCppBackend      import-guarded; available()=False until llama-cpp-python AND a
+                          GGUF file are present; lazy-loads the model on first generate
+set_backend()/get_backend()/local_llm_ready()   process-wide, swapped once at boot</code></pre>
+</details>
+<p>Because the default is <code>NullBackend</code>, <strong>the entire engine imports, runs and unit-tests with no llama-cpp installed</strong> — and the router degrades exactly as designed. Installing the package + model and calling <code>set_backend(LlamaCppBackend(model_path=…))</code> is the <em>only</em> step that lights up the <code>local_llm</code> lane.</p>
+
+<h3>4.6 The honest trade-off (owner decision required)</h3>
+<p>Local LLM was <strong>deliberately removed in v3.17.0</strong> ("could not be configured by a non-technical user … implied functionality that wasn't production ready" — <code>settings._migrate</code>, <code>local_provider_retired_applied</code>). Re-introducing it is a <strong>product-direction call</strong>, and adding <code>llama-cpp-python</code> + a multi-hundred-MB model is a <strong>heavy dependency</strong> (README §5: "no new heavy dependency without a clear reason and owner awareness"). This blueprint therefore:</p>
+<ol>
+  <li>Builds everything <em>around</em> the dependency (router, seam, grammars, style sheets) so it ships today with zero new deps and the lanes degrade gracefully.</li>
+  <li>Recommends the local LLM as an <strong>opt-in "Edge AI" toggle</strong>, default <strong>off</strong>, surfaced only on <code>powerful</code> (or <code>mid</code> with explicit consent), with a one-time model download behind a progress UI — <em>not</em> a second app to install (the thing that failed before).</li>
+  <li>Keeps the <strong>deterministic builder</strong> as the universal floor and <strong>Cerebras</strong> as the quality ceiling, so the local LLM is purely additive — it can never strand a user.</li>
+</ol>
+
+<h3>4.7 Architecture choice + passive runtime footprint (directive §4)</h3>
+<p>The local LLM must be a <strong>good background citizen</strong>: low thermal impact, low CPU/GPU contention, no perceptible hit to system responsiveness while the user multitasks. Two architectures were weighed:</p>
+<table>
+  <thead><tr><th></th><th><strong>Strategy A — Unified</strong></th><th><strong>Strategy B — Segregated</strong> <em>(chosen)</em></th></tr></thead>
+  <tbody>
+    <tr><td>Shape</td><td>Extend/fine-tune the speech-to-text model so grammar + formatting happen inside decoding (single pass)</td><td>A <strong>separate</strong> ~1–3 B edge LM runs <strong>after</strong> transcription, async</td></tr>
+    <tr><td>Pros</td><td>Lower architectural complexity; no inter-model overhead; tight coupling</td><td>Modular; post-processing optimised independently; clean upgrade path (swap the GGUF)</td></tr>
+    <tr><td>Cons</td><td>Couples two concerns; re-training faster-whisper/CTranslate2 is a research project; no GBNF</td><td>Slight dual-model overhead (RAM + a second process)</td></tr>
+    <tr><td>Footprint control</td><td>Limited — bound to the speech-to-text decode loop</td><td><strong>Full</strong> — own thread priority, own schedule, own quantisation</td></tr>
+  </tbody>
+</table>
+<p><strong>Chosen: Strategy B, segregated, with an aggressive passive-footprint policy:</strong></p>
+<ul>
+  <li><strong>Aggressive quantisation</strong> — Q4_K_M GGUF (≈0.9–2.0 GB) keeps the model in cache-friendly RAM and CPU-only viable.</li>
+  <li><strong>Low-priority, throttled threads</strong> — run llama.cpp below normal priority (<code>SetThreadPriority</code> THREAD_PRIORITY_BELOW_NORMAL on Windows; <code>nice</code>/<code>SCHED_IDLE</code> on the ports) and cap its threads (<code>n_threads = cores − 2</code>, shared budget with speech-to-text), so it yields to the foreground instantly.</li>
+  <li><strong>Strict async scheduling, never blocks transcription</strong> — the post-processing model runs on its own worker off the capture/STT thread, behind the existing <strong>generation counter</strong> (HANDBOOK §2.3) so a newer dictation cancels a stale in-flight pass. Transcription latency is never on the LLM's critical path.</li>
+  <li><strong>Lazy + evictable</strong> — the model loads on first local-LLM use (never at boot) and can be unloaded under memory pressure, mirroring <code>mumble._unload_local_model</code> for the speech-to-text model. Only ever <strong>one</strong> STT model <strong>+ at most one</strong> GGUF resident (the single-resident discipline of §2.3).</li>
+  <li><strong>Tiered enablement</strong> — off by default; offered on <code>powerful</code> (or <code>mid</code> with consent); skipped entirely on <code>weak</code>, which stays on the rule builder.</li>
+</ul>
+<p>This is exactly what <code>LlamaCppBackend</code> is built to host: lazy <code>_ensure()</code>, a <code>n_threads</code> cap, and <code>n_gpu_layers=0</code> by default (CPU-first). Thread-priority + scheduling are the P3 wiring.</p>
+
+<hr>
+
+<h2 id="s5"><span class="sec">5</span>Integration map, phasing &amp; risks</h2>
+
+<h3>5.1 Settings additions (all in <code>settings.DEFAULTS</code>)</h3>
+<p>Only four new saved settings are needed: the offline toggle, the primary language, the opt-in Edge AI switch, and where its model lives. Everything else the routing needs already exists.</p>
+<details class="dev"><summary><span class="devchip">Code</span> New keys in <code>settings.DEFAULTS</code></summary>
+<pre><code>"local_only_mode": False,          # explicit offline toggle — forces local even with a key
+"primary_language": "en",          # dashboard "Primary Spoken Language"; drives resolve_model
+"local_ai_enabled": False,         # opt-in Edge AI master toggle (the local_llm lane)
+"local_ai_model_path": "",         # GGUF path once downloaded (owner-gated)
+# foreign_languages, english_only, hardware_tier, modes.foreign, the cloud keys
+# (cerebras_api_key …) already exist. The dominance gate reads key-presence +
+# local_only_mode; nothing else new is needed for routing.</code></pre>
+</details>
+
+<h3>5.2 Phasing (land on Windows first, then port — HANDBOOK §6/§8)</h3>
+<table>
+  <thead><tr><th>Phase</th><th>Scope</th><th>Dependency?</th><th>Verify</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge b-done">✓ P1 — done</span></td><td><code>foreign_boost.py</code>, <code>local_engine.py</code> + tests; cloud-dominance routing + <code>mark_only</code> mode</td><td>none</td><td>38/38 new tests green</td></tr>
+    <tr><td><strong>P2</strong></td><td>Wire Foreign Mode offline path + router into <code>_process</code>/<code>_cloud_generate</code>; onboarding question copy; <code>primary_language</code> setting + swap</td><td>none</td><td>offline suite + live mic smoke</td></tr>
+    <tr><td><strong>P3</strong></td><td>GBNF list/email lanes on <code>LlamaCppBackend</code> (opt-in, powerful tier), model-download UI</td><td><span class="badge b-gated">⚠ llama-cpp-python</span> (owner-approved)</td><td>latency + quality bench vs cloud</td></tr>
+    <tr><td><strong>P4</strong></td><td>Extend local_llm to Reply; per-language distilled speech models as they appear</td><td>as available</td><td>A/B vs cloud</td></tr>
+    <tr><td><strong>P5</strong></td><td>Port the shared modules (both new files are pure-standard-library, byte-portable) to macOS/Linux</td><td>none</td><td>port suites</td></tr>
+  </tbody>
+</table>
+
+<h3>5.3 Risk register</h3>
+<table>
+  <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td>Small-model latency on weak CPUs</td><td>Local LLM never enabled below mid+consent; grammar-constrained short lanes only; cloud + builder fallbacks always present.</td></tr>
+    <tr><td>Foreign boost corrupts English</td><td>Common-English guard + gateway-context + acoustic-confidence triple gate; default offline render keeps the heard word; tested.</td></tr>
+    <tr><td>Heavy dependency creep</td><td><code>llama-cpp-python</code> is the <em>only</em> new dep, opt-in, import-guarded; nothing else added.</td></tr>
+    <tr><td>Re-introducing a removed feature against owner intent</td><td>Explicitly owner-gated (§4.6); shipped code is dep-free; the toggle defaults off.</td></tr>
+    <tr><td>Port drift</td><td>Both new modules are platform-agnostic pure standard library (reuse <code>islamic_terms</code>), so they port byte-for-byte.</td></tr>
+  </tbody>
+</table>
+
+<h3>5.4 What's built vs designed vs owner-gated</h3>
+<ul>
+  <li><span class="badge b-done">✓ Built + tested (no deps)</span> Foreign Mode local engine (with <code>mark_only</code> cloud-augmented mode); cloud-dominance router (<code>route</code> + <code>local_only_active</code> + graceful-degrade <code>notice</code>, no hard block); backend seam; GBNF grammars; context style sheets; <code>build_local_request</code>.</li>
+  <li><span class="badge b-exist">Designed, ready to wire (no deps)</span> <code>_process</code> dominance gate + foreign branch; onboarding question; <code>local_only_mode</code> + <code>primary_language</code> + swap; <code>MODEL_BY_LANGUAGE</code>.</li>
+  <li><span class="badge b-gated">⚠ Owner-gated</span> <code>llama-cpp-python</code> + GGUF model to activate the <code>local_llm</code> lane (the only thing needing a heavy dependency + the reversal of the v3.17.0 decision).</li>
+</ul>
+
+<hr>
+
+<h2 id="s6"><span class="sec">6</span>The full Mumble flow, start to finish</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>This is the whole journey of one dictation — from pressing the hotkey to text appearing where your cursor is. It's grounded in the real code (verified against the <code>Internal/</code> folder), not a guess. Notice step 6 <strong>splits in two</strong>: the cloud path (if you have a key) or the local path (if you don't).</p></div>
+</div>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">1</div>
+    <div class="flow-body"><div class="ft">Audio ingestion</div>
+      <p>Hotkey (Ctrl+Win, via <code>bindings.py</code>) → <code>mumble.start_recording</code>. <code>sounddevice</code> captures float32 audio at <code>SAMPLE_RATE</code> on a worker thread. The island overlay (<code>overlay.py</code> + <code>island_render.py</code>) shows "listening". <strong>Audio never leaves the device.</strong></p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">2</div>
+    <div class="flow-body"><div class="ft">Local transcription (always on-device)</div>
+      <p>Hotkey again → capture stops → <code>mumble._process(audio, …)</code>. faster-whisper (model resolved by §2: tier × language) runs with <code>vad_filter=True</code>; per-segment <code>{avg_logprob, compression_ratio, no_speech_prob}</code> and per-word <code>{word, prob}</code> are captured. Model orchestration (<code>_try_load</code> / <code>_ensure_local_model</code> / <code>_unload_local_model</code>) keeps exactly ONE model resident (release-before-swap).</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">3</div>
+    <div class="flow-body"><div class="ft">Raw stage + uncertainty encoding</div>
+      <p>Output is RAW at this stage. Segment gating (<code>formatting.gate_segments</code>) drops silence / looping hallucinations. Low-confidence + foreign tokens are marked inline with <code>//</code> (<code>formatting.annotate_uncertain</code> / <code>foreign_boost.mark_uncertainty</code>) — MARKING only, no resolution yet.</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">4</div>
+    <div class="flow-body"><div class="ft">Mode selection (UI only)</div>
+      <p>In-text mode keywords are DEPRECATED. The lane is whatever the Island / UI state says: Prompt toggle on → "prompt"; Deck action → its preset; else plain "text" (foreign if Foreign Mode is on). No in-text scanning.</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">5</div>
+    <div class="flow-body"><div class="ft">Routing — the dominance gate (<code>local_engine.route</code>)</div>
+      <p><code>local_only = (no cloud key) OR (Local-Only toggle)</code>. Cloud-augmented → engine = CLOUD (every lane). Local-only → text/foreign = LOCAL; smart = LOCAL_LLM | LOCAL; heavy = best-effort + appended notice.</p></div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">6</div>
+    <div class="flow-body"><div class="ft">The split — cloud path or local path</div>
+      <div class="branch" style="margin:12px 0 0">
+        <div class="branch-col is-gold">
+          <h4><span class="dot"></span>6a · Cloud-augmented (legacy)</h4>
+          <p>Raw transcript + <code>//</code> markers → <code>ai.py</code> lane (<code>cerebras_polish</code> / <code>_prompt</code> / <code>_email</code> / <code>_list</code> / <code>_reply</code> / <code>_foreign</code> / <code>_intent</code>). Cloud makes the FINAL call. A 429 → capped retry → offline builder fallback. <code>_collect_text</code> drains the stream.</p>
+        </div>
+        <div class="branch-col">
+          <h4><span class="dot"></span>6b · Local-only</h4>
+          <p><code>formatting.format_transcript</code> (clean + punctuation + commas + deloop), <code>build_prompt</code>/<code>email</code>/<code>list</code>, or <code>foreign_boost.boost</code> + <code>strip_flags</code>. The local_llm lane uses <code>local_engine.build_local_request</code> (GBNF + style sheet) if installed. Heavy → append <code>decision.notice</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">7</div>
+    <div class="flow-body"><div class="ft">Output rendering</div>
+      <p><code>_clean</code> / <code>_extract_final_prompt</code> finalise the text. Paste at cursor (save → set clipboard → paste → verified restore). Saved to <code>history.py</code>; <code>stats.py</code> updated; island flashes "done". Any degraded notice is appended here.</p></div>
+  </div>
+</div>
+
+<p><strong>Preset / prompt execution (Deck):</strong> a Deck action sends its preset's full instruction as the system message via <code>ai.cerebras_intent</code> over selected material (cloud-augmented), or runs the local builder/LLM best-effort (local-only). Prompt mode sends the Master Constitution (<code>prompt_constitution.py</code>) on every call. <strong>UI state:</strong> the Island (<code>overlay.py</code>) is the live status surface and the only mode control (Prompt/Deck companion bar); the web UI (<code>webui/</code>) mirrors status and hosts Settings/onboarding. <strong>Privacy throughout:</strong> audio never leaves; only text (raw + <code>//</code> markers) is ever sent, only when a key is present.</p>
+
+<hr>
+
+<h2 id="s7"><span class="sec">7</span>Appendix — file manifest</h2>
+<table>
+  <thead><tr><th>File</th><th>Role</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td><code>Internal/foreign_boost.py</code></td><td>Local Foreign-Mode phonetic token-boosting (multi-language)</td><td><span class="badge b-done">✓ shipped, 18/18</span></td></tr>
+    <tr><td><code>Internal/test_foreign_boost.py</code></td><td>Its offline suite</td><td><span class="badge b-done">✓ shipped</span></td></tr>
+    <tr><td><code>Internal/local_engine.py</code></td><td>Hybrid router + warning + local-LLM seam + GBNF + style sheets</td><td><span class="badge b-done">✓ shipped, 17/17</span></td></tr>
+    <tr><td><code>Internal/test_local_engine.py</code></td><td>Its offline suite</td><td><span class="badge b-done">✓ shipped</span></td></tr>
+    <tr><td><code>Internal/islamic_terms.py</code></td><td>Arabic pack source (reused verbatim)</td><td><span class="badge b-exist">existing</span></td></tr>
+    <tr><td><code>Internal/formatting.py</code></td><td>Rule engine the local lane composes with</td><td><span class="badge b-exist">existing</span></td></tr>
+    <tr><td><code>Internal/branding.py</code></td><td><code>resolve_model</code> / <code>MODEL_BY_TIER</code> (extend with <code>MODEL_BY_LANGUAGE</code>)</td><td><span class="badge b-exist">existing</span></td></tr>
+    <tr><td><code>Internal/ai.py</code></td><td>Cloud lanes (now fallback, not default)</td><td><span class="badge b-exist">existing</span></td></tr>
+    <tr><td><code>Internal/settings.py</code></td><td>Add <code>primary_language</code>, <code>local_ai_enabled</code>, <code>local_ai_model_path</code></td><td><span class="badge b-exist">existing</span></td></tr>
+  </tbody>
+</table>
+
+<div class="doc-foot">
+  <span>Mumble — Local Post-Processing Engine · Engineering Blueprint</span>
+  <span class="gold">2026-06-27</span>
+</div>
+
+</div>
+</body>
+</html>

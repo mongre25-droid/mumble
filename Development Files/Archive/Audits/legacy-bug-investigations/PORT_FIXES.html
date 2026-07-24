@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Port Fixes</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">macOS &amp; Linux Ports</div>
+  <h1>Port Fixes</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Scope:</b> Bug-fixes verified against <code>MacMumble/app/</code> and <code>LinuxMumble/app/</code> at current HEAD</div>
+    <div><span class="ico">◆</span><b>Status:</b> Verified but <em>not</em> applied live — a sync/zip watcher keeps reverting the port dirs</div>
+    <div><span class="ico">◆</span><b>Windows:</b> The matching <code>mumble/</code> fixes were unaffected and are already applied</div>
+    <div><span class="ico">◆</span><b>Each fix:</b> a literal find → replace; <code>python -m py_compile</code> every changed file after applying</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble ships in three builds: Windows, macOS, and Linux. The Windows build already
+    got a batch of bug-fixes. The Mac and Linux copies need the same fixes — but every
+    time someone edits those folders, a background program on this machine (OneDrive
+    syncing, plus a step that rebuilt <code>MacMumble.zip</code> mid-session) silently
+    rewrites the files back to their old state within seconds. So the fixes below were
+    written down and double-checked, but couldn't actually be saved into the code yet.</p>
+    <p>This page is the recipe. Pause the sync, then apply each find → replace exactly as
+    written, and run a quick compile check. Nothing here is lost — every fix, file path,
+    and platform note is preserved.</p>
+  </div>
+</div>
+
+<blockquote>
+  <p><strong>Why these couldn't be applied live.</strong> An external process is running
+  (the OneDrive sync service, and <code>MacMumble.zip</code> was rebuilt mid-session) that
+  keeps reverting <code>MacMumble/</code> and <code>LinuxMumble/</code> to their committed
+  state within seconds. <strong>To apply:</strong> pause OneDrive sync (and any sync/zip
+  watcher) for this folder, then make the edits below (or ask Claude to re-apply them).
+  Each is a literal find → replace. After applying, <code>python -m py_compile</code> each
+  changed file.</p>
+</blockquote>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">macOS fixes — <code>MacMumble/app/</code></a></li>
+    <li><a href="#s2">Linux fixes — <code>LinuxMumble/app/</code></a></li>
+    <li><a href="#s3">Notes — skipped &amp; shared modules</a></li>
+    <li><a href="#s4">v0.9 Reader + bug-audit fixes — not yet ported</a></li>
+  </ol>
+</nav>
+
+<h2 id="s1"><span class="sec">1</span>macOS fixes — <code>MacMumble/app/</code></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Four fixes for the Mac build. One makes "start at login" actually install itself;
+    one stops the clipboard watcher from quietly burning CPU; one stops Mumble from
+    claiming it pasted when it didn't; and one tells the user when macOS is silently
+    blocking the global hotkeys.</p>
+  </div>
+</div>
+
+<h3><code>autostart.py</code> — add the missing no-op
+  <span class="badge b-gold">HIGH</span></h3>
+<p><strong>Symptom:</strong> autostart never enabled. Append the following after
+<code>set_enabled</code>. On Windows this method removed a legacy registry Run key; on
+macOS there's no equivalent, but the shared boot path still calls it unconditionally.
+Without a definition, the <code>AttributeError</code> it raised was swallowed by
+<code>_boot()</code>'s <code>try/except</code> and skipped the autostart-enable that
+follows it — so login autostart was never installed on a fresh install.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Append after <code>set_enabled</code></summary>
+<pre><code>def remove_legacy_run_key():
+    """No-op on macOS. The Windows edition removed a legacy registry Run key
+    here; there's no macOS equivalent. Defined so the shared boot path can call
+    it unconditionally — without this, the AttributeError it raised was swallowed
+    by _boot()'s try/except and skipped the autostart-enable that follows it,
+    so login autostart was never installed on a fresh install."""
+    return False</code></pre>
+</details>
+
+<h3><code>clipboard.py</code> — <code>_clipboard_seq</code> macOS branch
+  <span class="badge b-gated">idle CPU drain</span></h3>
+<p><strong>Symptom:</strong> the clipboard watcher never gets a change-counter on macOS, so
+it can't skip work and shells out to <code>osascript</code> (via
+<code>ImageGrab.grabclipboard</code>) roughly 1.4&times;/second forever. The fix adds an
+<code>NSPasteboard.changeCount()</code> branch — the direct analogue of
+<code>GetClipboardSequenceNumber</code> — which bumps on <em>every</em> clipboard change.
+<code>changeCount</code> can legitimately be <code>0</code> on a fresh pasteboard, so it's
+returned as-is (the caller compares for equality).</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Replace — original (Windows-only branch)</summary>
+<pre><code>    try:
+        import ctypes
+        n = int(ctypes.windll.user32.GetClipboardSequenceNumber())
+        return n or None   # 0 == failure / no WINSTA access → always-poll fallback
+    except Exception:
+        return None</code></pre>
+</details>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> With — adds the macOS <code>NSPasteboard</code> fast-path</summary>
+<pre><code>    try:
+        import ctypes
+        n = int(ctypes.windll.user32.GetClipboardSequenceNumber())
+        return n or None   # 0 == failure / no WINSTA access → always-poll fallback
+    except Exception:
+        pass
+    try:
+        # macOS: NSPasteboard.changeCount() bumps on EVERY clipboard change — the
+        # direct analogue of GetClipboardSequenceNumber. Without this the watcher
+        # never skips, so it shells out to osascript (via ImageGrab.grabclipboard)
+        # ~1.4x/second forever. changeCount can legitimately be 0 on a fresh
+        # pasteboard, so return it as-is (the caller compares for equality).
+        from AppKit import NSPasteboard
+        return int(NSPasteboard.generalPasteboard().changeCount())
+    except Exception:
+        return None</code></pre>
+</details>
+
+<h3><code>mumble_mac.py</code> — <code>_focused_editable</code> AX probe
+  <span class="badge b-gated">false "Pasted!"</span></h3>
+<p><strong>Symptom:</strong> Mumble reports a successful paste even into a non-editable
+target. Replace the body of <code>_focused_editable</code> (the comment block ending in
+<code>return True</code>) with a best-effort <code>AXUIElement</code> probe that falls back
+to <code>True</code> on any error (so there's no regression when the probe can't tell).</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> New <code>_focused_editable</code> body</summary>
+<pre><code>        try:
+            from ApplicationServices import (
+                AXUIElementCreateSystemWide, AXUIElementCopyAttributeValue)
+            import HIServices  # noqa: F401 — ensures the AX symbols are loaded
+            syswide = AXUIElementCreateSystemWide()
+            err, focused = AXUIElementCopyAttributeValue(
+                syswide, "AXFocusedUIElement", None)
+            if err or focused is None:
+                return True  # can't tell → assume editable (no regression)
+            err, role = AXUIElementCopyAttributeValue(focused, "AXRole", None)
+            if err or not role:
+                return True
+            editable = {"AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"}
+            return str(role) in editable or str(role) == "AXUnknown"
+        except Exception:
+            return True</code></pre>
+</details>
+
+<h3><code>mumble_mac.py</code> — Accessibility-permission check in <code>_boot</code>
+  <span class="badge b-gold">silent dead hotkeys</span></h3>
+<p><strong>Symptom:</strong> global hotkeys need macOS Accessibility (and Input Monitoring on
+recent versions). Without it, <code>pynput</code>'s listeners start but receive <em>no</em>
+events — every hotkey is silently dead with no diagnosis. The fix surfaces a notification
+instead. Insert after the hotkey-registration <code>for</code> loop, just before
+<code>self._start_cmd_server()</code>.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Insert before <code>self._start_cmd_server()</code></summary>
+<pre><code>        # Global hotkeys need macOS Accessibility (and Input Monitoring on recent
+        # versions). Without it, pynput's listeners start but receive NO events —
+        # every hotkey is silently dead with no diagnosis. Surface it instead.
+        try:
+            from ApplicationServices import AXIsProcessTrusted
+            if not AXIsProcessTrusted():
+                self._notify(
+                    "Mumble needs Accessibility access",
+                    "Turn on Mumble in System Settings → Privacy &amp; Security → "
+                    "Accessibility (and Input Monitoring) so the hotkeys work.")
+        except Exception:
+            pass</code></pre>
+</details>
+
+<h2 id="s2"><span class="sec">2</span>Linux fixes — <code>LinuxMumble/app/</code></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Three fixes for the Linux build. Linux has no cheap way to ask "did the clipboard
+    change?", so the watcher was launching a helper program many times a second. These
+    fixes throttle that, pick the right clipboard tool on modern (Wayland) desktops, and
+    stop Mumble from firing Ctrl+V when there's provably no clipboard backend to paste
+    from.</p>
+  </div>
+</div>
+
+<h3><code>clipboard.py</code> — throttle image grab + probe for a tool
+  <span class="badge b-gold">HIGH</span></h3>
+<p><strong>Symptom:</strong> subprocess every 0.7s. On Linux there is no cheap clipboard
+change-counter (the Windows sequence-number fast-path returns <code>None</code>), so
+<code>ImageGrab.grabclipboard()</code> would fork a <code>wl-paste</code>/<code>xclip</code>
+subprocess on <em>every</em> 0.7s poll forever. The fix probes once for a clipboard tool: if
+none exists, image polling is disabled entirely (no per-cycle error spam); otherwise it's
+throttled to a slow cadence. Text-clipboard history is unaffected and still runs each cycle.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> In <code>__init__</code>, after <code>self._own_hashes = deque(maxlen=120)</code></summary>
+<pre><code>        # On Linux there is no cheap clipboard change-counter (the Windows
+        # sequence-number fast-path returns None), so ImageGrab.grabclipboard()
+        # would fork a wl-paste/xclip subprocess on EVERY 0.7s poll forever.
+        # Probe once for a clipboard tool: if none exists, disable image polling
+        # entirely (no per-cycle error spam); otherwise throttle it to a slow
+        # cadence. Text-clipboard history is unaffected and still runs each cycle.
+        import shutil
+        try:
+            self._img_ok = any(shutil.which(t) for t in ("wl-paste", "xclip", "xsel"))
+        except Exception:
+            self._img_ok = False
+        if not self._img_ok:
+            print("clipboard: no wl-paste/xclip/xsel found — image-clip history "
+                  "disabled (text history still works).")
+        self._img_every = 8   # ~ every 5.6s at the 0.7s loop interval
+        self._img_tick = 0</code></pre>
+</details>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> In <code>_loop</code>, after the text-capture block, before <code>grabbed = ImageGrab.grabclipboard()</code></summary>
+<pre><code>                # Image clipboard is throttled on Linux (no cheap change counter;
+                # each grab forks wl-paste/xclip), and skipped entirely when no
+                # clipboard tool is installed. The image block is the last work in
+                # the loop body, so `continue` simply skips it for this cycle.
+                self._img_tick += 1
+                if not self._img_ok or (self._img_tick % self._img_every) != 0:
+                    continue</code></pre>
+</details>
+
+<h3><code>mumble_linux.py</code> — <code>copy_image</code> Wayland detection
+  <span class="badge b-gated">MEDIUM</span></h3>
+<p><strong>Symptom:</strong> wrong clipboard tool. The app pins <code>GDK_BACKEND=x11</code>
+on Wayland (so the GTK island renders), which made the old
+<code>not GDK_BACKEND.startswith("x11")</code> test always <code>False</code> on real
+Wayland — so an image copy used <code>xclip</code> (XWayland clipboard) even with
+<code>wl-clipboard</code> installed, and native-Wayland apps couldn't paste it. The fix uses
+the INPUT session type instead of <code>GDK_BACKEND</code>.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Replace — original (<code>GDK_BACKEND</code> test)</summary>
+<pre><code>        wayland = bool(os.environ.get("WAYLAND_DISPLAY")) and \
+            not os.environ.get("GDK_BACKEND", "").startswith("x11")</code></pre>
+</details>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> With — session-type detection</summary>
+<pre><code>        # Use the INPUT session type, NOT GDK_BACKEND: the app pins
+        # GDK_BACKEND=x11 on Wayland (so the GTK island renders), which made the
+        # old `not GDK_BACKEND.startswith("x11")` test always False on real
+        # Wayland — so an image copy used xclip (XWayland clipboard) even with
+        # wl-clipboard installed, and native-Wayland apps couldn't paste it.
+        try:
+            wayland = bindings._session_type() == "wayland"
+        except Exception:
+            wayland = bool(os.environ.get("WAYLAND_DISPLAY"))</code></pre>
+</details>
+
+<h3><code>mumble_linux.py</code> — pyperclip backend probe + paste guard
+  <span class="badge b-gated">MEDIUM</span></h3>
+<p><strong>Symptom:</strong> blind Ctrl+V pastes stale content. On a headless or minimal Linux
+box no pyperclip backend exists (xclip/xsel/wl-clipboard/qt/gtk), so clipboard writes fail
+and a blind Ctrl+V would paste stale content. The probe is conservative: only the explicit
+"no mechanism" error marks it unavailable; any other error assumes a backend exists, so a
+paste is never wrongly suppressed.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> In <code>__init__</code>, after <code>self.clipboard = Clipboard(...)</code></summary>
+<pre><code>        # Probe once for a pyperclip clipboard backend (xclip/xsel/wl-clipboard/
+        # qt/gtk). On a headless or minimal Linux box none exists, so clipboard
+        # writes fail and a blind Ctrl+V would paste stale content. Conservative:
+        # only the explicit "no mechanism" error marks it unavailable; any other
+        # error assumes a backend exists so we never wrongly suppress a paste.
+        try:
+            import pyperclip as _pc
+            try:
+                _pc.paste()
+                self._pyperclip_ok = True
+            except _pc.PyperclipException:
+                self._pyperclip_ok = False
+                print("clipboard: no pyperclip backend found (install xclip/xsel "
+                      "or wl-clipboard) — text paste will be limited.")
+            except Exception:
+                self._pyperclip_ok = True
+        except Exception:
+            self._pyperclip_ok = True</code></pre>
+</details>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> In <code>_paste_impl</code> — capture the write result and bail when no backend</summary>
+<pre><code>            wrote = self._set_clipboard(text)
+            if not wrote and not self._pyperclip_ok:
+                # No clipboard backend at all: the write provably failed, so
+                # firing Ctrl+V would paste whatever stale content is on the
+                # clipboard. Skip it and report not-landed so the caller shows the
+                # honest "Saved · …" fallback instead of a paste that didn't happen.
+                print("paste skipped: no clipboard backend available")
+                return False</code></pre>
+</details>
+
+<p>Change the existing <code>self._set_clipboard(text)</code> call (the one right before the
+modifier-release loop) to the guarded version above.</p>
+
+<h2 id="s3"><span class="sec">3</span>Notes — skipped &amp; shared modules</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>A couple of tiny issues were deliberately left alone because they don't actually bite
+    in practice. And there's a shortcut: many of these bugs also live in the files shared
+    across all three builds, so copying those shared files over from the Windows folder
+    brings the Windows fixes along for free.</p>
+  </div>
+</div>
+
+<h3>Skipped as cosmetic / masked in practice</h3>
+<ul>
+  <li>Mac paste releasing the <code>"windows"</code> modifier token — works via the
+    windows→cmd alias.</li>
+  <li>The <code>small.en</code> vs <code>base.en</code> default-model literal mismatch —
+    <code>settings.py</code> always populates <code>model</code>, so it's never hit.</li>
+</ul>
+<p>Apply those too if you want strict cleanliness.</p>
+
+<h3>Shared modules — bring the ports to parity</h3>
+<p>The shared modules (<code>ai.py</code>, <code>transcription.py</code>,
+<code>presets.py</code>, <code>reader_store.py</code>, the Reader UI) carry the same bugs the
+Windows fixes addressed. If you bring the ports to parity by copying those from
+<code>mumble/</code>, the Windows fixes come with them.</p>
+
+<h2 id="s4"><span class="sec">4</span>v0.9 Reader + bug-audit fixes — not yet ported <span class="badge b-gated">2026-06-23</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>A separate, bigger batch of fixes (the "v0.9 Reader" work) was applied to the Windows
+    build and shipped, but <strong>deliberately not</strong> applied to Mac/Linux yet — the
+    owner said "don't do it on Mac/Linux just yet." When the port dirs stop reverting, the
+    easiest path is to copy the changed shared files from the Windows folder, recompile, and
+    run the test scripts.</p>
+  </div>
+</div>
+
+<blockquote>
+  <p>Applied to Windows <code>mumble/</code> and <strong>DEPLOYED</strong> (in master
+  history; fixes in commits <code>c452be3</code>, <code>19d830f</code>, <code>da89392</code>,
+  merged at <code>c1d510a</code>; v0.9 sync at <code>cd22372</code>). <strong>Deliberately
+  skipped on MacMumble/LinuxMumble per owner</strong> ("don't do it on Mac/Linux just yet").
+  Port when the port dirs stop reverting (pause OneDrive sync first — see top of file).
+  Simplest path: copy the changed shared files from <code>mumble/</code> into
+  <code>MacMumble/app/</code> + <code>LinuxMumble/app/</code>, then
+  <code>python -m py_compile</code> and run <code>test_reader.py</code> /
+  <code>test_formatting.py</code>.</p>
+</blockquote>
+
+<h3>Files to port (apply to BOTH <code>MacMumble/app/</code> and <code>LinuxMumble/app/</code>)</h3>
+
+<h4><code>ai.py</code> — Reader TTS catalogue <span class="badge b-gold">MOST IMPORTANT</span></h4>
+<p><code>openai/gpt-4o-mini-tts</code> is <strong>not</strong> hosted on OpenRouter (model
+page: "not available"); it was the default + "recommended", so the first Play 400/404'd even
+with a valid key — the core "Reader doesn't work". Fix: default →
+<code>google/gemini-3.1-flash-tts-preview</code> + voice <code>Kore</code>; remove the dead
+openai entry; add Gemini's 30 named voices; add <code>OPENROUTER_TTS_DEFAULT_VOICES</code>
+(per-model); <code>openrouter_tts</code> requires a per-model voice (never send OpenAI's
+<code>alloy</code> to a non-OpenAI model).</p>
+<blockquote>
+  <p><strong>NOTE:</strong> STT <code>openai/gpt-4o-mini-transcribe</code>
+  (<code>transcription.py</code>) <em>is</em> on OpenRouter — verified — so do
+  <strong>not</strong> "fix" it.</p>
+</blockquote>
+
+<h4><code>webui_shell.py</code></h4>
+<p><code>reader_tts_models</code> self-heals a stale saved openai pick → current default model
++ its default voice.</p>
+
+<h4><code>webui/app.js</code></h4>
+<ol>
+  <li><code>readerCurrentVoice</code> no longer hardcodes <code>"alloy"</code>.</li>
+  <li>Playback stops after 3 consecutive decode failures with a message + onended/onerror
+    gen-guards (was a silent skip-to-"Finished.").</li>
+  <li>Progress uses <code>idx+1</code> so the bar reaches 100%.</li>
+  <li>MOCK <code>reader_tts_models</code> mirrors the real catalogue.</li>
+</ol>
+
+<h4><code>formatting.py</code></h4>
+<p><code>_split_list_items</code>: a comma-glued conjunction ("milk,and eggs") no longer leaks
+"- And eggs" (<code>\s*,?\s*\band\s+</code>).</p>
+
+<h4><code>stats.py</code></h4>
+<p><code>summary</code>/<code>daily_stats</code>/<code>time_of_day</code> now snapshot under
+<code>self._lock</code> (were unlocked reads racing the dictation thread).</p>
+
+<h4><code>favorites.py</code></h4>
+<p>Docstring corrected ("forever" → capped at <code>MAX_FAVS=100</code>).</p>
+
+<details class="dev">
+  <summary><span class="devchip">Detail</span> Exact diffs</summary>
+<pre><code>git show c452be3
+git show 19d830f
+git show da89392</code></pre>
+</details>
+
+<h3>Still open everywhere <span class="badge b-gated">not yet implemented on any platform</span></h3>
+<p>The broader <code>CORE_CROSSCUT_BUG_AUDIT.md</code> findings:</p>
+
+<div class="tiles">
+  <div class="tile"><div class="n">33</div><div class="l">confirmed findings</div></div>
+  <div class="tile"><div class="n">6</div><div class="l">high severity</div></div>
+  <div class="tile"><div class="n">9</div><div class="l">medium severity</div></div>
+  <div class="tile"><div class="n">18</div><div class="l">low severity</div></div>
+</div>
+
+<p>The 6 high-severity findings include the unauthenticated controller command port and the
+cross-process settings/API-key clobber.</p>
+
+<p><strong>Plus Reader follow-ups:</strong></p>
+<ul>
+  <li>Auto-fallback to the next catalogue model on a model-level 400/404.</li>
+  <li>Reading the PCM sample-rate from the response content-type instead of the hard-coded
+    <code>24000</code>.</li>
+  <li>A very-long-document chunk cap.</li>
+</ul>
+
+<div class="doc-foot">
+  <span>Mumble — Port Fixes</span>
+  <span class="gold">macOS &amp; Linux Ports</span>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,2743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mumble v0.9 to v1.0 Comprehensive Release Audit — FINAL REPORT</title>
+<style>
+/* ── Golden Black Theme ── */
+:root {
+  --bg-primary: #0A0A0B;
+  --bg-secondary: #121110;
+  --bg-card: #1A1816;
+  --bg-table-stripe: #161412;
+  --text-primary: #F3EEE1;
+  --text-secondary: #C5BFB0;
+  --text-dim: #8B8578;
+  --gold: #D4AF37;
+  --gold-light: #EBCB65;
+  --gold-dim: #A0862E;
+  --red: #DC2626;
+  --red-bg: #FEE2E2;
+  --amber: #D97706;
+  --amber-bg: #FEF3C7;
+  --border: #2A2724;
+  --border-light: #3D3832;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  line-height: 1.7;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+/* ── Headings ── */
+h1 {
+  font-size: 2rem;
+  color: var(--gold-light);
+  border-bottom: 2px solid var(--gold);
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+  margin-top: 8px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 1.5rem;
+  color: var(--gold);
+  margin-top: 48px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light);
+  font-weight: 700;
+}
+
+h3 {
+  font-size: 1.2rem;
+  color: var(--gold-light);
+  margin-top: 32px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+h4 {
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  margin-top: 24px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+/* ── Paragraphs ── */
+p {
+  margin-bottom: 14px;
+  color: var(--text-secondary);
+}
+
+/* ── Links ── */
+a {
+  color: var(--gold-light);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--gold-dim);
+  transition: color 0.15s, border-color 0.15s;
+}
+a:hover {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+/* ── Strong / Bold ── */
+strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* ── Inline Code ── */
+code {
+  background: var(--bg-secondary);
+  color: var(--gold-light);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-size: 0.88em;
+  border: 1px solid var(--border);
+}
+
+pre {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 16px 0;
+  line-height: 1.5;
+}
+
+pre code {
+  background: none;
+  color: var(--text-secondary);
+  padding: 0;
+  border: none;
+  font-size: 0.85em;
+}
+
+/* ── Horizontal Rule ── */
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 32px 0;
+}
+
+/* ── Tables ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0 24px;
+  font-size: 0.92em;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+thead { display: table-header-group; }
+
+th {
+  background: var(--gold-dim);
+  color: var(--bg-primary);
+  font-weight: 700;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid var(--gold);
+}
+
+td {
+  padding: 9px 14px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+tr:nth-child(even) td {
+  background: var(--bg-table-stripe);
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Lists ── */
+ul, ol {
+  margin: 10px 0 16px 24px;
+  color: var(--text-secondary);
+}
+
+li {
+  margin-bottom: 6px;
+}
+
+ul.checklist {
+  list-style: none;
+  margin-left: 4px;
+}
+
+ul.checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+ul.checklist input[type="checkbox"] {
+  margin-top: 4px;
+  flex-shrink: 0;
+  accent-color: var(--gold);
+  width: 16px;
+  height: 16px;
+  cursor: default;
+}
+
+/* ── Severity Badges (inline) ── */
+/* Already handled via inline style spans */
+
+/* ── Back to Top ── */
+.back-to-top {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--bg-card);
+  color: var(--gold-light);
+  border: 1px solid var(--gold-dim);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  z-index: 1000;
+  opacity: 0.85;
+  transition: opacity 0.2s, background 0.2s;
+}
+.back-to-top:hover {
+  opacity: 1;
+  background: var(--gold-dim);
+  color: var(--bg-primary);
+  border-color: var(--gold);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  .container {
+    padding: 20px 16px 60px;
+  }
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.25rem; }
+  h3 { font-size: 1.1rem; }
+  table { font-size: 0.82em; }
+  th, td { padding: 6px 8px; }
+  pre { padding: 12px 14px; font-size: 0.78em; }
+}
+
+@media (max-width: 480px) {
+  .container { padding: 16px 12px 50px; }
+  h1 { font-size: 1.3rem; }
+  .back-to-top { bottom: 12px; right: 12px; padding: 6px 10px; font-size: 0.78rem; }
+}
+
+/* ── Print ── */
+@media print {
+  body { background: #fff; color: #1a1a1a; }
+  .container { max-width: 100%; }
+  a { color: #1a1a1a; }
+  .back-to-top { display: none; }
+  pre, code { background: #f5f5f5; border: 1px solid #ddd; }
+  table { border: 1px solid #ddd; }
+  th { background: #eee; color: #1a1a1a; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1 id="mumble-v09--v10-comprehensive-release-audit--final-report">Mumble v0.9 → v1.0 Comprehensive Release Audit — FINAL REPORT</h1>
+
+<p><strong>Date:</strong> 2026-07-04<br><strong>Version under audit:</strong> v0.9 ("The Big Shift")<br><strong>Codebase:</strong> <code>C:\Mumble v1\Internal\app\</code> (~40K+ LOC Python, 117 test files)<br><strong>Branch:</strong> main</p>
+
+<hr>
+
+<h2 id="table-of-contents">Table of Contents</h2>
+
+<ol>
+<li><a href="#1-executive-summary">Executive Summary</a></li>
+<li><a href="#2-current-project-health-assessment">Current Project Health Assessment</a></li>
+<li><a href="#3-strengths">Strengths</a></li>
+<li><a href="#4-weaknesses">Weaknesses</a></li>
+<li><a href="#5-every-issue-found">Every Issue Found — Consolidated Findings by Audit Area</a></li>
+<li><a href="#6-every-unfinished-feature">Every Unfinished Feature</a></li>
+<li><a href="#7-every-production-readiness-concern">Every Production-Readiness Concern</a></li>
+<li><a href="#8-security-and-privacy-findings">Security and Privacy Findings</a></li>
+<li><a href="#9-platform-release-requirements">Platform Release Requirements</a></li>
+<li><a href="#10-website-and-distribution-requirements">Website and Distribution Requirements</a></li>
+<li><a href="#11-testing-gaps">Testing Gaps</a></li>
+<li><a href="#12-ux-findings">UX Findings</a></li>
+<li><a href="#13-recommended-new-features">Recommended New Features</a></li>
+<li><a href="#14-code-quality-review">Code Quality Review</a></li>
+<li><a href="#15-prioritized-release-roadmap">Prioritized Release Roadmap</a></li>
+<li><a href="#16-exhaustive-release-checklist">Exhaustive Release Checklist</a></li>
+</ol>
+
+<hr>
+
+<h2 id="1-executive-summary">1. Executive Summary</h2>
+
+<p>Mumble v0.9 is an <strong>exceptionally well-engineered</strong> desktop voice-to-text application. The core dictation loop, Smart Modes, Prompt Architect, island overlay, settings system, tips engine, and update infrastructure demonstrate disciplined defensive programming, thoughtful UX design, and a principled privacy posture ("local by default, cloud opt-in"). The application is functional, polished, and already delivers significant value to users.</p>
+
+<p><strong>v1.0 Readiness Verdict: NOT YET READY — significant but addressable gaps exist.</strong></p>
+
+<p>The application needs attention in three areas before a v1.0 release is responsible:</p>
+
+<ol>
+<li><strong>Infrastructure &amp; Distribution (blocking):</strong> There is zero CI/CD, no code signing on any platform, no automated testing pipeline, no git tags, no GitHub Releases, and no native Linux packages. The macOS/Linux ports have stubbed update systems and an orphaned <code>ai.py</code> that predates the provider refactoring. Without CI/CD and signing, multi-platform releases are unsustainable and users face trust barriers (SmartScreen warnings, Gatekeeper blocks).</li>
+</ol>
+
+<ol>
+<li><strong>Code Architecture (blocking for maintainability):</strong> The central <code>Mumble</code> class is a 5K-line controller class with 197 methods spanning multiple subsystems. The platform port strategy copies ~25 files per platform, creating a maintenance fork burden of ~4,500 duplicated lines. The <code>ai/__init__.py</code> remains oversized at 2,382 lines post-refactoring. The <code>synthesize_with_fallback</code> function exists in two files with divergent behavior. These architectural issues make the codebase harder to maintain, test, and extend with each release.</li>
+</ol>
+
+<ol>
+<li><strong>Testing &amp; Quality (important):</strong> Three critical modules (<code>overlay.py</code>, <code>island_render.py</code>, <code>prompt_memory.py</code>) have zero or minimal test coverage. Five tests are excluded from macOS/Linux ports due to API divergence — these represent real feature gaps. There is no centralized test runner, no coverage tooling, and no memory/stress/startup/installation testing. However, where tests exist (formatting, bindings, model_free, tips, error recovery), they are thorough and well-crafted.</li>
+</ol>
+
+<p><strong>The path to v1.0 is clear and achievable.</strong> The critical gaps are well-understood, and the majority of the application's feature surface is complete and production-quality. With focused work on CI/CD, code signing, architectural cleanup, and test coverage, Mumble v1.0 can ship as a polished, trustworthy, cross-platform desktop application.</p>
+
+<p><strong>Top 5 Critical Findings:</strong></p>
+<ol>
+<li><strong>No CI/CD pipeline (F6-CI-001, F6-CI-002):</strong> 55+ test files never run automatically; all builds and releases are manual</li>
+<li><strong>No code signing on any platform (F4-WIN-001, F4-MAC-001):</strong> Unsigned executables trigger SmartScreen/Gatekeeper warnings; macOS cannot be notarized without signing</li>
+<li><strong>Large central Mumble class (CQ-001):</strong> 5K-line, 197-method class is difficult to test in isolation; every feature touches 5-8 locations in this file</li>
+<li><strong>Port file duplication with orphaned ai.py (CQ-007):</strong> macOS/Linux ports run on outdated AI infrastructure without provider refactoring or Constitution v5</li>
+<li><strong>Silent exception swallowing in _tk_queue (B-1-1):</strong> All widget exceptions silently discarded; production crashes become invisible to debugging</li>
+</ol>
+
+<p><strong>Summary Statistics:</strong></p>
+<table>
+<tr>
+<th>Severity</th>
+<th>Count</th>
+<th>Key Areas</th>
+</tr>
+<tr>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+<td>9</td>
+<td>CI/CD (2), Code Signing (4), Architecture (2), Error Handling (1)</td>
+</tr>
+<tr>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+<td>37</td>
+<td>Platform gaps (9), Testing gaps (6), Code duplication (4), Security (3), Website missing pages (2), Infrastructure (6), UX (1), Stability (3), Features (3)</td>
+</tr>
+<tr>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>71</td>
+<td>Distributed across all audit areas</td>
+</tr>
+<tr>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+<td>71</td>
+<td>Minor polish, documentation, edge cases</td>
+</tr>
+</table>
+
+<hr>
+
+<h2 id="2-current-project-health-assessment">2. Current Project Health Assessment</h2>
+
+<h3 id="overall-grade-b-strong-with-critical-infrastructure-gaps">Overall Grade: B+ (Strong with critical infrastructure gaps)</h3>
+
+<p>Mumble v0.9 is a <strong>mature, feature-rich</strong> application that demonstrates sophisticated engineering. The codebase is clean (zero TODO/FIXME/HACK markers, no commented-out code), well-tested where tests exist (strong edge-case coverage, excellent assertion labeling), and designed with multiple layers of graceful degradation (cloud AI → local LLM → pipeline → deterministic builder). The privacy posture is exemplary: local-first by default, no telemetry, no accounts required, API keys excluded from cloud sync.</p>
+
+<p>However, the project suffers from <strong>infrastructure debt</strong> that makes it unsustainable for multi-platform releases. The lack of CI/CD means tests are dead weight (never run automatically). The absence of code signing means every user faces trust warnings. The large single-class architecture makes the codebase increasingly difficult to maintain and test. The platform port strategy (file copying) creates a maintenance fork burden that has already caused drift (orphaned <code>ai.py</code> on macOS/Linux).</p>
+
+<h3 id="key-health-metrics">Key Health Metrics</h3>
+
+<table>
+<tr>
+<th>Dimension</th>
+<th>Grade</th>
+<th>Notes</th>
+</tr>
+<tr>
+<td>Feature Completeness</td>
+<td>A-</td>
+<td>12 of 15 features complete; Convert mode needs island chip; Lite missing Reader/Meeting UI</td>
+</tr>
+<tr>
+<td>Code Quality</td>
+<td>B+</td>
+<td>Clean, well-documented core; large controller class + port duplication are structural issues</td>
+</tr>
+<tr>
+<td>Test Coverage</td>
+<td>B-</td>
+<td>Strong where present; critical gaps in overlay, island_render, prompt_memory; no CI</td>
+</tr>
+<tr>
+<td>Security</td>
+<td>B+</td>
+<td>Strong fundamentals (HMAC auth, SHA256 mandatory, atomic writes); API keys stored in plaintext; no signed updates</td>
+</tr>
+<tr>
+<td>Privacy</td>
+<td>A</td>
+<td>No telemetry; local STT default; API keys excluded from sync; clear privacy communication</td>
+</tr>
+<tr>
+<td>Platform Readiness (Windows)</td>
+<td>B+</td>
+<td>Working installer, update system; missing code signing and SmartScreen mitigation</td>
+</tr>
+<tr>
+<td>Platform Readiness (macOS)</td>
+<td>C</td>
+<td>Functional port but no signing, notarization, DMG, or working update system</td>
+</tr>
+<tr>
+<td>Platform Readiness (Linux)</td>
+<td>C+</td>
+<td>Quality install.sh; no native package, no update system, XWayland-dependent overlay</td>
+</tr>
+<tr>
+<td>Release Infrastructure</td>
+<td>D</td>
+<td>No CI/CD, no git tags, no GitHub Releases, no automated builds, no dependency scanning</td>
+</tr>
+<tr>
+<td>UX &amp; Accessibility</td>
+<td>B+</td>
+<td>Excellent core UX; accessibility gaps in high-contrast, ARIA, keyboard navigation</td>
+</tr>
+<tr>
+<td>Documentation</td>
+<td>B</td>
+<td>Master system documentation is excellent; inline docstring coverage varies (18-100%)</td>
+</tr>
+</table>
+
+<hr>
+
+<h2 id="3-strengths">3. Strengths</h2>
+
+<p>Mumble v0.9 has numerous architectural and design strengths that form a solid foundation for v1.0:</p>
+
+<h3 id="engineering-strengths">Engineering Strengths</h3>
+
+<ol>
+<li><strong>Multi-layered degradation hierarchy (Phase 2-3a, B-3):</strong> Cloud AI → Cloud + Local LLM → Local LLM → Pipeline → Deterministic Builder. The application never dumps raw text — there is always a formatting floor. This embodies the "never lose the user's words" philosophy.</li>
+</ol>
+
+<ol>
+<li><strong>Atomic persistence across all data stores (Phase 3b, SEC-TAMP-003):</strong> Every JSON store uses the <code>.tmp</code> → <code>os.replace</code> pattern for atomic writes. Settings additionally maintains a <code>.bak</code> copy and uses a cross-process O_EXCL lock. A crash during write never corrupts the primary file.</li>
+</ol>
+
+<ol>
+<li><strong>Comprehensive settings corruption recovery (Phase 2-3a, B-5):</strong> <code>settings.py</code> has a 3-tier recovery chain: <code>.bak</code> restore → <code>.corrupt</code> artifact preservation → safe defaults. Twelve migration guard flags handle version transitions cleanly.</li>
+</ol>
+
+<ol>
+<li><strong>Privacy-first architecture (Phase 3b, Privacy Assessment):</strong> Local STT by default, cloud STT opt-in, no telemetry whatsoever, API keys excluded from cloud sync, audio never written to disk during normal dictation, zero CDN dependencies in the web UI.</li>
+</ol>
+
+<ol>
+<li><strong>Safe subprocess usage (Phase 3b, SEC-CMD-001):</strong> All subprocess calls use list-form arguments with <code>shell=False</code>. No user-supplied strings are concatenated into shell commands. Zero <code>eval()</code>/<code>exec()</code>/<code>__import__</code> calls in user-facing code paths.</li>
+</ol>
+
+<h3 id="design-strengths">Design Strengths</h3>
+
+<ol>
+<li><strong>Usage-aware tips system (Phase 2-3a, A-12):</strong> The tips engine tracks feature adoption, enforces spacing gates (8 min minimum gap, 4 dictation minimum between tips), rotates by least-shown, and self-retires once a feature is adopted. Elegant and effective progressive disclosure.</li>
+</ol>
+
+<ol>
+<li><strong>Animation tiering system (Phase 8-9, UX-F028):</strong> Three visual tiers (lite/standard/enhanced) plus <code>prefers-reduced-motion</code> support and <code>body.paused</code> state. Enhanced effects pause when the window is unfocused. Accessible and performant.</li>
+</ol>
+
+<ol>
+<li><strong>Click-through island overlay (Phase 8-9, UX-F025):</strong> The island uses <code>WS_EX_NOACTIVATE | WS_EX_TRANSPARENT</code> to never steal focus. This is the single most important UX decision — it preserves dictation flow without interruption.</li>
+</ol>
+
+<ol>
+<li><strong>Context-aware empty states (Phase 8-9, UX-F019):</strong> Every list in the Deck has a dedicated empty state with actionable next steps. Messages adapt based on filter state (all-empty vs filtered-empty).</li>
+</ol>
+
+<h3 id="codebase-strengths">Codebase Strengths</h3>
+
+<ol>
+<li><strong>No TODO/FIXME/HACK markers (Phase 10, CQ-010):</strong> The entire codebase is free of these markers. No commented-out code blocks were found. Engineering discipline is exceptional.</li>
+</ol>
+
+<ol>
+<li><strong>Strong test isolation via tempfile (Phase 7, FIND-TEST-004):</strong> 22+ test files use <code>tempfile.mkdtemp()</code> or <code>TemporaryDirectory()</code> to isolate from live user data. Tests are safe to run on development machines.</li>
+</ol>
+
+<ol>
+<li><strong>Provider abstraction pattern (Phase 10, CQ-004):</strong> The <code>ai/providers/</code> package demonstrates excellent architecture: a <code>BaseProvider</code> abstract class, consistent <code>chat()</code>/<code>streaming_chat()</code> methods, 100% docstring coverage on <code>ai/base.py</code> and <code>ai/transport.py</code>. Adding a new AI provider requires a single ~300-line module.</li>
+</ol>
+
+<ol>
+<li><strong>Update security implementation (Phase 3b, SEC-TAMP-001, SEC-TAMP-002):</strong> SHA256 verification is mandatory on every update. Zip-slip protection checks every archive member for path traversal. The ed25519 signing infrastructure is coded and ready for activation.</li>
+</ol>
+
+<hr>
+
+<h2 id="4-weaknesses">4. Weaknesses</h2>
+
+<h3 id="structural-weaknesses">Structural Weaknesses</h3>
+
+<ol>
+<li><strong>Large central Mumble class (CQ-001, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span>):</strong> A single 5K-line, 197-method class spanning audio capture, AI dispatch, paste, tray management, hotkeys, clipboard, stats, meeting support, and command routing. Only 54.8% of methods have docstrings. The class is difficult to unit-test in isolation. Adding any feature requires touching 5-8 locations in this file.</li>
+</ol>
+
+<ol>
+<li><strong>Platform port file duplication (CQ-007, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span>):</strong> Each port directory copies ~25 core Python files. The macOS and Linux ports have an orphaned <code>ai.py</code> (2,528 lines) predating the provider refactoring — meaning Constitution v5, TTS catalogue iteration, and the provider abstraction are absent on ports. Every bug fix in a shared file must be manually propagated to two port directories.</li>
+</ol>
+
+<ol>
+<li><strong>Oversized ai/__init__.py (CQ-003, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> At 2,382 lines, <code>ai/__init__.py</code> is neither a clean re-export facade nor a contained module. It contains original implementations that duplicate logic in <code>ai/tts_providers.py</code> and <code>ai/constitution.py</code>.</li>
+</ol>
+
+<ol>
+<li><strong>Duplicate synthesize_with_fallback (CQ-005, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> The function exists in both <code>ai/__init__.py</code> (65 lines, with catalogue iteration) and <code>ai/tts_providers.py</code> (35 lines, simplified). Bug fixes must be applied in both locations. The simpler port version would regress TTS resilience if used.</li>
+</ol>
+
+<ol>
+<li><strong>No CI/CD infrastructure (F6-CI-001, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span>):</strong> Zero GitHub Actions workflows. The 55+ test files never run automatically. All builds, releases, and deployments are manual processes.</li>
+</ol>
+
+<h3 id="platform-gaps">Platform Gaps</h3>
+
+<ol>
+<li><strong>No code signing on any platform (F4-WIN-001, F4-MAC-001, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span>):</strong> Windows <code>Mumble.exe</code> is unsigned, triggering SmartScreen warnings. macOS has ad-hoc signing only, triggering Gatekeeper blocks and preventing notarization.</li>
+</ol>
+
+<ol>
+<li><strong>macOS/Linux update systems stubbed (F6-UPD-001, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> Both ports have stripped-down <code>update.py</code> copies missing ed25519 signature verification, <code>.venv</code> carry-over logic, and controller wiring. macOS cannot auto-update at all.</li>
+</ol>
+
+<ol>
+<li><strong>Linux has no native package format (F4-LIN-001, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> Distribution is via <code>install.sh</code> only. No AppImage, Flatpak, <code>.deb</code>, or <code>.rpm</code>. Users must clone the repo or download the full source tree.</li>
+</ol>
+
+<h3 id="testing-gaps">Testing Gaps</h3>
+
+<ol>
+<li><strong>Critical modules untested (FIND-TEST-008, FIND-TEST-009, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> <code>overlay.py</code> (2,275 lines, zero dedicated tests) and <code>island_render.py</code> (1,097 lines, geometry-only tests) are the two largest testing gaps. Any regression in the island — Mumble's most visible feature — can only be caught manually.</li>
+</ol>
+
+<ol>
+<li><strong>Five tests excluded from ports due to API divergence (FIND-TEST-026, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> These represent real feature gaps: missing <code>'ui'</code> field in context_store, missing <code>save_doc_parsed()</code>, missing meeting fields, missing controller meeting dispatch. Ports are running a subset of Windows functionality.</li>
+</ol>
+
+<ol>
+<li><strong>Missing test types (Phase 7):</strong> No memory leak testing, stress testing, startup testing, installation testing, or update cycle testing. The suite is unit-test-heavy with only smoke-level integration coverage.</li>
+</ol>
+
+<h3 id="security-gaps">Security Gaps</h3>
+
+<ol>
+<li><strong>API keys stored as plaintext (SEC-INFO-001, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> All AI provider API keys are stored unencrypted in <code>settings.json</code>. Any process running as the same user can read them. No filesystem permissions hardening on Windows.</li>
+</ol>
+
+<ol>
+<li><strong>Unsigned update feed (SEC-SPOOF-002, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>):</strong> ed25519 manifest signing infrastructure is coded but disabled (<code>UPDATE_PUBLIC_KEY = ""</code>). The update manifest is SHA256-only, which proves the zip matches the manifest but not that the manifest is authentic.</li>
+</ol>
+
+<h3 id="accessibility-gaps">Accessibility Gaps</h3>
+
+<ol>
+<li><strong>No high-contrast or forced-colors support (UX-F006, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> Neither the web UI CSS nor the native island overlay supports Windows High Contrast Mode. Users relying on this accessibility feature cannot use the application.</li>
+</ol>
+
+<ol>
+<li><strong>Incomplete ARIA coverage (UX-F007, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>):</strong> Missing <code>aria-current</code>, <code>aria-live</code> regions, <code>role="dialog"</code> on modals, label associations on form inputs, and focus trapping.</li>
+</ol>
+
+<hr>
+
+<h2 id="5-every-issue-found--consolidated-findings-by-audit-area">5. Every Issue Found — Consolidated Findings by Audit Area</h2>
+
+<p>This section consolidates all findings from the seven phase reports, organized by audit area. Findings are deduplicated — issues appearing in multiple reports (e.g., API key storage) are listed once with cross-references.</p>
+
+<h3 id="51-feature-completeness-phase-2-3a">5.1 Feature Completeness (Phase 2-3a)</h3>
+
+<h4 id="complete-features-12-of-15">Complete Features (12 of 15)</h4>
+<p>The following features are assessed as <strong>complete</strong>: Dictation Core Loop, Prompt Architect (Constitution v5), Island Overlay, Mode Bar, Tray Menu, Settings System, Autostart, Quick Paste, Search, Capture (Selection &amp; Conversation), Tips System, Pro Mode, Resource Saver.</p>
+
+<h4 id="features-needing-work">Features Needing Work</h4>
+
+<table>
+<tr>
+<th>Feature</th>
+<th>Assessment</th>
+<th>Key Gap</th>
+</tr>
+<tr>
+<td>Smart Modes</td>
+<td>Mostly Complete</td>
+<td>Convert mode is router-only with no island chip — users cannot activate it from the island (A-2-1)</td>
+</tr>
+<tr>
+<td>Mumble Lite</td>
+<td>Mostly Complete</td>
+<td>Missing Reader and Meeting Mode UI tabs (A-15-1); one-way switch to Lite without return path (A-15-2)</td>
+</tr>
+</table>
+
+<h4 id="notable-low-severity-findings">Notable <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>-Severity Findings</h4>
+<ul>
+<li>Convert mode: router-only stub with no island chip (A-2-1, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>)</li>
+<li>Foreign mode: cloud lane optimized for Arabic only, no per-language disambiguation (A-2-2, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>)</li>
+<li>Email/Reply system prompts are hardcoded, not user-customizable (A-2-3, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>)</li>
+<li>Prompt keyword templates limited to 4 hardcoded entries (A-3-1, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>)</li>
+<li>Dictation clip-length gate (0.3s) is non-configurable (A-1-2, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>)</li>
+<li>Search browser selection supports only 5 hardcoded browsers (A-10-1, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>)</li>
+<li>Selection grab depends on Ctrl+C working in target app (A-11-1, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>)</li>
+<li>Lite switch requires restart to return to web UI (A-15-2, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>)</li>
+<li>Tray menu "Recent transcripts" is flat, not grouped by date (A-6-1, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>)</li>
+<li>Mode bar callbacks wired once at boot, not resilient to island rebuild (A-5-1, <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>)</li>
+</ul>
+
+<h3 id="52-production-stability-phase-2-3a">5.2 Production Stability (Phase 2-3a)</h3>
+
+<h4 id="critical-stability-findings">Critical Stability Findings</h4>
+
+<p><strong>B-1-1: <code>_tk_queue</code> pump silently discards all widget exceptions (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span>)</strong></p>
+<ul>
+<li><strong>Location:</strong> <code>mumble.py:4465-4475</code></li>
+<li><strong>Description:</strong> The Tkinter dispatch queue wraps every scheduled callable in <code>try: except Exception: pass</code>. Any exception in island updates, tray menu changes, or window refreshes is silently discarded with no log output.</li>
+<li><strong>Impact:</strong> Production widget bugs become impossible to diagnose. A recurring exception would silently consume CPU with no indication.</li>
+<li><strong>Recommendation:</strong> Replace <code>pass</code> with rate-limited logging. Add a sentinel tracking consecutive failures.</li>
+</ul>
+
+<p><strong>B-1-2: <code>os._exit(0)</code> in <code>_quit</code> bypasses Python cleanup (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>)</strong></p>
+<ul>
+<li><strong>Location:</strong> <code>mumble.py:4672</code></li>
+<li><strong>Description:</strong> <code>os._exit(0)</code> force-kills the process, bypassing all <code>finally</code> blocks, <code>atexit</code> handlers, and <code>__del__</code> finalizers. Unflushed file buffers are lost. The <code>_LayeredDC.__del__</code> GDI cleanup never runs. Settings/history writes concurrent with quit could be truncated.</li>
+<li><strong>Impact:</strong> Potential data loss on quit. GDI handles from the island may not be freed.</li>
+<li><strong>Recommendation:</strong> Add explicit <code>sys.stdout.flush()</code> and <code>settings.save()</code> before <code>os._exit</code>. Consider using <code>os.kill(os.getpid(), signal.SIGTERM)</code> with a signal handler.</li>
+</ul>
+
+<p><strong>A-4-1: GDI handle leak via <code>_LayeredDC.__del__</code> (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>)</strong></p>
+<ul>
+<li><strong>Location:</strong> <code>overlay.py</code> lines ~380-388</li>
+<li><strong>Description:</strong> The <code>__del__</code> finalizer on <code>_LayeredDC</code> attempts GDI cleanup, but CPython does not guarantee finalizers run. Each frame creates a fresh DC. After ~8 minutes of active dictation at 22fps, GDI handle exhaustion (10,000 limit per process) could crash the process.</li>
+<li><strong>Impact:</strong> Extended dictation sessions could crash due to GDI handle exhaustion.</li>
+<li><strong>Recommendation:</strong> Replace <code>__del__</code> with explicit <code>destroy()</code> calls in the tick loop. Ensure old DCs are destroyed before new ones are created.</li>
+</ul>
+
+<p><strong>A-13-1: API keys stored in plaintext JSON (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>)</strong> — Cross-reference: See Section 8 (SEC-INFO-001)</p>
+
+<h4 id="medium-stability-findings">Medium Stability Findings</h4>
+<ul>
+<li>WhisperModel import can hang/stall on low-memory machines with no timeout (B-1-3)</li>
+<li>No watchdog for stuck recording stream — mic driver hang permanently locks Mumble (B-2-1)</li>
+<li>No recovery path for corrupted <code>history.json</code> — unlike <code>settings.json</code> which has comprehensive recovery (B-3-1)</li>
+<li>Single-instance lock retry loop has fixed 3-attempt limit (B-6-1)</li>
+<li>No automatic rollback for failed updates — user must manually restore backup (B-7-1)</li>
+<li>Update manifest URL is hardcoded and unsigned by default (B-7-2)</li>
+<li>Island fallback to Tk canvas is untested on non-Windows platforms (A-4-2)</li>
+</ul>
+
+<h4 id="low-stability-findings">Low Stability Findings</h4>
+<ul>
+<li>Seam tracking has subtle edge case with Resource Saver (A-1-1)</li>
+<li>Paste retry loop can block up to 0.24s worst case (B-2-2)</li>
+<li>No recovery for cloud sync conflicts — LWW merge silently overwrites (B-3-2)</li>
+<li>Offline mode tray state is ambiguous — shows "Error" when builder is available (B-4-1)</li>
+</ul>
+
+<h3 id="53-security-and-privacy-phase-3b">5.3 Security and Privacy (Phase 3b)</h3>
+
+<p>&gt; Full security findings are in Section 8. Key items summarized here.</p>
+
+<h4 id="high-severity-security-findings"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-Severity Security Findings</h4>
+<ul>
+<li><strong>SEC-INFO-001:</strong> API keys stored as plaintext in <code>settings.json</code> (also A-13-1)</li>
+<li>All STRIDE dimensions reviewed; no <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span> security findings identified</li>
+</ul>
+
+<h4 id="medium-severity-security-findings"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>-Severity Security Findings</h4>
+<ul>
+<li>IPC token auth relies on filesystem DAC — same-user processes can read <code>cmd_token</code> (SEC-SPOOF-001)</li>
+<li>Update manifest unsigned by default — ed25519 not activated (SEC-SPOOF-002)</li>
+<li>User conversation data stored as plaintext (SEC-INFO-003)</li>
+<li>Supabase session token stored without encryption (SEC-INFO-004)</li>
+<li>Cloud sync Supabase anon key stored in plaintext settings (SEC-CRED-001)</li>
+<li>Indefinite transcript retention with no age-based cleanup (PRIV-STORE-001)</li>
+<li>Clipboard captures passwords from password managers (PRIV-STORE-002)</li>
+</ul>
+
+<h4 id="positive-security-findings">Positive Security Findings</h4>
+<ul>
+<li>Zero <code>eval()</code>/<code>exec()</code>/<code>__import__</code> in user-facing code (SEC-EOP-002)</li>
+<li>All subprocess calls use list-form with <code>shell=False</code> (SEC-CMD-001)</li>
+<li>SHA256 enforcement mandatory on every update (SEC-TAMP-001)</li>
+<li>Zip-slip protection comprehensive in update extraction (SEC-TAMP-002)</li>
+<li>Atomic file writes across all data stores (SEC-TAMP-003)</li>
+<li>WebView2 content is self-contained, no remote CDN (SEC-WEBV-002)</li>
+<li>No telemetry or analytics code (PRIV-TEL-001)</li>
+<li>Audio stays local by default, never written to disk (PRIV-MODEL-001, PRIV-TEMP-002)</li>
+</ul>
+
+<h3 id="54-platform-release-requirements-phase-4">5.4 Platform Release Requirements (Phase 4)</h3>
+
+<h4 id="critical-platform-gaps">Critical Platform Gaps</h4>
+
+<table>
+<tr>
+<th>Platform</th>
+<th>Gap</th>
+<th>Finding ID</th>
+</tr>
+<tr>
+<td>Windows</td>
+<td>No code signing certificate — unsigned <code>.exe</code> triggers SmartScreen</td>
+<td>F4-WIN-001</td>
+</tr>
+<tr>
+<td>Windows</td>
+<td>No SmartScreen reputation strategy</td>
+<td>F4-WIN-002</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td>No Developer ID code signing — ad-hoc only triggers Gatekeeper</td>
+<td>F4-MAC-001</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td>No notarization — "cannot be verified" warning on every launch</td>
+<td>F4-MAC-002</td>
+</tr>
+</table>
+
+<h4 id="high-severity-platform-gaps"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-Severity Platform Gaps</h4>
+<ul>
+<li>macOS: No entitlements plist — microphone and accessibility at risk under Hardened Runtime (F4-MAC-003)</li>
+<li>macOS: Hardened Runtime not enabled — prerequisite for notarization (F4-MAC-004)</li>
+<li>macOS: Update system stubbed — <code>.venv</code> carry-over missing, ed25519 verification absent (F4-MAC-006)</li>
+<li>Linux: No native package format — <code>install.sh</code> only, no AppImage/Flatpak/deb/rpm (F4-LIN-001)</li>
+<li>Linux: Update system stubbed — same gaps as macOS (F4-LIN-006)</li>
+</ul>
+
+<h4 id="medium-platform-findings">Medium Platform Findings</h4>
+<ul>
+<li>Windows: Installer is PowerShell script — no MSI/EXE wrapper for non-technical users (F4-WIN-003)</li>
+<li>Windows: Windows Defender may flag unsigned <code>Mumble.exe</code> + ctypes resource patching (F4-WIN-005)</li>
+<li>Windows: Update ed25519 signing not activated (F4-WIN-006)</li>
+<li>macOS: DMG generation missing — ZIP only (F4-MAC-005)</li>
+<li>macOS: Permissions flow manual — no programmatic guidance (F4-MAC-007)</li>
+<li>Linux: Wayland/X11 overlay relies on XWayland fallback; no native Wayland overlay (F4-LIN-007)</li>
+</ul>
+
+<h4 id="platform-strengths">Platform Strengths</h4>
+<ul>
+<li>Windows: <code>install.ps1</code> is robust, handles first-time/fresh-PC well</li>
+<li>Windows: Uninstaller is exceptionally thorough (stops running instances, cleans all shortcuts, optional data removal)</li>
+<li>macOS: Quarantine flag clearing is correct practice</li>
+<li>Linux: <code>install.sh</code> supports 4 package managers, creates proper <code>.desktop</code> entry</li>
+<li>All: Build scripts are reproducible (though manual)</li>
+</ul>
+
+<h3 id="55-website-and-distribution-phase-5-6">5.5 Website and Distribution (Phase 5-6)</h3>
+
+<h4 id="critical-infrastructure-gaps">Critical Infrastructure Gaps</h4>
+<ul>
+<li><strong>F6-CI-001:</strong> No CI/CD pipeline — zero GitHub Actions workflows</li>
+<li><strong>F6-CI-002:</strong> No automated testing pipeline — 55+ test files never run automatically</li>
+</ul>
+
+<h4 id="high-severity-gaps"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-Severity Gaps</h4>
+<ul>
+<li><strong>F5-WEB-001:</strong> Six standard pages missing from website: changelog, FAQ, privacy policy, terms of service, documentation, feature detail pages</li>
+<li><strong>F6-CI-003:</strong> No automated builds for macOS and Linux packages</li>
+<li><strong>F6-VER-001:</strong> No git tags — zero tags in repository history</li>
+<li><strong>F6-GH-001:</strong> No GitHub Releases configured — <code>Mumble.zip</code> at repo root is only distribution</li>
+<li><strong>F6-UPD-001:</strong> macOS/Linux update systems stubbed — missing signature verification, venv carry-over</li>
+<li><strong>F6-UPD-002:</strong> Update manifest URL points to non-existent GitHub Pages site</li>
+<li><strong>F6-PKG-001:</strong> No automated package generation for any platform</li>
+<li><strong>F6-PKG-004:</strong> Linux has no distribution package — <code>install.sh</code> only</li>
+</ul>
+
+<h4 id="medium-infrastructure-gaps">Medium Infrastructure Gaps</h4>
+<ul>
+<li>No changelog or release notes file (F5-WEB-002)</li>
+<li>Version string lives only in <code>branding.py</code> — no single source of truth (F6-VER-002)</li>
+<li>No release branch strategy — single <code>main</code> branch only (F6-VER-003)</li>
+<li>No GitHub remote configured — repository is local-only (F6-GH-002)</li>
+<li>No crash reporting or telemetry (F6-UPD-003) — deliberate, but no user feedback channel</li>
+<li>Windows <code>.zip</code> only — no installer wrapper (F6-PKG-002)</li>
+<li>macOS <code>.zip</code> only — no <code>.dmg</code> generation (F6-PKG-003)</li>
+<li>No release runbook or checklist (F6-REL-001)</li>
+<li>No dependency vulnerability scanning — no Dependabot or <code>pip-audit</code> (F6-REL-002)</li>
+</ul>
+
+<h4 id="website-strengths">Website Strengths</h4>
+<ul>
+<li>Beautiful "Golden Black" Astro-powered landing page with 15+ section components</li>
+<li>Zero CDN dependencies, zero analytics, zero third-party scripts</li>
+<li>OS-aware download cards, responsive at all breakpoints</li>
+<li>Excellent SEO (OpenGraph, Twitter Cards, JSON-LD structured data)</li>
+</ul>
+
+<h4 id="low-severity-website-findings"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>-Severity Website Findings</h4>
+<ul>
+<li>Download page shows hardcoded version and size (F5-WEB-003)</li>
+<li>macOS/Linux download cards link to placeholder GitHub URL (F5-WEB-004)</li>
+<li>No actual screenshots — only abstract visual representations (F5-WEB-005)</li>
+<li>Website CSS contains dead FAQ styles (F5-WEB-006)</li>
+<li>Footer version is hardcoded "v0.9" (F5-WEB-007)</li>
+</ul>
+
+<h3 id="56-testing-gaps-phase-7">5.6 Testing Gaps (Phase 7)</h3>
+
+<h4 id="critical-testing-gaps">Critical Testing Gaps</h4>
+<p>None at <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span> severity — but several <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-severity gaps exist.</p>
+
+<h4 id="high-severity-testing-gaps"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-Severity Testing Gaps</h4>
+<ul>
+<li><strong>FIND-TEST-008:</strong> <code>overlay.py</code> (2,275 lines) has zero dedicated test coverage</li>
+<li><strong>FIND-TEST-009:</strong> <code>island_render.py</code> (1,097 lines) has only geometry tests — no rendering tests</li>
+<li><strong>FIND-TEST-014:</strong> No centralized test runner on Windows</li>
+<li><strong>FIND-TEST-015:</strong> No CI/CD configuration — confirmed across all reports</li>
+<li><strong>FIND-TEST-026:</strong> Five tests excluded from macOS/Linux ports due to API divergence</li>
+</ul>
+
+<h4 id="medium-testing-gaps">Medium Testing Gaps</h4>
+<ul>
+<li><code>prompt_memory.py</code> has zero tests despite concurrency/corruption recovery logic (FIND-TEST-010)</li>
+<li>Core controller <code>mumble.py</code> has no direct unit tests (FIND-TEST-011)</li>
+<li><code>webui_shell.py</code> has only smoke-level testing (FIND-TEST-012)</li>
+<li>No test coverage tooling — no <code>coverage.py</code> integration (FIND-TEST-016)</li>
+<li>Missing test types: memory leak (FIND-TEST-018), stress (FIND-TEST-019), startup (FIND-TEST-020), update cycle (FIND-TEST-021), installation (FIND-TEST-022), cross-platform parity (FIND-TEST-023)</li>
+<li>Corrupted data handling only tested for settings — 8+ data files untested (FIND-TEST-030)</li>
+</ul>
+
+<h4 id="testing-strengths">Testing Strengths</h4>
+<ul>
+<li>Strong test isolation via tempfile (22+ test files) — tests never touch live user data</li>
+<li>Exceptional edge case coverage where tests exist (formatting, bindings, model_free, tips)</li>
+<li>Strong assertion labeling — every check has a descriptive string label</li>
+<li>Comprehensive error path testing (934-line <code>test_error_recovery.py</code>, 694-line <code>test_fallback.py</code>)</li>
+<li>Minimal test dependencies — only <code>psutil</code> beyond stdlib + project modules</li>
+</ul>
+
+<h3 id="57-ux-review-phase-8-9">5.7 UX Review (Phase 8-9)</h3>
+
+<h4 id="high-severity-ux-findings"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-Severity UX Findings</h4>
+<ul>
+<li><strong>UX-F006:</strong> No forced-colors or high-contrast mode support — design breaks down completely under Windows High Contrast Mode</li>
+</ul>
+
+<h4 id="medium-severity-ux-findings"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>-Severity UX Findings</h4>
+<ul>
+<li>No express/skip option in 10-step onboarding wizard (UX-F002)</li>
+<li>No real dictation test during onboarding — user must close wizard and press Ctrl+Win blind (UX-F004)</li>
+<li>Incomplete ARIA coverage: missing <code>aria-current</code>, <code>aria-live</code>, <code>role="dialog"</code>, label associations (UX-F007)</li>
+<li>Keyboard navigation gaps: no shortcut reference overlay, no onboarding keyboard advance, no tab order management (UX-F008)</li>
+<li>Gold accent colour drifts between native (#D4AF37) and web (#EBC35C) surfaces (UX-F011)</li>
+<li>Deck hotkey documented as <code>ctrl+alt+d</code> in onboarding but canonical default is <code>ctrl+alt+h</code> (UX-F015)</li>
+<li>No undo for destructive actions — bulk delete is immediate and permanent (UX-F022)</li>
+<li>API key setup step is intimidating for non-technical users (UX-F026)</li>
+<li>No keyboard shortcut reference overlay (<code>?</code> key) (UX-F030)</li>
+</ul>
+
+<h4 id="ux-strengths">UX Strengths</h4>
+<ul>
+<li>Usage-aware tips system — progressive feature disclosure with self-retirement</li>
+<li>Click-through island design — never steals focus</li>
+<li>Context-aware empty states in every Deck list</li>
+<li>Excellent animation tiering system (lite/standard/enhanced) with <code>prefers-reduced-motion</code></li>
+<li>Clean confirmation dialogs with danger styling for destructive actions</li>
+<li>Thoughtful defaults reduce settings burden</li>
+</ul>
+
+<h4 id="low-severity-ux-findings"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>-Severity UX Findings</h4>
+<ul>
+<li>Onboarding wizard has ghost step 99 — dead code (UX-F001)</li>
+<li>10-step onboarding could be consolidated to 7 (UX-F003)</li>
+<li>Tips invisible to users who ignore the island (UX-F005)</li>
+<li>Reduced motion doesn't cover all animations (UX-F009)</li>
+<li>Image alt text inconsistent (UX-F010)</li>
+<li>Surface/text colours have minor inconsistencies between surfaces (UX-F012)</li>
+<li>Internal "island"/"pill"/"overlay" terminology mixed (UX-F016)</li>
+<li>"No transcripts yet" toast uses error styling instead of info (UX-F017)</li>
+<li>Some error messages lack recovery guidance (UX-F018)</li>
+<li>Loading states lack progress granularity — no skeleton screens (UX-F020)</li>
+<li>Settings page is long-scrolling with no internal navigation (UX-F023)</li>
+<li>No interactive dictation demo on Home page (UX-F027)</li>
+<li>Responsive scaling is one-directional only — doesn't use large screens fully (UX-F029)</li>
+</ul>
+
+<h3 id="58-code-quality-phase-10">5.8 Code Quality (Phase 10)</h3>
+
+<h4 id="critical-code-quality-findings">Critical Code Quality Findings</h4>
+<ul>
+<li><strong>CQ-001:</strong> <code>Mumble</code> controller class — 5K lines, 197 methods, spans all subsystems (see Section 4)</li>
+<li><strong>CQ-007:</strong> Port file duplication — ~25 files copied per platform, orphaned <code>ai.py</code> on macOS/Linux (see Section 4)</li>
+</ul>
+
+<h4 id="high-severity-code-quality-findings"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-Severity Code Quality Findings</h4>
+<ul>
+<li><strong>CQ-003:</strong> <code>ai/__init__.py</code> oversized at 2,382 lines — hybrid of re-exports and original logic</li>
+<li><strong>CQ-005:</strong> <code>synthesize_with_fallback</code> duplicated in <code>ai/__init__.py</code> and <code>ai/tts_providers.py</code></li>
+<li><strong>CQ-017:</strong> Adding a new platform requires copying ~25 files and maintaining ~500-line controller fork</li>
+</ul>
+
+<h4 id="medium-code-quality-findings">Medium Code Quality Findings</h4>
+<ul>
+<li>Retired mode-key subsystem: 10+ inert fields/methods still wired but bypassed (CQ-002)</li>
+<li>Filler removal divergence: <code>formatting._remove_fillers</code> strips lexical fillers; <code>model_free._remove_filled_pauses</code> doesn't (CQ-006)</li>
+<li><code>mode_select.py</code> semi-deprecated on Windows but active on ports — unclear status (CQ-009)</li>
+<li>Docstring coverage extreme variation: from 18.2% (<code>ai/tts_providers.py</code>) to 100% (<code>ai/base.py</code>) (CQ-011)</li>
+<li>Tight coupling: everything depends on <code>ai</code> and <code>Settings</code> singletons (CQ-014)</li>
+<li>Port-specific overlay modules have no shared base class/interface (CQ-015)</li>
+<li>Adding a new Smart Mode requires changes in 8+ files (CQ-016)</li>
+</ul>
+
+<h4 id="code-quality-strengths">Code Quality Strengths</h4>
+<ul>
+<li>No TODO/FIXME/HACK markers — exceptionally clean (CQ-010)</li>
+<li><code>model_free.py</code> documentation is exemplary — WHY + ALLOWED + PROHIBITED pattern (CQ-012)</li>
+<li>Consistent naming conventions — no PEP 8 violations (CQ-013)</li>
+<li>Provider abstraction pattern in <code>ai/providers/</code> is well-executed (CQ-004)</li>
+<li>Adding a new AI provider is straightforward — single ~300-line module (CQ-018)</li>
+</ul>
+
+<h4 id="low-code-quality-findings">Low Code Quality Findings</h4>
+<ul>
+<li>Experimental <code>CompTracker</code> — dead code with try/except import on every startup (CQ-008)</li>
+<li>Inline <code>Settings()</code> construction makes functions impure and harder to test (CQ-019)</li>
+<li><code>Mumble.__init__</code> is 70+ lines of fragile wiring order (CQ-020)</li>
+</ul>
+
+<hr>
+
+<h2 id="6-every-unfinished-feature">6. Every Unfinished Feature</h2>
+
+<h3 id="not-yet-complete-for-v10">Not Yet Complete for v1.0</h3>
+
+<table>
+<tr>
+<th>Feature</th>
+<th>Current State</th>
+<th>Work Needed</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td><strong>Convert Smart Mode</strong></td>
+<td>Router-only stub — no island chip. Users cannot activate from the island. The Deck button works via routing, but standalone island path is missing</td>
+<td>Add Convert chip to island mode bar with routing logic, or update documentation to reflect Deck-only status</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><strong>Mumble Lite — Reader UI</strong></td>
+<td>Reader feature has no UI surface in Lite mode. Underlying Python logic exists but tabs are missing</td>
+<td>Add Reader tab to <code>app_window.py</code> NAV tuple</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><strong>Mumble Lite — Meeting Mode UI</strong></td>
+<td>Meeting Mode has no UI surface in Lite mode</td>
+<td>Add Meeting tab to <code>app_window.py</code> or document as web-UI-only</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><strong>macOS Update System</strong></td>
+<td><code>update.py</code> exists but is a stripped copy missing ed25519 verification, <code>.venv</code> carry-over, and controller wiring</td>
+<td>Port full Windows update logic: add signature verification, venv carry, wire into <code>mumble_mac.py</code></td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><strong>Linux Update System</strong></td>
+<td>Same as macOS — stripped copy, not wired into <code>mumble_linux.py</code></td>
+<td>Port full Windows update logic</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><strong>Linux Package Distribution</strong></td>
+<td><code>install.sh</code> only — no AppImage, Flatpak, or native package</td>
+<td>Build AppImage with bundled Python + deps + model; create Flatpak manifest for Flathub</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><strong>macOS Code Signing &amp; Notarization</strong></td>
+<td>Ad-hoc signing only — triggers Gatekeeper, cannot notarize</td>
+<td>Enroll in Apple Developer Program, obtain Developer ID cert, implement notarization pipeline</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+</tr>
+<tr>
+<td><strong>Windows Code Signing</strong></td>
+<td>No certificate — <code>Mumble.exe</code> is unsigned</td>
+<td>Obtain EV code signing certificate, integrate <code>signtool</code> into build pipeline</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+</tr>
+</table>
+
+<h3 id="completed-features-12-of-15">Completed Features (12 of 15)</h3>
+
+<p>Dictation Core Loop, Prompt Architect (Constitution v5), Island Overlay, Mode Bar, Tray Menu, Settings System, Autostart, Quick Paste, Search, Capture (Selection &amp; Conversation), Tips System, Pro Mode, Resource Saver</p>
+
+<hr>
+
+<h2 id="7-every-production-readiness-concern">7. Every Production-Readiness Concern</h2>
+
+<h3 id="crash-prevention">Crash Prevention</h3>
+
+<table>
+<tr>
+<th>Concern</th>
+<th>Severity</th>
+<th>Status</th>
+</tr>
+<tr>
+<td><code>_tk_queue</code> silently swallows all widget exceptions — impossible to diagnose production crashes</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+<td>Needs fix</td>
+</tr>
+<tr>
+<td><code>os._exit(0)</code> bypasses Python cleanup — potential data loss on quit</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+<td>Needs fix</td>
+</tr>
+<tr>
+<td>GDI handle leak in <code>_LayeredDC.__del__</code> — potential crash after ~8 min of active dictation</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+<td>Needs fix</td>
+</tr>
+<tr>
+<td>WhisperModel import can hang on low-memory machines with no timeout</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>Needs watchdog</td>
+</tr>
+<tr>
+<td>No watchdog for stuck recording stream — mic driver hang permanently locks app</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>Needs watchdog</td>
+</tr>
+</table>
+
+<h3 id="error-handling--recovery">Error Handling &amp; Recovery</h3>
+
+<table>
+<tr>
+<th>Concern</th>
+<th>Severity</th>
+<th>Status</th>
+</tr>
+<tr>
+<td>No corrupted <code>history.json</code> recovery — unlike <code>settings.json</code> which has comprehensive recovery chain</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>Needs corruption handling</td>
+</tr>
+<tr>
+<td>Fixed 3-attempt single-instance lock retry may be insufficient on slow systems</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>Needs configurable retry</td>
+</tr>
+<tr>
+<td>No automatic rollback for failed updates — user must manually restore backup</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>Needs health check in update script</td>
+</tr>
+</table>
+
+<h3 id="offline-behavior">Offline Behavior</h3>
+
+<table>
+<tr>
+<th>Concern</th>
+<th>Severity</th>
+<th>Status</th>
+</tr>
+<tr>
+<td>Offline mode tray state is ambiguous — shows "Error" when builder is still available</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+<td>Needs "Offline" state</td>
+</tr>
+<tr>
+<td>Cloud sync conflicts handled by LWW merge with no notification</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+<td>Needs conflict logging</td>
+</tr>
+</table>
+
+<h3 id="startup--shutdown">Startup &amp; Shutdown</h3>
+
+<table>
+<tr>
+<th>Concern</th>
+<th>Severity</th>
+<th>Status</th>
+</tr>
+<tr>
+<td><code>os._exit</code> in <code>_quit</code> leaves orphaned webui processes possible</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+<td>See B-1-2</td>
+</tr>
+<tr>
+<td>Model import hang with no recovery at startup</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>See B-1-3</td>
+</tr>
+</table>
+
+<h3 id="configuration--data-integrity">Configuration &amp; Data Integrity</h3>
+
+<table>
+<tr>
+<th>Concern</th>
+<th>Severity</th>
+<th>Status</th>
+</tr>
+<tr>
+<td>API keys stored as plaintext — single-file exfiltration exposes all provider accounts</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+<td>Needs encryption</td>
+</tr>
+<tr>
+<td>No encryption at rest for any user data (conversations, clipboard, history)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>Needs optional encryption</td>
+</tr>
+<tr>
+<td>Indefinite transcript retention with no age-based cleanup</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>Needs retention settings</td>
+</tr>
+<tr>
+<td>Clipboard captures passwords from password managers</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+<td>Needs content filtering</td>
+</tr>
+</table>
+
+<hr>
+
+<h2 id="8-security-and-privacy-findings">8. Security and Privacy Findings</h2>
+
+<h3 id="stride-summary">STRIDE Summary</h3>
+
+<table>
+<tr>
+<th>STRIDE Category</th>
+<th>Finding Count</th>
+<th>Severity Range</th>
+</tr>
+<tr>
+<td>Spoofing</td>
+<td>2</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span> (both)</td>
+</tr>
+<tr>
+<td>Tampering</td>
+<td>3</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span> (all positive)</td>
+</tr>
+<tr>
+<td>Repudiation</td>
+<td>1</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td>Information Disclosure</td>
+<td>5</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span> (1), <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span> (1), <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span> (3)</td>
+</tr>
+<tr>
+<td>Denial of Service</td>
+<td>2</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td>Elevation of Privilege</td>
+<td>2</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+</table>
+
+<h3 id="high-severity-finding"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-Severity Finding</h3>
+
+<p><strong>SEC-INFO-001: API Keys Stored as Plaintext in settings.json</strong></p>
+<ul>
+<li><strong>Location:</strong> <code>settings.py:588-612</code> (write path), <code>branding.py:42</code> (DATA_DIR)</li>
+<li><strong>Description:</strong> All user API keys (Cerebras, OpenAI, Anthropic, OpenRouter, DeepSeek, Groq) are stored as plaintext strings in <code>%APPDATA%\Mumble\settings.json</code>. There is no encryption at rest. Any process running as the same user can read the file.</li>
+<li><strong>Exploitability:</strong> <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>. A malicious process (compromised npm package, script) could exfiltrate all API keys in a single file read. Financial impact depends on usage limits and billing caps. Keys enable making API calls as the user and accessing associated account data.</li>
+<li><strong>Recommendation:</strong> Implement encryption at rest using platform-native mechanisms (DPAPI on Windows via <code>CryptProtectData</code>, Keychain on macOS, Secret Service on Linux via the <code>keyring</code> library). Fall back to plaintext if platform keystore is unavailable, with a clear warning.</li>
+</ul>
+
+<h3 id="medium-severity-findings"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>-Severity Findings</h3>
+
+<p><strong>SEC-SPOOF-001: IPC Token Auth Relies on Filesystem DAC</strong></p>
+<ul>
+<li>IPC token written to <code>%APPDATA%\Mumble\cmd_token</code> is readable by same-user processes. A malicious same-user process could inject commands on port 49519. Mitigation: requires arbitrary code execution as same user, at which point attacker already owns user data. Token mechanism defends against cross-user and sandboxed attacks.</li>
+</ul>
+
+<p><strong>SEC-SPOOF-002: Update Manifest Not Signed by Default</strong></p>
+<ul>
+<li>ed25519 signing infrastructure is coded but <code>UPDATE_PUBLIC_KEY = ""</code>. Manifest is SHA256-only — proves zip matches manifest but not that manifest is authentic. HTTPS for manifest URL provides transport security but does not protect against GitHub Pages compromise or DNS poisoning.</li>
+</ul>
+
+<p><strong>SEC-INFO-003: User Conversation Data Stored as Plaintext</strong></p>
+<ul>
+<li>All dictation transcripts, clipboard captures, and AI conversation context in <code>history.json</code>, <code>transcripts.txt</code>, <code>conv_store.json</code>. Same-user filesystem access exposes complete dictation history.</li>
+</ul>
+
+<p><strong>PRIV-STORE-001: Complete Dictation History Stored Indefinitely</strong></p>
+<ul>
+<li>Every dictation stored in <code>history.json</code> (capped at 5000) and <code>transcripts.txt</code> (uncapped append log). No automatic age-based cleanup. Deletions from history.json NOT reflected in transcripts.txt.</li>
+</ul>
+
+<p><strong>PRIV-STORE-002: Clipboard Capture Stores Passwords</strong></p>
+<ul>
+<li>Clipboard monitor captures all text and images. Password manager entries (copied passwords) stored in plaintext in <code>clipboard.json</code>. No content filtering.</li>
+</ul>
+
+<h3 id="positive-security-findings-selected">Positive Security Findings (Selected)</h3>
+<ul>
+<li>Zero <code>eval()</code>/<code>exec()</code>/<code>__import__</code> in user-facing code paths</li>
+<li>All subprocess calls use list-form arguments with <code>shell=False</code></li>
+<li>SHA256 verification mandatory on every update download</li>
+<li>Zip-slip protection comprehensive (path traversal check on every archive member)</li>
+<li>Atomic file writes across all 11 persistent data stores</li>
+<li>WebView2 content self-contained — no remote CDN or external scripts</li>
+<li>No telemetry or analytics code — confirmed zero</li>
+<li>API keys excluded from cloud sync via <code>_SETTINGS_SYNC_EXCLUDE</code> frozenset</li>
+<li>Web UI API key masking — JS context sees only <code>•••••••• XXXX</code></li>
+<li>Audio stays local by default, never written to disk during normal dictation</li>
+</ul>
+
+<hr>
+
+<h2 id="9-platform-release-requirements">9. Platform Release Requirements</h2>
+
+<h3 id="windows-canonical-platform">Windows (Canonical Platform)</h3>
+
+<p><strong>Current State:</strong> Mature — working installer, auto-update, uninstaller, reproducible ZIP build. <strong>Missing:</strong> code signing, SmartScreen mitigation, CI/CD automation.</p>
+
+<table>
+<tr>
+<th>Requirement</th>
+<th>Status</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td>Code signing (EV certificate)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+</tr>
+<tr>
+<td>SmartScreen reputation strategy</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+</tr>
+<tr>
+<td>Installer (<code>install.ps1</code>)</td>
+<td>Complete</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Uninstaller</td>
+<td>Complete (exemplary)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Auto-update (SHA256 + optional ed25519)</td>
+<td>Complete (code), Incomplete (activation)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span> (activate signing)</td>
+</tr>
+<tr>
+<td>Windows Defender submission</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>MSI/EXE installer wrapper</td>
+<td>Missing (acceptable for v1.0)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td>Portable mode</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+</table>
+
+<h3 id="macos">macOS</h3>
+
+<p><strong>Current State:</strong> Functional port with ad-hoc signing, working <code>.app</code> bundle builder, LaunchAgent-based login. <strong>Missing:</strong> Developer ID signing, notarization, DMG distribution, working updates, entitlements.</p>
+
+<table>
+<tr>
+<th>Requirement</th>
+<th>Status</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td>Developer ID code signing</td>
+<td>Missing (ad-hoc only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+</tr>
+<tr>
+<td>Notarization</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+</tr>
+<tr>
+<td>Entitlements plist</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Hardened Runtime</td>
+<td>Not enabled</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>DMG generation</td>
+<td>Missing (ZIP only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Update system</td>
+<td>Stubbed</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Permission requests (programmatic)</td>
+<td>Missing (manual only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>App bundle metadata (Info.plist)</td>
+<td>Minimal</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+</table>
+
+<h3 id="linux">Linux</h3>
+
+<p><strong>Current State:</strong> Quality <code>install.sh</code> supporting 4 package managers. <strong>Missing:</strong> native package format, working updates, native Wayland overlay.</p>
+
+<table>
+<tr>
+<th>Requirement</th>
+<th>Status</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td>AppImage package</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Flatpak package</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><code>.deb</code> / <code>.rpm</code></td>
+<td>Missing (skip for v1.0)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td>Update system</td>
+<td>Stubbed</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Native Wayland overlay</td>
+<td>Missing (XWayland fallback)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Desktop integration</td>
+<td>Complete (<code>.desktop</code> entry)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Clipboard (Wayland/X11)</td>
+<td>Complete (wl-copy/xclip)</td>
+<td>—</td>
+</tr>
+</table>
+
+<hr>
+
+<h2 id="10-website-and-distribution-requirements">10. Website and Distribution Requirements</h2>
+
+<h3 id="website-astro-powered-development-filesotherwebsite">Website (Astro-powered, <code>Development Files\Other\website\</code>)</h3>
+
+<p><strong>Current State:</strong> Beautiful single-page landing page. <strong>Missing:</strong> six standard pages, automated deployment, versioned assets.</p>
+
+<table>
+<tr>
+<th>Requirement</th>
+<th>Status</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td>Landing page (15+ sections)</td>
+<td>Complete</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Changelog / Release Notes page</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>FAQ page</td>
+<td>Missing (CSS exists but no component)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Privacy Policy page</td>
+<td>Missing (inline discussion only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Terms of Service page</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Documentation / Help page</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Feature detail pages</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Download page with dynamic versioning</td>
+<td>Partial (version hardcoded)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td>Screenshots / product images</td>
+<td>Missing (abstract visuals only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+</table>
+
+<h3 id="release-infrastructure">Release Infrastructure</h3>
+
+<p><strong>Current State:</strong> Manual everything. <strong>Missing:</strong> CI/CD, git tags, GitHub Releases, automated builds, dependency scanning.</p>
+
+<table>
+<tr>
+<th>Requirement</th>
+<th>Status</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td>CI/CD pipeline (GitHub Actions)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+</tr>
+<tr>
+<td>Automated test execution</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span></td>
+</tr>
+<tr>
+<td>Automated builds (all platforms)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Git tags</td>
+<td>Missing (zero tags)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>GitHub Releases</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>GitHub remote</td>
+<td>Missing (local-only repo)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Release branch strategy</td>
+<td>Missing (single main branch)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Update manifest hosting</td>
+<td>Missing (URL points to non-existent site)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Crash reporting (opt-in)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Dependency vulnerability scanning</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Release runbook / checklist</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+</table>
+
+<hr>
+
+<h2 id="11-testing-gaps">11. Testing Gaps</h2>
+
+<h3 id="current-state">Current State</h3>
+
+<p>117 test files total (55 Windows, 31 macOS, 31 Linux). Strong unit test coverage where tests exist, with excellent isolation (tempfile), assertion labeling, and edge case coverage. However, critical modules are untested and the suite has no CI.</p>
+
+<h3 id="critical-testing-gaps">Critical Testing Gaps</h3>
+
+<table>
+<tr>
+<th>Gap</th>
+<th>Details</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td><strong>overlay.py (zero tests)</strong></td>
+<td>2,275 lines, most visible feature. No automated testing whatsoever</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><strong>island_render.py (minimal tests)</strong></td>
+<td>1,097 lines, only geometry function tested. No rendering output validation</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><strong>No centralized test runner</strong></td>
+<td>Each test file is standalone; no script runs all 55 files</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><strong>No CI/CD</strong></td>
+<td>55+ test files never run automatically on push or PR</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><strong>5 API-divergent tests excluded from ports</strong></td>
+<td>Real feature gaps — not just test gaps</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+</table>
+
+<h3 id="missing-test-types">Missing Test Types</h3>
+
+<table>
+<tr>
+<th>Test Type</th>
+<th>Status</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td>Memory leak / soak testing</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Stress testing (rapid-fire, large datasets)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Startup testing (first-run, warm-start, migration)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Installation testing (install.ps1, uninstall.ps1)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Update cycle testing (full flow)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td>Cross-platform parity checker</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Coverage measurement</td>
+<td>Missing (no coverage.py)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td>Security testing (fuzzing, injection)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td>Visual regression testing (island snapshots)</td>
+<td>Missing</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+</table>
+
+<h3 id="modules-with-zero-or-minimal-test-coverage">Modules with Zero or Minimal Test Coverage</h3>
+
+<table>
+<tr>
+<th>Module</th>
+<th>Size</th>
+<th>Coverage Level</th>
+<th>Priority</th>
+</tr>
+<tr>
+<td><code>overlay.py</code></td>
+<td>2,275 lines</td>
+<td><strong>None</strong></td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><code>island_render.py</code></td>
+<td>1,097 lines</td>
+<td>Minimal (geometry only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span></td>
+</tr>
+<tr>
+<td><code>prompt_memory.py</code></td>
+<td>170 lines</td>
+<td><strong>None</strong></td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><code>mumble.py</code></td>
+<td>5,000+ lines</td>
+<td>Minimal (isolated functions only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><code>webui_shell.py</code></td>
+<td>2,400+ lines</td>
+<td>Minimal (smoke test only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><code>history.py</code></td>
+<td>14 KB</td>
+<td>Minimal (indirect via e2e)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><code>clipboard.py</code></td>
+<td>20 KB</td>
+<td>Minimal (indirect via e2e)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><code>branding.py</code></td>
+<td>13 KB</td>
+<td><strong>None</strong></td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td><code>autostart.py</code></td>
+<td>8 KB</td>
+<td>Partial (ports only)</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+</table>
+
+<hr>
+
+<h2 id="12-ux-findings">12. UX Findings</h2>
+
+<h3 id="top-ux-issues">Top UX Issues</h3>
+
+<ol>
+<li><strong>No high-contrast/forced-colors support (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>):</strong> Application is unusable for users who rely on Windows High Contrast Mode. Both the web UI (CSS without <code>forced-colors</code> media queries) and the native island (hardcoded dark colours) break down completely.</li>
+</ol>
+
+<ol>
+<li><strong>No express path in onboarding (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>):</strong> Power users must click through 10 steps. A "Skip setup — use defaults" button would reduce abandonment.</li>
+</ol>
+
+<ol>
+<li><strong>Incomplete accessibility (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>):</strong> ARIA attributes are patchy — missing <code>aria-current</code> on navigation, <code>aria-live</code> on toasts, <code>role="dialog"</code> on modals, and label associations on form inputs. No screen reader testing has been performed.</li>
+</ol>
+
+<ol>
+<li><strong>Keyboard navigation gaps (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>):</strong> No <code>?</code> shortcut reference overlay, no keyboard advance in onboarding, no arrow-key navigation between settings groups.</li>
+</ol>
+
+<ol>
+<li><strong>Visual consistency drift (<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span>):</strong> Gold accent colour differs between native overlay (<code>#D4AF37</code>) and web UI (<code>#EBC35C</code>). Surface and text colours also have minor inconsistencies.</li>
+</ol>
+
+<h3 id="ux-strengths">UX Strengths</h3>
+<ul>
+<li>Click-through island design — never steals focus from user's work</li>
+<li>Usage-aware tips system with progressive disclosure</li>
+<li>Context-aware empty states with actionable guidance</li>
+<li>Animation tiering system respecting performance and accessibility</li>
+<li>Well-designed confirmation dialogs with danger styling</li>
+<li>Thoughtful defaults — good experience without touching settings</li>
+</ul>
+
+<hr>
+
+<h2 id="13-recommended-new-features">13. Recommended New Features</h2>
+
+<p>Based on Mumble's architecture, user experience gaps, and natural fit, the following features are recommended. All are classified by impact vs effort.</p>
+
+<h3 id="high-impact-low-effort">High Impact, Low Effort</h3>
+
+<table>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Effort</th>
+</tr>
+<tr>
+<td><strong>FS-001: Quick Phrases / Templates</strong></td>
+<td>Named text templates inserted by voice or picker. Reuses existing vocabulary/preset infrastructure</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td><strong>FS-002: Dictation Playground</strong></td>
+<td>Safe space to test dictation modes without pasting into real documents. Side-by-side raw vs AI-shaped output</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td><strong>FS-003: Improved Accessibility</strong></td>
+<td>Complete the forced-colors, ARIA, and keyboard navigation work identified in the UX audit</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span>-<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+</table>
+
+<h3 id="high-impact-medium-effort">High Impact, Medium Effort</h3>
+
+<table>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Effort</th>
+</tr>
+<tr>
+<td><strong>FS-004: App Integrations</strong></td>
+<td>Direct "Send to Notion/Obsidian/Slack" buttons alongside Copy/Paste</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><strong>FS-005: Auto-Save Drafts</strong></td>
+<td>Save interrupted dictations as recoverable drafts. Extends existing crash-recovery patterns</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><strong>FS-006: Undo / Soft-Delete</strong></td>
+<td>30-day trash bin for deleted Deck items with undo toast. Addresses data-loss risk from UX-F022</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+</table>
+
+<h3 id="medium-impact-low-effort">Medium Impact, Low Effort</h3>
+
+<table>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Effort</th>
+</tr>
+<tr>
+<td><strong>FS-007: Voice Commands for Mode Switching</strong></td>
+<td>"Switch to prompt mode" spoken commands. Extension of existing mode detection pipeline</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td><strong>FS-008: Dictation Streaks &amp; Milestones</strong></td>
+<td>Daily word-count goals with celebration milestones. Thin UI on existing stats infrastructure</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+<tr>
+<td><strong>FS-009: Audio Replay of Past Dictations</strong></td>
+<td>Optional save-and-replay of recent dictation audio from the Deck</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#F3F4F6;color:#9CA3AF;border:1px solid #9CA3AF;">Low</span></td>
+</tr>
+</table>
+
+<h3 id="medium-impact-medium-effort">Medium Impact, Medium Effort</h3>
+
+<table>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+<th>Effort</th>
+</tr>
+<tr>
+<td><strong>FS-010: Custom Themes</strong></td>
+<td>Allow accent colour customization beyond gold. Parameterizes existing CSS variable + branding.py constant</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+<tr>
+<td><strong>FS-011: Meeting Mode Enhancements</strong></td>
+<td>Speaker label editing, formatted export (Markdown/PDF), meeting search</td>
+<td><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FFF8E1;color:#D4AF37;border:1px solid #D4AF37;">Medium</span></td>
+</tr>
+</table>
+
+<h3 id="features-not-recommended-feature-creep">Features NOT Recommended (Feature Creep)</h3>
+
+<ul>
+<li>Mobile companion app (new platform, conflicts with desktop-first)</li>
+<li>Real-time collaboration (conflicts with privacy-first philosophy)</li>
+<li>Plugin/extension system (massive investment for uncertain adoption)</li>
+<li>Video/avatar dictation assistant (conflicts with "never steal focus" principle)</li>
+<li>Built-in web browser (duplicates pywebview functionality)</li>
+<li>Voice profiles / multi-user (desktop is typically single-user)</li>
+<li>Automatic meeting summarization separate from AI polish (requires always-on AI)</li>
+</ul>
+
+<hr>
+
+<h2 id="14-code-quality-review">14. Code Quality Review</h2>
+
+<h3 id="architecture-assessment">Architecture Assessment</h3>
+
+<p>The codebase demonstrates strong engineering fundamentals (atomic persistence, graceful degradation, clean subprocess usage, consistent naming) but carries significant structural debt.</p>
+
+<p><strong>The Good:</strong></p>
+<ul>
+<li><code>ai/providers/</code> package: Clean provider abstraction with consistent <code>BaseProvider</code> pattern</li>
+<li><code>model_free.py</code>: Exemplary documentation (WHY + ALLOWED + PROHIBITED)</li>
+<li><code>formatting.py</code>, <code>bindings.py</code>, <code>mode_select.py</code>: Well-isolated pure-logic modules</li>
+<li>Zero TODO/FIXME/HACK markers, no commented-out code</li>
+<li>Consistent PEP 8 naming conventions throughout</li>
+</ul>
+
+<p><strong>The Bad:</strong></p>
+<ul>
+<li><code>Mumble</code> controller class (5K lines, 197 methods, 54.8% docstring coverage) — see CQ-001</li>
+<li>Platform port file copying (~25 files per port, orphaned <code>ai.py</code>) — see CQ-007</li>
+<li><code>ai/__init__.py</code> (2,382 lines) — hybrid of re-exports and original logic — see CQ-003</li>
+<li><code>synthesize_with_fallback</code> duplicated in two files — see CQ-005</li>
+<li>Filler removal logic diverged between <code>formatting.py</code> and <code>model_free.py</code> — see CQ-006</li>
+</ul>
+
+<h3 id="documentation-quality">Documentation Quality</h3>
+
+<table>
+<tr>
+<th>Module</th>
+<th>Docstring Coverage</th>
+<th>Assessment</th>
+</tr>
+<tr>
+<td><code>ai/base.py</code></td>
+<td>100.0%</td>
+<td>Gold standard</td>
+</tr>
+<tr>
+<td><code>ai/transport.py</code></td>
+<td>100.0%</td>
+<td>Gold standard</td>
+</tr>
+<tr>
+<td><code>ai/providers/cerebras.py</code></td>
+<td>83.3%</td>
+<td>Good</td>
+</tr>
+<tr>
+<td><code>ai/__init__.py</code></td>
+<td>82.0%</td>
+<td>Good but oversized</td>
+</tr>
+<tr>
+<td><code>local_engine.py</code></td>
+<td>73.9%</td>
+<td>Adequate</td>
+</tr>
+<tr>
+<td><code>formatting.py</code></td>
+<td>65.9%</td>
+<td>Adequate</td>
+</tr>
+<tr>
+<td><code>mumble.py</code></td>
+<td>54.8%</td>
+<td><strong>Needs work — 89 methods undocumented</strong></td>
+</tr>
+<tr>
+<td><code>webui_shell.py</code></td>
+<td>53.5%</td>
+<td><strong>Needs work — 66 methods undocumented</strong></td>
+</tr>
+<tr>
+<td><code>overlay.py</code></td>
+<td>37.3%</td>
+<td><strong>Needs work — 64 methods undocumented</strong></td>
+</tr>
+<tr>
+<td><code>ai/tts_providers.py</code></td>
+<td>18.2%</td>
+<td><strong>Critical — 4 of 22 functions documented</strong></td>
+</tr>
+</table>
+
+<h3 id="deaddeprecated-code-inventory">Dead/Deprecated Code Inventory</h3>
+
+<table>
+<tr>
+<th>Code</th>
+<th>Location</th>
+<th>Status</th>
+<th>Recommendation</th>
+</tr>
+<tr>
+<td>Mode-key subsystem (10+ fields/methods)</td>
+<td><code>mumble.py</code> lines 163-172, 830-990</td>
+<td>Retired but still wired</td>
+<td>Phase out over two releases</td>
+</tr>
+<tr>
+<td>CompTracker experimental</td>
+<td><code>mumble.py</code> lines 148-152 + 3 port copies</td>
+<td>Orphaned (module absent)</td>
+<td>Remove import blocks</td>
+</tr>
+<tr>
+<td>Orphaned <code>ai.py</code></td>
+<td>macOS/Linux port directories</td>
+<td>Pre-refactoring monolithic AI module</td>
+<td>Delete and import from shared <code>ai/</code></td>
+</tr>
+<tr>
+<td>FAQ CSS styles (dead)</td>
+<td><code>website/src/styles/global.css</code></td>
+<td>No FAQ component exists</td>
+<td>Build FAQ component or remove</td>
+</tr>
+<tr>
+<td>Ghost step 99 in onboarding</td>
+<td><code>webui/index.html:3401</code></td>
+<td>Dead HTML</td>
+<td>Remove or consolidate</td>
+</tr>
+</table>
+
+<h3 id="proposed-refactoring-priorities">Proposed Refactoring Priorities</h3>
+
+<ol>
+<li><strong>Immediate (v0.9.1):</strong> Delete port copies of <code>ai.py</code> — make ports import from shared <code>ai/</code> package</li>
+<li><strong>Immediate (v0.9.1):</strong> Consolidate <code>synthesize_with_fallback</code> to <code>ai/tts_providers.py</code></li>
+<li><strong>Immediate (v0.9.1):</strong> Remove CompTracker dead code from all 4 controller files</li>
+<li><strong>Short-term (v0.9.x):</strong> Move identical-copy files to shared <code>common/</code> directory for port imports</li>
+<li><strong>Short-term (v0.9.x):</strong> Begin Mumble class decomposition — extract <code>HotkeyManager</code> and <code>PasteManager</code> first</li>
+<li><strong>Medium-term (v1.0):</strong> Create abstract platform interfaces for divergent modules</li>
+<li><strong>Medium-term (v1.0):</strong> Complete <code>ai/__init__.py</code> extraction — move remaining functions to proper modules</li>
+<li><strong>Medium-term (v1.0):</strong> Unify filler removal logic with parameterized function</li>
+<li><strong>Ongoing:</strong> Raise docstring coverage to 80% minimum on all modules with &gt;10 functions</li>
+</ol>
+
+<hr>
+
+<h2 id="15-prioritized-release-roadmap">15. Prioritized Release Roadmap</h2>
+
+<h3 id="tier-1-critical-must-complete-before-v10">Tier 1: <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEE2E2;color:#DC2626;border:1px solid #DC2626;">Critical</span> (Must Complete Before v1.0)</h3>
+
+<p>These items are genuinely blocking — releasing without them would be irresponsible or unsustainable.</p>
+
+<table>
+<tr>
+<th>ID</th>
+<th>Item</th>
+<th>Area</th>
+<th>Effort Estimate</th>
+</tr>
+<tr>
+<td><strong>R1</strong></td>
+<td><strong>Set up CI/CD pipeline with GitHub Actions</strong> — Implement 3 workflows: (a) CI-Test on push/PR (Windows/macOS/Ubuntu matrix, pytest), (b) CI-Build &amp; Release on tag push (platform packages + GitHub Release), (c) CD-Website on push to main. Enable Dependabot for Python and npm deps.</td>
+<td>Infra (F6-CI-001, F6-CI-002)</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R2</strong></td>
+<td><strong>Obtain Windows EV code signing certificate</strong> and integrate <code>signtool</code> signing into build pipeline. Sign <code>Mumble.exe</code> after <code>brand_exe.py</code> patches resources but before zipping. Submit signed binary to Microsoft Security Intelligence.</td>
+<td>Platforms (F4-WIN-001, F4-WIN-002)</td>
+<td>1-2 weeks (cert procurement) + 1 day (integration)</td>
+</tr>
+<tr>
+<td><strong>R3</strong></td>
+<td><strong>Enroll in Apple Developer Program and implement macOS signing + notarization</strong> — Create <code>entitlements.plist</code> (audio-input, apple-events, unsigned-memory, dyld-environment). Enable Hardened Runtime. Sign with Developer ID certificate. Submit to notary service. Staple ticket.</td>
+<td>Platforms (F4-MAC-001, F4-MAC-002, F4-MAC-003, F4-MAC-004)</td>
+<td>2-4 weeks (enrollment + setup) + 2-3 days (pipeline)</td>
+</tr>
+<tr>
+<td><strong>R4</strong></td>
+<td><strong>Fix <code>_tk_queue</code> silent exception swallowing</strong> — Replace <code>pass</code> with rate-limited logging. Add sentinel tracking consecutive failures. Write a test verifying exceptions are logged but the pump continues.</td>
+<td>Stability (B-1-1)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R5</strong></td>
+<td><strong>Configure git remote, create tags, and set up GitHub Releases</strong> — Create GitHub repository, add origin remote, push main branch, tag <code>v0.9.0</code>, create first GitHub Release with existing <code>Mumble.zip</code>. Update all placeholder GitHub URLs in website and code.</td>
+<td>Infra (F6-VER-001, F6-GH-001, F6-GH-002)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R6</strong></td>
+<td><strong>Delete orphaned <code>ai.py</code> from macOS/Linux ports</strong> — Make ports import from the shared <code>ai/</code> package. Verify all AI functionality works on ports (provider refactoring, Constitution v5, TTS catalogue iteration). Resolve the 5 API-divergent tests (FIND-TEST-026) — these represent real feature gaps.</td>
+<td>Code Quality (CQ-007), Testing (FIND-TEST-026)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R7</strong></td>
+<td><strong>Create centralized test runner</strong> — Write <code>run_all_tests.py</code> at <code>Internal/app/</code> that discovers and runs all 55 test files, categorizes them (unit/integration/live), supports filtering, and reports results. Wire into CI/CD workflow R1.</td>
+<td>Testing (FIND-TEST-014)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R8</strong></td>
+<td><strong>Activate ed25519 update manifest signing</strong> — Generate keypair, set <code>UPDATE_PUBLIC_KEY</code> in <code>update.py</code>, sign all manifests, test fail-closed behavior. Backport signature verification to macOS/Linux <code>update.py</code>.</td>
+<td>Security (SEC-SPOOF-002), Platforms (F4-WIN-006)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R9</strong></td>
+<td><strong>Fix GDI handle leak in <code>_LayeredDC.__del__</code></strong> — Replace unreliable CPython finalizer with explicit <code>destroy()</code> calls in the tick loop. Add GDI handle count assertion in debug mode.</td>
+<td>Stability (A-4-1)</td>
+<td>2-4 hours</td>
+</tr>
+</table>
+
+<h3 id="tier-2-high-priority-strongly-recommended-for-v10">Tier 2: High Priority (Strongly Recommended for v1.0)</h3>
+
+<p>These items significantly impact quality, trust, or user experience. Deferring them would result in a noticeably less polished v1.0.</p>
+
+<table>
+<tr>
+<th>ID</th>
+<th>Item</th>
+<th>Area</th>
+<th>Effort Estimate</th>
+</tr>
+<tr>
+<td><strong>R10</strong></td>
+<td><strong>Encrypt API keys at rest</strong> — Implement platform-native encryption using DPAPI (Windows), Keychain (macOS), Secret Service (Linux) via the <code>keyring</code> library. Fall back to plaintext with warning if keystore unavailable.</td>
+<td>Security (SEC-INFO-001, A-13-1)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R11</strong></td>
+<td><strong>Port full update system to macOS and Linux</strong> — Add ed25519 signature verification, <code>.venv</code> carry-over logic in swap scripts, wire <code>start_auto_check()</code> into <code>mumble_mac.py</code> and <code>mumble_linux.py</code> boot sequences. Test full update cycle on each platform.</td>
+<td>Platforms (F4-MAC-006, F4-LIN-006, F6-UPD-001)</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R12</strong></td>
+<td><strong>Host update manifest</strong> — Either create <code>mumble-app.github.io/mumble-updates</code> repo and host <code>update.json</code>, or switch to GitHub Releases API. Automate manifest generation in CI/CD.</td>
+<td>Infra (F6-UPD-002)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R13</strong></td>
+<td><strong>Build Linux AppImage</strong> — Use <code>appimage-builder</code> or <code>linuxdeploy</code> to package Mumble. Bundle Python, all deps, and Whisper model. Set up AppImageUpdate for delta updates.</td>
+<td>Platforms (F4-LIN-001, F6-PKG-004)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R14</strong></td>
+<td><strong>Build Linux Flatpak manifest</strong> — Create Flatpak manifest for Flathub submission. Use <code>org.gnome.Platform</code> runtime, PipeWire for audio, declare D-Bus access for accessibility.</td>
+<td>Platforms (F4-LIN-001)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R15</strong></td>
+<td><strong>Add missing website pages</strong> — Create at minimum: <code>/privacy</code> (formal privacy policy), <code>/terms</code> (ToS), <code>/changelog</code> (Keep a Changelog format from CHANGELOG.md). Build FAQ component using existing CSS.</td>
+<td>Website (F5-WEB-001, F5-WEB-002)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R16</strong></td>
+<td><strong>Automate package generation for all platforms</strong> — Create <code>scripts/build_release.py</code> that produces: <code>Mumble-v{version}-windows.zip</code>, <code>Mumble-v{version}-macos.zip</code> (signed .app in DMG), <code>Mumble-v{version}-linux-x86_64.AppImage</code>. Integrate into CI/CD (R1).</td>
+<td>Infra (F6-PKG-001, F6-PKG-002, F6-PKG-003)</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R17</strong></td>
+<td><strong>Add <code>os._exit</code> cleanup</strong> — Add explicit <code>sys.stdout.flush()</code> and <code>settings.save()</code> before <code>os._exit</code>. Consider using signal-based cleanup instead. Test that no data loss occurs on quit.</td>
+<td>Stability (B-1-2)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R18</strong></td>
+<td><strong>Write tests for overlay.py</strong> — Cover: state machine transitions, window placement/monitor detection, mode bar expansion/collapse, click-through enforcement, hint display lifecycle. Use headless approach for state logic.</td>
+<td>Testing (FIND-TEST-008)</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R19</strong></td>
+<td><strong>Write tests for island_render.py</strong> — Cover: render output dimensions, all state snapshots, pixel sampling at known positions (gold, transparent), cache invalidation on state transition. Consider snapshot testing with reference PNGs.</td>
+<td>Testing (FIND-TEST-009)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R20</strong></td>
+<td><strong>Resolve 5 API-divergent tests in macOS/Linux ports</strong> — Add missing <code>'ui'</code> field to port <code>context_store.py</code>, implement <code>save_doc_parsed()</code> in port <code>reader_store.py</code>, add missing meeting fields to port <code>meeting_store.py</code>, expose meeting start in port controllers, add <code>MODELS_DIR</code>/<code>llama_cli_path</code> to port <code>branding.py</code>. Re-enable excluded tests.</td>
+<td>Testing (FIND-TEST-026), Code Quality (CQ-007)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R21</strong></td>
+<td><strong>Consolidate <code>synthesize_with_fallback</code></strong> — Move full catalogue-iteration logic from <code>ai/__init__.py</code> to <code>ai/tts_providers.py</code> as single source of truth. Make <code>ai/__init__.py</code> re-export only. Delete standalone <code>ai/__init__.py</code> implementation.</td>
+<td>Code Quality (CQ-005)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R22</strong></td>
+<td><strong>Begin Mumble class decomposition</strong> — Extract <code>HotkeyManager</code> (extends existing <code>bindings.py</code>) and <code>PasteManager</code> (clipboard + Ctrl+V injection) as focused manager objects. Follow <code>ai/providers/</code> pattern for clean interfaces.</td>
+<td>Code Quality (CQ-001)</td>
+<td>3-5 days per manager</td>
+</tr>
+<tr>
+<td><strong>R23</strong></td>
+<td><strong>Add forced-colors/high-contrast mode support</strong> — Add <code>@media (forced-colors: active)</code> queries to web UI CSS. Replace <code>backdrop-filter</code> and <code>box-shadow</code> with solid borders. Fall back to system colours (<code>Canvas</code>, <code>CanvasText</code>, <code>Highlight</code>). Test with Windows High Contrast #1 and #2.</td>
+<td>UX (UX-F006)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R24</strong></td>
+<td><strong>Fix <code>ai/__init__.py</code> bloat</strong> — Move <code>synthesize_with_fallback</code>, <code>get_tts_voices</code>, <code>get_tts_defaults</code> to <code>ai/tts_providers.py</code>. Move <code>_collect_text</code>, <code>_clean</code>, <code>_extract_final_prompt</code> to <code>ai/constitution.py</code>. Move health functions to <code>ai/health.py</code>. Move system prompt constants to <code>ai/prompts.py</code>. Make <code>__init__.py</code> a strict re-export facade.</td>
+<td>Code Quality (CQ-003)</td>
+<td>1-2 days</td>
+</tr>
+</table>
+
+<h3 id="tier-3-medium-priority-recommended-but-can-defer-to-v10x">Tier 3: Medium Priority (Recommended but Can Defer to v1.0.x)</h3>
+
+<p>These items improve quality, polish, or user experience. They are not blocking for v1.0 release.</p>
+
+<table>
+<tr>
+<th>ID</th>
+<th>Item</th>
+<th>Area</th>
+<th>Effort Estimate</th>
+</tr>
+<tr>
+<td><strong>R25</strong></td>
+<td>Add corrupted <code>history.json</code> recovery (mirror <code>settings.py</code> pattern)</td>
+<td>Stability (B-3-1)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R26</strong></td>
+<td>Add recording stream watchdog timer (15s timeout)</td>
+<td>Stability (B-2-1)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R27</strong></td>
+<td>Add update rollback health check in <code>apply_update.bat</code></td>
+<td>Stability (B-7-1)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R28</strong></td>
+<td>Create CHANGELOG.md (Keep a Changelog format)</td>
+<td>Infra (F5-WEB-002)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R29</strong></td>
+<td>Add centralized test runner for macOS/Linux ports</td>
+<td>Testing (FIND-TEST-017)</td>
+<td>1 day</td>
+</tr>
+<tr>
+<td><strong>R30</strong></td>
+<td>Write tests for <code>prompt_memory.py</code> (corruption recovery, concurrency)</td>
+<td>Testing (FIND-TEST-010)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R31</strong></td>
+<td>Add installation tests (<code>install.ps1</code>, <code>uninstall.ps1</code>)</td>
+<td>Testing (FIND-TEST-022)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R32</strong></td>
+<td>Add update cycle integration tests (mock download, test swap scripts)</td>
+<td>Testing (FIND-TEST-021)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R33</strong></td>
+<td>Unify filler removal logic (parameterized function in <code>formatting.py</code>)</td>
+<td>Code Quality (CQ-006)</td>
+<td>1 hour</td>
+</tr>
+<tr>
+<td><strong>R34</strong></td>
+<td>Create declarative Smart Mode registry to reduce friction for new modes</td>
+<td>Code Quality (CQ-016)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R35</strong></td>
+<td>Complete ARIA audit and fix missing attributes (see UX-F007 list)</td>
+<td>UX (UX-F007)</td>
+<td>2-3 days</td>
+</tr>
+<tr>
+<td><strong>R36</strong></td>
+<td>Add keyboard shortcut reference overlay (<code>?</code> key)</td>
+<td>UX (UX-F030)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R37</strong></td>
+<td>Add express/skip path to onboarding wizard</td>
+<td>UX (UX-F002)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R38</strong></td>
+<td>Add undo/soft-delete for Deck items (30-day trash)</td>
+<td>UX (UX-F022)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R39</strong></td>
+<td>Align gold accent colour across native and web surfaces</td>
+<td>UX (UX-F011)</td>
+<td>1 hour</td>
+</tr>
+<tr>
+<td><strong>R40</strong></td>
+<td>Add clipboard content filtering (exclude high-entropy passwords)</td>
+<td>Security (PRIV-STORE-002)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R41</strong></td>
+<td>Add log rotation and structured logging (<code>logging</code> module)</td>
+<td>Security (SEC-INFO-005)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R42</strong></td>
+<td>Add opt-in crash reporting (offline dump + manual submission)</td>
+<td>Infra (F6-UPD-003)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R43</strong></td>
+<td>Create <code>RELEASE.md</code> runbook with step-by-step checklist</td>
+<td>Infra (F6-REL-001)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R44</strong></td>
+<td>Add dependency vulnerability scanning (pip-audit, npm audit, Dependabot)</td>
+<td>Infra (F6-REL-002)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R45</strong></td>
+<td>Add memory soak test (100 dictation cycles, assert growth &lt;50MB)</td>
+<td>Testing (FIND-TEST-018)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R46</strong></td>
+<td>Add stress tests (rapid dictation cycling, large datasets)</td>
+<td>Testing (FIND-TEST-019)</td>
+<td>1 day</td>
+</tr>
+<tr>
+<td><strong>R47</strong></td>
+<td>Add startup tests (first-run, warm-start, migration, missing deps)</td>
+<td>Testing (FIND-TEST-020)</td>
+<td>1 day</td>
+</tr>
+<tr>
+<td><strong>R48</strong></td>
+<td>Add cross-platform test parity checker CI job</td>
+<td>Testing (FIND-TEST-023)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R49</strong></td>
+<td>Implement shared-library import strategy for identical port files</td>
+<td>Code Quality (CQ-007)</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R50</strong></td>
+<td>Extract <code>BaseOverlay</code> abstract class for platform overlays</td>
+<td>Code Quality (CQ-015)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R51</strong></td>
+<td>Add Reader and Meeting Mode tabs to Mumble Lite</td>
+<td>Features (A-15-1)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R52</strong></td>
+<td>Add Convert mode island chip with proper routing</td>
+<td>Features (A-2-1)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R53</strong></td>
+<td>Implement macOS DMG generation in <code>build_mac_release.sh</code></td>
+<td>Platforms (F4-MAC-005)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R54</strong></td>
+<td>Add programmatic macOS permission requests (mic + accessibility)</td>
+<td>Platforms (F4-MAC-007)</td>
+<td>1 day</td>
+</tr>
+<tr>
+<td><strong>R55</strong></td>
+<td>Resolve Deck hotkey label vs binding inconsistency (ctrl+alt+d vs ctrl+alt+h)</td>
+<td>UX (UX-F015)</td>
+<td>30 minutes</td>
+</tr>
+<tr>
+<td><strong>R56</strong></td>
+<td>Add interactive dictation demo/animation on Home page</td>
+<td>UX (UX-F027)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R57</strong></td>
+<td>Write tests for <code>webui_shell.py</code> write operations (deck_job, delete, capture)</td>
+<td>Testing (FIND-TEST-012)</td>
+<td>2-3 days</td>
+</tr>
+<tr>
+<td><strong>R58</strong></td>
+<td>Replace retired mode-key subsystem inert fields over two releases</td>
+<td>Code Quality (CQ-002)</td>
+<td>2-4 hours (v0.9.1) + 2-4 hours (v1.0)</td>
+</tr>
+<tr>
+<td><strong>R59</strong></td>
+<td>Implement auto-save drafts for interrupted dictations</td>
+<td>Features (FS-005)</td>
+<td>2-3 days</td>
+</tr>
+</table>
+
+<h3 id="tier-4-nice-to-have-post-v10">Tier 4: Nice to Have (Post-v1.0)</h3>
+
+<p>These items are valuable but not time-sensitive. They can ship in v1.0.x or v1.1.</p>
+
+<table>
+<tr>
+<th>ID</th>
+<th>Item</th>
+<th>Area</th>
+<th>Effort Estimate</th>
+</tr>
+<tr>
+<td><strong>R60</strong></td>
+<td>Quick Phrases / Templates (FS-001)</td>
+<td>Features</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R61</strong></td>
+<td>Dictation Playground (FS-002)</td>
+<td>Features</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R62</strong></td>
+<td>App Integrations (Notion, Obsidian, Slack) (FS-004)</td>
+<td>Features</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R63</strong></td>
+<td>Dictation Streak Goals &amp; Milestones (FS-008)</td>
+<td>Features</td>
+<td>1 day</td>
+</tr>
+<tr>
+<td><strong>R64</strong></td>
+<td>Audio Replay of Past Dictations (FS-009)</td>
+<td>Features</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R65</strong></td>
+<td>Custom Themes / Colour Schemes (FS-010)</td>
+<td>Features</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R66</strong></td>
+<td>Meeting Mode Enhancements (FS-011)</td>
+<td>Features</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R67</strong></td>
+<td>Voice Commands for Mode Switching (FS-007)</td>
+<td>Features</td>
+<td>1 day</td>
+</tr>
+<tr>
+<td><strong>R68</strong></td>
+<td>Design token single-source-of-truth (JSON → branding.py + app.css)</td>
+<td>UX (UX-F012, UX-F014)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R69</strong></td>
+<td>Remove ghost step 99 from onboarding HTML</td>
+<td>UX (UX-F001)</td>
+<td>15 minutes</td>
+</tr>
+<tr>
+<td><strong>R70</strong></td>
+<td>Mirror tips in web UI (supplement island-only tips)</td>
+<td>UX (UX-F005)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R71</strong></td>
+<td>Add Settings page internal navigation (sticky sidebar or search)</td>
+<td>UX (UX-F023)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R72</strong></td>
+<td>Add real screenshots to website (replace abstract visuals)</td>
+<td>Website (F5-WEB-005)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R73</strong></td>
+<td>Hardcoded version → dynamic version injection for website</td>
+<td>Website (F5-WEB-003, F5-WEB-007)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R74</strong></td>
+<td>Visual regression testing with island PNG snapshot comparison</td>
+<td>Testing (FIND-TEST-025)</td>
+<td>1 day</td>
+</tr>
+<tr>
+<td><strong>R75</strong></td>
+<td>Expand reduced-motion coverage to all animations</td>
+<td>UX (UX-F009)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R76</strong></td>
+<td>Raise docstring coverage to 80% minimum on all modules &gt;10 functions</td>
+<td>Code Quality (CQ-011)</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R77</strong></td>
+<td>Replace inline <code>Settings()</code> construction with dependency injection</td>
+<td>Code Quality (CQ-019)</td>
+<td>1-2 days</td>
+</tr>
+<tr>
+<td><strong>R78</strong></td>
+<td>InnoSetup/NSIS wrapper for Windows one-click installer</td>
+<td>Platforms (F4-WIN-003)</td>
+<td>2-4 days</td>
+</tr>
+<tr>
+<td><strong>R79</strong></td>
+<td>Native Wayland overlay using <code>layer-shell</code> protocol</td>
+<td>Platforms (F4-LIN-007)</td>
+<td>3-5 days</td>
+</tr>
+<tr>
+<td><strong>R80</strong></td>
+<td>Add <code>about:blank</code> dictation test to onboarding step 9</td>
+<td>UX (UX-F004)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R81</strong></td>
+<td>Consolidated platform version from single <code>version.py</code></td>
+<td>Infra (F6-VER-002)</td>
+<td>1-2 hours</td>
+</tr>
+<tr>
+<td><strong>R82</strong></td>
+<td>Export Stats as shareable image (FS-014)</td>
+<td>Features</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R83</strong></td>
+<td>Status snackbar for background operations (model download, sync)</td>
+<td>Features (FS-013)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R84</strong></td>
+<td>Improve onboarding API key step messaging (less intimidating)</td>
+<td>UX (UX-F026)</td>
+<td>1 hour</td>
+</tr>
+<tr>
+<td><strong>R85</strong></td>
+<td>Add <code>?</code> keyboard shortcut reference overlay</td>
+<td>UX (UX-F030)</td>
+<td>2-4 hours</td>
+</tr>
+<tr>
+<td><strong>R86</strong></td>
+<td>Fix "No transcripts yet" toast from error to info styling</td>
+<td>UX (UX-F017)</td>
+<td>15 minutes</td>
+</tr>
+<tr>
+<td><strong>R87</strong></td>
+<td>Add recovery guidance to capture error messages</td>
+<td>UX (UX-F018)</td>
+<td>30 minutes</td>
+</tr>
+<tr>
+<td><strong>R88</strong></td>
+<td>Add data export feature (GDPR/CCPA data portability)</td>
+<td>Privacy (PRIV-EXPORT-001)</td>
+<td>1-2 days</td>
+</tr>
+</table>
+
+<hr>
+
+<h2 id="16-exhaustive-release-checklist">16. Exhaustive Release Checklist</h2>
+
+<p>This checklist is suitable for tracking remaining work to v1.0. Every item is individually trackable and mapped to findings in this report.</p>
+
+<h3 id="pre-v10-infrastructure-setup">Pre-v1.0 Infrastructure Setup</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>INFRA-01:</strong> Create GitHub repository, add origin remote, push main branch <strong>(R5)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-02:</strong> Tag current HEAD as <code>v0.9.0</code> (annotated tag) <strong>(R5)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-03:</strong> Create first GitHub Release for v0.9.0 with existing <code>Mumble.zip</code> <strong>(R5)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-04:</strong> Set up CI-Test workflow (push/PR, Windows+macOS+Ubuntu matrix, pytest) <strong>(R1)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-05:</strong> Set up CI-Build &amp; Release workflow (tag push, platform packages, GitHub Release) <strong>(R1)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-06:</strong> Set up CD-Website deploy workflow (push to main, path filter) <strong>(R1)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-07:</strong> Enable Dependabot for Python (pip) and npm dependencies <strong>(R44)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-08:</strong> Configure branch protection rules for <code>main</code> branch</li>
+<li><input type="checkbox" disabled > <strong>INFRA-09:</strong> Adopt release branch strategy (<code>release/vX.Y</code> created from <code>main</code> when release imminent) <strong>(R43)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-10:</strong> Create <code>RELEASE.md</code> runbook with step-by-step release checklist <strong>(R43)</strong></li>
+<li><input type="checkbox" disabled > <strong>INFRA-11:</strong> Create <code>CHANGELOG.md</code> (Keep a Changelog format) and populate from git history <strong>(R28)</strong></li>
+</ul>
+
+<h3 id="security-hardening">Security Hardening</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>SEC-01:</strong> Implement API key encryption at rest (DPAPI/Keychain/Secret Service via <code>keyring</code>) <strong>(R10)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-02:</strong> Generate ed25519 keypair for update manifest signing <strong>(R8)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-03:</strong> Set <code>UPDATE_PUBLIC_KEY</code> in all three <code>update.py</code> files <strong>(R8)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-04:</strong> Sign all update manifests with private key; test fail-closed behavior <strong>(R8)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-05:</strong> Add audit logging for security-relevant events (API key changes, auth failures, updates) <strong>(R41)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-06:</strong> Add log rotation (keep last 5 files of 1MB each) <strong>(R41)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-07:</strong> Add clipboard content filtering for high-entropy strings (passwords) <strong>(R40)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-08:</strong> Add PIP-audit to CI workflow; run on every push <strong>(R44)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-09:</strong> Add npm audit to CI website workflow; fail on high severity <strong>(R44)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-10:</strong> Document PyMuPDF AGPL-3.0 compliance obligations in LICENSE/README</li>
+<li><input type="checkbox" disabled > <strong>SEC-11:</strong> Document <code>cmd_token</code> permissions in privacy/security docs</li>
+<li><input type="checkbox" disabled > <strong>SEC-12:</strong> Verify all <code>print()</code> calls do not log API key prefixes or partial transcripts <strong>(R41)</strong></li>
+<li><input type="checkbox" disabled > <strong>SEC-13:</strong> Extend API key masking (bullets + last 4) to <code>supabase_anon_key</code> field</li>
+</ul>
+
+<h3 id="platform-signing--distribution">Platform Signing &amp; Distribution</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>PLAT-01:</strong> Obtain Windows EV code signing certificate <strong>(R2)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-02:</strong> Integrate <code>signtool</code> signing into build pipeline (after <code>brand_exe.py</code>, before zip) <strong>(R2)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-03:</strong> Enroll in Apple Developer Program ($99/year) <strong>(R3)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-04:</strong> Obtain "Developer ID Application" certificate <strong>(R3)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-05:</strong> Create <code>entitlements.plist</code> (audio-input, apple-events, unsigned-memory, dyld-environment) <strong>(R3)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-06:</strong> Enable Hardened Runtime with entitlements during signing (<code>--options runtime</code>) <strong>(R3)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-07:</strong> Implement notarization pipeline (submit → poll → staple) in build script <strong>(R3)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-08:</strong> Test signed+notarized macOS build on clean install (verify no Gatekeeper warning)</li>
+<li><input type="checkbox" disabled > <strong>PLAT-09:</strong> Submit signed <code>Mumble.exe</code> to Microsoft Security Intelligence portal <strong>(R2)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-10:</strong> Submit <code>Mumble.exe</code> to VirusTotal and monitor for false positives</li>
+<li><input type="checkbox" disabled > <strong>PLAT-11:</strong> Port full update system to macOS: add ed25519 verification, <code>.venv</code> carry-over, wire into <code>mumble_mac.py</code> <strong>(R11)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-12:</strong> Port full update system to Linux: add ed25519 verification, <code>.venv</code> preservation, wire into <code>mumble_linux.py</code> <strong>(R11)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-13:</strong> Build Linux AppImage using <code>appimage-builder</code> (bundle Python + deps + model) <strong>(R13)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-14:</strong> Create Flatpak manifest for Flathub submission <strong>(R14)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-15:</strong> Host update manifest at <code>mumble-app.github.io/mumble-updates/update.json</code> OR switch to GitHub Releases API <strong>(R12)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-16:</strong> Test full update cycle on each platform (download → verify → swap → relaunch → rollback) <strong>(R11)</strong></li>
+<li><input type="checkbox" disabled > <strong>PLAT-17:</strong> Test uninstall flows on all three platforms</li>
+</ul>
+
+<h3 id="critical-bug-fixes">Critical Bug Fixes</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>BUG-01:</strong> Fix <code>_tk_queue</code> silent exception swallowing — replace <code>pass</code> with rate-limited logging <strong>(R4)</strong></li>
+<li><input type="checkbox" disabled > <strong>BUG-02:</strong> Fix GDI handle leak in <code>_LayeredDC.__del__</code> — replace finalizer with explicit <code>destroy()</code> calls <strong>(R9)</strong></li>
+<li><input type="checkbox" disabled > <strong>BUG-03:</strong> Add <code>sys.stdout.flush()</code> and <code>settings.save()</code> before <code>os._exit</code> in <code>_quit</code> <strong>(R17)</strong></li>
+<li><input type="checkbox" disabled > <strong>BUG-04:</strong> Add corrupted <code>history.json</code> recovery (mirror <code>settings.py</code> .bak → .corrupt → defaults) <strong>(R25)</strong></li>
+<li><input type="checkbox" disabled > <strong>BUG-05:</strong> Add recording stream watchdog timer (15s timeout cancels stream and resets state) <strong>(R26)</strong></li>
+<li><input type="checkbox" disabled > <strong>BUG-06:</strong> Add update rollback health check in <code>apply_update.bat</code> (new version starts → keep; crashes → restore backup) <strong>(R27)</strong></li>
+<li><input type="checkbox" disabled > <strong>BUG-07:</strong> Write test for "missing SHA256 → abort" edge case in update verification</li>
+</ul>
+
+<h3 id="code-architecture-cleanup">Code Architecture Cleanup</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>ARCH-01:</strong> Delete port copies of orphaned <code>ai.py</code> (macOS/Linux); make ports import from shared <code>ai/</code> package <strong>(R6)</strong></li>
+<li><input type="checkbox" disabled > <strong>ARCH-02:</strong> Consolidate <code>synthesize_with_fallback</code> to single source of truth in <code>ai/tts_providers.py</code> <strong>(R21)</strong></li>
+<li><input type="checkbox" disabled > <strong>ARCH-03:</strong> Move all remaining non-reexport functions out of <code>ai/__init__.py</code> (to tts_providers, constitution, health, prompts) <strong>(R24)</strong></li>
+<li><input type="checkbox" disabled > <strong>ARCH-04:</strong> Unify filler removal logic with parameterized function (<code>include_lexical=False</code> default) <strong>(R33)</strong></li>
+<li><input type="checkbox" disabled > <strong>ARCH-05:</strong> Remove CompTracker dead code (try/except import blocks) from all 4 controller files</li>
+<li><input type="checkbox" disabled > <strong>ARCH-06:</strong> Begin Mumble class decomposition — extract <code>HotkeyManager</code> <strong>(R22)</strong></li>
+<li><input type="checkbox" disabled > <strong>ARCH-07:</strong> Begin Mumble class decomposition — extract <code>PasteManager</code> <strong>(R22)</strong></li>
+<li><input type="checkbox" disabled > <strong>ARCH-08:</strong> Create <code>BaseOverlay</code> abstract class with required interface (state machine, animation timings) <strong>(R50)</strong></li>
+<li><input type="checkbox" disabled > <strong>ARCH-09:</strong> Delete <code>mode_select.py</code> from Windows main (confirm it's no longer used) or clarify port-only status</li>
+<li><input type="checkbox" disabled > <strong>ARCH-10:</strong> Remove ghost step 99 panel from onboarding HTML or consolidate into step 10 <strong>(R69)</strong></li>
+</ul>
+
+<h3 id="test-coverage">Test Coverage</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>TEST-01:</strong> Create centralized test runner (<code>run_all_tests.py</code>) for Windows suite <strong>(R7)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-02:</strong> Wire test runner into CI-Test workflow (R1)</li>
+<li><input type="checkbox" disabled > <strong>TEST-03:</strong> Add <code>coverage.py</code> integration; enforce minimum 70% line coverage in CI</li>
+<li><input type="checkbox" disabled > <strong>TEST-04:</strong> Write tests for <code>overlay.py</code> — state transitions, window placement, mode bar, click-through <strong>(R18)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-05:</strong> Write tests for <code>island_render.py</code> — output dimensions, pixel sampling, cache invalidation <strong>(R19)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-06:</strong> Write tests for <code>prompt_memory.py</code> — corruption recovery, concurrency, expiry <strong>(R30)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-07:</strong> Write tests for <code>webui_shell.py</code> write operations — deck_job, delete, capture <strong>(R57)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-08:</strong> Resolve 5 API-divergent tests in macOS/Linux ports; re-enable in port runners <strong>(R20)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-09:</strong> Write installation tests for <code>install.ps1</code> and <code>uninstall.ps1</code> in sandbox <strong>(R31)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-10:</strong> Write update cycle integration tests — mock download, test swap script generation <strong>(R32)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-11:</strong> Add memory soak test (100 dictation cycles, assert growth &lt;50MB) <strong>(R45)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-12:</strong> Add stress tests (rapid dictation cycling, 10K history entries) <strong>(R46)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-13:</strong> Add startup tests (first-run, warm-start, settings migration, missing deps) <strong>(R47)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-14:</strong> Add cross-platform test parity checker CI job <strong>(R48)</strong></li>
+<li><input type="checkbox" disabled > <strong>TEST-15:</strong> Add corrupted data recovery tests for history, clipboard, favorites, cloud_schema, GGUF models</li>
+<li><input type="checkbox" disabled > <strong>TEST-16:</strong> Port eval and perf tests to macOS/Linux (pure logic, should work cross-platform)</li>
+</ul>
+
+<h3 id="website">Website</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>WEB-01:</strong> Create <code>/privacy</code> page with formal privacy policy <strong>(R15)</strong></li>
+<li><input type="checkbox" disabled > <strong>WEB-02:</strong> Create <code>/terms</code> page with terms of service <strong>(R15)</strong></li>
+<li><input type="checkbox" disabled > <strong>WEB-03:</strong> Create <code>/changelog</code> page (render CHANGELOG.md) <strong>(R15)</strong></li>
+<li><input type="checkbox" disabled > <strong>WEB-04:</strong> Build FAQ component using existing CSS styles <strong>(R15)</strong></li>
+<li><input type="checkbox" disabled > <strong>WEB-05:</strong> Replace hardcoded version strings with dynamic injection from <code>branding.py</code> <strong>(R73)</strong></li>
+<li><input type="checkbox" disabled > <strong>WEB-06:</strong> Update macOS/Linux download card GitHub URLs to actual repo</li>
+<li><input type="checkbox" disabled > <strong>WEB-07:</strong> Verify all external links on website are valid</li>
+<li><input type="checkbox" disabled > <strong>WEB-08:</strong> Add real screenshots to feature sections (post-v1.0)</li>
+</ul>
+
+<h3 id="ux--accessibility">UX &amp; Accessibility</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>UX-01:</strong> Add <code>@media (forced-colors: active)</code> support to web UI CSS <strong>(R23)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-02:</strong> Test web UI with Windows High Contrast Mode #1 (black) and #2 (white) <strong>(R23)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-03:</strong> Add missing ARIA attributes: <code>aria-current</code> on nav, <code>aria-live</code> on toasts, <code>role="dialog"</code> on modals, label associations on form inputs <strong>(R35)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-04:</strong> Add skip-to-content link for keyboard users <strong>(R35)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-05:</strong> Add <code>?</code> keyboard shortcut reference overlay <strong>(R36)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-06:</strong> Add "Skip setup — use defaults" button in onboarding wizard <strong>(R37)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-07:</strong> Add Enter/Space keyboard advance in onboarding wizard</li>
+<li><input type="checkbox" disabled > <strong>UX-08:</strong> Resolve Deck hotkey inconsistency — standardize on <code>ctrl+alt+d</code> or <code>ctrl+alt+h</code> <strong>(R55)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-09:</strong> Align gold accent colour across native (<code>#D4AF37</code>) and web (<code>#EBC35C</code>) <strong>(R39)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-10:</strong> Fix "No transcripts yet" toast from error styling to info styling <strong>(R86)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-11:</strong> Add recovery hints to capture error messages <strong>(R87)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-12:</strong> Implement soft-delete/undo for Deck items (30-day trash) <strong>(R38)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-13:</strong> Reduce <code>prefers-reduced-motion</code> gaps — cover waveform, blobs, toasts, modals <strong>(R75)</strong></li>
+<li><input type="checkbox" disabled > <strong>UX-14:</strong> Screen reader test pass (NVDA or Narrator on Windows) — verify all features usable</li>
+<li><input type="checkbox" disabled > <strong>UX-15:</strong> Keyboard-only navigation test pass — verify all features usable without mouse</li>
+</ul>
+
+<h3 id="documentation">Documentation</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>DOC-01:</strong> Raise docstring coverage to 80% minimum on <code>ai/tts_providers.py</code> (currently 18.2%) <strong>(R76)</strong></li>
+<li><input type="checkbox" disabled > <strong>DOC-02:</strong> Raise docstring coverage to 80% minimum on <code>overlay.py</code> (currently 37.3%) <strong>(R76)</strong></li>
+<li><input type="checkbox" disabled > <strong>DOC-03:</strong> Raise docstring coverage to 80% minimum on <code>webui_shell.py</code> (currently 53.5%) <strong>(R76)</strong></li>
+<li><input type="checkbox" disabled > <strong>DOC-04:</strong> Raise docstring coverage to 80% minimum on <code>mumble.py</code> (currently 54.8%) <strong>(R76)</strong></li>
+<li><input type="checkbox" disabled > <strong>DOC-05:</strong> Add Privacy Policy to website with data handling, retention, user rights</li>
+<li><input type="checkbox" disabled > <strong>DOC-06:</strong> Add Terms of Service to website</li>
+<li><input type="checkbox" disabled > <strong>DOC-07:</strong> Document clipboard capture behavior in Settings and privacy policy</li>
+<li><input type="checkbox" disabled > <strong>DOC-08:</strong> Document conversation context feature in Settings</li>
+<li><input type="checkbox" disabled > <strong>DOC-09:</strong> Document LWW merge behavior for cloud sync conflicts</li>
+<li><input type="checkbox" disabled > <strong>DOC-10:</strong> Add <code>CONTRIBUTING.md</code> with test execution pattern and conventions</li>
+</ul>
+
+<h3 id="release-specific-v10">Release-Specific (v1.0)</h3>
+
+<ul class="checklist">
+<li><input type="checkbox" disabled > <strong>REL-01:</strong> Update <code>branding.py</code> VERSION to "1.0.0"</li>
+<li><input type="checkbox" disabled > <strong>REL-02:</strong> Create <code>release/v1.0</code> branch from <code>main</code></li>
+<li><input type="checkbox" disabled > <strong>REL-03:</strong> Run full CI test suite on all platforms; fix any failures</li>
+<li><input type="checkbox" disabled > <strong>REL-04:</strong> Verify CI-Build produces correct platform packages (sizes, SHA256, contents)</li>
+<li><input type="checkbox" disabled > <strong>REL-05:</strong> Verify GitHub Release is created automatically on tag push</li>
+<li><input type="checkbox" disabled > <strong>REL-06:</strong> Verify website deploys automatically on push to main</li>
+<li><input type="checkbox" disabled > <strong>REL-07:</strong> Verify update manifest is published and accessible</li>
+<li><input type="checkbox" disabled > <strong>REL-08:</strong> Verify Windows auto-update from v0.9 → v1.0 works end-to-end</li>
+<li><input type="checkbox" disabled > <strong>REL-09:</strong> Verify macOS manual update path (download → install → preserve settings)</li>
+<li><input type="checkbox" disabled > <strong>REL-10:</strong> Verify Linux AppImage runs on clean Ubuntu 22.04 and Fedora 40</li>
+<li><input type="checkbox" disabled > <strong>REL-11:</strong> Verify Linux Flatpak runs on Flathub-supported distributions</li>
+<li><input type="checkbox" disabled > <strong>REL-12:</strong> Verify Windows installer works on fresh PC (no Python, no venv)</li>
+<li><input type="checkbox" disabled > <strong>REL-13:</strong> Verify macOS installer works on clean macOS (no Python, no Homebrew)</li>
+<li><input type="checkbox" disabled > <strong>REL-14:</strong> Verify uninstaller cleans all files on each platform</li>
+<li><input type="checkbox" disabled > <strong>REL-15:</strong> Tag <code>v1.0.0</code> on release branch</li>
+<li><input type="checkbox" disabled > <strong>REL-16:</strong> Merge <code>release/v1.0</code> back to <code>main</code></li>
+<li><input type="checkbox" disabled > <strong>REL-17:</strong> Announce release on website, social media, relevant communities</li>
+</ul>
+
+<hr>
+
+<p>*End of FINAL_REPORT.md — Mumble v0.9 → v1.0 Comprehensive Release Audit*</p>
+
+<p>*This report consolidates findings from 7 phase reports covering 15 major features, 3 platforms, security, privacy, UX, testing, code quality, website, and release infrastructure. Every Critical and <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.8rem;font-weight:700;background:#FEF3C7;color:#D97706;border:1px solid #D97706;">High</span>-severity finding is cross-referenced in the roadmap (Section 15) with concrete, actionable work items. The release checklist (Section 16) provides individually trackable items for v1.0 preparation.*</p>
+
+
+</div>
+<a href="#" class="back-to-top">Back to top</a>
+</body>
+</html>

@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HANDBOOK</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body>
+<!-- Core docs refreshed 2026-07-09 by core-doc-refresh session -->
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">How Mumble Is Built</div>
+  <h1>HANDBOOK</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Scope:</b> Architecture, data flow, the rules, the session ritual, testing, port-sync, deploy</div>
+    <div><span class="ico">◆</span><b>Platform of record:</b> Windows (<code>Internal/</code> is the parity source)</div>
+    <div><span class="ico">◆</span><b>Read alongside:</b> <a href="README.html">README</a>, <a href="STATUS.html">STATUS</a>, <a href="LOGS.html">LOGS</a></div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This is the builder's guide to Mumble — the dictation app that turns your speech into clean,
+    formatted text. It explains how the program is wired together, the unbreakable promises it makes
+    (the biggest: <strong>audio stays local unless the user explicitly selects Cloud transcription</strong>), and the step-by-step
+    habits a developer follows when starting work, fixing a bug, shipping a feature, or copying changes
+    over to the Mac and Linux versions.</p>
+    <p>Before diving in: read <a href="README.html">README</a> first (the philosophy and standards),
+    check <a href="STATUS.html">STATUS</a> for what's still open, and append finished work to
+    <a href="LOGS.html">LOGS</a>.</p>
+  </div>
+</div>
+
+<blockquote>
+  <strong>How Mumble is built and how we build it.</strong> Architecture, data flow, the rules you must
+  not break, the session ritual, testing, the port-sync procedure, and deploy. Read
+  <a href="README.html">README</a> first (philosophy + standards), check
+  <a href="STATUS.html">STATUS</a> for what's open, and append finished work to
+  <a href="LOGS.html">LOGS</a>.
+</blockquote>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">The session ritual</a></li>
+    <li><a href="#s2">Architecture deep-dive</a></li>
+    <li><a href="#s3">Data model</a></li>
+    <li><a href="#s4">Testing &amp; verification</a></li>
+    <li><a href="#s5">The rules you must not break</a></li>
+    <li><a href="#s6">Implementing a feature</a></li>
+    <li><a href="#s7">Bug-fixing protocol &amp; quality standards</a></li>
+    <li><a href="#s8">Port-sync procedure (macOS / Linux)</a></li>
+    <li><a href="#s9">Commit expectations</a></li>
+    <li><a href="#s10">Deploy</a></li>
+    <li><a href="#s11">Licences &amp; Third-Party Components</a></li>
+  </ol>
+</nav>
+
+<h2 id="s1"><span class="sec">1</span>The session ritual</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Every work session has a fixed start and a fixed end — like a pre-flight and post-flight
+    checklist. You open by getting your bearings (read the docs, write down what you're going to do,
+    read the exact code you'll touch). You close by proving the work is sound (run the tests),
+    ticking off every item, updating the docs so they still tell the truth, committing, and shipping.</p>
+  </div>
+</div>
+
+<h3>How a session begins</h3>
+<ol>
+  <li><strong>Read the four core docs</strong> (this file, README, STATUS, LOGS) — at least skim STATUS in
+  full; it's the state of the world.</li>
+  <li><strong>Restate the request as a <code>□</code> checklist</strong> (see <a href="README.html">README</a> §8) before touching code.</li>
+  <li><strong>Read the code you'll actually change</strong> — the module + its tests + its callers. Never
+  edit blind.</li>
+  <li><strong>Confirm the operating mode</strong> (default 🟢 Autonomous) and note any owner-only blockers.</li>
+</ol>
+
+<h3>How a session ends</h3>
+<ol>
+  <li><strong>Verify</strong> — offline test suite + lint + compile (see <a href="#s4">§4</a>).</li>
+  <li><strong>Resolve the checklist</strong> — every line ✓ or □; every □ gets a reason <strong>and</strong> is written
+  into STATUS (a known bug / TODO / roadmap item) so it survives.</li>
+  <li><strong>Update the docs to match reality</strong> — STATUS (open items moved/closed), HANDBOOK (any
+  rule/architecture change), README (any user-facing capability change), and append a
+  dated entry to LOGS for what shipped.</li>
+  <li><strong>Commit</strong> with a clear message; <strong>deploy/sync</strong> in the autonomous modes; <strong>confirm</strong> the
+  deploy.</li>
+  <li><strong>Sign off</strong> with the completion report and the <code>· docs updated</code> marker if any core doc
+  changed.</li>
+</ol>
+
+<h3>Planning and decisions across sessions</h3>
+<p><strong>GitHub Issues are Mumble's long-term work tracker.</strong> Use the <em>Planning map</em> issue form for a multi-session outcome, the <em>Engineering decision</em> form when a choice would be expensive to reverse, and the <em>Implementation work</em> form for one bounded change. Each implementation issue must name the planning map, any decision that governs it, its blockers, and the evidence required to close it.</p>
+<ul>
+  <li><strong>Planning map:</strong> the living route through a substantial outcome. Keep it as a GitHub task list so its linked work can be seen at a glance.</li>
+  <li><strong>Decision ticket:</strong> the durable explanation of why Mumble chose a startup, packaging, deployment, local-model, or dictation-latency direction. Link source evidence and say when the choice should be reviewed.</li>
+  <li><strong>Implementation ticket:</strong> one safe slice of work. Use GitHub's issue relationship control, plus the written <code>Blocked by #number</code> line, whenever another issue must finish first.</li>
+  <li><strong>Core records:</strong> keep <a href="STATUS.html">STATUS</a> as the short current truth, this HANDBOOK as the procedure and architecture context, and <a href="LOGS.html">LOGS</a> as completed history. GitHub issues hold the work discussion; they do not replace these records.</li>
+</ul>
+<p>The repository keeps the issue forms and label list in <code>.github/</code>. To restore the labels after a new GitHub repository is created, run the documented <code>.github/scripts/sync-labels.ps1</code> helper from a machine already signed in to GitHub; it only creates or updates labels in the named repository.</p>
+
+<h2 id="s2"><span class="sec">2</span>Architecture deep-dive</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble is built from a handful of cooperating parts. One file, <code>mumble.py</code>, is the
+    "brain stem" — it listens for your hotkey, records audio, runs the transcription, and decides what
+    to do with the words. Around it sit the window (the settings UI), the floating "island" pill that
+    shows status, the engines that clean and shape your text, and the little databases ("stores") that
+    remember your history, clipboard, favorites, and settings.</p>
+    <p>The most important idea below is the <strong>privacy invariant</strong>: raw audio is processed on
+    your machine; only the finished <em>text</em> is ever sent to a cloud AI, and only if you turned that on
+    and supplied your own key.</p>
+  </div>
+</div>
+
+<h3>The runtime, top to bottom</h3>
+<ul>
+  <li><strong><code>mumble.py</code> — the controller (entry point).</strong> Owns audio capture, the transcription
+  pipeline, Smart-Mode dispatch, the system tray, global hotkeys, the single-instance
+  command server, and the meeting recorder. Everything the user triggers flows through here.</li>
+  <li><strong><code>webui_shell.py</code> — the window.</strong> A pywebview shell hosting the <code>webui/</code> SPA, plus the
+  <code>Api</code> bridge that exposes Python methods to JavaScript. Imported by the controller; also
+  launchable standalone for UI preview.</li>
+  <li><strong><code>app_window.py</code> — the Tkinter fallback window ("Lite").</strong> Live, not dead: if
+  <code>_open_web_ui()</code> fails (pywebview / Edge WebView2 runtime unavailable), <code>mumble._open_window</code>
+  falls back to <code>AppWindow</code>. Also a <code>test_ui.py</code> dependency.</li>
+  <li><strong><code>overlay.py</code> + <code>island_render.py</code> — the island.</strong> An in-process, per-pixel-alpha,
+  click-through, always-on-top layered window (Pillow → Win32 <code>UpdateLayeredWindow</code>). No
+  separate process, no WebView2, never steals typing focus, follows the active monitor.
+  The companion bar is visible only for actionable states. Correction candidates remain passive until
+  a concrete target edit is detected; that event opens a bounded Review/Dismiss consent surface rather
+  than keeping the island alive after every paste.
+  Falls back to a plain tkinter-canvas pill if Pillow/numpy are missing, so the island can
+  never go missing.</li>
+  <li><strong>Core engines.</strong> <code>formatting.py</code> (offline text cleanup + mode inference), <code>ai/</code> (cloud
+  provider package — replaces the old top-level <code>ai.py</code>), <code>transcription.py</code> (opt-in cloud STT),
+  <code>prompt_constitution.py</code> (prompt crafting), <code>islamic_terms.py</code>, <code>presets.py</code>,
+  <code>foreign_boost.py</code> (offline Foreign-Mode phonetic token boosting).</li>
+  <li><strong>Local AI / offline LLM (V1.0+).</strong> <code>local_engine.py</code> (cloud-vs-local router; LlamaCpp /
+  LlamaServer backends), <code>models/</code> (registry, downloader, cache, backend manager),
+  <code>pipeline/</code> (local post-processing stages: formatting, grammar, punctuation, cleanup),
+  <code>platform/</code> (platform runtime helpers: <code>macos_audio.py</code>, <code>windows_dml.py</code>,
+  <code>linux_fallback.py</code>).</li>
+  <li><strong>Meeting capture (V1.2 foundation).</strong> <code>meeting.py</code> (recorder controller),
+  <code>meeting_diarise.py</code> (speaker diarization pipeline), <code>meeting_store.py</code> (meeting persistence).</li>
+  <li><strong>Reader / Document.</strong> <code>reader_parser.py</code> (document parsing for Reader view) and
+  <code>reader_store.py</code> (parsed document library).</li>
+  <li><strong>Quality / observability.</strong> <code>eval/</code> (harness, scenarios, metrics, reporter), <code>perf/</code>
+  (diagnostics, optimizer, profiler), <code>stats.py</code> (word/frequency stats), and
+  <code>dictation_trace.py</code> (opt-in, local-only end-to-end timing evidence).</li>
+  <li><strong>Stores.</strong> Each persists to the OS app-data dir: <code>settings</code>, <code>history</code>, <code>clipboard</code>,
+  <code>favorites</code>, <code>stats</code>, <code>prompt_history</code>, <code>context_store</code>, <code>reader_store</code>, and <code>cloud_sync</code>
+  (Supabase; schema in <code>cloud_schema.sql</code>).</li>
+  <li><strong>Infra.</strong> <code>bindings</code> (the single funnel for all key/mouse input), <code>branding</code> (names,
+  paths, <code>VERSION</code>, design tokens, <code>DATA_DIR</code>), <code>ui</code> (shared Tkinter toolkit), <code>autostart</code>,
+  <code>update</code> (with optional Ed25519 manifest signing), <code>brand_exe</code>, <code>assets_gen</code>, <code>tips.py</code>.</li>
+</ul>
+
+<h3>Data flow — dictation</h3>
+<p>What happens, in order, from the moment you press the hotkey to the words landing at your cursor:</p>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">1</div>
+    <div class="flow-body">
+      <div class="ft">Start capture</div>
+      <p>Hotkey → controller starts audio capture.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">2</div>
+    <div class="flow-body">
+      <div class="ft">Stop &amp; transcribe</div>
+      <p>While the user speaks, the local worker commits bounded four-second ranges. Hotkey again →
+      capture stops → an already-running range is harvested once → only the uncommitted tail is
+      transcribed. Ordinary local decoding is a single greedy pass with no timestamp tokens; opt-in
+      cloud STT still falls back to local on any error.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">3</div>
+    <div class="flow-body">
+      <div class="ft">Clean &amp; infer shape</div>
+      <p><code>formatting.py</code> applies personal vocabulary and cleanup. With <strong>Instant plain
+      dictation</strong> enabled (the default), ordinary Text is formatted locally and proceeds directly
+      to paste; explicit Prompt/Email/other modes retain their richer processing.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">4</div>
+    <div class="flow-body">
+      <div class="ft">Pro Mode lane (or offline builder)</div>
+      <p>For an explicit AI mode—or when Instant plain dictation is switched off—
+      <code>local_engine.route()</code> decides cloud vs local. If Pro Mode is on, a key is set, and
+      local-only mode is off, the <code>ai/</code> package sends <em>only the text</em> to the chosen provider.
+      Otherwise the local LLM/pipeline or deterministic builder produces the result.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">5</div>
+    <div class="flow-body">
+      <div class="ft">Paste &amp; record</div>
+      <p>The result is pasted at the cursor (confirmed clipboard save → paste → restore) and saved
+      to history. The island shows the live state and the finish flash.</p>
+    </div>
+  </div>
+</div>
+
+<h3>Dictation timing trace (benchmark and support use)</h3>
+<p>The production controller has an opt-in trace for measuring cold and warm dictation without
+changing the speech engine or normal user experience. Set <code>MUMBLE_DICTATION_TRACE=1</code> before
+starting Mumble. Completed sessions are appended beneath the normal application-data directory at
+<code>diagnostics/dictation-traces.jsonl</code>. Tracing is off by default.</p>
+<ul>
+  <li><strong>Coverage:</strong> activation, the first rendered Island state, microphone open/record/close,
+  first audio, first stable partial when present, stream drain, transcription and paste lock waits,
+  model load/warm-up when they occur during a session, inference, final-result readiness, formatting,
+  persistence, clipboard readiness, paste dispatch, completion, and process CPU/RAM/thread samples.</li>
+  <li><strong>Truthful partial-result boundary:</strong> the current local worker commits stable
+  four-second chunks. It has no tentative-token surface, so traces declare
+  <code>partial_contract=stable_chunks_only</code> and do not invent an unstable-partial timestamp.</li>
+  <li><strong>Privacy:</strong> schema <code>mumble.dictation-trace.v1</code> accepts a fixed metadata
+  vocabulary only. It stores no audio, transcript or partial words, clipboard contents, prompts,
+  file paths, provider payloads, keys, or exception messages.</li>
+  <li><strong>Storage:</strong> the local JSONL file is capped at 5 MB with two rotated backups and
+  private-file permissions where the operating system supports them. A completed record is flushed
+  before the session is considered recorded; tracing failures never block dictation.</li>
+  <li><strong>Export:</strong> call <code>dictation_trace.export_traces(source, destination, limit)</code>
+  from the application environment to create one standalone JSON array. Review that export before
+  sharing it even though the schema is content-free.</li>
+</ul>
+
+<h3>The AI payload invariant (privacy)</h3>
+<blockquote>
+  <strong>Local means local; cloud means disclosed.</strong> Local transcription never uploads audio.
+  When the user explicitly selects Cloud transcription, the recorded audio clip is sent to the
+  selected STT provider. Pro Mode and Reader voice send their disclosed text payloads. No telemetry
+  or hidden payload is added. When you add or change a lane, document exactly what leaves the device.
+</blockquote>
+
+<h3>Threading model (essentials)</h3>
+<ul>
+  <li>The controller runs the tray + hotkey listeners; transcription and AI calls run off the
+  UI thread so the app never blocks.</li>
+  <li>The island renders in-process; UI updates that touch tk/pystray must be marshalled to the
+  right thread (off-thread <code>pystray</code> menu updates are a known hazard — see <a href="STATUS.html">STATUS</a>).</li>
+  <li>Generation lanes use a <strong>generation counter</strong> so a newer dictation/Reader action cancels a
+  stale in-flight one. Preserve gen-checks when editing playback/prefetch paths.</li>
+  <li>Local STT is serialised by <code>_tx_lock</code>. Streaming ranges carry a recording-session id and an
+  idle/in-flight event: key release may harvest work from the same session, but a superseded or
+  sleep-invalidated worker cannot publish text, advance the seam, or signal a newer session idle.</li>
+</ul>
+
+<h3>Provider routing &amp; fallback</h3>
+<ul>
+  <li>One <strong>processing provider</strong> handles every optional AI text lane. Product settings expose only Cerebras (recommended low-latency route with a rate-limited free tier) and OpenRouter (one key with a curated fallback list plus live model discovery). There is no separate Prompting Provider. Keys are user-supplied, stored locally, and masked.</li>
+  <li>The Model field is a <strong>dropdown</strong> populated from the provider's live model list (curated
+  fallback offline). On 429 the lane waits the server-requested delay (capped) and retries
+  once, then falls back to the offline builder. Reasoning models that reject a custom
+  <code>temperature</code> (400) must have temperature omitted.</li>
+</ul>
+
+<h3>Prompt templates and provenance</h3>
+<ul>
+  <li><code>prompt_constitution.py</code> contains original Mumble prompt-shaping instructions. <code>prompt_template_registry.py</code> records template id, version, modes, output contract, authorship, and licence posture.</li>
+  <li>External prompt projects may inform architecture only until their licence and exact reuse plan are recorded. Fabric and Microsoft promptflow are currently MIT research references; no prompt text or code from either project is copied into the runtime.</li>
+  <li>Prompt history is a visible Deck artefact store. It is not conversation memory and is never injected into a later generation. The retired continuity file is removed during migration.</li>
+</ul>
+
+<h3>Experimental Mumble Search boundary</h3>
+<ul>
+  <li><code>experimental/system_search/engine.py</code> owns a bounded local index of known application locations and standard/configured user folders. It skips hidden and dependency/cache trees and caps the index at 75,000 items by default.</li>
+  <li>The WebUI receives display metadata and opaque stable IDs, never executable command lines. Open, reveal, copy-path and favourite actions are accepted only for IDs present in the current index (or a short-lived web-fallback result).</li>
+  <li>User search text is never interpreted as a path or shell command. Windows opens Start Menu/App Paths entries with OS APIs; Linux launches trusted desktop entries or <code>xdg-open</code> using argument arrays and no shell.</li>
+  <li>Fuzzy matching combines exact/prefix/token/subsequence signals with local-only favourites, use count and recency. A configured web engine appears as a low-ranked fallback only for non-empty all-category queries.</li>
+  <li>Application icons are display metadata behind the same opaque-ID boundary. Windows asks Explorer for shortcut, executable and virtual Start-app icons, draws them into a top-down 32-bit DIB (so orientation and alpha remain correct), and keeps a 128-entry memory cache. Linux resolves each trusted desktop entry's local icon through installed theme directories. Search never downloads an icon or substitutes a generated application monogram.</li>
+  <li>The feature and hotkey route ship on Windows and Linux. The macOS port intentionally has no Search loader or API because the product decision is to rely on Spotlight/Finder there.</li>
+</ul>
+
+<h2 id="s3"><span class="sec">3</span>Data model</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble keeps your data in plain files in a folder that belongs to the app. There's no
+    cloud account required and no shared database — just files on your disk. One file,
+    <code>settings.py</code>, is the official list of every setting; trust it over any list written in docs,
+    because docs drift. Your keys and secrets live only in that settings file — never in the source
+    code or in git.</p>
+    <p>Each platform now resolves its native per-user data location. The Mac port uses
+    <code>~/Library/Application Support/Mumble</code>; Linux uses the XDG data directory.</p>
+  </div>
+</div>
+
+<p>Each store reads/writes JSON (or its store-specific format) under an app-data dir resolved in
+<code>branding.py</code> (<code>DATA_DIR</code>):</p>
+<ul>
+  <li><strong>Windows:</strong> <code>%APPDATA%\Mumble</code> — confirmed in code.</li>
+  <li><strong>macOS:</strong> <code>~/Library/Application Support/Mumble</code>.</li>
+  <li><strong>Linux:</strong> <code>$XDG_DATA_HOME/Mumble</code>, falling back to
+  <code>~/.local/share/Mumble</code>.</li>
+</ul>
+
+<p><code>settings.py</code> is the <strong>single source of truth</strong> for setting keys — read it rather than
+trusting any enumerated list in docs (the old HANDBOOK's key list drifted; don't recreate
+that mistake). Keys/secrets live only here, never in source or git. History, clipboard,
+prompts, favourites, stats, context, and the Reader library are each their own store with
+its own file; <code>cloud_sync.py</code> mirrors the syncable ones to Supabase when the user opts in.</p>
+
+<h2 id="s4"><span class="sec">4</span>Testing &amp; verification</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Before any code is committed, it has to pass three automatic checks: the test suite (does it
+    still work?), the linter (is the style clean?), and a compile pass (does every file even parse?).
+    Most tests run fully <strong>offline</strong> — no API key, no internet needed. A small "live" set actually
+    talks to a real provider and needs a key plus a network connection.</p>
+  </div>
+</div>
+
+<p>The suite lives in <code>Internal/app/test_*.py</code>, co-located with the modules so sibling imports
+work. It is <strong>excluded from the production <code>Mumble.zip</code></strong>. (Post-restructure the
+runtime + tests live under <code>Internal/app/</code>; older docs that said <code>Internal/test_*.py</code>
+predate the <code>app/</code> move.)</p>
+
+<blockquote>
+  <strong>Authoritative runner:</strong> <code>run_tests.py</code> forces UTF-8, isolates app data per test,
+  scrubs credential-shaped environment variables, enables offline model guards, and applies a per-test
+  timeout. Live provider scripts are excluded unless both <code>--live</code> and
+  <code>MUMBLE_RUN_LIVE_TESTS=1</code> are supplied. The runner can emit a JSON report for CI.
+</blockquote>
+
+<p><strong>Run before every commit (from <code>Internal/app/</code>):</strong></p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Pre-commit verification commands</summary>
+<pre><code>.venv\Scripts\python.exe run_tests.py --json _test_logs/results.json
+.venv\Scripts\python.exe -m flake8 . --select=E9,F63,F7,F82 --exclude=.venv,Ports
+.venv\Scripts\python.exe -m compileall -q -x "(^|[\\/])(.venv|__pycache__)([\\/]|$)" .</code></pre>
+</details>
+
+<p><strong>Offline suite (no key/network needed, 50+ files):</strong> core flow
+(<code>test_big_shift</code>, <code>test_bindings</code>, <code>test_cloud_sync</code>, <code>test_end_to_end</code>,
+<code>test_recording_gate</code>, <code>test_stream_seam</code>, <code>test_session_token</code>, <code>test_cmd_auth</code>,
+<code>test_settings_merge</code>, <code>test_settings_recovery</code>), engines
+(<code>test_formatting</code>, <code>test_foreign_boost</code>, <code>test_foreign_mode_cross</code>,
+<code>test_pipeline</code>, <code>test_pipeline_stage2_stage3</code>, <code>test_stage_cleanup</code>,
+<code>test_constitution</code>, <code>test_model_backend</code>, <code>test_models</code>), local AI
+(<code>test_local_engine</code>, <code>test_local_wiring</code>, <code>test_cache</code>, <code>test_downloader</code>),
+reader / docs (<code>test_reader</code>, <code>test_reader_parser</code>), meeting
+(<code>test_meeting</code>, <code>test_meeting_controller</code>), UI
+(<code>test_ui</code>, <code>test_webui_api</code>, <code>test_island_bar</code>, <code>test_tips</code>, <code>test_favorites</code>,
+<code>test_presets</code>), error / output quality
+(<code>test_error_recovery</code>, <code>test_output_quality</code>, <code>test_transcription_diag</code>,
+<code>test_transcription_edge_cases</code>), perf / eval
+(<code>test_perf</code>, <code>test_eval</code>, <code>test_eval_reporter</code>), platform / provider checks
+(<code>test_macos_audio</code>, <code>test_windows_dml</code>, <code>test_providers</code>, <code>test_stt_providers</code>,
+<code>test_tts_providers</code>), stores (<code>test_context_store</code>, <code>test_stats</code>, <code>test_mode_select</code>,
+<code>test_lightweight</code>), and <code>test_api_stability</code>, <code>test_fallback</code>,
+<code>test_update</code>.</p>
+
+<p><strong>Live suite (needs a real key + network):</strong> <code>test_live_context</code>,
+<code>test_live_modes</code>, <code>test_live_prompts</code>.</p>
+
+<p><strong>Provider / platform suites (run when you have the relevant key, hardware, or OS):</strong>
+<code>test_providers</code>, <code>test_stt_providers</code>, <code>test_tts_providers</code>, <code>test_macos_audio</code>,
+<code>test_windows_dml</code>.</p>
+
+<blockquote>
+  <strong>macOS source gate (2026-07-15):</strong> from <code>Internal/app/Ports/macOS/app</code>, run
+  <code>python3 run_tests.py --all --json _test_logs/mac-results.json</code>, then compileall, fatal
+  flake8 (<code>E9,F63,F7,F82</code> plus production-code <code>F</code> checks),
+  <code>node --check webui/app.js</code>, and shell syntax checks for the launch/build scripts. The final
+  network-disabled audit-host run passed <strong>47/47 files</strong> in 547.88 seconds. This proves the isolated source contracts, not macOS
+  Accessibility, Microphone, paste focus, LaunchAgent, Gatekeeper or notarisation behaviour.
+</blockquote>
+
+<blockquote>
+  <strong>Linux source gate (2026-07-15):</strong> from <code>Internal/app/Ports/Linux/app</code>, run
+  <code>python3 run_tests.py --json _test_logs/linux-safe.json</code> and then
+  <code>python3 run_tests.py --all --json _test_logs/linux-all.json</code>. Follow with compileall,
+  fatal flake8 (<code>E9,F63,F7,F82</code>), JavaScript and installer-shell syntax, Bandit high-severity
+  scanning and the parent release-builder tests. The audit-host runs passed <strong>38/38 safe files</strong>
+  in 178.15 seconds and <strong>53/53 exhaustive files</strong> in 292.28 seconds. This proves source and
+  package contracts, not microphone, evdev permissions, X11/Wayland hotkeys, compositor click-through,
+  paste focus, tray or native update behaviour.
+</blockquote>
+
+<blockquote>
+  <strong>Notes:</strong> <code>test_bindings</code> may fail one assertion on a dev venv missing the optional <code>mouse</code>
+  package (passes on a real install) — that's an environment gap, not a product defect.
+</blockquote>
+
+<h2 id="s5"><span class="sec">5</span>The rules you must not break</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>These twelve rules are non-negotiable promises about how Mumble behaves. Breaking one counts
+    as a bug <em>even if every test still passes</em>. They cover privacy (local stays local, cloud use is disclosed, no built-in
+    key), reliability (only one copy runs at a time, the clipboard is always restored), and honesty
+    (the UI never shows features that aren't real, the docs always match reality).</p>
+  </div>
+</div>
+
+<p>These are invariants. Breaking one is a regression even if tests pass.</p>
+
+<ol>
+  <li><strong>Local stays local; cloud use is explicit.</strong> Local transcription is the default and never
+  uploads audio. Opt-in Cloud STT sends the recorded clip to the selected provider and falls back to
+  local on error. Pro Mode and Reader disclose the text they send.
+  <span class="badge b-gold">privacy</span></li>
+  <li><strong>No built-in API key.</strong> Every key is the user's own, stored only in the local
+  <code>settings.json</code>, masked in the UI, never logged, never committed.
+  <span class="badge b-gold">privacy</span></li>
+  <li><strong>Key/mouse input <em>listening</em> goes through <code>bindings.py</code>.</strong> Don't add new direct calls to
+  a key/mouse listening library elsewhere. (Output key-synthesis — paste/copy via the
+  <code>keyboard</code> library in <code>mumble.py</code> — is the established exception, not a violation.)</li>
+  <li><strong>Single instance.</strong> One controller at a time: <code>_acquire_single_instance()</code> binds
+  <code>127.0.0.1:49517</code> (no <code>SO_REUSEADDR</code>) so a second bind fails; the second launch signals
+  the running instance and exits via <code>sys.exit(0)</code>. (<code>os._exit(0)</code> is the controller's own
+  teardown path, not the second-launch handoff.)</li>
+  <li><strong>Authenticate the localhost command channels.</strong> The loopback IPC ports
+  (<code>49519</code> controller, <code>49520</code> webui, <code>49517</code> lock) are bound to
+  <code>127.0.0.1</code> but that is NOT a trust boundary — any local process, including a malicious page
+  hitting <code>http://127.0.0.1:49519</code>, can connect. Every privileged command must carry the
+  per-session token (<code>branding.write_session_token</code> at controller startup →
+  <code>read_session_token</code> on the client → <code>token_ok</code> constant-time compare). When you add
+  a new command verb or a new IPC surface, gate it with the token; never add an unauthenticated
+  paste/selection/job/window-control verb. <span class="badge b-gold">security</span></li>
+  <li><strong>The constitution is sent on every Prompt-lane call.</strong> Don't cache it away.</li>
+  <li><strong>The Prompt lane gets the long budget</strong> + a capped adaptive 429 retry — it must not
+  silently degrade to the offline draft when the server just asked us to wait.</li>
+  <li><strong>Confirmed clipboard restore.</strong> Paste = save clipboard → set → paste → restore, with the
+  restore verified.</li>
+  <li><strong>Zero-CDN UI.</strong> No web fonts, no remote scripts; everything in <code>webui/</code> ships locally.</li>
+  <li><strong>Resource-aware UI.</strong> Minimised / hidden / <strong>unfocused</strong> → all ambient animation +
+  status polling stop.</li>
+  <li><strong>Platform-agnostic core stays portable.</strong> Shared engine/store/UI code must be reusable
+  byte-for-byte by the ports; OS-specific code lives only in the port seam files.</li>
+  <li><strong>Don't reintroduce "depicted-but-not-real" UI</strong> (see <a href="STATUS.html">STATUS</a> §7).</li>
+  <li><strong>Docs match reality before "Prompt done"</strong> (see <a href="README.html">README</a> §8).</li>
+</ol>
+
+<h2 id="s6"><span class="sec">6</span>Implementing a feature</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Build new things on Windows first (it's the reference version), change as little as possible,
+    add a test in the same edit, and make sure the feature works all the way through before calling it
+    done — a feature half-built across many places is worse than one clean slice. Update the docs, then
+    copy it to Mac and Linux once it's solid.</p>
+  </div>
+</div>
+
+<ol>
+  <li><strong>Land it on Windows first</strong> — it's the source of truth.</li>
+  <li><strong>Touch the smallest surface.</strong> Engine logic in the engine module; UI in <code>webui/</code> + the
+  <code>Api</code> bridge; persistence in the relevant store. Keep the seam between them clean.</li>
+  <li><strong>Add/adjust a test</strong> in the same change. Offline-testable logic gets an offline test.</li>
+  <li><strong>Wire it end-to-end</strong> before calling it done — a feature that's half-built across many
+  surfaces is worse than one slice done fully. If a large/risky rewrite can't be fully
+  verified here, pace it: one focused slice end-to-end, and say so.</li>
+  <li><strong>Update the docs</strong> (README if user-facing, HANDBOOK if architectural, STATUS for the
+  to-do, LOGS for the record).</li>
+  <li><strong>Then port</strong> to macOS/Linux (see <a href="#s8">§8</a>) once it's solid on Windows.</li>
+</ol>
+
+<p id="exp-operator-56"><strong>Experimental isolation boundary (5.6 sol xtra high).</strong> The Operator prototype under <code>Development Files/Other/experiments/AIs - DO NOT TOUCH/Experimental Feature - 5.6 sol xtra high/</code> is development-only and deliberately sits outside this production feature procedure. Its optional Right Shift watcher and localhost action adapter are evaluation harnesses, not production seams: do not import them into <code>Internal/app/</code> or copy their key polling into a controller. Any future product spike must register through <code>bindings.py</code>, use authenticated IPC, receive local transcripts through one explicit adapter, preserve the clipboard fully, and keep destructive actions behind visible previews and consent.</p>
+
+<h2 id="s7"><span class="sec">7</span>Bug-fixing protocol &amp; quality standards</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>To fix a bug: reproduce it exactly, check which promises (the <a href="#s5">rules in §5</a>) the area
+    touches, write the smallest failing test, then make the smallest change that turns it green. Re-run
+    the related tests, update STATUS, and commit. And be honest — never claim "fixed" for something you
+    couldn't actually verify.</p>
+  </div>
+</div>
+
+<ol>
+  <li><strong>Capture the exact repro</strong> and the owning surface before editing.</li>
+  <li><strong>Check the invariants</strong> (<a href="#s5">§5</a>) the area touches.</li>
+  <li><strong>Write the smallest regression test that fails</strong>, then make the smallest code change
+  that turns it green.</li>
+  <li><strong>Run the offline suite + the neighbours</strong> of what you changed — a fix in <code>formatting</code>
+  re-tests dictation; a fix in <code>ai</code> re-tests every lane; a fix in a store re-tests its
+  round-trip.</li>
+  <li><strong>Update STATUS</strong> (move the bug from Known Bugs to a LOGS entry) and <strong>commit</strong>.</li>
+</ol>
+
+<blockquote>
+  <strong>Honesty bar:</strong> never report "fixed" for a path you couldn't verify. If it's
+  fixed-on-Windows-but-unverified-on-a-port, say exactly that and leave the port item open in
+  STATUS.
+</blockquote>
+
+<h2 id="s8"><span class="sec">8</span>Port-sync procedure (macOS / Linux)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble's Mac and Linux versions reuse almost all of the Windows code unchanged — the "brain"
+    (text, AI, storage, the island, the lock channel) is identical everywhere. Only the small
+    OS-specific "seam" files differ (how hotkeys, pasting, the window, and the tray talk to each
+    operating system). To port, you copy the shared files over verbatim and hand-edit only the seam.</p>
+    <p>One sharp warning: <strong>pause OneDrive sync first</strong>. If sync is running while you edit the port
+    folders, it can silently undo your changes within seconds — so after editing, check the file on
+    disk to confirm the change actually stuck.</p>
+  </div>
+</div>
+
+<p>The ports live in <code>Internal/app/Ports/macOS/app</code> and <code>Internal/app/Ports/Linux/app</code>
+(post-restructure path; older docs said <code>Internal/Ports/…</code>). Each forks <strong>only</strong> the
+OS-seam files (<code>mumble_mac.py</code>/<code>mumble_linux.py</code>, <code>overlay_mac.py</code>/<code>overlay_linux.py</code>, the
+installer/launcher). The data/AI/text <strong>brain</strong>, the web UI, the island renderer, and the
+lock/command channel are platform-agnostic and reused <strong>verbatim</strong> — <code>Internal/app/</code> (Windows) is
+the parity source.</p>
+
+<blockquote>
+  <strong>Drift is real — verify, don't assume (updated 2026-07-15).</strong> The macOS snapshot now has
+  the current <code>ai/</code>, <code>eval/</code>, <code>models/</code>, <code>perf/</code>, <code>pipeline/</code> and
+  <code>platform/</code> packages. Its obsolete top-level <code>ai.py</code>, duplicate <code>mumble.py</code>,
+  Prompt Memory/provider files and mode-key runtime were removed. The Linux snapshot was reconciled the
+  same day: it now carries the current shared package/UI contracts, and its duplicate Windows controller,
+  Tk window, overlay, top-level <code>ai.py</code> and Prompt Memory files were removed. Real macOS and
+  Linux hardware behaviour remains a separate qualification gate. After a Windows shared-module change,
+  compare both ports deliberately and preserve only documented OS-seam differences.</blockquote>
+
+<p><strong>Procedure:</strong></p>
+<ol>
+  <li><strong>Pause OneDrive sync first.</strong> Editing the port dirs while sync runs can revert your
+  writes within seconds (STATUS → T-PORTREVERT). After editing, <code>grep</code>-verify the change
+  actually stuck on disk.</li>
+  <li><strong>Sync the shared modules verbatim</strong> from <code>Internal/</code> to each port's <code>app/</code> — never
+  hand-edit shared code in a port.</li>
+  <li><strong>Apply only the seam differences</strong> by hand (hotkeys via <code>pynput</code>/<code>evdev</code>, paste via
+  AppleScript / xdotool·ydotool, overlay via WebKit/GTK, paths, tray).</li>
+  <li><strong>Run that port's offline suite.</strong> Keep the port runner's authoritative allow-list and
+  release-closure tests current when shared modules or browser assets are added.</li>
+  <li><strong>Record verified drift in the four core docs.</strong> Do not rely on an untracked side file;
+  unfinished port work belongs in STATUS and completed work in LOGS.</li>
+</ol>
+
+<p>Platform seam summary:</p>
+
+<div class="branch">
+  <div class="branch-col is-gold">
+    <h4><span class="dot"></span>macOS</h4>
+    <p>Global hotkeys via <code>pynput</code> (no sudo); WebKit window via pywebview; paste/focus
+    via <code>osascript</code>; data under <code>~/Library/Application Support/Mumble</code>; launch-at-login via a
+    LaunchAgent; a detached <code>pystray</code> menu-bar process so the main thread can run tk + pywebview.</p>
+  </div>
+  <div class="branch-col">
+    <h4><span class="dot"></span>Linux</h4>
+    <p>Hotkeys via <code>pynput</code> (X11) / <code>evdev</code> (Wayland; needs the user in the <code>input</code>
+    group); window via pywebview on GTK + WebKitGTK; island as a native GTK transparent
+    click-through pill (Cairo per-pixel alpha); paste via xdotool/ydotool + xclip/wl-clipboard;
+    tray via <code>pystray</code>/AppIndicator (degrades to <code>notify-send</code>); data under XDG; autostart via
+    a <code>~/.config/autostart/*.desktop</code> entry. X11 is the full-fidelity target.</p>
+  </div>
+</div>
+
+<h2 id="s9"><span class="sec">9</span>Commit expectations</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Make one clean change per commit with a message that says what changed and why. Verify before
+    you commit — never commit a failing test suite. Commit promptly, because this repo can be touched
+    by another device through OneDrive, and long-lived uncommitted edits risk being swept away. Never
+    commit secrets or heavy build junk.</p>
+  </div>
+</div>
+
+<ul>
+  <li><strong>One coherent change per commit</strong>; a clear, specific message (what + why, not "fixes").</li>
+  <li><strong>Verify before you commit</strong> (<a href="#s4">§4</a>). Don't commit a red suite.</li>
+  <li><strong>Commit promptly.</strong> This repo can be touched by another device via OneDrive — long-lived
+  uncommitted edits risk being swept into a foreign commit or reverted. Keep messages simple
+  and land them.</li>
+  <li><strong>Never commit secrets</strong> or the <code>.venv</code>, caches, or build zips that <code>.gitignore</code> excludes.</li>
+</ul>
+
+<h2 id="s10"><span class="sec">10</span>Deploy</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Shipping Mumble means packaging the runnable app (the <code>Mumble.exe</code> launcher plus the
+    <code>Internal/</code> code) into a zip — leaving out tests, the virtual environment, and dev scripts. Each
+    operating system has its own install path. Always run a quick smoke test to confirm the deploy
+    worked before declaring victory. Note: the auto-update feed isn't live yet, so don't switch it on.</p>
+  </div>
+</div>
+
+<p>The production build is <strong><code>Mumble.exe</code> + <code>Internal/</code></strong>. <code>Development Files/</code> is excluded.</p>
+
+<p><strong>Rebuild the distributable</strong> when the runtime changes meaningfully — repackage
+<code>Mumble.zip</code> from <code>Internal/</code> (the <code>build-tools/</code> helper handles this; it mirrors source,
+refreshes every zip entry from disk, drops deleted files, and force-adds new modules).
+Exclude <code>test_*.py</code>, <code>.venv</code>, <code>__pycache__</code>, and dev scripts from the shipped zip.</p>
+
+<div class="branch">
+  <div class="branch-col">
+    <h4><span class="dot"></span>Windows</h4>
+    <p>Rebuild <code>Mumble.zip</code> → user extracts → runs <code>Install Mumble.bat</code> (one-time:
+    installs Python + the speech model + builds the venv) → tray icon appears.</p>
+    <p><strong>One installed target:</strong> the manual entry point is the repository-root
+    <code>Mumble.exe</code>. Installed Desktop, Start-menu and Startup shortcuts point directly to
+    <code>Internal/app/.venv/Scripts/Mumble.exe</code>, pass <code>Internal/app/mumble.py</code>, use
+    <code>Internal/app</code> as their working directory, and load
+    <code>Internal/app/assets/mumble.ico</code>. Windows login uses only the Startup-folder
+    <code>Mumble.lnk</code>; there must be no competing Mumble Run-key entry or one-time
+    <code>FinalizeMumble.cmd</code> helper.</p>
+    <p>Flow Launcher discovers Mumble through the Start-menu shortcut. After moving, reinstalling or
+    replacing a Mumble checkout, recreate the shortcuts first and then press <code>F5</code> inside Flow
+    Launcher to reload plugin data. Never preserve a shortcut or icon path to a downloaded test folder.</p>
+    <details class="dev">
+      <summary><span class="devchip">Code</span> Windows launch-path verification</summary>
+<pre><code>powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Development Files\Other\build-tools\verify_windows_launch.ps1"</code></pre>
+      <p>Run this from the repository root after installation or a folder move. It fails if the manual
+      launcher, runtime, entry script, icon, installed shortcuts or Flow Launcher index point to a
+      missing location, or if another Mumble startup item competes with <code>Mumble.lnk</code>.</p>
+    </details>
+  </div>
+  <div class="branch-col is-gold">
+    <h4><span class="dot"></span>macOS</h4>
+    <p>Use the port launcher for a normal install, or run from the app dir for development. Hotkeys
+    need Accessibility permission and dictation needs Microphone permission on first run.</p>
+    <details class="dev">
+      <summary><span class="devchip">Code</span> macOS launch</summary>
+<pre><code>cd Internal/app/Ports/macOS/app &amp;&amp; pip install -r requirements.txt &amp;&amp; python mumble_mac.py</code></pre>
+    </details>
+  </div>
+</div>
+
+<p><strong>Linux:</strong> <code>cd Internal/app/Ports/Linux &amp;&amp; ./install.sh</code> (detects apt/dnf/pacman/zypper,
+installs system libs, builds a venv, fetches the model) → <code>./mumble</code> or launch from the app
+menu.</p>
+
+<blockquote>
+  <strong>Confirm the deploy</strong> with a health check / smoke test before calling it done. The
+  update-feed path is <strong>not live yet</strong> — see the auto-update venv-gap blocker in STATUS before
+  setting <code>MANIFEST_URL</code>.
+</blockquote>
+
+<h2 id="s11"><span class="sec">11</span>Licences &amp; Third-Party Components</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble uses software from many authors. This register tracks components actually installed or distributed. Merely researching a repository does not mean Mumble incorporates its code and does not place that project in the shipped-component register.</p>
+    <p><strong>Current release gate:</strong> the pinned runtime contains two direct Reader packages whose installed metadata reports AGPL-3.0 terms. Mumble must replace them, obtain suitable commercial terms, or receive specialist compatibility advice before distribution. The earlier “no AGPL” statement was contradicted by the live manifest.</p>
+  </div>
+</div>
+
+<h3>Verified shipped-component reconciliation — 12 July 2026</h3>
+<p><code>Internal/app/requirements.txt</code> is the source of truth for direct runtime packages. Versions and licence expressions below were checked against the installed environment; native libraries, downloaded models and packaged assets still require a clean-build SBOM. Obligations attach to each incorporated component while Mumble's original code remains MIT.</p>
+<table>
+  <thead><tr><th>Components</th><th>Pinned / installed</th><th>Licence</th><th>Relationship</th><th>Required action</th></tr></thead>
+  <tbody>
+    <tr><td>faster-whisper / CTranslate2</td><td>1.2.1 / 4.8.0</td><td>MIT / MIT</td><td>Direct STT package / transitive native runtime</td><td>Retain upstream copyright and licence texts.</td></tr>
+    <tr><td>sounddevice / PortAudio</td><td>0.5.5 / bundled native</td><td>MIT / MIT-style</td><td>Direct binding / native capture library</td><td>Retain both notices; verify the wheel contents in the release SBOM.</td></tr>
+    <tr><td>numpy; scipy</td><td>2.2.6; 1.18.0</td><td>BSD-3-Clause</td><td>Direct numerical and resampling libraries</td><td>Retain copyright, conditions and disclaimer.</td></tr>
+    <tr><td>keyboard; mouse</td><td>0.13.5; 0.7.1</td><td>MIT</td><td>Direct global-input libraries</td><td>Retain upstream notices.</td></tr>
+  <tr><td>pyperclip; pywebview</td><td>1.11.0; 6.2.1</td><td>BSD / BSD-3-Clause</td><td>Direct clipboard and WebView libraries</td><td>Retain licence conditions and disclaimers.</td></tr>
+    <tr><td>comtypes; pywin32</td><td>1.4.16; 312</td><td>MIT / BSD-style-PSF</td><td>Direct Windows correction/integration libraries</td><td>Retain the shipped MIT and pywin32 notices.</td></tr>
+    <tr><td>sherpa-onnx / sherpa-onnx-core</td><td>1.13.4</td><td>Apache-2.0</td><td>Optional SenseVoice + DirectML transcription path</td><td>Ship Apache-2.0 and verify any separately downloaded ASR model metadata.</td></tr>
+    <tr><td>pystray</td><td>0.19.5</td><td>LGPL-3.0</td><td>Direct tray library</td><td>Preserve LGPL rights, licence and replacement/relinking ability; publish modifications. Verify packaging with counsel.</td></tr>
+    <tr><td>Pillow</td><td>12.2.0</td><td>MIT-CMU</td><td>Direct image library</td><td>Retain licence and disclaimer.</td></tr>
+    <tr><td>soundfile / libsndfile</td><td>0.14.0 / bundled native</td><td>BSD-3-Clause / LGPL-2.1+</td><td>Direct wrapper / native audio library</td><td>Retain both licences and preserve LGPL replacement rights.</td></tr>
+    <tr><td>python-docx; beautifulsoup4; openpyxl; python-pptx</td><td>1.2.0; 4.15.0; 3.1.5; 1.0.2</td><td>MIT</td><td>Direct Reader parsers</td><td>Retain upstream notices.</td></tr>
+    <tr><td>odfpy</td><td>1.4.1</td><td>Apache-2.0</td><td>Direct ODT parser</td><td>Include Apache licence, preserve NOTICE if supplied, and mark modifications.</td></tr>
+    <tr><td><strong>PyMuPDF</strong></td><td>1.27.2.3</td><td><strong>AGPL-3.0 or commercial</strong></td><td>Direct Python import for PDF Reader</td><td><strong>Release blocker:</strong> do not assume MIT compatibility; replace, license commercially, or obtain specialist advice.</td></tr>
+    <tr><td><strong>EbookLib</strong></td><td>0.20</td><td><strong>AGPL-3.0</strong></td><td>Direct Python import for EPUB Reader</td><td><strong>Release blocker:</strong> the previous BSD classification was wrong; replace or obtain specialist advice.</td></tr>
+  </tbody>
+</table>
+<p><strong>Research versus use:</strong> the voice-to-text audit has a separate research matrix. “Inspected” means only that public materials or source were reviewed. A project enters this register only when code, binaries, models, datasets or assets are copied, linked, modified, bundled or redistributed.</p>
+
+<h3>13 July 2026 research addendum</h3>
+<table>
+  <thead><tr><th>Project/service</th><th>Finding</th><th>Mumble decision</th></tr></thead>
+  <tbody>
+    <tr><td>Fabric / promptflow</td><td>Both repositories are MIT. Fabric's improve_prompt pattern and promptflow's versioned/evaluable flow informed the registry design.</td><td>Architecture reference only; no external prompt text or code copied. Keep provenance metadata on every future template.</td></tr>
+    <tr><td>Flow Launcher / Ueli / Microsoft PowerToys</td><td>MIT; established keyboard-first providers, bounded local discovery, ranking and explicit result actions.</td><td>Architecture and product references for Mumble Search only. No source, assets or binaries copied; Search uses original standard-library code.</td></tr>
+    <tr><td>Microsoft UFO / Open Interpreter</td><td>MIT desktop-agent references reviewed for the retired computer-control experiment.</td><td>Research history only. The autonomous executor, approval UI, wake service and UI-automation dependency were removed; neither project is incorporated.</td></tr>
+    <tr><td>OmniParser</td><td>Repository code is CC-BY-4.0, while released weights have mixed AGPL/MIT terms.</td><td>Do not incorporate without a separate code/weights review and a concrete need.</td></tr>
+    <tr><td>sherpa-onnx</td><td>Apache-2.0 runtime retained for optional SenseVoice + DirectML speech transcription.</td><td>Preserve runtime/model notices for the ASR path. The former keyword-spotting model download and wake-word feature are removed.</td></tr>
+    <tr><td>openWakeWord</td><td>Code is Apache-2.0, but bundled pre-trained models are CC BY-NC-SA 4.0.</td><td>Not suitable as an unreviewed commercial model dependency. Do not adopt those weights.</td></tr>
+    <tr><td>Picovoice Rhino</td><td>Apache-2.0 SDK repository, but practical use requires an AccessKey and generated context.</td><td>Not adopted; it would add account/key and context-generation requirements to a local-first interaction.</td></tr>
+  </tbody>
+</table>
+
+<details class="dev"><summary>Legacy planning register (superseded where it conflicts with the reconciliation above)</summary>
+
+<table>
+  <thead><tr><th>#</th><th>Project</th><th>Repo / Author</th><th>Licence</th><th>Version</th><th>Purpose</th><th>Attribution</th><th>Redistribution</th><th>Commercial</th><th>Modified?</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>faster-whisper</td><td>SYSTRAN</td><td>MIT</td><td>latest</td><td>Local speech-to-text (CTranslate2)</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td></tr>
+    <tr><td>2</td><td>CTranslate2</td><td>OpenNMT</td><td>MIT</td><td>latest</td><td>Fast Transformer inference</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td></tr>
+    <tr><td>3</td><td>Silero VAD</td><td>silero-models</td><td>MIT</td><td>bundled</td><td>Voice activity detection</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td></tr>
+    <tr><td>4</td><td>sounddevice</td><td>Spatial Audio</td><td>MIT</td><td>latest</td><td>Audio capture (PortAudio)</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td></tr>
+    <tr><td>5</td><td>pywebview</td><td>r0x0r</td><td>BSD-3</td><td>latest</td><td>Web UI shell</td><td>Keep LICENSE</td><td>Retain notice</td><td>Yes</td><td>No</td></tr>
+    <tr><td>6</td><td>pystray</td><td>Moses Palmer</td><td>LGPL-3.0</td><td>latest</td><td>System tray icon</td><td>Keep LICENSE</td><td>Dynamic linking OK</td><td>Yes</td><td>No</td></tr>
+    <tr><td>7</td><td>Pillow</td><td>Python Pillow</td><td>HPND</td><td>latest</td><td>Island rendering</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td></tr>
+    <tr><td>8</td><td>keyboard</td><td>BoppreH</td><td>MIT</td><td>latest</td><td>Global hotkey input</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td></tr>
+    <tr><td>9</td><td>pyperclip</td><td>Al Sweigart</td><td>BSD-3</td><td>latest</td><td>Cross-platform clipboard</td><td>Keep LICENSE</td><td>Retain notice</td><td>Yes</td><td>No</td></tr>
+    <tr><td>10</td><td>numpy</td><td>NumPy</td><td>BSD-3</td><td>latest</td><td>Numerical computation</td><td>Keep LICENSE</td><td>Retain notice</td><td>Yes</td><td>No</td></tr>
+  </tbody>
+</table>
+
+<h3>Planned Dependencies (to be activated)</h3>
+
+<table>
+  <thead><tr><th>#</th><th>Project</th><th>Repo / Author</th><th>Licence</th><th>Version</th><th>Purpose</th><th>Attribution</th><th>Redistribution</th><th>Commercial</th><th>Modified?</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>11</td><td>llama-cpp-python</td><td>Andrei Betlen</td><td>MIT</td><td>latest</td><td>GGUF model inference (Python bindings to llama.cpp)</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td><td><span class="badge b-done">✓ integrated</span> — import-guarded. Commented in requirements.txt. Activates when installed.</td></tr>
+    <tr><td>12</td><td>rpunct</td><td>Felflare</td><td>MIT</td><td>latest</td><td>BERT-based punctuation restoration (~80 MB)</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td><td><span class="badge b-done">✓ integrated</span> — import-guarded. Commented in requirements.txt. Activates when installed.</td></tr>
+    <tr><td>13</td><td>Qwen3.5-4B</td><td>Alibaba / Qwen Team</td><td>Apache 2.0</td><td>Mar 2026</td><td>Local post-processing LLM (~2.5 GB GGUF)</td><td>Include LICENSE · State changes if fine-tuned</td><td>Retain notice</td><td>Yes</td><td>No</td><td><span class="badge b-exist">planned</span> — model download UX pending.</td></tr>
+    <tr><td>14</td><td>Ownscribe</td><td>paberr</td><td>MIT</td><td>v0.13.0</td><td>Meeting transcription + diarization (pattern adoption)</td><td>Pattern reference only</td><td>Unrestricted</td><td>Yes</td><td>N/A</td><td><span class="badge b-exist">planned</span> — Phase 3.</td></tr>
+    <tr><td>15</td><td>pyannote.audio</td><td>pyannote</td><td>MIT</td><td>latest</td><td>Speaker diarization (opt-in, HuggingFace token)</td><td>Keep LICENSE</td><td>Unrestricted</td><td>Yes</td><td>No</td><td><span class="badge b-exist">planned</span> — Phase 3.</td></tr>
+  </tbody>
+</table>
+
+<h3>Newly Integrated Dependencies (2026-06-28)</h3>
+
+<table>
+  <thead><tr><th>#</th><th>Project</th><th>Repo / Author</th><th>Licence</th><th>Purpose</th><th>Integration</th></tr></thead>
+  <tbody>
+    <tr><td>—</td><td>foreign_boost</td><td>Mumble (internal)</td><td>N/A</td><td>Multi-language phonetic token boosting for Foreign Mode</td><td>Wired into <code>_builder()</code> and <code>_cloud_generate()</code>. Pure stdlib, 20/20 tests.</td></tr>
+    <tr><td>—</td><td>local_engine</td><td>Mumble (internal)</td><td>N/A</td><td>Hybrid local/cloud router + LlamaCppBackend seam + GBNF grammars</td><td>Wired into <code>_init_local_backend()</code> at boot + <code>_builder()</code> routing. 20/20 tests.</td></tr>
+  </tbody>
+</table>
+
+</details>
+
+<h3>Mumble Custom Model — Licence Strategy</h3>
+<p>The planned Mumble-branded model will be based on Qwen3.5-4B (Apache 2.0). Apache 2.0 permits:</p>
+<ul>
+  <li>Fine-tuning, modification, and redistribution under any name</li>
+  <li>Commercial use without restriction</li>
+  <li>No obligation to open-source derivative weights (permissive, not copyleft)</li>
+</ul>
+<p><strong>Required:</strong> include the original Apache 2.0 LICENSE file, state what changes were made, preserve any NOTICE file from the original model. The model can be named "Mumble LM" or any distinct name without referencing Qwen in the product name (though attribution in documentation is required). See the full model strategy in the 2026-06-28 LOGS entry.</p>
+
+<h3>Release compliance gate</h3>
+<p>Before the next public archive or installer: generate a complete dependency and asset SBOM from a clean environment; include verbatim notices rather than a home-written summary alone; resolve PyMuPDF and EbookLib; inventory native/transitive binaries and model licences; and verify the packaged release contains the promised licence bundle. This register is engineering guidance, not legal advice.</p>
+
+<div class="doc-foot">
+  <span>Mumble — HANDBOOK</span>
+  <span class="gold">How Mumble is built</span>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# LinuxMumble ships to Linux: every text file MUST check out with LF endings,
+# even on a Windows clone with core.autocrlf=true. A stray CRLF in install.sh or
+# the generated `mumble` launcher breaks the "#!/usr/bin/env bash" shebang on
+# Linux ("bad interpreter: /usr/bin/env bash^M"). Python tolerates CRLF, but we
+# normalize everything to LF for consistency.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary

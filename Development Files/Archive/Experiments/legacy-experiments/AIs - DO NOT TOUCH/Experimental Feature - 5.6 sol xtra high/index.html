@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Mumble Operator — Experimental</title>
+  <link rel="stylesheet" href="styles.css?v=20260710-1">
+</head>
+<body>
+  <svg class="svg-defs" aria-hidden="true">
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2l1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.7c0 4.5 3.1 7.8 7.5 9.3 4.4-1.5 7.5-4.8 7.5-9.3V6L12 3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M7 7h.01M10 7h.01"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3V7Z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></symbol>
+  </svg>
+
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <div class="app-shell" id="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Mumble Operator home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span class="brand-copy"><strong>Mumble</strong><small>Operator</small></span>
+      </a>
+      <div class="experiment-label"><svg><use href="#i-spark"></use></svg>Experimental · 5.6 sol xtra high</div>
+      <div class="host-state" id="host-state"><span class="state-dot"></span><span>Preview mode</span></div>
+    </header>
+
+    <main class="workspace">
+      <section class="command-stage" aria-labelledby="command-title">
+        <div class="stage-head">
+          <div>
+            <p class="eyebrow">Desktop assistant</p>
+            <h1 id="command-title">What should we do?</h1>
+            <p class="stage-sub">Say it naturally. Operator turns your request into a plan before it touches your PC.</p>
+          </div>
+          <button class="quiet-btn" id="clear-btn" type="button">Clear session</button>
+        </div>
+
+        <div class="voice-zone" id="voice-zone" data-mode="idle">
+          <button class="voice-orb" id="voice-orb" type="button" aria-label="Start listening">
+            <span class="orb-ring ring-one"></span>
+            <span class="orb-ring ring-two"></span>
+            <span class="orb-core"><svg><use href="#i-mic"></use></svg></span>
+          </button>
+          <div class="voice-copy" aria-live="polite">
+            <strong id="voice-state-title">Ready when you are</strong>
+            <span id="voice-state-sub">Tap the orb or press Right Shift</span>
+          </div>
+          <div class="wave" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+
+        <form class="command-box" id="command-form">
+          <label for="command-input">Command</label>
+          <div class="command-row">
+            <textarea id="command-input" rows="2" autocomplete="off" placeholder="Try “Open Calculator, then search Mumble privacy on Brave”"></textarea>
+            <button class="send-btn" type="submit" aria-label="Build plan"><svg><use href="#i-arrow"></use></svg></button>
+          </div>
+          <div class="command-meta">
+            <span><kbd>Right Shift</kbd> temporary shortcut</span>
+            <span class="privacy-note"><svg><use href="#i-shield"></use></svg>Local planning · nothing runs without review</span>
+          </div>
+        </form>
+
+        <div class="suggestions" aria-label="Suggested commands">
+          <button type="button" data-command="Open Calculator">Open Calculator</button>
+          <button type="button" data-command="Switch to Notepad">Focus a window</button>
+          <button type="button" data-command="Search for Mumble privacy on Brave">Search the web</button>
+          <button type="button" data-command="Open my Downloads folder, then open Calculator">Build a workflow</button>
+        </div>
+
+        <section class="plan-panel" id="plan-panel" hidden aria-labelledby="plan-title">
+          <div class="plan-top">
+            <div>
+              <p class="eyebrow">Review before run</p>
+              <h2 id="plan-title">Your plan</h2>
+            </div>
+            <span class="plan-status" id="plan-status">Ready to review</span>
+          </div>
+          <p class="plan-summary" id="plan-summary"></p>
+          <ol class="plan-steps" id="plan-steps"></ol>
+          <div class="plan-notice" id="plan-notice" hidden></div>
+          <div class="plan-actions">
+            <button class="btn btn-ghost" id="cancel-plan" type="button">Cancel</button>
+            <button class="btn btn-gold" id="run-plan" type="button"><svg><use href="#i-spark"></use></svg>Run plan</button>
+          </div>
+        </section>
+      </section>
+
+      <aside class="side-rail" aria-label="Operator context">
+        <section class="rail-card context-card">
+          <div class="rail-title"><span class="icon-chip"><svg><use href="#i-monitor"></use></svg></span><div><h2>Live context</h2><p>What Operator can currently see</p></div></div>
+          <div class="context-window">
+            <div class="mini-window"><span></span><span></span><span></span></div>
+            <div><strong>Prototype workspace</strong><small id="context-detail">No desktop target selected</small></div>
+          </div>
+          <div class="context-list">
+            <div><span>Screen contents</span><em class="off">Not shared</em></div>
+            <div><span>Transcript history</span><em class="off">Not connected</em></div>
+            <div><span>Local action host</span><em id="host-capability" class="waiting">Checking</em></div>
+          </div>
+        </section>
+
+        <section class="rail-card trust-card">
+          <div class="rail-title"><span class="icon-chip"><svg><use href="#i-lock"></use></svg></span><div><h2>You stay in control</h2><p>Three levels of action safety</p></div></div>
+          <div class="safety-row"><span class="safety-dot safe"></span><div><strong>Runs directly</strong><small>Reviewed, reversible actions</small></div></div>
+          <div class="safety-row"><span class="safety-dot confirm"></span><div><strong>Needs confirmation</strong><small>Focus, files and multi-step flows</small></div></div>
+          <div class="safety-row"><span class="safety-dot blocked"></span><div><strong>Blocked in prototype</strong><small>Edits, paste injection and unknown apps</small></div></div>
+        </section>
+
+        <section class="rail-card milestone-card">
+          <div class="milestone-visual"><span class="hours" id="hours-saved">0.0</span><small>hours saved</small></div>
+          <div class="milestone-copy"><h2>Milestone flow</h2><p>Preview the one-time 20-hour thank-you and optional Archetype Report.</p></div>
+          <div class="stack-actions">
+            <button class="btn btn-soft" id="milestone-preview" type="button"><svg><use href="#i-clock"></use></svg>Simulate 20 hours</button>
+            <button class="text-btn" id="report-preview" type="button">Preview Archetype flow <svg><use href="#i-arrow"></use></svg></button>
+          </div>
+        </section>
+
+        <section class="rail-card activity-card">
+          <div class="activity-head"><h2>Session</h2><span id="activity-count">1 event</span></div>
+          <ul id="activity-list" class="activity-list" aria-live="polite">
+            <li><span class="activity-icon"><svg><use href="#i-check"></use></svg></span><div><strong>Operator ready</strong><small>Nothing has touched your PC</small></div></li>
+          </ul>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="app-footer">
+      <span>Experimental sandbox · not part of Mumble’s production flow</span>
+      <span>Audio capture and transcript analysis are not connected</span>
+    </footer>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <div class="modal-layer" id="milestone-modal" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="modal milestone-modal" role="dialog" aria-modal="true" aria-labelledby="milestone-title" tabindex="-1">
+      <button class="modal-close" type="button" data-close-modal aria-label="Close"><svg><use href="#i-close"></use></svg></button>
+
+      <div class="modal-view is-active" data-modal-view="thanks">
+        <div class="celebration-mark" aria-hidden="true"><span class="orbit"></span><svg><use href="#i-spark"></use></svg></div>
+        <p class="eyebrow centred">A quiet milestone</p>
+        <h2 id="milestone-title">You’ve saved over<br><span>20 hours</span> with Mumble.</h2>
+        <p class="modal-lead">That’s half a working week reclaimed for the things that deserve your attention.</p>
+        <div class="creator-note">
+          <div class="creator-avatar">D</div>
+          <div><strong>A small note from Default Name 101</strong><p>If Mumble has genuinely helped you, I’d really appreciate it if you left a review or shared it with someone who might find it useful.</p></div>
+        </div>
+        <div class="share-row">
+          <a class="share-btn" href="#" data-placeholder-link="X (Twitter)"><strong>𝕏</strong><span>Share on X</span></a>
+          <a class="share-btn" href="#" data-placeholder-link="LinkedIn"><strong>in</strong><span>Share on LinkedIn</span></a>
+        </div>
+        <div class="modal-divider"><span>Something for you</span></div>
+        <button class="report-invite" type="button" data-go-view="report-intro">
+          <span class="report-glyph"><svg><use href="#i-spark"></use></svg></span>
+          <span><small>Optional · premium preview</small><strong>Discover your communication archetype</strong><em>A private-looking concept report shaped around how you think, speak and work.</em></span>
+          <svg class="invite-arrow"><use href="#i-arrow"></use></svg>
+        </button>
+        <button class="text-btn modal-later" type="button" data-close-modal>Not now — keep using Mumble</button>
+      </div>
+
+      <div class="modal-view" data-modal-view="report-intro">
+        <button class="modal-back" type="button" data-go-view="thanks">← Back</button>
+        <div class="premium-pill"><svg><use href="#i-spark"></use></svg>Archetype Report · concept</div>
+        <h2>Your voice leaves a pattern.</h2>
+        <p class="modal-lead">Turn the shape of your past transcripts into a thoughtful portrait of how you communicate and get things done.</p>
+        <div class="insight-grid">
+          <div><span>01</span><strong>Communication style</strong><small>How you explain, persuade and connect</small></div>
+          <div><span>02</span><strong>Thinking patterns</strong><small>How ideas form and decisions emerge</small></div>
+          <div><span>03</span><strong>Natural strengths</strong><small>The habits that consistently help you</small></div>
+          <div><span>04</span><strong>Productivity rhythm</strong><small>Where momentum appears in your work</small></div>
+        </div>
+        <div class="concept-note"><svg><use href="#i-shield"></use></svg><p><strong>Concept preview only.</strong> This build does not read or analyse transcript history. A production version would require explicit consent, a visible data boundary and a real analysis backend.</p></div>
+        <button class="btn btn-gold btn-wide" type="button" data-go-view="unlock">See the unlock experience <svg><use href="#i-arrow"></use></svg></button>
+        <button class="text-btn modal-later" type="button" data-close-modal>Maybe another time</button>
+      </div>
+
+      <div class="modal-view" data-modal-view="unlock">
+        <button class="modal-back" type="button" data-go-view="report-intro">← Back</button>
+        <div class="unlock-layout">
+          <div class="report-cover" aria-hidden="true">
+            <div class="cover-top"><span>M</span><small>PERSONAL EDITION</small></div>
+            <div class="cover-orbit"><i></i><i></i><i></i><strong>THE<br>ARCHITECT</strong></div>
+            <div class="cover-bottom"><small>ARCHETYPE REPORT</small><span>Sample</span></div>
+          </div>
+          <div class="unlock-copy">
+            <div class="premium-pill"><svg><use href="#i-mail"></use></svg>Newsletter unlock</div>
+            <h2>One useful email.<br>One personal report.</h2>
+            <p>Join the Mumble newsletter for considered product notes and practical voice-workflow ideas. In return, unlock your report concept.</p>
+            <form id="newsletter-form" class="newsletter-form" novalidate>
+              <label for="newsletter-email">Email address</label>
+              <input id="newsletter-email" type="email" autocomplete="email" placeholder="you@example.com" required>
+              <label class="consent-row"><input id="newsletter-consent" type="checkbox"><span>I’d like to receive the Mumble newsletter. I can unsubscribe at any time.</span></label>
+              <p class="form-error" id="newsletter-error" role="alert"></p>
+              <button class="btn btn-gold btn-wide" type="submit">Unlock my sample report <svg><use href="#i-arrow"></use></svg></button>
+            </form>
+            <p class="fine-print"><svg><use href="#i-lock"></use></svg>Prototype only: the email is validated locally and is not submitted anywhere.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-view" data-modal-view="sample-report">
+        <div class="report-header">
+          <div><p class="eyebrow">Sample · no transcripts analysed</p><h2>The Architect</h2><p>You tend to make complexity useful: clarifying the moving parts, finding structure, then turning it into a practical next step.</p></div>
+          <div class="report-score"><span>Primary pattern</span><strong>Clarity → Structure → Action</strong></div>
+        </div>
+        <div class="report-cards">
+          <article><span>01 · Communication</span><h3>Structured, quietly persuasive</h3><p>You often build context before arriving at the decision. Your strongest communication makes the destination visible early, then earns it.</p></article>
+          <article><span>02 · Thinking</span><h3>Systems before symptoms</h3><p>You naturally look for the mechanism behind a problem. That creates durable solutions, though small choices can sometimes receive big-system treatment.</p></article>
+          <article><span>03 · Productivity</span><h3>Momentum through definition</h3><p>Ambiguity costs you more energy than volume. Once “done” is concrete, you move quickly and maintain a high quality bar.</p></article>
+          <article><span>04 · Experiment</span><h3>Lead with the decision</h3><p>For one week, open important messages with the outcome in one sentence. Add the reasoning beneath it only where it changes the reader’s action.</p></article>
+        </div>
+        <div class="sample-banner"><svg><use href="#i-shield"></use></svg><span><strong>This is presentation-only sample copy.</strong> No behavioural claim here was inferred from user data.</span></div>
+        <button class="btn btn-gold" type="button" data-close-modal>Return to Operator</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js?v=20260710-1"></script>
+</body>
+</html>

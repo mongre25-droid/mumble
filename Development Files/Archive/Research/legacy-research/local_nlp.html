@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local NLP Survey</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Research</div>
+  <h1>Local NLP Survey</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Date:</b> 2026-06-23</div>
+    <div><span class="ico">◆</span><b>Target app:</b> Mumble (Python desktop, faster-whisper STT, CPU-only)</div>
+    <div><span class="ico">◆</span><b>Goal:</b> Better offline post-processing, kept lightweight</div>
+    <div><span class="ico">◆</span><b>Follow-on:</b> <a href="LOCAL_POST_PROCESSING_ENGINE.html">LOCAL_POST_PROCESSING_ENGINE.html</a></div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>When you dictate into Mumble, Whisper (the speech-to-text engine) turns your voice into text. But that raw text needs tidying: missing commas, the odd grammar slip, repeated words, and — most annoyingly — phantom phrases like &ldquo;thanks for watching&rdquo; that Whisper invents during silence. This report surveys the tools and tricks that can clean all that up <strong>on your own computer</strong>, with no internet and no big downloads.</p>
+    <p>The headline finding: the cheapest fixes are also the most valuable. A small list of known junk phrases plus a few grammar rules removes Whisper&rsquo;s most embarrassing mistakes for free. Heavier machine-learning models are nice-to-have extras for people who opt in, not the foundation.</p>
+  </div>
+</div>
+
+<blockquote>
+This is the companion survey to the Local Post-Processing Engine. The architecture this research feeds is specced in
+<a href="LOCAL_POST_PROCESSING_ENGINE.html">LOCAL_POST_PROCESSING_ENGINE.html</a> (hybrid local/cloud router, local Foreign-Mode engine, GGUF/GBNF local smart-mode lanes) — partly shipped.
+</blockquote>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s0">Current state of Mumble&rsquo;s post-processing</a></li>
+    <li><a href="#s1">Lightweight punctuation restoration</a></li>
+    <li><a href="#s2">Lightweight grammar correction (CPU)</a></li>
+    <li><a href="#s3">Confidence-based post-processing</a></li>
+    <li><a href="#s4">Text cleanup / normalisation libraries</a></li>
+    <li><a href="#s5">Filler-word removal &amp; disfluency detection</a></li>
+    <li><a href="#s6">Whisper-specific: hallucination &amp; repetition</a></li>
+    <li><a href="#s7">Summary: implementation priorities</a></li>
+    <li><a href="#s8">Key links</a></li>
+  </ol>
+</nav>
+
+<h2 id="s0"><span class="sec">0</span>Current state of Mumble&rsquo;s post-processing</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Mumble already does some cleanup with plain rules (no AI). It strips &ldquo;um&rdquo; and &ldquo;uh&rdquo;, fixes capital letters, adds a final full stop, corrects misheard vocabulary, and flags shaky words for the cloud AI to double-check. What it <em>can&rsquo;t</em> do offline yet: smart punctuation, grammar fixes, and guarding against Whisper&rsquo;s invented phrases. That&rsquo;s the gap this report tackles.</p></div>
+</div>
+
+<p>Derived from <code>mumble/formatting.py</code> (the offline, rule-based engine):</p>
+
+<ul>
+  <li><strong>Filler removal:</strong> regex <code>_FILLER_RE</code> strips <code>um/uh/er/ah/hm/mm/mhm/you know</code> (already implemented).</li>
+  <li><strong>Capitalisation:</strong> <code>_capitalize()</code> handles sentence-start capitalisation, preserves intercaps (iPhone, macOS), handles the pronoun &ldquo;I&rdquo;, guards against breaking decimals/abbreviations.</li>
+  <li><strong>Punctuation:</strong> <code>_ensure_terminal()</code> adds a trailing period; spacing fixups for glued punctuation. There is <strong>no comma/question-mark insertion</strong> beyond what Whisper emits.</li>
+  <li><strong>Vocabulary correction:</strong> phonetic-key + Levenshtein matching (<code>apply_vocabulary_terms</code>), high-confidence auto-fix, medium-confidence slash annotation for AI review.</li>
+  <li><strong>Confidence handling:</strong> <code>annotate_uncertain()</code> marks low-probability words with <code>heard//alt</code> slash alternatives for the cloud AI to resolve.</li>
+  <li><strong>AI cleanup:</strong> Cerebras/OpenAI (Pro Mode) does grammar/punctuation/style. The offline path has none.</li>
+</ul>
+
+<blockquote>
+<strong>Gaps this report addresses:</strong> ML-based punctuation restoration, grammar correction, confidence recovery, hallucination/de-looping guards, and better text normalisation — all CPU-friendly and &lt; 500 MB.
+</blockquote>
+
+<h2 id="s1"><span class="sec">1</span>Lightweight punctuation restoration</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Whisper already adds some commas and full stops, but it gets sloppy on short or noisy clips. A dedicated &ldquo;punctuation restorer&rdquo; reads a sentence and puts the marks back in the right places. The options below range from a 1.3&nbsp;GB multilingual model down to a few free grammar rules that cost nothing.</p></div>
+</div>
+
+<p>faster-whisper already emits punctuation (it was trained on punctuated data), but quality drops on short segments, noisy audio, and non-English. A dedicated restorer can fix missing/misplaced commas and question marks.</p>
+
+<h3>1a. deepmultilingualpunctuation (FullStop) <span class="badge b-gold">recommended</span></h3>
+<ul>
+  <li><strong>Repo:</strong> <a href="https://github.com/oliverguhr/deepmultilingualpunctuation">github.com/oliverguhr/deepmultilingualpunctuation</a></li>
+  <li><strong>Install:</strong> <code>pip install deepmultilingualpunctuation</code></li>
+  <li><strong>Model:</strong> <code>oliverguhr/fullstop-punctuation-multilang-large</code> (BERT-large, ~1.3 GB on disk; a smaller base variant <code>fullstop-punctuation-multilingual-sonar-base</code> exists). Labels: <code>.</code> <code>,</code> <code>?</code> <code>-</code> <code>:</code>.</li>
+  <li><strong>Languages:</strong> English, Italian, French, German, Dutch (community models add 12 more).</li>
+  <li><strong>CPU:</strong> Yes, runs on CPU via HuggingFace transformers. Slower than rule-based but sub-second for a sentence.</li>
+  <li><strong>Fit for Mumble:</strong> Good as an optional &ldquo;enhanced punctuation&rdquo; pass when Whisper&rsquo;s punctuation is weak. The large model is ~1.3 GB (above the 500 MB preference); the sonar-base variant is smaller. Could be lazy-loaded only when the user enables it, or gated to segments where Whisper produced no punctuation.</li>
+  <li><strong>License:</strong> MIT.</li>
+</ul>
+<details class="dev">
+  <summary><span class="devchip">Code</span> FullStop API example</summary>
+  <pre><code>from deepmultilingualpunctuation import PunctuationModel
+model = PunctuationModel()
+result = model.restore_punctuation("my name is clara and i live in berkeley california")
+# -&gt; "My name is Clara, and I live in Berkeley, California."</code></pre>
+</details>
+
+<h3>1b. felflare/bert-restore-punctuation (HuggingFace)</h3>
+<ul>
+  <li><strong>Model:</strong> <a href="https://huggingface.co/felflare/bert-restore-punctuation">huggingface.co/felflare/bert-restore-punctuation</a></li>
+  <li><strong>Base:</strong> BERT-base (~110 M params, ~440 MB). Restores punctuation AND casing.</li>
+  <li><strong>CPU:</strong> Yes. Simple <code>transformers</code> pipeline.</li>
+  <li><strong>Languages:</strong> English only.</li>
+  <li><strong>Fit:</strong> Lighter than FullStop-large, English-only, restores capitalisation too. Good single-language option.</li>
+</ul>
+
+<h3>1c. BertPunc / BertPuncCap</h3>
+<ul>
+  <li><strong>BertPunc:</strong> <a href="https://github.com/nkrnrnk/BertPunc">github.com/nkrnrnk/BertPunc</a> — SOTA punctuation restoration on BERT, research-oriented, less packaged.</li>
+  <li><strong>BertPuncCap:</strong> <a href="https://github.com/Anwarvic/BertPuncCap">github.com/Anwarvic/BertPuncCap</a> — proof-of-concept restoring punctuation + capitalisation.</li>
+  <li><strong>Fit:</strong> More setup work than the pip-installable options; useful as reference implementations if Mumble wants to fine-tune a tiny model on its own dictation style.</li>
+</ul>
+
+<h3>1d. whisper-punctuator (zero-shot, reuses the Whisper model)</h3>
+<ul>
+  <li><strong>Repo:</strong> <a href="https://github.com/jumon/whisper-punctuator">github.com/jumon/whisper-punctuator</a></li>
+  <li><strong>Approach:</strong> Uses the <em>already-loaded</em> Whisper model&rsquo;s encoder to insert punctuation via constrained decoding — <strong>no extra model download</strong>. Works on any Whisper-supported language.</li>
+  <li><strong>Trade-off:</strong> Requires the audio file (it&rsquo;s multimodal: audio + unpunctuated text &rarr; punctuated text). Adds a second decoder pass (CPU cost). Limited to 30-second clips.</li>
+  <li><strong>Fit:</strong> Interesting because it reuses the Whisper weights Mumble already has — zero added model size. But the extra decode pass on CPU may be too slow for a live dictation app. Better suited to a batch/offline &ldquo;polish&rdquo; button.</li>
+</ul>
+
+<h3>1e. Rule-based enhancement (no model, zero cost)</h3>
+<p>Mumble&rsquo;s current <code>_ensure_terminal</code> only adds a final period. A lightweight rule layer could add:</p>
+<ul>
+  <li>Comma before conjunctions joining independent clauses (<code>... and ...</code> &rarr; <code>..., and ...</code>).</li>
+  <li>Question mark on sentences starting with wh-words (who/what/where/when/why/how/is/are/do/can) when they lack terminal punctuation.</li>
+  <li>Comma after sentence-initial adverbs (however, therefore, meanwhile, ...).</li>
+</ul>
+<p>This is free, deterministic, and testable — worth doing regardless of whether an ML model is added.</p>
+
+<h2 id="s2"><span class="sec">2</span>Lightweight grammar correction (CPU)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Grammar fixing means turning &ldquo;this are wrong&rdquo; into &ldquo;this is wrong.&rdquo; The best offline tool (LanguageTool) needs Java installed — a heavy ask for a small app. A pure-Python alternative (Gramformer) exists but is dated and large. The pragmatic answer: add a few grammar rules yourself, and offer the heavier tools as optional add-ons.</p></div>
+</div>
+
+<h3>2a. language_tool_python (LanguageTool) <span class="badge b-gold">best quality</span> <span class="badge b-gated">needs Java</span></h3>
+<ul>
+  <li><strong>Repo:</strong> <a href="https://github.com/jxmorris12/language_tool_python">github.com/jxmorris12/language_tool_python</a> (actively maintained, last commit June 2026).</li>
+  <li><strong>Underlying:</strong> LanguageTool (Java server, ~200 MB JAR). Non-AI, rule-based grammar/style/spell checker, 30+ languages.</li>
+  <li><strong>Install:</strong> <code>pip install language_tool_python</code> (auto-downloads the LanguageTool server JAR on first use; requires Java 17+).</li>
+  <li><strong>CPU:</strong> Yes (it&rsquo;s not even ML). Fast.</li>
+  <li><strong>Fit for Mumble:</strong> Excellent quality for grammar/style, supports British English (matches Mumble&rsquo;s UK-English rule). <strong>Drawbacks:</strong> requires a JVM dependency (heavy for a lightweight desktop app), the JAR is ~200 MB, and first-run downloads it. Could be an <em>optional</em> plugin for users who want deep grammar checking without cloud AI. GPL-3.0 license — check compatibility with Mumble&rsquo;s license.</li>
+  <li><strong>License:</strong> GPL-3.0.</li>
+</ul>
+<details class="dev">
+  <summary><span class="devchip">Code</span> LanguageTool API example</summary>
+  <pre><code>import language_tool_python
+with language_tool_python.LanguageTool("en-GB") as tool:
+    matches = tool.check("This are wrong.")
+    fixed = tool.correct("This are wrong.")  # -&gt; "This is wrong."</code></pre>
+</details>
+
+<h3>2b. Gramformer (T5-based, pure Python, CPU)</h3>
+<ul>
+  <li><strong>Repo:</strong> <a href="https://github.com/PrithivirajDamodaran/Gramformer">github.com/PrithivirajDamodaran/Gramformer</a></li>
+  <li><strong>Model:</strong> <code>prithivida/grammar_error_correcter_v1</code> (T5-based seq2seq, ~220 M params, ~850 MB).</li>
+  <li><strong>CPU:</strong> Yes — <code>Gramformer(models=1, use_gpu=False)</code>. Sentence-level only (trained on 64-token sentences; must chunk longer text).</li>
+  <li><strong>Fit:</strong> Purpose-built for ASR post-processing (the README lists &ldquo;ASR or STT: Speech to text output&rdquo; as a primary use case). Above the 500 MB preference but the only pure-Python, no-JVM grammar corrector. Works sentence-by-sentence. <strong>Caveat:</strong> the repo hasn&rsquo;t been updated since 2022; model is &ldquo;stable&rdquo; but not cutting-edge. Note from the author: releases &lt;= v1.0 are NOT for commercial use — verify license terms.</li>
+  <li><strong>License:</strong> MIT (code); check model card for the model&rsquo;s license.</li>
+</ul>
+<details class="dev">
+  <summary><span class="devchip">Code</span> Gramformer API example</summary>
+  <pre><code>from gramformer import Gramformer
+gf = Gramformer(models=1, use_gpu=False)
+corrected = list(gf.correct("He are moving here.", max_candidates=1))</code></pre>
+</details>
+
+<h3>2c. HappyTransformer / happytransformer</h3>
+<p>Wraps T5/BERT grammar models with a simpler API. Same underlying models as Gramformer. Useful if a lighter wrapper is wanted, but adds a dependency for little benefit over calling the HF model directly.</p>
+
+<h3>2d. Lightweight LLM on CPU (e.g., GGUF-quantised small models)</h3>
+<ul>
+  <li>Models like <code>Qwen2.5-0.5B</code> or <code>Llama-3.2-1B</code> (quantised to ~500-700 MB) can do grammar correction via llama.cpp / <code>llama-cpp-python</code>.</li>
+  <li><strong>Fit:</strong> Overlaps with Mumble&rsquo;s existing cloud-AI path; running even a 1 B model on CPU for live dictation is likely too slow (multi-second latency). Not recommended for the live path; could power an explicit &ldquo;polish&rdquo; action. Better to keep the cloud AI for this and focus local effort on rules + punctuation models.</li>
+</ul>
+
+<blockquote>
+<strong>Recommendation for grammar:</strong> For a lightweight desktop app, <strong>prefer enhancing the rule-based layer</strong> (subject-verb agreement heuristics, article correction <code>a</code>/<code>an</code>, tense consistency) and <strong>offer language_tool_python as an optional module</strong> for users who have Java. Gramformer is a fallback if no JVM is acceptable, but it&rsquo;s heavier than ideal and stale.
+</blockquote>
+
+<h2 id="s3"><span class="sec">3</span>Confidence-based post-processing for Whisper output</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Whisper doesn&rsquo;t just guess words — it also reports how sure it is about each one. Mumble can lean on that &ldquo;confidence&rdquo; signal to flag shaky words, drop garbage segments, and decide when to trust a vocabulary correction. The catch: Whisper&rsquo;s confidence numbers are a bit miscalibrated, so the thresholds need tuning rather than blind trust.</p></div>
+</div>
+
+<p>faster-whisper already exposes per-word probabilities (<code>word.prob</code>), and Mumble uses them in <code>annotate_uncertain()</code>. Here are techniques to do more with that signal locally.</p>
+
+<h3>3a. Low-confidence word flagging with alternatives (extend current approach)</h3>
+<p>Mumble already annotates uncertain words with <code>heard//alt</code>. Improvements:</p>
+<ul>
+  <li><strong>Expand the alternative source</strong> beyond the mode-mishear map: use the phonetic vocabulary (<code>_phonetic_key</code>) to generate alternatives from the user&rsquo;s vocabulary list for <em>any</em> low-confidence word, not just mode keywords.</li>
+  <li><strong>Threshold tuning:</strong> current threshold is 0.8. Research (arXiv:2502.13446, &ldquo;Adopting Whisper for Confidence Estimation&rdquo;) suggests word-level probabilities from Whisper are useful but <em>miscalibrated</em> — a fixed 0.8 may be too aggressive or too lenient depending on model size and language. Consider a per-model or per-language threshold, or use the segment-level <code>avg_logprob</code> and <code>compression_ratio</code> as secondary signals.</li>
+</ul>
+
+<h3>3b. Segment-level confidence signals (faster-whisper metadata)</h3>
+<p>faster-whisper segments expose: <code>avg_logprob</code>, <code>compression_ratio</code>, <code>no_speech_prob</code>. Use these to:</p>
+<ul>
+  <li><strong>Drop/flag segments with <code>no_speech_prob &gt; 0.6</code></strong> — likely silence that Whisper hallucinated over (see Section 6).</li>
+  <li><strong>Flag segments with <code>compression_ratio &gt; ~2.5</code></strong> — high repetition / looping risk.</li>
+  <li><strong>Flag segments with very low <code>avg_logprob</code></strong> (e.g., &lt; -1.0) — low confidence; candidate for AI review or re-transcription with a different beam size.</li>
+</ul>
+
+<h3>3c. Confidence-weighted vocabulary application</h3>
+<p>Currently <code>apply_vocabulary_terms</code> applies high-confidence replacements unconditionally. A refinement: only auto-replace a vocabulary term when the <em>original word&rsquo;s Whisper probability is below a threshold</em> (it was uncertain) AND the phonetic match is strong. High-probability words that happen to phonetically resemble a vocab term should NOT be rewritten (reduces false positives).</p>
+
+<h3>3d. N-gram language-model rescoring (lightweight)</h3>
+<ul>
+  <li>Use a small <strong>KenLM</strong> n-gram model (a few MB, pure C++/Python) to rescore the top-K segment hypotheses. faster-whisper&rsquo;s beam search already does internal scoring, but a domain-specific LM (e.g., trained on the user&rsquo;s own documents or a medical/legal corpus) can reorder alternatives.</li>
+  <li><strong>Tools:</strong> <code>kenlm</code> (pip installable on Windows via wheel), <code>pyctcdecode</code> for beam-search decoding with an external LM.</li>
+  <li><strong>Fit:</strong> Lightweight (model is MBs, not GBs), CPU-fast. The main cost is curating/obtaining the LM. For a general dictation app, a generic English KenLM (e.g., from OpenAI&rsquo;s whisper.cpp project) is a reasonable default. This is the technique used by whisper.cpp and whisper-jax for improved accuracy.</li>
+</ul>
+
+<h2 id="s4"><span class="sec">4</span>Python text cleanup / normalisation libraries (lightweight)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>These are small, model-free utilities that tidy text: splitting it into proper sentences, repairing garbled characters, and standardising quotes and dashes. They don&rsquo;t make Mumble smarter — they just stop small messes from reaching the user. A couple are clearly worth adding; the rest are situational.</p></div>
+</div>
+
+<h3>4a. pySBD — sentence boundary disambiguation <span class="badge b-gold">recommended</span></h3>
+<ul>
+  <li><strong>Repo:</strong> <a href="https://github.com/nipunsadvilkar/pySBD">github.com/nipunsadvilkar/pySBD</a></li>
+  <li><strong>Install:</strong> <code>pip install pysbd</code></li>
+  <li><strong>What:</strong> Rule-based sentence segmentation that handles abbreviations, decimals, URLs, etc. — far better than <code>text.split('.')</code>.</li>
+  <li><strong>Fit:</strong> Useful for splitting a transcript into sentences before passing each to a sentence-level grammar/punctuation model (Gramformer, FullStop). Pure rules, no model, tiny. <strong>Recommended.</strong></li>
+  <li><strong>License:</strong> MIT.</li>
+</ul>
+
+<h3>4b. ftfy — fixes text for you</h3>
+<ul>
+  <li><strong>Repo:</strong> <a href="https://github.com/rspeer/ftfy">github.com/rspeer/ftfy</a></li>
+  <li><strong>Install:</strong> <code>pip install ftfy</code></li>
+  <li><strong>What:</strong> Repairs mojibake, broken Unicode, smart-quote issues, control characters. Deterministic, no model.</li>
+  <li><strong>Fit:</strong> Cheap insurance for transcripts that occasionally contain corrupted characters (e.g., from audio with unusual encoding). Mumble&rsquo;s Whisper output is usually clean ASCII, so this is a low-priority safety net.</li>
+  <li><strong>License:</strong> MIT.</li>
+</ul>
+
+<h3>4c. clean-text</h3>
+<ul>
+  <li><strong>Install:</strong> <code>pip install clean-text</code> (note: package name is <code>clean-text</code>, import is <code>cleantext</code>).</li>
+  <li><strong>What:</strong> Normalises whitespace, quotes, dashes, removes/replaces fancy Unicode. Uses <code>ftfy</code> + <code>unidecode</code> under the hood.</li>
+  <li><strong>Fit:</strong> Convenient one-call normalisation for transcript cleanup. Lightweight. Optional dependency on <code>unidecode</code> (GPL) — note the license.</li>
+  <li><strong>License:</strong> Apache-2.0 (clean-text itself); unidecode is GPL.</li>
+</ul>
+
+<h3>4d. gladiaio/normalization — transcript-specific normaliser</h3>
+<ul>
+  <li><strong>Repo:</strong> <a href="https://github.com/gladiaio/normalization">github.com/gladiaio/normalization</a></li>
+  <li><strong>What:</strong> Lightweight library for normalising speech transcripts <em>before computing WER</em> — handles number words, casing, punctuation stripping, etc. Designed specifically for ASR output.</li>
+  <li><strong>Fit:</strong> If Mumble ever needs to compare transcripts or evaluate accuracy, this is purpose-built. Otherwise its normalisation is more aggressive than wanted for user-facing text (it strips punctuation for WER). Low priority.</li>
+  <li><strong>License:</strong> MIT.</li>
+</ul>
+
+<h3>4e. normality</h3>
+<ul>
+  <li><strong>Repo:</strong> <a href="https://github.com/pudo/normality">github.com/pudo/normality</a></li>
+  <li><strong>What:</strong> Tiny text-normalisation library (ASCII folding, case folding, whitespace). Minimal.</li>
+  <li><strong>Fit:</strong> Overlaps with Mumble&rsquo;s existing <code>_norm()</code> helper. Not needed unless a more battle-tested normaliser is wanted.</li>
+</ul>
+
+<h2 id="s5"><span class="sec">5</span>Filler-word removal &amp; disfluency detection</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>&ldquo;Disfluencies&rdquo; are the ums, false starts, and accidental repeats of natural speech. Mumble already deletes the obvious fillers. The next level is being smarter about <em>where</em> a filler sits (delete it but keep the comma?) and catching false starts like &ldquo;I went to the, I went to the store.&rdquo; Plain rules handle this well; full ML disfluency models are too heavy for a CPU-only app.</p></div>
+</div>
+
+<p>Mumble already has a regex-based filler remover (<code>_FILLER_RE</code>). Here&rsquo;s how to improve it.</p>
+
+<h3>5a. Expand the filler lexicon</h3>
+<p>Current regex covers: <code>um/uh/er/ah/erm/hm/mm/mhm/mm-hmm/you know</code>. Consider adding:</p>
+<ul>
+  <li><code>like</code> (as a filler — tricky: only when used as a discourse marker, not the verb/preposition).</li>
+  <li><code>you know what I mean</code>, <code>I mean</code>, <code>sort of</code>, <code>kind of</code>, <code>basically</code>, <code>literally</code>, <code>actually</code>, <code>right</code> (tag question), <code>okay so</code>, <code>well so</code>.</li>
+  <li><code>uh-huh</code>, <code>huh</code>, <code>hmm</code>, <code>mhm</code>, <code>nuh-uh</code>.</li>
+  <li>British: <code>erm</code>, <code>err</code>, <code>hmm</code>, <code>mmm</code>.</li>
+</ul>
+
+<h3>5b. Context-aware filler removal</h3>
+<p>The faster-whisper discussion (#569) highlights the core problem: removing <code>, um,</code> mid-sentence requires deciding whether to delete entirely, replace with a comma, or replace with an em dash. Approaches:</p>
+<ul>
+  <li><strong>Position-based rules:</strong>
+    <ul>
+      <li>Filler at sentence start &rarr; delete (Mumble already does this).</li>
+      <li>Filler between commas (<code>, um,</code>) &rarr; delete the filler AND one surrounding comma.</li>
+      <li>Filler before a clause boundary &rarr; replace with comma or dash.</li>
+    </ul>
+  </li>
+  <li><strong>Confidence-gated:</strong> only remove a filler if its word probability is high (Whisper was confident it&rsquo;s a filler, not part of a real word like &ldquo;umbrella&rdquo;).</li>
+  <li><strong>Frequency cap:</strong> if fillers appear in &gt; N% of words in a segment, the segment is likely degraded/hallucinated — flag for re-transcription rather than aggressively stripping.</li>
+</ul>
+
+<h3>5c. False-start / repetition detection</h3>
+<p>Whisper often produces &ldquo;I went to the, I went to the store.&rdquo; Detect and collapse:</p>
+<ul>
+  <li><strong>N-gram repetition:</strong> if a 2-4 word sequence immediately repeats, collapse to one instance (this is the &ldquo;delooping&rdquo; technique from the hallucination research — see Section 6).</li>
+  <li><strong>False starts:</strong> &ldquo;I want to — I need to go&rdquo; &rarr; detect the dash/pause and keep the more complete clause (heuristic: longer clause wins, or the one with higher average word probability).</li>
+</ul>
+
+<h3>5d. Disfluency-aware models (research, heavier)</h3>
+<p>End-to-end disfluency removal models exist (e.g., ACL 2020 &ldquo;End-to-End Speech Recognition and Disfluency Removal&rdquo;) but require a trained Transformer and are not lightweight enough for Mumble&rsquo;s CPU-only constraint. The rule-based approach is the right call for now.</p>
+
+<h2 id="s6"><span class="sec">6</span>Whisper-specific post-processing: hallucination &amp; repetition</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>This is the big one. When Whisper hears silence or noise, it sometimes invents text — and it invents the <em>same</em> phrases over and over. A study found that just two phrases (&ldquo;thank you&rdquo; and &ldquo;thanks for watching&rdquo;) make up about a third of all these phantom outputs. So a short blocklist of known junk phrases, plus a trick to collapse repeated loops, removes Whisper&rsquo;s most embarrassing mistakes for free. Best of all, you can stop many of them <em>before</em> transcription by trimming silence with a tiny voice-detector.</p></div>
+</div>
+
+<blockquote>This is the highest-value local improvement — it&rsquo;s free (rules/sets), CPU-trivial, and addresses Whisper&rsquo;s most embarrassing failure mode.</blockquote>
+
+<h3>6a. The Bag of Hallucinations (BoH) technique</h3>
+<p>From arXiv:2501.11378 (&ldquo;Investigation of Whisper ASR Hallucinations Induced by Non-Speech Audio&rdquo;, AGH University, 2025):</p>
+
+<div class="tiles">
+  <div class="tile"><div class="n">~35%</div><div class="l">of all hallucinations are just two phrases</div></div>
+  <div class="tile"><div class="n">&gt;50%</div><div class="l">come from the top 10 phrases</div></div>
+  <div class="tile"><div class="n">301K</div><div class="l">non-speech inferences studied</div></div>
+</div>
+
+<ul>
+  <li>Whisper produces a <strong>small, consistent set of hallucinated phrases</strong> on non-speech/silence input. <strong>~35% of all hallucinations are just two phrases</strong> (&ldquo;thank you&rdquo;, &ldquo;thanks for watching&rdquo;); <strong>over half come from the top 10</strong>.</li>
+</ul>
+
+<p>Top hallucinated phrases (from 301 K non-speech inferences):</p>
+<table>
+  <thead>
+    <tr><th>Phrase</th><th>% of hallucinations</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>thank you</td><td>24.8%</td></tr>
+    <tr><td>thanks for watching</td><td>10.3%</td></tr>
+    <tr><td>so</td><td>3.8%</td></tr>
+    <tr><td>thank you for watching</td><td>2.6%</td></tr>
+    <tr><td>the</td><td>2.5%</td></tr>
+    <tr><td>you</td><td>2.2%</td></tr>
+    <tr><td>oh</td><td>1.8%</td></tr>
+    <tr><td>okay</td><td>0.9%</td></tr>
+    <tr><td>i&rsquo;m sorry</td><td>0.8%</td></tr>
+    <tr><td>oh my god</td><td>0.7%</td></tr>
+    <tr><td>bye</td><td>0.6%</td></tr>
+    <tr><td>meow</td><td>0.5%</td></tr>
+    <tr><td>subtitles by the amara org community</td><td>0.5%</td></tr>
+    <tr><td>subtitles by ...</td><td>(various)</td></tr>
+    <tr><td>hello everyone welcome to my channel</td><td>0.02%</td></tr>
+  </tbody>
+</table>
+
+<ul>
+  <li><strong>Mitigation:</strong> build a &ldquo;Bag of Hallucinations&rdquo; set. Filter it to remove common English words (the/so/you — too high false-positive risk) and keep the <em>unambiguous</em> ones (&ldquo;thanks for watching&rdquo;, &ldquo;subtitles by the amara org community&rdquo;, &ldquo;thank you for watching&rdquo;, &ldquo;subscribe to my channel&rdquo;, etc.). Use the <strong>Aho-Corasick</strong> multi-pattern string search to detect and strip these from transcripts.</li>
+  <li><strong>Free open-source BoH list:</strong> <a href="https://github.com/DSP-AGH/ICASSP2025_Whisper_Hallucination">github.com/DSP-AGH/ICASSP2025_Whisper_Hallucination</a> (the paper&rsquo;s repo includes the hallucination list + BoH).</li>
+  <li><strong>A Reddit community (r/LocalLLaMA, March 2026) collected 135 hallucinated phrases</strong> from production meeting-bot audio — a good real-world supplement to the academic list.</li>
+  <li><strong>Fit for Mumble:</strong> Extremely high value, zero model cost. Add a curated hallucination-phrase blocklist, applied post-transcription. Gate on <code>no_speech_prob</code> or low <code>avg_logprob</code> to avoid false positives (don&rsquo;t strip &ldquo;thank you&rdquo; from genuine speech).</li>
+</ul>
+
+<h3>6b. Delooping (repetition collapse)</h3>
+<p>From the same paper and the OpenAI Whisper discussions:</p>
+<ul>
+  <li><strong>Looping</strong> = immediate repetition of a previous fragment (&ldquo;Welcome to New York City of New York City of New York...&rdquo;). Appears in ~9-20% of hallucinations.</li>
+  <li><strong>Detection:</strong> find the longest repeated suffix/prefix pattern. A simple algorithm: for each segment, check if the last N words equal the preceding N words (for N = 2..8); if so, keep one copy. Also detect repeated <em>phrases</em> (3-6 word blocks) anywhere in the segment.</li>
+  <li><strong>Fit:</strong> Already partially relevant to Mumble&rsquo;s live dictation (short clips are less prone to looping, but it can still happen on a held key with background noise). Cheap to add.</li>
+</ul>
+<details class="dev">
+  <summary><span class="devchip">Code</span> Delooping regex</summary>
+  <pre><code># Detects a phrase repeated 3+ times; collapse to one. Tune the length window.
+re.compile(r'\b(.{2,40}?)\b(?:\s+\1\b){2,}')</code></pre>
+</details>
+
+<h3>6c. VAD pre-filtering (prevent hallucinations at the source)</h3>
+<ul>
+  <li>The ICASSP paper shows <strong>SileroVAD</strong> is the single most effective hallucination reducer (WER dropped from ~105% to ~8% on augmented speech). SileroVAD is tiny (~2 MB), CPU-fast, and has a Python API.</li>
+  <li><strong>Fit:</strong> If Mumble doesn&rsquo;t already use VAD before Whisper, adding SileroVAD to trim silence/noise before transcription would dramatically cut hallucinations <em>before</em> post-processing. This is a pre-processing win, not post-processing, but worth flagging. Mumble should verify whether its current audio-capture pipeline already gates on voice activity.</li>
+  <li><strong>Repo:</strong> <a href="https://github.com/snakers4/silero-vad">github.com/snakers4/silero-vad</a></li>
+</ul>
+
+<h3>6d. Hallucination silence threshold &amp; beam size (faster-whisper params)</h3>
+<ul>
+  <li>faster-whisper&rsquo;s <code>hallucination_silence_threshold</code> (skips silence longer than N seconds) reduces hallucinations on long audio. Set appropriately for Mumble&rsquo;s clip length.</li>
+  <li><code>beam_size</code>: the paper found beam size 1 vs default made little difference for hallucinations; don&rsquo;t rely on it.</li>
+  <li><code>compression_ratio_threshold</code> and <code>log_prob_threshold</code>: faster-whisper can auto-retry or drop segments exceeding these — ensure Mumble sets sensible values.</li>
+</ul>
+
+<h3>6e. Known Whisper-specific text artefacts to clean</h3>
+<ul>
+  <li>&ldquo;Subtitles by...&rdquo; / &ldquo;Subtitles by the Amara.org community&rdquo; &rarr; strip (these are training-data artefacts leaked into output).</li>
+  <li>&ldquo;Transcript: ...&rdquo; prefixes &rarr; strip.</li>
+  <li>Repeated single-letter tokens (&ldquo;a a a a&rdquo;) &rarr; collapse.</li>
+  <li>Trailing &ldquo;...&rdquo; on a segment that should be complete &rarr; replace with period.</li>
+</ul>
+
+<h2 id="s7"><span class="sec">7</span>Summary: recommended implementation priorities</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Here&rsquo;s the to-do list, ordered by bang-for-buck. The top five items cost nothing — no models, no downloads — and deliver most of the quality gain. The ML models and Java tools sit lower down as opt-in extras. If you do only one thing, do item 1: kill the phantom phrases.</p></div>
+</div>
+
+<p>Ranked by value-to-effort ratio for Mumble&rsquo;s lightweight, CPU-only, no-network constraint:</p>
+
+<table>
+  <thead>
+    <tr><th>Priority</th><th>Technique</th><th>Cost</th><th>Effort</th><th>Expected impact</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>1 (do first)</strong></td><td>Hallucination phrase blocklist (BoH) + delooping</td><td><span class="badge b-done">0 (rules/sets)</span></td><td>Low</td><td>Eliminates the most embarrassing Whisper failures</td></tr>
+    <tr><td><strong>2</strong></td><td>Segment-level confidence gating (<code>no_speech_prob</code>, <code>compression_ratio</code>, <code>avg_logprob</code>)</td><td><span class="badge b-done">0</span></td><td>Low</td><td>Flags/drops bad segments before they reach the user</td></tr>
+    <tr><td><strong>3</strong></td><td>Expanded rule-based punctuation (commas, question marks, adverb commas)</td><td><span class="badge b-done">0</span></td><td>Low</td><td>Visible quality lift on the offline path</td></tr>
+    <tr><td><strong>4</strong></td><td>Expanded filler lexicon + context-aware removal</td><td><span class="badge b-done">0</span></td><td>Medium</td><td>Cleaner transcripts, fewer false strips</td></tr>
+    <tr><td><strong>5</strong></td><td>False-start / n-gram repetition collapse</td><td><span class="badge b-done">0</span></td><td>Medium</td><td>Handles disfluencies the regex misses</td></tr>
+    <tr><td><strong>6</strong></td><td>pySBD for sentence segmentation (pre-step for any sentence-level model)</td><td><span class="badge b-exist">~tiny dep</span></td><td>Low</td><td>Enables better sentence-level processing</td></tr>
+    <tr><td><strong>7</strong></td><td>Confidence-weighted vocabulary application</td><td><span class="badge b-done">0</span></td><td>Medium</td><td>Fewer false-positive vocab rewrites</td></tr>
+    <tr><td><strong>8</strong></td><td>deepmultilingualpunctuation (optional, lazy-loaded)</td><td><span class="badge b-gated">~1.3 GB model</span></td><td>Medium</td><td>ML punctuation when rules aren&rsquo;t enough</td></tr>
+    <tr><td><strong>9</strong></td><td>SileroVAD pre-filtering (if not already present)</td><td><span class="badge b-exist">~2 MB</span></td><td>Medium</td><td>Prevents hallucinations at source</td></tr>
+    <tr><td><strong>10</strong></td><td>language_tool_python (optional plugin, needs Java)</td><td><span class="badge b-gated">~200 MB JAR + JVM</span></td><td>Medium</td><td>Deep grammar checking without cloud</td></tr>
+    <tr><td><strong>11</strong></td><td>KenLM n-gram rescoring</td><td><span class="badge b-gated">MBs + curation</span></td><td>High</td><td>Domain-specific accuracy gains</td></tr>
+  </tbody>
+</table>
+
+<blockquote>
+<strong>Key principle:</strong> the free, rule-based techniques (1-5, 7) deliver most of the quality gain at zero model cost and should be the foundation. ML-based punctuation/grammar (8, 10) are <em>optional enhancements</em> for users who opt in and can afford the disk/CPU cost. The hallucination and confidence work (1, 2, 9) is where Whisper&rsquo;s known failure modes are — that&rsquo;s the highest-leverage local improvement.
+</blockquote>
+
+<h2 id="s8"><span class="sec">8</span>Key links</h2>
+<ul>
+  <li>FullStop punctuation: <a href="https://github.com/oliverguhr/deepmultilingualpunctuation">github.com/oliverguhr/deepmultilingualpunctuation</a></li>
+  <li>BERT punctuation + casing: <a href="https://huggingface.co/felflare/bert-restore-punctuation">huggingface.co/felflare/bert-restore-punctuation</a></li>
+  <li>whisper-punctuator (zero-shot, reuses Whisper): <a href="https://github.com/jumon/whisper-punctuator">github.com/jumon/whisper-punctuator</a></li>
+  <li>LanguageTool Python: <a href="https://github.com/jxmorris12/language_tool_python">github.com/jxmorris12/language_tool_python</a></li>
+  <li>Gramformer: <a href="https://github.com/PrithivirajDamodaran/Gramformer">github.com/PrithivirajDamodaran/Gramformer</a></li>
+  <li>pySBD: <a href="https://github.com/nipunsadvilkar/pySBD">github.com/nipunsadvilkar/pySBD</a></li>
+  <li>ftfy: <a href="https://github.com/rspeer/ftfy">github.com/rspeer/ftfy</a></li>
+  <li>clean-text: <a href="https://pypi.org/project/clean-text/">pypi.org/project/clean-text/</a></li>
+  <li>SileroVAD: <a href="https://github.com/snakers4/silero-vad">github.com/snakers4/silero-vad</a></li>
+  <li>Whisper hallucination paper (BoH): <a href="https://arxiv.org/abs/2501.11378">arxiv.org/abs/2501.11378</a></li>
+  <li>BoH list repo: <a href="https://github.com/DSP-AGH/ICASSP2025_Whisper_Hallucination">github.com/DSP-AGH/ICASSP2025_Whisper_Hallucination</a></li>
+  <li>Whisper confidence estimation paper: <a href="https://arxiv.org/abs/2502.13446">arxiv.org/abs/2502.13446</a></li>
+  <li>faster-whisper disfluency discussion: <a href="https://github.com/SYSTRAN/faster-whisper/discussions/569">github.com/SYSTRAN/faster-whisper/discussions/569</a></li>
+  <li>Community hallucination phrases (r/LocalLLaMA, 135 phrases): <a href="https://www.reddit.com/r/LocalLLaMA/comments/1rlqfd7">reddit.com/r/LocalLLaMA/comments/1rlqfd7</a></li>
+  <li>OpenAI Whisper processing cookbook: <a href="https://cookbook.openai.com/examples/whisper_processing_guide">cookbook.openai.com/examples/whisper_processing_guide</a></li>
+</ul>
+
+<div class="doc-foot">
+  <span>Mumble — Local NLP Survey</span>
+  <span class="gold">research</span>
+</div>
+
+</div>
+</body>
+</html>

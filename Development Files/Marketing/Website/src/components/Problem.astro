@@ -1,0 +1,75 @@
+---
+// Problem.astro — Problem framing section using PAS framework.
+// Three pain-point cards targeting professionals, students, and developers.
+// Each card has an icon, heading, and outcome-focused description.
+// Uses existing .problem-grid and .pain CSS classes from global.css.
+---
+
+<section class="section" id="problem">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="h-kicker center">The Problem</span>
+      <h2 class="section-title">Your voice deserves better tools.</h2>
+      <p class="section-lead">
+        Today&rsquo;s dictation tools force you to choose between privacy and
+        convenience &mdash; and none of them solve the full picture. Professionals,
+        students, and developers all hit the same wall: slow typing, scattered notes,
+        and tools that send your voice to the cloud.
+      </p>
+    </div>
+
+    <div class="problem-grid">
+      <!-- ========== PROFESSIONALS ========== -->
+      <article class="card sheen lift pad pain reveal">
+        <div class="pain-ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8"/>
+            <path d="M12 17v4"/>
+            <path d="M8 7h.01M12 7h.01M16 7h.01"/>
+          </svg>
+        </div>
+        <h3>Meeting note fatigue</h3>
+        <p>
+          Back-to-back meetings leave you with a dozen half-typed summaries.
+          By the time you finish writing up one call, the next one has started.
+          Hours lost every week just typing out what was said.
+        </p>
+      </article>
+
+      <!-- ========== STUDENTS ========== -->
+      <article class="card sheen lift pad pain reveal d1">
+        <div class="pain-ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+            <path d="M8 7h6M8 11h8"/>
+          </svg>
+        </div>
+        <h3>Scattered lecture notes</h3>
+        <p>
+          Lectures move fast. You&rsquo;re either typing frantically or missing
+          key insights. By the end of the day, your notes live across three
+          different apps &mdash; and you can never find the one you need.
+        </p>
+      </article>
+
+      <!-- ========== DEVELOPERS ========== -->
+      <article class="card sheen lift pad pain reveal d2">
+        <div class="pain-ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>
+            <path d="M9 12h.01M15 12h.01"/>
+            <path d="M9 12a3.5 3.5 0 006 0"/>
+          </svg>
+        </div>
+        <h3>Cloud privacy risk</h3>
+        <p>
+          Most voice tools upload your audio to someone else&rsquo;s server
+          before giving you text back. You can&rsquo;t use them for client calls,
+          confidential standups, or anything you care about keeping private.
+        </p>
+      </article>
+    </div>
+  </div>
+</section>

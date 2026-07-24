@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble — Master Marketing Game Plan ($0 Budget • Open-Source GTM)</title>
+<style>
+  :root {
+    --bg: #08080A;
+    --surface: #131316;
+    --surface-2: #18181C;
+    --elevated: #1E1E23;
+    --elevated-2: #28282F;
+    --border: #2F2E37;
+    --border-soft: #242329;
+    --track: #2A2931;
+    --gold: #EBC35C;
+    --gold-hi: #F8DD8A;
+    --gold-dim: #9C8030;
+    --gold-deep: #C99A38;
+    --text: #F4EFE3;
+    --text-dim: #B8B0A0;
+    --text-mute: #807A6C;
+    --red: #D9544D;
+    --amber: #E0A92E;
+    --green: #5AB85A;
+    --purple: #A855F7;
+    --blue: #5AA9E6;
+    --teal: #46C9A8;
+    --coral: #E8825A;
+    --font: "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+    --mono: "Cascadia Code", Consolas, ui-monospace, monospace;
+    --r-sm: 10px; --r-md: 14px; --r-lg: 18px; --r-xl: 24px;
+    --shadow-sm: 0 2px 10px rgba(0,0,0,.35);
+    --shadow-md: 0 6px 26px rgba(0,0,0,.5);
+    --shadow-lg: 0 16px 50px rgba(0,0,0,.6);
+    --glass-grad: linear-gradient(145deg, rgba(34,34,40,.92), rgba(20,20,24,.95) 58%, rgba(26,26,31,.93));
+    --glass-hi: inset 0 1px 0 rgba(245,238,222,.085);
+    --glass-lo: inset 0 -1px 0 rgba(0,0,0,.32);
+    --glass-edge: 0 0 0 1px rgba(235,195,92,.05);
+    --ease-spring: cubic-bezier(.34,1.56,.64,1);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--font); font-size: 14px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--gold); text-decoration: none; transition: color .15s; }
+  a:hover { color: var(--gold-hi); }
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--surface-2); padding: 2px 6px; border-radius: 5px;
+    color: var(--gold-dim);
+  }
+  pre {
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: var(--r-md); padding: 16px 20px; overflow-x: auto;
+    font-family: var(--mono); font-size: .85em; line-height: 1.6;
+    color: var(--text-dim);
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  strong { color: var(--text); font-weight: 600; }
+  em { color: var(--gold-dim); }
+  hr { border: none; border-top: 1px solid var(--border-soft); margin: 32px 0; }
+  .skip-link {
+    position: absolute; top: -100px; left: 16px;
+    background: var(--gold); color: #0A0A0B; padding: 8px 16px;
+    border-radius: var(--r-sm); z-index: 9999; font-weight: 600;
+  }
+  .skip-link:focus { top: 16px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 32px 80px; }
+  header.doc-head { margin-bottom: 48px; }
+  .doc-head .kicker {
+    font-size: .75em; text-transform: uppercase; letter-spacing: .16em;
+    color: var(--gold-dim); font-weight: 600; margin-bottom: 8px;
+  }
+  .doc-head h1 {
+    font-size: 2.4em; font-weight: 700; color: var(--gold);
+    letter-spacing: -.02em; margin-bottom: 20px;
+  }
+  .doc-head .meta { display: flex; flex-direction: column; gap: 6px; color: var(--text-mute); font-size: .9em; }
+  .doc-head .meta b { color: var(--text-dim); }
+  blockquote {
+    background: var(--surface); border-left: 3px solid var(--gold);
+    padding: 20px 24px; border-radius: 0 var(--r-md) var(--r-md) 0;
+    margin: 28px 0; color: var(--text-dim); line-height: 1.7;
+  }
+  blockquote strong { color: var(--gold-dim); }
+  .toc {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-lg); padding: 24px 28px; margin: 32px 0;
+  }
+  .toc .tt {
+    font-size: .8em; text-transform: uppercase; letter-spacing: .12em;
+    color: var(--gold-dim); font-weight: 600; margin-bottom: 14px;
+  }
+  .toc ol { padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+  .toc li { color: var(--text-dim); }
+  .toc li a { color: var(--text-dim); }
+  .toc li a:hover { color: var(--gold); }
+  h2 {
+    font-size: 1.5em; font-weight: 700; color: var(--gold);
+    margin: 48px 0 20px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  h2 .sec {
+    display: inline-block; width: 32px; height: 32px; line-height: 32px;
+    text-align: center; background: var(--elevated); border-radius: 50%;
+    font-size: .7em; color: var(--gold-dim); margin-right: 10px; vertical-align: middle;
+  }
+  h3 { font-size: 1.15em; font-weight: 600; color: var(--text); margin: 32px 0 12px; }
+  h4 { font-size: 1em; font-weight: 600; color: var(--text-dim); margin: 24px 0 10px; }
+  p { margin: 10px 0; color: var(--text-dim); }
+  ul, ol { padding-left: 22px; color: var(--text-dim); }
+  li { margin: 5px 0; }
+  li > strong:first-child { color: var(--text); }
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0 24px;
+    font-size: .93em; border: 1px solid var(--border);
+    border-radius: var(--r-md); overflow: hidden;
+  }
+  thead th {
+    background: var(--elevated-2); color: var(--text);
+    text-align: left; padding: 12px 16px; font-weight: 600;
+    font-size: .85em; text-transform: uppercase; letter-spacing: .06em;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody td {
+    padding: 12px 16px; border-bottom: 1px solid var(--border-soft);
+    color: var(--text-dim); vertical-align: top;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(235,195,92,.03); }
+  .card {
+    background: var(--glass-grad);
+    box-shadow: var(--glass-hi), var(--glass-lo), var(--glass-edge), var(--shadow-md);
+    border-radius: var(--r-lg); padding: 24px; margin: 20px 0;
+    transition: transform .25s var(--ease-spring), box-shadow .25s ease;
+  }
+  .card.lift:hover { transform: translateY(-2px); box-shadow: var(--glass-hi), var(--glass-lo), 0 0 0 1px rgba(235,195,92,.1), var(--shadow-lg); }
+  .card h4 { margin-top: 0; }
+  .badge { display: inline-block; font-size: .72em; font-weight: 700; padding: 3px 9px; border-radius: 4px; letter-spacing: .04em; text-transform: uppercase; vertical-align: middle; }
+  .b-gold { background: rgba(235,195,92,.15); color: var(--gold); }
+  .b-done { background: rgba(90,184,90,.15); color: var(--green); }
+  .b-warn { background: rgba(224,169,46,.15); color: var(--amber); }
+  .b-gated { background: rgba(168,85,247,.12); color: var(--purple); }
+  .b-red { background: rgba(217,84,77,.15); color: var(--red); }
+  .b-teal { background: rgba(70,201,168,.12); color: var(--teal); }
+  details {
+    background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: var(--r-md); margin: 16px 0; overflow: hidden;
+  }
+  summary {
+    padding: 14px 20px; cursor: pointer; font-weight: 600;
+    color: var(--text); user-select: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  summary::before {
+    content: "▸"; display: inline-block; font-size: .7em;
+    color: var(--gold-dim); transition: transform .2s; width: 14px;
+  }
+  details[open] > summary::before { transform: rotate(90deg); }
+  details .detail-body { padding: 0 20px 20px; color: var(--text-dim); }
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { padding: 6px 0 6px 28px; position: relative; }
+  .checklist li::before { content: "☐"; position: absolute; left: 0; color: var(--gold-dim); font-size: 1.1em; }
+  .checklist li.done::before { content: "✓"; color: var(--green); }
+  .timeline { display: flex; flex-direction: column; gap: 16px; margin: 20px 0; }
+  .timeline-step { display: flex; gap: 16px; align-items: flex-start; }
+  .timeline-step .t-node {
+    flex-shrink: 0; width: 40px; height: 40px; line-height: 40px;
+    text-align: center; background: var(--elevated-2); border-radius: 50%;
+    font-weight: 700; color: var(--gold); font-size: .95em;
+    border: 2px solid var(--border);
+  }
+  .timeline-step .t-body { flex: 1; padding-top: 4px; }
+  .timeline-step .t-body .t-title { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 20px 0; }
+  .tile {
+    background: var(--glass-grad);
+    box-shadow: var(--glass-hi), var(--glass-lo), var(--glass-edge);
+    border-radius: var(--r-lg); padding: 20px; text-align: center;
+  }
+  .tile .t-num { font-size: 2em; font-weight: 700; color: var(--gold); line-height: 1.2; }
+  .tile .t-lab { font-size: .82em; color: var(--text-mute); margin-top: 4px; }
+  .callout {
+    border-radius: var(--r-md); padding: 16px 20px; margin: 16px 0;
+    font-size: .93em; line-height: 1.6;
+  }
+  .callout-info { background: rgba(90,169,230,.08); border: 1px solid rgba(90,169,230,.2); color: var(--blue); }
+  .callout-warn { background: rgba(224,169,46,.08); border: 1px solid rgba(224,169,46,.2); color: var(--amber); }
+  .callout-gold { background: rgba(235,195,92,.06); border: 1px solid rgba(235,195,92,.15); color: var(--gold-dim); }
+  .callout-green { background: rgba(90,184,90,.06); border: 1px solid rgba(90,184,90,.15); color: var(--green); }
+  @media (max-width: 768px) {
+    .wrap { padding: 24px 16px 48px; }
+    .doc-head h1 { font-size: 1.7em; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    table { font-size: .82em; }
+    thead th, tbody td { padding: 10px 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<a href="#main-content" class="skip-link">Skip to content</a>
+
+<div class="wrap" id="main-content">
+
+<header class="doc-head">
+  <div class="kicker">$0 Budget • Open-Source GTM • Developer-First Growth</div>
+  <h1>Mumble — Master Marketing<br>Game Plan &amp; Platform Playbooks</h1>
+  <div class="meta">
+    <div><b>Product:</b> Mumble — private, on-device voice-to-text for Windows (macOS/Linux ports)</div>
+    <div><b>Version:</b> 0.9 ("The Big Shift") &nbsp;|&nbsp; <b>Budget:</b> $0 &nbsp;|&nbsp; <b>Strategy:</b> Organic + Open-Source + Community-Led</div>
+    <div><b>Document status:</b> Exhaustive, hyper-actionable, tactical — no fluff.</div>
+    <div><b>Analogy:</b> We have high-quality timber (the product). This document is the fire.</div>
+  </div>
+</header>
+
+<blockquote>
+  <strong>How to use this document.</strong> This is not a theoretical overview. Every section is a
+  <em>playbook</em> — copy-paste templates, exact subreddit names, thread structures, video scripts,
+  tool commands, and day-by-day timelines. Execute in order. Track what works. Iterate ruthlessly.
+  <br><br>
+  <strong>Core thesis:</strong> Mumble is a technical product with a strong technical story
+  (local AI, privacy-first, open-source, zero-CDN). The marketing must mirror that — engineers
+  respect engineering. Every piece of content should feel like it was written by the developer
+  who built the feature, not a marketer who heard about it.
+</blockquote>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s0">Product Positioning &amp; One-Pager</a></li>
+    <li><a href="#s1">Platform Execution Playbooks</a>
+      <ol>
+        <li><a href="#s1a">X.com (Twitter) — Building in Public</a></li>
+        <li><a href="#s1b">Reddit — Native, Non-Promotional Distribution</a></li>
+        <li><a href="#s1c">YouTube &amp; Video Marketing</a></li>
+        <li><a href="#s1d">Organic SEO &amp; Content Strategy</a></li>
+        <li><a href="#s1e">GitHub — The Repo as a Conversion Engine</a></li>
+        <li><a href="#s1f">Hacker News &amp; Technical Aggregators</a></li>
+        <li><a href="#s1g">DevRel &amp; Community Channels (Discord, Lemmy, Mastodon)</a></li>
+        <li><a href="#s1h">Product Hunt Launch Playbook</a></li>
+        <li><a href="#s1i">Newsletter &amp; Cross-Promotion Strategy</a></li>
+      </ol>
+    </li>
+    <li><a href="#s2">The Open-Source &amp; Ultra-Low-Cost Marketing Tech Stack</a></li>
+    <li><a href="#s3">The Step-by-Step Launch Game Plan</a>
+      <ol>
+        <li><a href="#s3a">Phase 0: Pre-Launch (Days -30 to -1)</a></li>
+        <li><a href="#s3b">Phase 1: Launch Week (Days 1–7)</a></li>
+        <li><a href="#s3c">Phase 2: Post-Launch Momentum (Days 8–30)</a></li>
+        <li><a href="#s3d">Phase 3: Sustained Growth (Month 2+)</a></li>
+      </ol>
+    </li>
+    <li><a href="#s4">GitHub README as Landing Page</a></li>
+    <li><a href="#s5">Launch Asset Checklist</a></li>
+    <li><a href="#s6">Competitive Positioning Map</a></li>
+    <li><a href="#s7">Metrics, Tracking &amp; Iteration Cadence</a></li>
+    <li><a href="#s8">The "Anti-Pitch" Content Library</a></li>
+  </ol>
+</nav>
+
+<hr>
+
+<h2 id="s0"><span class="sec">0</span>Product Positioning &amp; One-Pager</h2>
+<p>Before distribution, get the message right. This section is the source of truth for all copy that follows.</p>
+
+<div class="card lift">
+  <h4>One-Liner</h4>
+  <p style="font-size:1.15em;color:var(--text);">Mumble turns your voice into clean, ready-to-paste text — anywhere on your computer — with your audio processed entirely on-device.</p>
+</div>
+
+<div class="card lift">
+  <h4>Elevator Pitch (30 seconds)</h4>
+  <p>You press <code>Ctrl+Win</code>, speak naturally, press again — and Mumble transcribes your voice <strong>locally</strong> (audio never leaves your machine), cleans it up with optional AI polish, and pastes it at your cursor. It works in any app: email, chat, docs, code editors, anywhere. A tiny floating island shows status; a searchable Deck holds your entire history. No accounts, no cloud dependency, no telemetry. <strong>Your voice stays on your machine.</strong></p>
+</div>
+
+<div class="card lift">
+  <h4>Target Audience — Who uses Mumble?</h4>
+  <table>
+    <thead><tr><th>Persona</th><th>Pain Point Mumble Solves</th><th>Hook</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Developers</strong></td><td>Typing is slow; switching between IDE and docs is exhausting</td><td>"Dictate code comments, commit messages, and docs at 3× typing speed"</td></tr>
+      <tr><td><strong>Writers &amp; Creators</strong></td><td>Blank-page syndrome; ideas arrive faster than fingers</td><td>"Brain-dump 2,000 words in 10 minutes, then edit"</td></tr>
+      <tr><td><strong>Founders &amp; PMs</strong></td><td>Constant context-switching across Slack, email, Notion</td><td>"Reply to 30 messages while walking to the kitchen"</td></tr>
+      <tr><td><strong>Students &amp; Researchers</strong></td><td>Note-taking during lectures or while reading papers</td><td>"Capture lecture notes while keeping eyes on the board"</td></tr>
+      <tr><td><strong>Privacy-conscious users</strong></td><td>Don't want their voice uploaded to cloud servers</td><td>"The only dictation app where your voice never leaves your PC"</td></tr>
+      <tr><td><strong>Accessibility users</strong></td><td>RSI, motor impairments, dyslexia, ADHD</td><td>"Your computer, now voice-first — no cloud account needed"</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card lift">
+  <h4>Differentiation — Why Mumble over alternatives?</h4>
+  <table>
+    <thead><tr><th>Competitor</th><th>Mumble's Edge</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Wispr Flow</strong> (VC-funded, cloud-only)</td><td>Mumble is fully local, open-source, no account required. Flow uploads your voice to their servers. Mumble doesn't.</td></tr>
+      <tr><td><strong>Dragon NaturallySpeaking</strong> ($500+, legacy)</td><td>Mumble is free, open-source, actively maintained, with a modern UI and AI modes Dragon can't touch.</td></tr>
+      <tr><td><strong>Windows Voice Typing</strong> (Win+H)</td><td>Mumble works in ANY app (not just UWP), adds AI polish, has Smart Modes (email/list/prompt), a Deck, and clipboard history.</td></tr>
+      <tr><td><strong>Mac Dictation</strong></td><td>Cross-platform (Windows-first), Smart Modes, local-first privacy, open-source, bring-your-own-AI.</td></tr>
+      <tr><td><strong>Otter.ai / Fireflies</strong> (meeting transcription)</td><td>Mumble is for <em>producing</em> text, not transcribing others. Single-user, push-to-dictate, always-on standby.</td></tr>
+      <tr><td><strong>Whisper + any GUI</strong> (Buzz, Vibe, etc.)</td><td>Mumble's AI polish, Smart Modes, Deck, clipboard history, and Reader TTS make it a complete workflow, not just a transcriber.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card lift">
+  <h4>Core Messaging Pillars (everything else derives from these)</h4>
+  <ol>
+    <li><strong>Privacy-first.</strong> "Your voice never leaves your device." Audio is transcribed locally with faster-whisper. No cloud account required. No telemetry.</li>
+    <li><strong>Infer, don't configure.</strong> "Just talk. Mumble figures out the rest." Smart Modes detect whether you're making a list, writing an email, or drafting a prompt.</li>
+    <li><strong>Your AI, your keys.</strong> "Pro Mode" sends only transcribed <em>text</em> to the AI provider <em>you</em> choose with <em>your</em> key. No built-in keys. No lock-in.</li>
+    <li><strong>Premium by default.</strong> Black-and-gold liquid-glass UI, a glowing floating island, premium motion design. Open-source does not mean ugly.</li>
+    <li><strong>Open-source, truly.</strong> Apache 2.0 components, pure Python, zero-CDN web UI. The code is the product and the product is the code.</li>
+  </ol>
+</div>
+
+<hr>
+
+<h2 id="s1"><span class="sec">1</span>Platform Execution Playbooks</h2>
+
+<h3 id="s1a">1.1 X.com (Twitter) — Building in Public</h3>
+
+<div class="card lift">
+  <h4>Platform Fundamentals</h4>
+  <p>X in 2026 rewards <strong>high-signal, engineering-led content</strong> with high dwell time and reply depth. The algorithm prioritises posts that spark conversation (replies &gt; likes) and content that keeps users on-platform (threads &gt; link-outs). Open-source projects have a structural advantage: the code IS the content.</p>
+</div>
+
+<h4>Strategy 1: The "Building in Public" Cadence</h4>
+<div class="card">
+  <p>Post <strong>daily</strong> — but each post must contain one of three things: a screenshot, a code snippet, or a problem-solved. Never post "motivation" or "we're excited to announce" fluff.</p>
+  <table>
+    <thead><tr><th>Day</th><th>Content Type</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>Monday</td><td><strong>Feature reveal</strong></td><td>Screenshot of a new Smart Mode in action + "Dictated this email in 12 seconds. The AI structured the greeting, body, and sign-off automatically."</td></tr>
+      <tr><td>Tuesday</td><td><strong>Code / architecture</strong></td><td>Code snippet showing the streaming transcription pipeline + "Here's how Mumble streams 5-second audio chunks to faster-whisper without dropping a single sample at chunk boundaries."</td></tr>
+      <tr><td>Wednesday</td><td><strong>Problem story</strong></td><td>"Turns out cross-process settings writes in Python are terrifying. Here's how we solved the 'API key disappears after 2 hours' bug with atomic read-merge-before-write under a file lock."</td></tr>
+      <tr><td>Thursday</td><td><strong>User workflow / testimonial</strong></td><td>"A user just told us they dictate entire README files with Prompt Mode. Say what you want built, Mumble generates the structured prompt, they paste it into an AI, and the README is done."</td></tr>
+      <tr><td>Friday</td><td><strong>Open-source callout</strong></td><td>"Mumble is 100% Python + HTML/CSS/JS. Zero CDNs. Zero accounts. Here's the entire dependency list — 12 packages, all pip-installable. Contributions welcome."</td></tr>
+      <tr><td>Saturday</td><td><strong>Performance / benchmark</strong></td><td>"Ran Mumble on a 2015 ThinkPad. faster-whisper tiny.en processed a 30-second clip in 3.1 seconds (9.7× realtime). Local STT on ancient hardware."</td></tr>
+      <tr><td>Sunday</td><td><strong>Behind-the-scenes / personal</strong></td><td>"Sunday morning. Coffee. Building the DirectML GPU backend so AMD/Intel GPU users get 5× faster transcription. No CUDA required. This is why open-source matters."</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h4>Strategy 2: Engineering-Led Thread Structures (3 Templates)</h4>
+
+<div class="card">
+  <h4>Template A — "The Technical Deep-Dive" (for architecture / interesting bugs)</h4>
+  <pre><code>THREAD: [1-sentence hook that sounds impossible or surprising]
+
+1/ [State the problem — concrete, relatable pain point]
+   "Every dictation app has the same bug: cross-process settings get clobbered..."
+
+2/ [What we observed]
+   "Users would enter their API key, it would work for 2 hours, then vanish..."
+
+3/ [Root cause — go deep, show code]
+   Screenshot of the settings.py atomic-write logic
+
+4/ [The fix — show the BEFORE and AFTER]
+   "Before: naive write. After: read-merge-before-write under a cross-process O_EXCL lock"
+
+5/ [The result]
+   "0 reports of lost keys since the fix shipped. OSS lesson: atomic writes are table stakes."
+
+6/ [CTA — invite contribution]
+   "The fix is in main. If you work on desktop apps that write settings files, steal this pattern."
+
+7/ [Link to the commit / PR]</code></pre>
+</div>
+
+<div class="card">
+  <h4>Template B — "The Feature Reveal" (for new Smart Modes / UX)</h4>
+  <pre><code>THREAD: [Result-first hook: what the user can now do that they couldn't before]
+
+1/ [Show the result immediately — screenshot or screen recording]
+   "Mumble now turns your speech into a structured AI prompt. Here's what that looks like:"
+
+2/ [The workflow — 3 steps max]
+   "1. Tap Ctrl+Win. 2. Say what you want built. 3. Tap again. A complete prompt appears at your cursor."
+
+3/ [Under the hood — one technical insight]
+   "Under the hood: a Master Constitution prompt (v5) runs a hidden multi-step pipeline —
+    classify → draft → critique → rewrite → self-review → final check."
+
+4/ [Why this matters]
+   "Most people write terrible AI prompts. Mumble fixes that by structuring intent for you."
+
+5/ [CTA — try it]
+   "Download: [link]. Open source. Works offline. No account needed."</code></pre>
+</div>
+
+<div class="card">
+  <h4>Template C — "The Competitor Comparison" (use sparingly — 1 in 10 posts max)</h4>
+  <pre><code>THREAD: [A claim that sounds too good to be true]
+
+1/ [The comparison — side-by-side, factual, not snarky]
+   "Wispr Flow vs Mumble: what actually happens to your audio."
+
+2/ [Breakdown in a table or list]
+   • Wispr Flow: audio → their servers → STT → AI → paste
+   • Mumble: audio → local faster-whisper → [optional: text → your AI key] → paste
+
+3/ [The privacy implication — let the reader conclude]
+   "One of these paths means your voice recordings sit on someone else's server.
+    The other means they never leave your machine."
+
+4/ [No call to action needed — the product sells itself here]</code></pre>
+</div>
+
+<h4>Strategy 3: Algorithm &amp; Discovery Hacks (2026 Edition)</h4>
+<div class="card">
+  <ul>
+    <li><strong>First-line rule:</strong> The first line of every thread must be a complete, standalone hook that works even if the user never clicks "Show more." No "1/7" or emoji — just the punchline.</li>
+    <li><strong>Reply-gating:</strong> End threads with a genuine question that invites technical answers. The algorithm weights reply count 4× higher than likes. Example: "What's the worst settings-corruption bug you've ever shipped?"</li>
+    <li><strong>Community Notes immunity:</strong> Every factual claim must be verifiable. Link the commit, the benchmark command, the file on GitHub. Never exaggerate performance numbers.</li>
+    <li><strong>Non-spam discovery:</strong> Search X daily for: "wispr flow alternative", "dragon naturallyspeaking replacement", "local voice to text", "offline dictation windows", "whisper desktop app". Reply with genuine help — a 3-sentence recommendation, not a pitch. Provide value first; plug Mumble second.</li>
+    <li><strong>Quote-post strategy:</strong> Quote-post popular AI/DevRel accounts discussing voice AI, local models, or privacy. Add one technical insight from Mumble's architecture that advances the conversation. Never quote-post just to say "we do this too."</li>
+    <li><strong>Bookmark-and-return:</strong> Bookmark every post where someone complains about typing speed, RSI, Dragon NaturallySpeaking, or cloud dictation latency. Return 3–5 days later with a helpful, non-promotional reply.</li>
+    <li><strong>Hashtags (use exactly 2 per post):</strong> <code>#OpenSource</code> + one contextual tag (<code>#VoiceAI</code>, <code>#Python</code>, <code>#Privacy</code>, <code>#DevTools</code>). Never more than 2.</li>
+  </ul>
+</div>
+
+<h3 id="s1b">1.2 Reddit — Native, Non-Promotional Distribution</h3>
+
+<div class="card lift">
+  <h4>The Reddit Golden Rule</h4>
+  <p><strong>Reddit users can smell marketing from 3 subreddits away.</strong> The only posts that survive and thrive are those that provide genuine value to the subreddit's core audience. Your job is not to promote Mumble — it's to help people, and let Mumble surface naturally as the tool that helped them.</p>
+</div>
+
+<h4>Target Subreddit Map</h4>
+<table>
+  <thead><tr><th>Subreddit</th><th>Size</th><th>Angle</th><th>Content Type</th></tr></thead>
+  <tbody>
+    <tr><td><strong>r/selfhosted</strong></td><td>~400K</td><td>"Local voice-to-text that never phones home"</td><td>Setup guide, comparison post</td></tr>
+    <tr><td><strong>r/opensource</strong></td><td>~300K</td><td>"We built an open-source Wispr Flow alternative"</td><td>Project introduction, architecture write-up</td></tr>
+    <tr><td><strong>r/SideProject</strong></td><td>~200K</td><td>"I built a private dictation app in Python over 6 months"</td><td>Builder story, lessons learned</td></tr>
+    <tr><td><strong>r/Python</strong></td><td>~1.2M</td><td>"How we used faster-whisper + pywebview to build a desktop voice-to-text app"</td><td>Technical deep-dive, code walkthrough</td></tr>
+    <tr><td><strong>r/programming</strong></td><td>~6M</td><td>"Why local STT is finally good enough to replace typing"</td><td>Industry analysis, benchmarks</td></tr>
+    <tr><td><strong>r/privacy</strong></td><td>~1.5M</td><td>"An actually-private voice dictation app (audio never leaves your device)"</td><td>Privacy analysis, comparison</td></tr>
+    <tr><td><strong>r/Windows10 / r/Windows11</strong></td><td>~400K combined</td><td>"I replaced Win+H with a local Whisper app — here's why"</td><td>Comparison, tutorial</td></tr>
+    <tr><td><strong>r/productivity</strong></td><td>~2M</td><td>"How I 3×'d my writing output without buying SaaS"</td><td>Workflow story, tips</td></tr>
+    <tr><td><strong>r/Ergonomics</strong></td><td>~100K</td><td>"Voice dictation setup for RSI recovery (fully local, no cloud)"</td><td>Health/accessibility angle</td></tr>
+    <tr><td><strong>r/LocalLLaMA</strong></td><td>~300K</td><td>"Mumble: desktop voice-to-text with optional local LLM post-processing"</td><td>Local AI pipeline deep-dive</td></tr>
+    <tr><td><strong>r/writing</strong></td><td>~3M</td><td>"Dictation workflow for long-form writing (the tool is free and local)"</td><td>Writer's workflow guide</td></tr>
+  </tbody>
+</table>
+
+<h4>The "Anti-Pitch" Post Archetype</h4>
+<div class="card">
+  <h4>Copy-pasteable template — adapt per subreddit</h4>
+  <pre><code>TITLE: [State the problem you solved — do NOT mention Mumble in the title]
+
+BODY:
+
+I've been struggling with [PROBLEM] for [TIME PERIOD]. Specifically:
+- [Pain point 1 — concrete, relatable]
+- [Pain point 2]
+- [Pain point 3]
+
+I tried [COMPETITOR A] but [SPECIFIC REASON IT FAILED].
+I tried [COMPETITOR B] but [SPECIFIC REASON IT FAILED].
+[Maybe 1-2 more failed attempts — this builds credibility]
+
+So I [built/found] a solution. Here's what ended up working:
+
+[SOLUTION DESCRIPTION — 3-4 bullet points, technical, specific]
+
+The key insight was [ONE TECHNICAL INSIGHT THAT IS GENUINELY INTERESTING].
+
+For anyone curious about the tech:
+- Transcription: faster-whisper (CTranslate2), running locally on CPU
+- AI polish: optional, bring-your-own-key (Cerebras/OpenAI/Anthropic)
+- UI: pywebview + pure HTML/CSS/JS (zero CDN, works offline)
+- Everything is open source under Apache 2.0
+
+[LINK TO GITHUB — only here, at the very end]
+
+Happy to answer questions about the architecture, the model choices, or
+anything else. I've been living in this codebase for months.
+
+---
+
+EDIT: Since a few people asked — yes, it runs fully offline. No account
+required. Audio is processed locally and discarded. Only the transcribed
+text (never audio) goes to the cloud AI, and only if you turn that on.
+
+EDIT 2: For the self-hosted crowd — the entire thing is Python. You can
+run it from source with `python mumble.py`. The web UI is just static
+HTML/CSS/JS served from disk.</code></pre>
+</div>
+
+<div class="callout callout-gold">
+  <strong>Critical Reddit rules:</strong>
+  <ul>
+    <li><strong>Never post the same content to multiple subreddits on the same day.</strong> Space cross-posts by at least 4 days.</li>
+    <li><strong>Never use a brand-new account.</strong> Your posting account must have genuine history in the target subreddits.</li>
+    <li><strong>Engage with every comment for the first 24 hours.</strong> The algorithm boosts posts with high comment counts and OP reply rates.</li>
+    <li><strong>Read each subreddit's rules before posting.</strong> r/Python bans "I made this" posts on weekdays. r/programming bans self-promotion outright — only link in comments if asked.</li>
+    <li><strong>r/selfhosted is the highest-converting subreddit for Mumble.</strong> The privacy + local-only angle is catnip for that audience. Lead with it.</li>
+  </ul>
+</div>
+
+<h3 id="s1c">1.3 YouTube &amp; Video Marketing</h3>
+
+<div class="card lift">
+  <h4>Video Strategy Overview</h4>
+  <p>YouTube is Mumble's <strong>highest-leverage long-term channel</strong>. A single high-quality product demo can drive traffic for years. The strategy is: produce <strong>3 cornerstone videos</strong> at launch, then a sustained <strong>DevLog series</strong> (1 video every 2 weeks) to maintain algorithmic relevance.</p>
+</div>
+
+<h4>The 90-Second High-Conversion Product Demo — Full Script</h4>
+<div class="card">
+  <pre><code>TITLE: "Mumble: Private On-Device Voice-to-Text for Windows (Open Source)"
+
+[0:00–0:05] BLACK SCREEN → text fades in: "This is not a cloud service."
+
+[0:05–0:15] Screen recording: User clicks into a Notepad window.
+  → Presses Ctrl+Win. A glowing gold island appears at the bottom.
+  → Speaks for ~8 seconds. Island shows a waveform animation.
+  → Presses Ctrl+Win again. Island shows "Transcribing..." then "Pasted!"
+  → Clean, formatted text appears in Notepad.
+
+[0:15–0:22] Screen recording: User in VS Code.
+  → Presses Ctrl+Win, says a commit message, pastes into the terminal.
+  → Overlay text: "Works in ANY app. Any text field. Anywhere."
+
+[0:22–0:32] Screen recording: The Smart Modes.
+  → "List mode": user says "milk eggs bread butter" → bullets appear.
+  → "Email mode": user dictates a meeting request → structured email.
+  → "Prompt mode": user describes an app → structured AI prompt appears.
+
+[0:32–0:42] Screen recording: The Deck.
+  → Ctrl+Alt+H opens a searchable history of everything ever dictated.
+  → User clicks an old transcript → pastes it again. Stars a favourite.
+  → Selects two items + runs an AI preset → result pastes.
+
+[0:42–0:52] Screen recording: The Settings.
+  → Toggle: "Pro Mode OFF → fully offline."
+  → Highlight: "Audio is transcribed locally. Only text goes to the AI."
+
+[0:52–1:02] The Privacy Diagram (simple animated graphic):
+  ┌──────────┐     ┌──────────┐     ┌──────────┐
+  │ Your mic │ ──► │ Local STT│ ──► │  Paste   │
+  └──────────┘     └──────────┘     └──────────┘
+                         │ (optional, text only)
+                         ▼
+                   ┌──────────┐
+                   │ Your AI  │ (your key, your provider)
+                   └──────────┘
+  Overlay text: "Audio never leaves your device."
+
+[1:02–1:15] Screen recording: The app window — Home, Stats, Reader.
+  → Quick scroll. Overlay: "Black-and-gold. Liquid glass. Premium by default."
+
+[1:15–1:25] CTA: GitHub URL on screen. "Free. Open source. No account needed."
+
+[1:25–1:30] End card: Mumble logo + tagline "Speak. It types."</code></pre>
+</div>
+
+<h4>DevLog Video Series (bi-weekly, 15 episodes)</h4>
+<table>
+  <thead><tr><th>Ep</th><th>Topic</th><th>Duration</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>"I built a local voice-to-text app in Python — here's the architecture"</td><td>12–18 min</td></tr>
+    <tr><td>2</td><td>"Why faster-whisper vs Whisper.cpp vs Cohere Transcribe — benchmarks"</td><td>8–12 min</td></tr>
+    <tr><td>3</td><td>"The floating island: building a click-through overlay in Win32"</td><td>10–15 min</td></tr>
+    <tr><td>4</td><td>"Smart Modes: how Mumble infers whether you want a list, email, or prompt"</td><td>8–12 min</td></tr>
+    <tr><td>5</td><td>"The Prompt Architect: a multi-step AI pipeline that writes better prompts"</td><td>12–18 min</td></tr>
+    <tr><td>6</td><td>"Zero-CDN web UI: desktop app frontend with pure HTML/CSS/JS"</td><td>10–15 min</td></tr>
+    <tr><td>7</td><td>"Cross-process settings: the bug that ate API keys and how we fixed it"</td><td>8–12 min</td></tr>
+    <tr><td>8</td><td>"Reader Mode: turning any document into an AI-narrated audiobook"</td><td>10–15 min</td></tr>
+    <tr><td>9</td><td>"The Deck: building a non-activating floating palette in Windows"</td><td>8–12 min</td></tr>
+    <tr><td>10</td><td>"DirectML GPU acceleration for AMD/Intel — 5× faster transcription"</td><td>10–15 min</td></tr>
+    <tr><td>11</td><td>"Mumble vs Wispr Flow vs Dragon: honest comparison"</td><td>12–18 min</td></tr>
+    <tr><td>12</td><td>"Building for privacy: engineering decisions behind audio-never-leaves-device"</td><td>10–15 min</td></tr>
+    <tr><td>13</td><td>"The macOS port: from Windows to Apple Neural Engine in one app"</td><td>10–15 min</td></tr>
+    <tr><td>14</td><td>"Mumble's test suite: 21+ offline tests for a desktop voice app"</td><td>8–12 min</td></tr>
+    <tr><td>15</td><td>"What's next: the Mumble roadmap"</td><td>10–15 min</td></tr>
+  </tbody>
+</table>
+
+<h4>Open-Source Video Production Stack</h4>
+<div class="card">
+  <table>
+    <thead><tr><th>Function</th><th>Tool</th><th>License</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Screen recording</strong></td><td><strong>OBS Studio</strong></td><td>GPL-2.0</td><td>Industry standard. Record 1080p 60fps.</td></tr>
+      <tr><td><strong>Video editing</strong></td><td><strong>Kdenlive</strong> or <strong>Shotcut</strong></td><td>GPL-2.0 / GPL-3.0</td><td>Kdenlive for complex edits; Shotcut for quick cuts.</td></tr>
+      <tr><td><strong>Audio cleanup</strong></td><td><strong>Audacity</strong></td><td>GPL-2.0</td><td>Noise reduction, compression, normalisation.</td></tr>
+      <tr><td><strong>Motion graphics</strong></td><td><strong>Blender</strong> (VSE)</td><td>GPL-2.0</td><td>Animated diagrams, privacy flowcharts, logo intros.</td></tr>
+      <tr><td><strong>Thumbnails</strong></td><td><strong>GIMP</strong> or <strong>Inkscape</strong></td><td>GPL-3.0</td><td>Consistent template with black-and-gold palette.</td></tr>
+      <tr><td><strong>Captioning</strong></td><td><strong>HandBrake</strong> + <strong>Subtitle Edit</strong></td><td>GPL-2.0 / GPL-3.0</td><td>Burn-in captions for accessibility + silent autoplay.</td></tr>
+      <tr><td><strong>AI voiceover</strong></td><td><strong>Piper TTS</strong> (local) or <strong>Coqui TTS</strong></td><td>MIT / MPL-2.0</td><td>High-quality neural TTS if you don't record your voice.</td></tr>
+      <tr><td><strong>Clip repurposing</strong></td><td><strong>FFmpeg</strong> (scripted)</td><td>LGPL</td><td>Auto-crop 16:9→9:16 for Shorts, extract keyframes.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="callout callout-info">
+  <strong>YouTube SEO specifics:</strong>
+  <ul>
+    <li>Title format: <code>[Specific claim] — [Product name or context]</code>. Example: "I Replaced Dragon NaturallySpeaking with a Free Open-Source App"</li>
+    <li>Description: First 2 lines are the hook (visible in search). Include GitHub link, install command, timestamps.</li>
+    <li>Tags: "voice to text", "dictation software", "open source dictation", "local whisper", "windows voice typing alternative", "faster-whisper desktop app", "private voice to text".</li>
+    <li>Playlists: Create "Mumble DevLog" and "Voice AI Engineering" (curated third-party videos for algorithmic association).</li>
+    <li>Shorts: Extract 3–5 Shorts (under 60s, vertical 9:16) from each long-form video for YouTube Shorts, TikTok, Reels.</li>
+  </ul>
+</div>
+
+<h3 id="s1d">1.4 Organic SEO &amp; Content Strategy</h3>
+
+<div class="card lift">
+  <h4>Core SEO Thesis</h4>
+  <p>Mumble's SEO strategy is <strong>long-tail, developer-focused, and programmatic</strong>. We target high-intent, low-competition keywords where the searcher is actively looking for a solution. Content format: <strong>comparison pages + technical guides + alternative-to-X pages</strong>.</p>
+</div>
+
+<h4>High-Value Keyword Clusters</h4>
+<table>
+  <thead><tr><th>Cluster</th><th>Example Keywords</th><th>Content Format</th></tr></thead>
+  <tbody>
+    <tr><td><strong>"Alternative to X"</strong></td><td>"Wispr Flow alternative", "Dragon NaturallySpeaking alternative free", "Otter.ai alternative local", "Windows dictation alternative open source"</td><td>Comparison page with feature table + honest pros/cons</td></tr>
+    <tr><td><strong>"How to" technical</strong></td><td>"How to run Whisper locally on Windows", "Local voice to text Python", "faster-whisper desktop GUI", "offline speech to text Windows 11"</td><td>Step-by-step tutorial that naturally showcases Mumble</td></tr>
+    <tr><td><strong>Privacy-focused</strong></td><td>"Private voice dictation software", "Dictation without internet", "Local STT vs cloud STT", "Voice typing that doesn't send data"</td><td>Privacy analysis + setup guide</td></tr>
+    <tr><td><strong>Workflow / productivity</strong></td><td>"Voice-to-text for programmers", "Dictate code comments", "Voice typing for Notion", "Speech to text for VS Code"</td><td>Workflow video + written guide</td></tr>
+    <tr><td><strong>Accessibility</strong></td><td>"Voice typing for RSI", "dictation for carpal tunnel", "speech to text accessibility free"</td><td>Accessibility-focused guide with personal stories</td></tr>
+    <tr><td><strong>Model / AI</strong></td><td>"faster-whisper vs whisper.cpp benchmark", "local LLM text cleanup", "on-device speech recognition 2026"</td><td>Technical benchmark + GitHub gist</td></tr>
+  </tbody>
+</table>
+
+<h4>Content Production Pipeline (Zero-Cost)</h4>
+<div class="card">
+  <ol>
+    <li><strong>Static site:</strong> Use <strong>Hugo</strong> (MIT) or <strong>Zola</strong> (MIT) — pure static HTML. Host on <strong>GitHub Pages</strong> (free) or <strong>Cloudflare Pages</strong> (free, unlimited bandwidth).</li>
+    <li><strong>Blog:</strong> A <code>/blog/</code> section targeting one keyword cluster per article. Minimum 1,500 words with code snippets.</li>
+    <li><strong>Programmatic pages:</strong> Comparison pages at <code>/vs/[competitor-name]/</code>. Feature table, privacy comparison, pricing, install complexity. Update quarterly.</li>
+    <li><strong>Docs as SEO:</strong> Every feature page (Smart Modes, Deck, Reader, Settings) is indexable and keyword-optimised.</li>
+    <li><strong>Cross-linking:</strong> Every blog post links to 2–3 other posts. Every docs page links to 1–2 related blog posts.</li>
+  </ol>
+</div>
+
+<h4>First 10 Blog Posts (publish within 30 days)</h4>
+<table>
+  <thead><tr><th>#</th><th>Title / Target Keyword</th><th>Format</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>"The Best Free &amp; Open-Source Voice-to-Text Apps for Windows (2026)"</td><td>Listicle / comparison</td></tr>
+    <tr><td>2</td><td>"Wispr Flow Alternative: A Local-First, Open-Source Dictation App"</td><td>Alternative-to-X</td></tr>
+    <tr><td>3</td><td>"How to Set Up Local Speech-to-Text on Windows Using faster-whisper"</td><td>How-to tutorial</td></tr>
+    <tr><td>4</td><td>"Dragon NaturallySpeaking Alternatives in 2026: Free, Open-Source, AI-Powered"</td><td>Alternative-to-X</td></tr>
+    <tr><td>5</td><td>"Why Your Voice Dictation Should Run on Your Device, Not in the Cloud"</td><td>Opinion / privacy analysis</td></tr>
+    <tr><td>6</td><td>"Dictation for Developers: How to 3× Your Documentation Speed with Voice"</td><td>Workflow guide</td></tr>
+    <tr><td>7</td><td>"faster-whisper vs whisper.cpp vs Cohere Transcribe: 2026 STT Benchmark"</td><td>Technical benchmark</td></tr>
+    <tr><td>8</td><td>"Building a Desktop App with pywebview: Lessons from Shipping Mumble"</td><td>Engineering write-up</td></tr>
+    <tr><td>9</td><td>"AI-Powered Dictation Modes: How Smart Prompt/Email/List Detection Works"</td><td>Technical explainer</td></tr>
+    <tr><td>10</td><td>"The Open-Source Voice Dictation Stack: faster-whisper + local LLM + pywebview"</td><td>Stack guide</td></tr>
+  </tbody>
+</table>
+
+<h3 id="s1e">1.5 GitHub — The Repo as a Conversion Engine</h3>
+
+<div class="card lift">
+  <h4>GitHub as the Primary Landing Page</h4>
+  <p>For an open-source developer tool, the GitHub README <strong>is</strong> the landing page. The conversion goal: <strong>clone → install → use → star → share</strong>.</p>
+</div>
+
+<h4>GitHub Growth Tactics</h4>
+<div class="card">
+  <ol>
+    <li><strong>Star-driven discovery:</strong> GitHub's trending page and explore feed are driven by star velocity (stars per hour). A coordinated launch-week push creates a star spike that triggers algorithmic discovery.</li>
+    <li><strong>Topic tags:</strong> Add: <code>voice-to-text</code>, <code>speech-recognition</code>, <code>whisper</code>, <code>dictation</code>, <code>python</code>, <code>desktop-app</code>, <code>privacy</code>, <code>local-first</code>, <code>faster-whisper</code>, <code>open-source</code>, <code>productivity</code>, <code>windows</code>.</li>
+    <li><strong>Awesome lists:</strong> Submit to <code>awesome-python</code>, <code>awesome-whisper</code>, <code>awesome-speech-recognition</code>, <code>awesome-privacy</code>, <code>awesome-selfhosted</code>, <code>awesome-windows</code>. Evergreen traffic.</li>
+    <li><strong>Issue-driven engagement:</strong> Label good-first-issues clearly. A well-maintained issue tracker converts stars into contributors.</li>
+    <li><strong>Discussions tab:</strong> Enable GitHub Discussions. Seed with 5–10 topics: feature requests, workflow showcases, troubleshooting.</li>
+    <li><strong>Release notes as marketing:</strong> Every GitHub Release: 2-sentence summary, 3–5 bullet highlights with screenshots/GIFs, "what's next" teaser.</li>
+    <li><strong>Cross-reference in issues:</strong> When someone asks about voice-to-text tools in other repos, drop a helpful comment mentioning Mumble as one option.</li>
+  </ol>
+</div>
+
+<h3 id="s1f">1.6 Hacker News &amp; Technical Aggregators</h3>
+
+<div class="card lift">
+  <h4>HN Launch Strategy</h4>
+  <p>Hacker News can send 10K–50K visitors in a day if a post hits the front page. But it's the hardest audience: they will read the code, test the claims, and call out any exaggeration. <strong>The HN post must be bulletproof.</strong></p>
+</div>
+
+<h4>HN "Show HN" Post Archetype</h4>
+<div class="card">
+  <h4>Title formula: "Show HN: [Product name] — [what it does differently, not what it does]"</h4>
+  <pre><code>TITLE: "Show HN: Mumble — local-first voice-to-text for Windows (audio never leaves your device)"
+
+BODY: (first comment after posting — keep it to 4-6 lines)
+
+Mumble is a desktop dictation app that transcribes your voice locally
+(faster-whisper) and pastes clean, AI-polished text anywhere on your OS.
+
+What makes it different:
+- Audio is processed locally and discarded — never uploaded
+- Optional AI polish sends only text, and only with your own API key
+- Pure Python + HTML/CSS/JS. Zero CDNs. No accounts.
+- Smart Modes infer output shape (list, email, prompt) from what you say
+
+GitHub: [link]
+5-minute demo video: [YouTube link]
+
+Built this because I was tired of cloud dictation tools that record
+everything I say. Happy to answer questions about the architecture,
+the model choices, or the Windows overlay system.</code></pre>
+</div>
+
+<div class="callout callout-warn">
+  <strong>HN timing rules:</strong>
+  <ul>
+    <li>Post <strong>weekday 9:00–11:00 AM Eastern</strong> (peak HN traffic). Never weekends or after 3 PM.</li>
+    <li>Have at least 2 people ready to upvote and leave substantive comments within 30 minutes.</li>
+    <li>The first comment (the "body" of Show HN) must go up within 60 seconds of posting.</li>
+    <li>Do NOT ask for upvotes — HN detects and penalises this.</li>
+    <li>If the post doesn't hit the front page within 2 hours, delete and retry on a different day with a refined title.</li>
+  </ul>
+</div>
+
+<h4>Other Technical Aggregators</h4>
+<table>
+  <thead><tr><th>Platform</th><th>Approach</th><th>Frequency</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Lobsters</strong></td><td>Submit under "programming" or "release" tag. Same authenticity bar as HN.</td><td>Once, at launch</td></tr>
+    <tr><td><strong>Dev.to</strong></td><td>Cross-post technical articles. Strong Google indexing — articles often outrank originals.</td><td>Weekly, 8 weeks</td></tr>
+    <tr><td><strong>Hashnode</strong></td><td>Same cross-posting strategy as Dev.to. Adds another SEO backlink.</td><td>Weekly, 8 weeks</td></tr>
+    <tr><td><strong>Medium</strong></td><td>Republish best 3 articles with canonical links back to your domain.</td><td>Monthly</td></tr>
+    <tr><td><strong>Peerlist</strong></td><td>Create a project showcase. Smaller but highly engaged developer community.</td><td>Once</td></tr>
+    <tr><td><strong>AlternativeTo.net</strong></td><td>List Mumble as an alternative to Wispr Flow, Dragon, Otter, Windows Dictation.</td><td>Once, maintain</td></tr>
+    <tr><td><strong>Slant.co</strong></td><td>Add Mumble to "Best dictation software" and "Best voice-to-text" comparison pages.</td><td>Once, maintain</td></tr>
+  </tbody>
+</table>
+
+<h3 id="s1g">1.7 DevRel &amp; Community Channels</h3>
+
+<div class="card lift">
+  <h4>Discord Server — The Community Hub</h4>
+  <p>A Discord server is the single highest-ROI community investment. It converts anonymous users into community members, provides real-time feedback, and generates user-generated content.</p>
+</div>
+
+<h4>Discord Server Structure</h4>
+<div class="card">
+  <table>
+    <thead><tr><th>Channel</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>#welcome</code></td><td>Rules, quickstart links, role selection. Admins only.</td></tr>
+      <tr><td><code>#announcements</code></td><td>Releases, major updates. Admins only. Cross-post to other channels.</td></tr>
+      <tr><td><code>#showcase</code></td><td>Users share setups, workflows, stats screenshots. Your UGC engine.</td></tr>
+      <tr><td><code>#help</code></td><td>Installation help, troubleshooting. Staff heavily for first 30 days.</td></tr>
+      <tr><td><code>#feature-requests</code></td><td>Forum-style. Users vote with reactions. Feeds the roadmap.</td></tr>
+      <tr><td><code>#dev</code></td><td>Contributor discussion. Architecture, PRs, model choices.</td></tr>
+      <tr><td><code>#off-topic</code></td><td>General chat. Keep the community human.</td></tr>
+      <tr><td><code>#ai-prompts</code></td><td>Users share best Prompt Mode outputs and preset configurations.</td></tr>
+      <tr><td><code>#linux-macos</code></td><td>Dedicated port discussion. Critical for non-Windows user feedback.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<h4>Open-Source Community Alternatives to Discord</h4>
+<table>
+  <thead><tr><th>Platform</th><th>License</th><th>Self-hostable?</th><th>Best for</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Zulip</strong></td><td>Apache 2.0</td><td>Yes (Docker, 2 GB RAM)</td><td>Threaded discussions, async community. Excellent for OSS.</td></tr>
+    <tr><td><strong>Matrix + Element</strong></td><td>Apache 2.0</td><td>Yes (Synapse server)</td><td>Federated, privacy-first. Bridges to Discord/IRC/Slack.</td></tr>
+    <tr><td><strong>Rocket.Chat</strong></td><td>MIT</td><td>Yes (Docker, 2 GB RAM)</td><td>Slack-like UX. Good for teams transitioning from proprietary tools.</td></tr>
+    <tr><td><strong>Discourse</strong></td><td>GPL-2.0</td><td>Yes (Docker, 1 GB RAM)</td><td>Forum-style. Better for long-lived discussions and SEO.</td></tr>
+    <tr><td><strong>Lemmy</strong></td><td>AGPL-3.0</td><td>Yes</td><td>Federated Reddit alternative. Create a Mumble community on a popular instance.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-gold">
+  <strong>Recommendation:</strong> Start with <strong>Discord</strong> for immediate community building (lowest friction). Self-host <strong>Discourse</strong> as the long-term knowledge base and SEO asset. Bridge Discord → Matrix for the privacy-focused audience segment.
+</div>
+
+<h4>Mastodon / Fediverse Strategy</h4>
+<div class="card">
+  <ul>
+    <li>Create an account on <strong>fosstodon.org</strong> (largest FOSS-focused Mastodon instance).</li>
+    <li>Post "Building in Public" content with stronger emphasis on privacy and open-source values.</li>
+    <li>Hashtags: <code>#OpenSource</code>, <code>#FOSS</code>, <code>#Python</code>, <code>#Privacy</code>, <code>#VoiceAI</code>, <code>#SelfHosted</code>.</li>
+    <li>Engage genuinely with <code>#SelfHosted</code> and <code>#FOSS</code> communities — high-trust, high-conversion audiences.</li>
+    <li>Cross-post to <strong>Lemmy</strong> (e.g., <code>programming.dev/c/opensource</code>).</li>
+  </ul>
+</div>
+
+<h3 id="s1h">1.8 Product Hunt Launch Playbook</h3>
+
+<div class="card lift">
+  <h4>Product Hunt Strategy</h4>
+  <p>Product Hunt is a <strong>one-shot launch event</strong>. You get one launch day. Prepare for 2 weeks, execute perfectly, never re-launch. PH can drive 2K–10K visitors and generate backlinks from tech blogs monitoring PH for stories.</p>
+</div>
+
+<h4>Pre-Launch Checklist (14 days before)</h4>
+<div class="card">
+  <ol>
+    <li><strong>Create the PH listing 10 days early.</strong> Fill every field: tagline, description, images (5 minimum), video, maker profiles, social links.</li>
+    <li><strong>Prepare 5 high-quality images:</strong> (1) hero/app window, (2) floating island in action, (3) Smart Modes demo, (4) Deck/History view, (5) privacy architecture diagram.</li>
+    <li><strong>Record a 60-second demo GIF</strong> — silent, auto-playing, shows the core loop. Under 3 MB.</li>
+    <li><strong>Line up 3–5 supporters</strong> who will upvote and leave thoughtful comments in the first hour.</li>
+    <li><strong>Draft the "maker comment"</strong> — the first comment you post immediately after launch. Tell the story of WHY you built it.</li>
+    <li><strong>Prepare responses to anticipated questions:</strong> "How is this different from Wispr Flow?" "What languages?" "Does it work offline?" "Why not just use Win+H?" "Mac version?"</li>
+    <li><strong>Do NOT launch on a weekend or Monday.</strong> Tuesday–Thursday, 12:01 AM Pacific (midnight launch for full-day exposure).</li>
+  </ol>
+</div>
+
+<div class="callout callout-info">
+  <strong>The Maker Comment template:</strong><br><br>
+  <em>"Hey PH — I built Mumble because I got tired of cloud dictation tools that upload everything I say to servers I don't control. My voice is my most personal data stream — it shouldn't leave my machine unless I choose to send it. Mumble transcribes locally with faster-whisper, and the optional AI polish only sends text (never audio), and only with your own API key. It's pure Python, fully open source, and works on any Windows machine. Would love your feedback — especially on the Smart Modes (they infer whether you want a list, email, or prompt from what you say). What dictation workflows would you want to see next?"</em>
+</div>
+
+<h3 id="s1i">1.9 Newsletter &amp; Cross-Promotion Strategy</h3>
+
+<div class="card lift">
+  <h4>Zero-Cost Newsletter Strategy</h4>
+  <p>Do not start your own newsletter yet. Instead, <strong>get Mumble featured in existing newsletters</strong> that already have the audience you want.</p>
+</div>
+
+<h4>Target Newsletter List</h4>
+<table>
+  <thead><tr><th>Newsletter</th><th>Audience</th><th>Pitch Angle</th></tr></thead>
+  <tbody>
+    <tr><td><strong>TLDR</strong> (tldr.tech)</td><td>1.2M developers</td><td>"Open-source, local-first voice-to-text app for Windows"</td></tr>
+    <tr><td><strong>Changelog Weekly</strong></td><td>~200K open-source devs</td><td>"New open-source project: local speech-to-text with AI polish"</td></tr>
+    <tr><td><strong>Console.dev</strong></td><td>~50K senior engineers</td><td>"Engineering deep-dive: building a click-through Win32 overlay for dictation"</td></tr>
+    <tr><td><strong>Hacker Newsletter</strong></td><td>~60K HN readers</td><td>Pitch after a successful HN front-page run</td></tr>
+    <tr><td><strong>Pointer.io</strong></td><td>~30K engineering leaders</td><td>"Privacy-first desktop AI: the architecture decisions behind Mumble"</td></tr>
+    <tr><td><strong>Python Weekly</strong></td><td>~100K Python devs</td><td>"Mumble: a pure-Python desktop voice-to-text app (faster-whisper + pywebview)"</td></tr>
+    <tr><td><strong>OSS Weekly</strong></td><td>~50K open-source enthusiasts</td><td>"New open-source dictation app — fully local, no accounts, Apache 2.0"</td></tr>
+    <tr><td><strong>Privacy Matters</strong></td><td>~20K privacy advocates</td><td>"The only dictation app where your voice truly never leaves your device"</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-gold">
+  <strong>Pitch format for newsletters:</strong> 3–4 sentences max. Include: (1) what Mumble is, (2) what makes it different (privacy + local), (3) one impressive technical detail, (4) GitHub link. No marketing language. Write like an engineer recommending a tool to another engineer.
+</div>
+
+<hr>
+
+<h2 id="s2"><span class="sec">2</span>The Open-Source &amp; Ultra-Low-Cost Marketing Tech Stack</h2>
+
+<h3>2.1 100% Open-Source / Self-Hosted Solutions</h3>
+
+<table>
+  <thead><tr><th>Category</th><th>Tool</th><th>License</th><th>What It Replaces</th><th>Setup</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Social media scheduling</strong></td><td><strong>Postiz</strong> (postiz.com)</td><td>Apache 2.0</td><td>Buffer, Hootsuite, Typefully</td><td>Docker, 15 min</td></tr>
+    <tr><td><strong>Social scheduling (alt)</strong></td><td><strong>Mixpost</strong></td><td>MIT</td><td>Buffer, Later</td><td>Docker, 20 min</td></tr>
+    <tr><td><strong>Web analytics (privacy)</strong></td><td><strong>Umami</strong> (umami.is)</td><td>MIT</td><td>Google Analytics, Plausible</td><td>Docker, 5 min</td></tr>
+    <tr><td><strong>Web analytics (alt)</strong></td><td><strong>Plausible CE</strong></td><td>AGPL-3.0</td><td>Google Analytics</td><td>Docker, 10 min</td></tr>
+    <tr><td><strong>Newsletter / email mktg</strong></td><td><strong>Listmonk</strong> (listmonk.app)</td><td>AGPL-3.0</td><td>Mailchimp, ConvertKit</td><td>Docker, 15 min</td></tr>
+    <tr><td><strong>Email delivery (SMTP)</strong></td><td><strong>Postal</strong></td><td>MIT</td><td>SendGrid, AWS SES</td><td>Docker, 30 min</td></tr>
+    <tr><td><strong>Forms / waitlist</strong></td><td><strong>Formbricks</strong></td><td>AGPL-3.0</td><td>Typeform, Google Forms</td><td>Docker, 10 min</td></tr>
+    <tr><td><strong>Documentation</strong></td><td><strong>Docusaurus</strong> (Meta)</td><td>MIT</td><td>GitBook, ReadMe.io</td><td>npm, 10 min</td></tr>
+    <tr><td><strong>Docs (lightweight)</strong></td><td><strong>mdBook</strong> (Rust)</td><td>MPL-2.0</td><td>GitBook</td><td>Cargo, 3 min</td></tr>
+    <tr><td><strong>Screen recording</strong></td><td><strong>OBS Studio</strong></td><td>GPL-2.0</td><td>Camtasia, Loom</td><td>Install, 5 min</td></tr>
+    <tr><td><strong>Video editing</strong></td><td><strong>Kdenlive</strong></td><td>GPL-2.0</td><td>Premiere Pro, Final Cut</td><td>Install, 10 min</td></tr>
+    <tr><td><strong>Motion graphics</strong></td><td><strong>Blender</strong></td><td>GPL-2.0</td><td>After Effects</td><td>Install, learning curve</td></tr>
+    <tr><td><strong>Image editing</strong></td><td><strong>GIMP</strong> + <strong>Inkscape</strong></td><td>GPL-3.0</td><td>Photoshop, Illustrator, Canva</td><td>Install, 10 min</td></tr>
+    <tr><td><strong>Community forum</strong></td><td><strong>Discourse</strong></td><td>GPL-2.0</td><td>Circle, Tribe</td><td>Docker, 20 min</td></tr>
+    <tr><td><strong>Community chat</strong></td><td><strong>Zulip</strong></td><td>Apache 2.0</td><td>Slack</td><td>Docker, 15 min</td></tr>
+    <tr><td><strong>Federated chat</strong></td><td><strong>Matrix + Element</strong></td><td>Apache 2.0</td><td>Discord, WhatsApp</td><td>Docker, 20 min</td></tr>
+    <tr><td><strong>Status page</strong></td><td><strong>Uptime Kuma</strong></td><td>MIT</td><td>Statuspage.io, Better Uptime</td><td>Docker, 5 min</td></tr>
+    <tr><td><strong>Landing page / website</strong></td><td><strong>Hugo</strong> or <strong>Zola</strong> or <strong>Astro</strong></td><td>MIT / MIT / MIT</td><td>Webflow, Squarespace, Framer</td><td>CLI, 15 min</td></tr>
+    <tr><td><strong>Hosting</strong></td><td><strong>GitHub Pages</strong> or <strong>Cloudflare Pages</strong></td><td>Free tier</td><td>Vercel, Netlify, AWS</td><td>Push-to-deploy</td></tr>
+    <tr><td><strong>CDN / DNS / DDoS</strong></td><td><strong>Cloudflare Free</strong></td><td>Free tier</td><td>AWS CloudFront, Fastly</td><td>DNS change, 10 min</td></tr>
+    <tr><td><strong>Link shortener</strong></td><td><strong>Dub.co</strong> (OSS) or <strong>Shlink</strong></td><td>AGPL-3.0 / MIT</td><td>Bitly, Short.io</td><td>Docker, 10 min</td></tr>
+    <tr><td><strong>CI/CD for marketing</strong></td><td><strong>GitHub Actions</strong></td><td>Free for public repos</td><td>CircleCI, Jenkins</td><td>YAML, 10 min</td></tr>
+    <tr><td><strong>AI TTS for voiceovers</strong></td><td><strong>Piper TTS</strong> or <strong>Coqui TTS</strong></td><td>MIT / MPL-2.0</td><td>ElevenLabs, Murf, WellSaid</td><td>pip install</td></tr>
+    <tr><td><strong>Transcription for captions</strong></td><td><strong>Whisper via faster-whisper</strong></td><td>MIT</td><td>Rev, Descript, Otter.ai</td><td>Already built into Mumble</td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 Paid but "Dirt Cheap" High-ROI Tools</h3>
+
+<table>
+  <thead><tr><th>Tool</th><th>Cost</th><th>What It Does</th><th>Why It's Worth It</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Domain name</strong> (e.g. mumble.ai)</td><td>~$12–35/year</td><td>Credibility + SEO. Custom domain signals project maturity.</td><td>Essential. Non-negotiable. Use Porkbun or Cloudflare Registrar (at-cost).</td></tr>
+    <tr><td><strong>Mailgun / SendGrid free tier</strong></td><td>$0 (100 emails/day)</td><td>Transactional email for Listmonk or waitlist form.</td><td>Free tier covers launch needs. Only upgrade at 3K+ subscribers.</td></tr>
+    <tr><td><strong>Typefully</strong> (X threads)</td><td>$0 free / $12.50/mo</td><td>Thread composer, analytics, scheduling for X.</td><td>Native X thread writing is painful. Free tier is enough to start.</td></tr>
+    <tr><td><strong>Canva Free</strong></td><td>$0 (free tier)</td><td>Social graphics, thumbnails, carousel templates.</td><td>GIMP/Inkscape are powerful but slow for rapid iteration. Lock in black-and-gold palette once.</td></tr>
+    <tr><td><strong>GitHub Sponsors</strong></td><td>$0 (no platform fee)</td><td>Accept donations. 0% platform fee.</td><td>Set up day 1. Even $50/month from early supporters validates the project.</td></tr>
+    <tr><td><strong>Open Collective</strong></td><td>$0 (0% fee)</td><td>Transparent, fiscal-hosted fundraising for OSS.</td><td>Provides 501(c)(6) fiscal hosting. Expenses are public — builds trust.</td></tr>
+    <tr><td><strong>Ahrefs Webmaster Tools</strong></td><td>$0 (free tier)</td><td>SEO audit, keyword tracking, backlink monitoring.</td><td>Google Search Console + Ahrefs WMT = complete free SEO monitoring.</td></tr>
+    <tr><td><strong>Google Search Console</strong></td><td>$0</td><td>Search performance, indexing status, keyword queries.</td><td>Mandatory. Set up day 1. Primary SEO feedback loop.</td></tr>
+    <tr><td><strong>Shots.so</strong></td><td>$0 (free tier)</td><td>Beautiful browser-frame mockups for social sharing.</td><td>Website screenshots in browser chrome look 10× more professional.</td></tr>
+    <tr><td><strong>Excalidraw</strong></td><td>$0 (MIT, OSS)</td><td>Hand-drawn-style diagrams for architecture explanations.</td><td>Architecture diagrams in hand-drawn style get 3× more engagement than sterile block diagrams.</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="s3"><span class="sec">3</span>The Step-by-Step Launch Game Plan</h2>
+
+<h3 id="s3a">3.1 Phase 0: Pre-Launch (Days -30 to -1)</h3>
+<p><strong>Goal:</strong> Build the "fire pit" — assets, audience, and anticipation — so the launch spark catches immediately.</p>
+
+<div class="timeline">
+  <div class="timeline-step">
+    <div class="t-node">30</div>
+    <div class="t-body">
+      <div class="t-title">Days -30 to -21: Foundation</div>
+      <ul>
+        <li><strong>GitHub README overhaul</strong> — transform into a conversion-optimised landing page (see §4). Add: animated demo GIF, feature matrix, install instructions that work on a clean machine, comparison table vs competitors.</li>
+        <li><strong>GitHub repo polish</strong> — add topic tags, enable Discussions, create CONTRIBUTING.md, add CODE_OF_CONDUCT.md, set up issue templates (bug report, feature request).</li>
+        <li><strong>Static website</strong> — deploy on custom domain. Single page: hero demo, features, privacy comparison, download buttons, FAQ. Use Hugo + Cloudflare Pages.</li>
+        <li><strong>Set up analytics</strong> — Umami or Plausible CE on the website. GitHub traffic insights on the repo.</li>
+        <li><strong>Create social accounts</strong> — X, Mastodon (fosstodon.org), YouTube, Discord server. Consistent branding.</li>
+        <li><strong>Set up Listmonk</strong> — "Get notified when we launch" email capture on the website.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="timeline-step">
+    <div class="t-node">21</div>
+    <div class="t-body">
+      <div class="t-title">Days -21 to -14: Content Pre-Production</div>
+      <ul>
+        <li><strong>Record the 90-second product demo video</strong> (script in §1.3). Edit, caption, upload to YouTube as "unlisted."</li>
+        <li><strong>Record 5 short-form clips</strong> (under 60s, vertical 9:16) for TikTok/Reels/Shorts.</li>
+        <li><strong>Write the first 5 blog posts</strong> — publish on the static site. Do NOT promote yet. Let them index.</li>
+        <li><strong>Create the Product Hunt listing</strong> — fill every field, upload all 5 images + demo GIF. Save as draft.</li>
+        <li><strong>Draft the HN "Show HN" post</strong> — refine the title with 3–4 variations. Test with 2–3 trusted people.</li>
+        <li><strong>Draft all social posts for launch week</strong> — 14 posts across X, Mastodon, LinkedIn. Pre-schedule in Postiz.</li>
+        <li><strong>Create the press kit</strong> — logo (SVG + PNG), screenshots (3), one-paragraph description, founder bio, contact email. Link from footer.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="timeline-step">
+    <div class="t-node">14</div>
+    <div class="t-body">
+      <div class="t-title">Days -14 to -7: Community Seeding</div>
+      <ul>
+        <li><strong>Start "Building in Public" on X</strong> — 1 post per day following the cadence in §1.1. Build a small audience before asking them to try anything.</li>
+        <li><strong>Post 2–3 technical articles to Dev.to and Hashnode</strong> — cross-posts of blog content. Link back to main site.</li>
+        <li><strong>Join 5–8 relevant Discord servers</strong> (Python, faster-whisper, LocalLLaMA, self-hosted communities). Be genuinely helpful. Do NOT promote Mumble yet.</li>
+        <li><strong>Set up GitHub Sponsors and Open Collective</strong> — configure tiers: $5/mo (supporter), $25/mo (contributor), $100/mo (priority features).</li>
+        <li><strong>Seed the Discord server</strong> — invite 5–10 early testers. Their conversations make the server feel alive.</li>
+        <li><strong>Submit to awesome lists</strong> — awesome-selfhosted, awesome-python, awesome-whisper. These PRs take time to merge.</li>
+        <li><strong>Submit to AlternativeTo.net and Slant.co</strong> — list Mumble as an alternative to every competitor.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="timeline-step">
+    <div class="t-node">7</div>
+    <div class="t-body">
+      <div class="t-title">Days -7 to -1: Final Preparation</div>
+      <ul>
+        <li><strong>Full install test on a clean machine</strong> — preferably a VM or a friend's computer. Fix anything that breaks.</li>
+        <li><strong>Run the full test suite</strong> — all offline tests green. Fix any regressions.</li>
+        <li><strong>Finalise the GitHub Release</strong> — tag v0.9.0 (or v1.0.0). Write release notes with screenshots.</li>
+        <li><strong>Brief your "launch squad"</strong> — 5–10 people who will upvote, comment, and share on launch day.</li>
+        <li><strong>Set up Google Search Console</strong> — verify domain ownership. Submit the sitemap.</li>
+        <li><strong>Pre-warm the newsletter list</strong> — send one "What's coming" email to early subscribers.</li>
+        <li><strong>Charge your devices. Sleep.</strong> Launch day is an 18-hour sprint.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h3 id="s3b">3.2 Phase 1: Launch Week (Days 1–7)</h3>
+
+<div class="callout callout-green">
+  <strong>Objective:</strong> Maximise simultaneous traffic from multiple channels to create a "surround-sound" effect. When someone sees Mumble on HN, then on Reddit, then on X all in the same day, they assume it's important and investigate.
+</div>
+
+<table>
+  <thead><tr><th>Day</th><th>Actions</th><th>Expected Traffic</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Day 1 (Tue)</strong></td>
+      <td>
+        <strong>06:00 PT:</strong> Post "Show HN" on Hacker News.<br>
+        <strong>06:30 PT:</strong> Post on r/selfhosted (Anti-Pitch template, §1.2).<br>
+        <strong>07:00 PT:</strong> Launch on Product Hunt (midnight PT = optimal global exposure).<br>
+        <strong>08:00–18:00 PT:</strong> Monitor ALL platforms. Reply to every comment. Speed matters — algorithms reward rapid OP engagement.<br>
+        <strong>Post on X:</strong> Feature-reveal thread (Template B).<br>
+        <strong>Post on Mastodon:</strong> Privacy-first angle.<br>
+        <strong>Make the demo video public on YouTube.</strong>
+      </td>
+      <td>5K–30K visitors</td>
+    </tr>
+    <tr>
+      <td><strong>Day 2 (Wed)</strong></td>
+      <td>
+        <strong>Post on X:</strong> Architecture deep-dive (Template A).<br>
+        <strong>Post on r/opensource:</strong> Project introduction.<br>
+        <strong>Post on r/SideProject:</strong> Builder story.<br>
+        <strong>Follow up on HN/PH:</strong> Respond to overnight comments. Update PH maker comment with "EDIT: FAQ from comments."<br>
+        <strong>Send first newsletter</strong> — "We launched! Here's what happened on Day 1."
+      </td>
+      <td>2K–10K visitors</td>
+    </tr>
+    <tr>
+      <td><strong>Day 3 (Thu)</strong></td>
+      <td>
+        <strong>Post on X:</strong> User workflow / testimonial.<br>
+        <strong>Post on r/Python:</strong> Technical deep-dive (if weekday rules allow).<br>
+        <strong>Pitch to newsletters:</strong> Send 3-sentence pitch to TLDR, Changelog Weekly, Python Weekly.<br>
+        <strong>Dev.to / Hashnode:</strong> Publish "Why I built Mumble" article.<br>
+        <strong>Post first short-form clip</strong> to TikTok/Reels/Shorts.
+      </td>
+      <td>1K–5K visitors</td>
+    </tr>
+    <tr>
+      <td><strong>Day 4 (Fri)</strong></td>
+      <td>
+        <strong>Post on X:</strong> Open-source callout — invite contributions, link good-first-issues.<br>
+        <strong>Post on r/programming:</strong> "Why local STT is finally good enough" (if rules allow).<br>
+        <strong>Engage in Discord:</strong> Welcome new members. Start "Share your setup" thread.<br>
+        <strong>GitHub:</strong> Triage issues. Label good-first-issues. Merge quick-win PRs.
+      </td>
+      <td>500–2K visitors</td>
+    </tr>
+    <tr>
+      <td><strong>Day 5–6 (Wkd)</strong></td>
+      <td>
+        <strong>Rest.</strong> Light monitoring only. Reply to comments but don't post new content.<br>
+        <strong>Compile launch week stats</strong> — stars, downloads, unique visitors, top referral sources, conversion rate.<br>
+        <strong>Write "Launch Week Retrospective" blog post</strong> — publish on Day 7.
+      </td>
+      <td>Organic tail</td>
+    </tr>
+    <tr>
+      <td><strong>Day 7 (Mon)</strong></td>
+      <td>
+        <strong>Publish Launch Week Retrospective</strong> — what worked, what didn't, metrics, lessons learned.<br>
+        <strong>Post on X:</strong> Retrospective thread with metrics.<br>
+        <strong>Send newsletter #2</strong> — "Launch week by the numbers" + "What's next."<br>
+        <strong>Cross-post retrospective to Dev.to/Hashnode.</strong>
+      </td>
+      <td>1K–3K visitors</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="s3c">3.3 Phase 2: Post-Launch Momentum (Days 8–30)</h3>
+
+<div class="callout callout-info">
+  <strong>Objective:</strong> Convert the launch spike into sustained baseline traffic. Establish a "floor" of 100–500 daily visitors that grows week-over-week.
+</div>
+
+<h4>Weekly Cadence (repeat for weeks 2–4)</h4>
+<table>
+  <thead><tr><th>Day</th><th>Actions</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Monday</strong></td><td>Publish 1 blog post. Cross-post to Dev.to, Hashnode. Post on X (feature reveal or workflow story).</td></tr>
+    <tr><td><strong>Tuesday</strong></td><td>Post 1 Reddit thread in a new subreddit (rotate through the list in §1.2). Engage in 2–3 relevant threads in other communities.</td></tr>
+    <tr><td><strong>Wednesday</strong></td><td>Post on X (technical deep-dive or bug story). Record and edit the next DevLog video.</td></tr>
+    <tr><td><strong>Thursday</strong></td><td>Publish the DevLog video on YouTube. Extract 3 shorts. Post 1 short each on TikTok/Reels/Shorts.</td></tr>
+    <tr><td><strong>Friday</strong></td><td>Post on X (open-source callout or call for contributors). GitHub maintenance: triage issues, review PRs.</td></tr>
+    <tr><td><strong>Weekend</strong></td><td>Light monitoring. Engage in Discord. Plan next week's content.</td></tr>
+  </tbody>
+</table>
+
+<h3 id="s3d">3.4 Phase 3: Sustained Growth (Month 2+)</h3>
+
+<ul>
+  <li><strong>Ship features that generate buzz.</strong> The DirectML GPU backend, the macOS FluidAudio integration, the local LLM pipeline — each is a mini-launch. Repeat the platform playbook for each.</li>
+  <li><strong>Build the contributor flywheel.</strong> Recognise top contributors in release notes and on X. Offer "Core Contributor" Discord role. Feature their work in DevLogs.</li>
+  <li><strong>Start a "Mumble Workflow" series.</strong> Once per week, showcase one user's specific workflow. User-generated content is infinitely scalable.</li>
+  <li><strong>SEO compounding.</strong> By month 2, the first blog posts should be ranking. Analyse Search Console data and double down on what's working.</li>
+  <li><strong>Conference / meetup presence.</strong> Submit talk proposals to Python conferences (PyCon, EuroPython) and AI/ML meetups.</li>
+  <li><strong>Podcast outreach.</strong> Pitch yourself to Talk Python to Me, Changelog, Software Engineering Daily, DevTools.fm, The Privacy Dad.</li>
+  <li><strong>Localisation community drive.</strong> Invite the community to translate Mumble's UI. Each new language unlocks a geographic audience.</li>
+</ul>
+
+<hr>
+
+<h2 id="s4"><span class="sec">4</span>GitHub README as Landing Page</h2>
+
+<div class="card lift">
+  <h4>README Structure — The 8-Section Formula</h4>
+  <p>A high-converting open-source README follows this exact structure. Each section answers one question in the visitor's mind.</p>
+</div>
+
+<table>
+  <thead><tr><th>Section</th><th>Visitor's Question</th><th>What to Include</th></tr></thead>
+  <tbody>
+    <tr><td><strong>1. Hero</strong></td><td>"What is this?"</td><td>Logo + tagline + animated demo GIF (under 3 MB) + 1-sentence description. Single install command or download button above the fold.</td></tr>
+    <tr><td><strong>2. Quickstart</strong></td><td>"Can I use this in 2 minutes?"</td><td>Three steps max: download, install, first dictation. Show exact commands and expected output.</td></tr>
+    <tr><td><strong>3. Features</strong></td><td>"What does it do?"</td><td>Grid or table of features with one-line descriptions. Group by: Dictation, Smart Modes, Deck, Reader, Privacy. Each with a small screenshot or GIF.</td></tr>
+    <tr><td><strong>4. Why Mumble?</strong></td><td>"Why use this instead of X?"</td><td>Comparison table: Mumble vs Wispr Flow vs Dragon vs Windows Dictation. Rows: Privacy, Price, AI Modes, Platform, Open Source. Be honest.</td></tr>
+    <tr><td><strong>5. Architecture</strong></td><td>"How does it work?"</td><td>Simple architecture diagram (Excalidraw or Mermaid): Mic → faster-whisper → Text Cleaner → [AI Polish] → Paste. List the tech stack.</td></tr>
+    <tr><td><strong>6. Install &amp; Setup</strong></td><td>"How do I get it running?"</td><td>Detailed guide. Windows (.bat installer), macOS/Linux (from source). Prerequisites. Troubleshooting common issues.</td></tr>
+    <tr><td><strong>7. Contributing</strong></td><td>"How can I help?"</td><td>Link to CONTRIBUTING.md. List good-first-issues. Show dev setup commands. Mention test suite. Highlight areas needing help.</td></tr>
+    <tr><td><strong>8. Community &amp; License</strong></td><td>"Where next?"</td><td>Discord invite, GitHub Discussions, X handle, Mastodon, website. License badge (Apache 2.0). Sponsor button.</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-gold">
+  <strong>README rules:</strong>
+  <ul>
+    <li>The demo GIF goes <strong>above the fold</strong> — before any text except the tagline.</li>
+    <li>The install command goes <strong>above the fold</strong> — a visitor should be able to install without scrolling.</li>
+    <li>Every claim about speed, privacy, or capability must link to the relevant code or benchmark.</li>
+    <li>Use <strong>collapsible details sections</strong> for long content to keep the README scannable.</li>
+    <li>Update at least once per release. Stale READMEs signal abandoned projects.</li>
+  </ul>
+</div>
+
+<hr>
+
+<h2 id="s5"><span class="sec">5</span>Launch Asset Checklist</h2>
+
+<div class="card lift"><h4>Every Asset Needed Before Launch Day — Checked and Ready</h4></div>
+
+<h4>Visual Assets</h4>
+<ul class="checklist">
+  <li>App icon — SVG + PNG (512, 256, 64, 32, 16)</li>
+  <li>Hero screenshot — main window (Home), 1920×1080, annotated</li>
+  <li>Island screenshot — floating island in "Listening" state, with mode bar</li>
+  <li>Deck screenshot — History view with transcripts visible</li>
+  <li>Smart Modes screenshot — side-by-side: dictation → output for List, Email, Prompt</li>
+  <li>Privacy diagram — "audio never leaves your device" flowchart</li>
+  <li>Demo GIF — 60 seconds, silent, auto-looping, under 3 MB</li>
+  <li>Architecture diagram — Mermaid or Excalidraw, data flow pipeline</li>
+  <li>Social banner — 1500×500 for X/GitHub social preview</li>
+  <li>OG image — 1200×630 for link previews on X, LinkedIn, Discord, Slack</li>
+  <li>Product Hunt images (×5) — 1270×760 each, unique, different features</li>
+  <li>YouTube thumbnail template — 1280×720, consistent branding</li>
+  <li>Short-form vertical clips (×5) — 1080×1920, under 60s, one feature each</li>
+</ul>
+
+<h4>Written Assets</h4>
+<ul class="checklist">
+  <li>GitHub README — rewritten following the 8-section formula in §4</li>
+  <li>CONTRIBUTING.md — dev setup, test commands, code style, PR process</li>
+  <li>CODE_OF_CONDUCT.md — standard Contributor Covenant</li>
+  <li>Issue templates — bug_report.yml, feature_request.yml</li>
+  <li>GitHub Release notes — for v0.9.0 (or v1.0.0)</li>
+  <li>Landing page copy — hero, features, comparison, FAQ (custom domain)</li>
+  <li>Press kit page — logo files, screenshots, description, contact</li>
+  <li>HN "Show HN" post — drafted and reviewed by 2+ people</li>
+  <li>Product Hunt listing — tagline, description, maker comment, all images</li>
+  <li>Reddit posts — 3 variations of the Anti-Pitch for different subreddits</li>
+  <li>X threads — 7 pre-written threads (one per day of launch week)</li>
+  <li>Newsletter pitch — 3-sentence format for submissions</li>
+  <li>Blog posts — first 5 posts published and indexed</li>
+  <li>FAQ document — 20 questions with concise answers</li>
+  <li>Comparison pages — 1 per competitor (Wispr, Dragon, Otter, Windows Dictation)</li>
+</ul>
+
+<h4>Infrastructure Assets</h4>
+<ul class="checklist">
+  <li>Custom domain (mumble.ai or similar) — purchased, DNS configured, HTTPS enabled</li>
+  <li>Static website — deployed (Hugo + Cloudflare Pages or GitHub Pages)</li>
+  <li>Analytics — Umami or Plausible CE running, tracking key events</li>
+  <li>Google Search Console — domain verified, sitemap submitted</li>
+  <li>Listmonk — configured, first email template designed, signup form embedded</li>
+  <li>Discord server — channels created, roles configured, welcome message set</li>
+  <li>X account — profile complete, banner set, pinned tweet ready</li>
+  <li>Mastodon account — profile complete, first post drafted</li>
+  <li>YouTube channel — branded, demo video uploaded (unlisted), playlist created</li>
+  <li>GitHub Sponsors — tiers configured, linked in README</li>
+  <li>Open Collective — project created, linked alongside GitHub Sponsors</li>
+  <li>Postiz — configured with connected social accounts, posts scheduled</li>
+  <li>AlternativeTo.net — listing submitted</li>
+  <li>Slant.co — listing submitted</li>
+</ul>
+
+<hr>
+
+<h2 id="s6"><span class="sec">6</span>Competitive Positioning Map</h2>
+
+<p>This map guides every comparison page, every social post, every "why Mumble" answer.</p>
+
+<div class="card">
+  <h4>Positioning Quadrants</h4>
+  <table>
+    <thead><tr><th></th><th>Cloud-Dependent</th><th>Local-First</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>AI-Enhanced</strong></td>
+        <td>Wispr Flow, Otter.ai, Fireflies, Supernormal, Granola</td>
+        <td><strong>Mumble ★</strong> (optional AI, user keys)</td>
+      </tr>
+      <tr>
+        <td><strong>Transcription-Only</strong></td>
+        <td>Otter.ai, Rev, Descript, Apple Dictation, Windows Voice Typing</td>
+        <td>Buzz, Vibe, MacWhisper, Whisper.cpp GUIs</td>
+      </tr>
+    </tbody>
+  </table>
+  <p style="margin-top:16px;color:var(--gold-dim);"><strong>Mumble occupies the most defensible quadrant:</strong> local-first (privacy moat) + AI-enhanced (utility hook). No other product combines both without uploading audio to the cloud.</p>
+</div>
+
+<div class="card">
+  <h4>Competitive Moats (Why Mumble Wins in Its Quadrant)</h4>
+  <ol>
+    <li><strong>Privacy moat:</strong> Audio processed locally and discarded. Cloud competitors cannot claim this without rearchitecting.</li>
+    <li><strong>Open-source moat:</strong> Apache 2.0. Competitors cannot close-source once open. Community contributions compound.</li>
+    <li><strong>BYOK moat:</strong> Users bring their own AI keys. Mumble has zero AI inference costs. Cloud competitors pay per-user inference costs.</li>
+    <li><strong>Desktop-first moat:</strong> Click-through Win32 overlay working in any app. Browser/mobile competitors cannot replicate this OS-level integration.</li>
+    <li><strong>Smart Modes moat:</strong> Inference-driven output shaping. Most competitors require the user to choose a mode. Mumble infers it.</li>
+  </ol>
+</div>
+
+<hr>
+
+<h2 id="s7"><span class="sec">7</span>Metrics, Tracking &amp; Iteration Cadence</h2>
+
+<div class="card lift">
+  <h4>What Gets Measured Gets Improved</h4>
+  <p>Without a marketing budget, you must be ruthless about measuring what works and killing what doesn't. Time is your only resource.</p>
+</div>
+
+<h4>North Star Metric</h4>
+<div class="card">
+  <p><strong>Weekly Active Installations</strong> — unique machines running Mumble at least once in the past 7 days. This correlates with long-term success, combining acquisition (new users) with retention (returning users).</p>
+  <p><em>Note: Mumble has no telemetry by design (privacy principle). Approximate through: GitHub clones, release download counts, Discord member growth, website unique visitors, and voluntary opt-in stats.</em></p>
+</div>
+
+<h4>Channel-Level Metrics</h4>
+<table>
+  <thead><tr><th>Channel</th><th>Primary Metric</th><th>Secondary Metric</th></tr></thead>
+  <tbody>
+    <tr><td><strong>X (Twitter)</strong></td><td>Profile clicks → GitHub</td><td>Impressions, engagement rate, follower growth</td></tr>
+    <tr><td><strong>Reddit</strong></td><td>Post upvotes + comments</td><td>Referral traffic to GitHub (UTM or shortened link)</td></tr>
+    <tr><td><strong>YouTube</strong></td><td>Click-through to GitHub (from description)</td><td>Views, watch time, subscriber growth</td></tr>
+    <tr><td><strong>GitHub</strong></td><td>Stars (velocity, not total)</td><td>Clones, unique cloners, forks, issues/PRs opened</td></tr>
+    <tr><td><strong>Website / Blog</strong></td><td>Click-through to GitHub/download</td><td>Unique visitors, bounce rate, time on page, search impressions</td></tr>
+    <tr><td><strong>Discord</strong></td><td>Weekly active members</td><td>Messages sent, help requests resolved</td></tr>
+    <tr><td><strong>Newsletter</strong></td><td>Click-through rate (CTR)</td><td>Open rate, subscriber growth, unsubscribes</td></tr>
+    <tr><td><strong>Product Hunt</strong></td><td>Upvotes + comments on launch day</td><td>Referral traffic, maker comment engagement</td></tr>
+  </tbody>
+</table>
+
+<h4>Weekly Review Cadence (30 minutes, every Monday morning)</h4>
+<div class="card">
+  <ol>
+    <li><strong>Pull the numbers:</strong> GitHub stars/clones, website visitors (Umami), YouTube views, X impressions, Discord members, newsletter subscribers.</li>
+    <li><strong>Identify top 3 traffic sources.</strong> Double down on these next week.</li>
+    <li><strong>Identify bottom 3 traffic sources.</strong> Kill or rework these.</li>
+    <li><strong>Check Google Search Console:</strong> Which queries are driving impressions? New backlinks?</li>
+    <li><strong>Check sentiment:</strong> Scan Discord, X mentions, Reddit comments. Recurring questions? Complaints?</li>
+    <li><strong>Decide next week's content:</strong> Based on data, pick this week's blog post, X threads, and Reddit target.</li>
+    <li><strong>Update the master tracking spreadsheet.</strong> Simple CSV or Google Sheet: date, channel, metric, value, WoW change.</li>
+  </ol>
+</div>
+
+<hr>
+
+<h2 id="s8"><span class="sec">8</span>The "Anti-Pitch" Content Library</h2>
+
+<div class="card lift">
+  <h4>Content That Markets Without Marketing</h4>
+  <p>Reusable content formats that provide genuine value while naturally surfacing Mumble. Adapt for different platforms. Deploy over the first 90 days.</p>
+</div>
+
+<details>
+  <summary>Content #1: "The $0 Dictation Stack" (for self-hosted / FOSS communities)</summary>
+  <div class="detail-body">
+    <pre><code>TITLE: "How to build a completely local, $0 voice dictation setup on Windows"
+
+I wanted to replace cloud dictation tools with something that runs
+entirely on my machine. Here's the stack I ended up with:
+
+1. Speech-to-text: faster-whisper (tiny.en or small.en — CTranslate2)
+   → Runs on CPU. 5-10× realtime on a modern laptop.
+
+2. Text cleanup: custom Python formatter
+   → Removes fillers ("um", "uh"), fixes capitalisation, adds punctuation.
+
+3. AI polish (optional): your own API key for Cerebras (free tier)
+   → Only the transcribed TEXT is sent. Never the audio.
+
+4. Desktop integration: global hotkey → system tray → paste at cursor
+   → Works in any app. No browser required.
+
+5. UI: pywebview + static HTML/CSS/JS
+   → Zero CDNs. Works fully offline.
+
+The whole thing is packaged as a single Windows app: Mumble
+(github.com/[org]/mumble). But you can also assemble the stack
+yourself — each component is open-source.
+
+Here's how to wire faster-whisper to a global hotkey in 50 lines
+of Python:
+
+[CODE BLOCK — a self-contained, runnable Python script]
+
+This gives you basic push-to-dictate. From there, add:
+- A system tray icon (pystray)
+- Text cleanup (regex + string methods)
+- Optional AI polish (any OpenAI-compatible endpoint)
+
+Or just use Mumble, which already does all of this.
+github.com/[org]/mumble</code></pre>
+  </div>
+</details>
+
+<details>
+  <summary>Content #2: "Privacy Analysis" (for privacy/security communities)</summary>
+  <div class="detail-body">
+    <pre><code>TITLE: "Where does your voice go? A technical analysis of popular dictation tools"
+
+I traced the audio path for the most popular voice-to-text tools.
+Here's what actually happens to your recordings:
+
+Wispr Flow:
+  Mic → Wispr servers → Whisper (cloud) → AI LLM (cloud) → paste
+  Audio stored: YES (for model training? Their privacy policy is vague)
+
+Windows Voice Typing (Win+H):
+  Mic → Microsoft servers → Azure Speech → paste
+  Audio stored: YES ("to improve the service")
+
+Apple Dictation:
+  Mic → Apple servers → paste
+  Audio stored: YES (associated with a random identifier)
+
+Dragon NaturallySpeaking:
+  Mic → local Dragon engine → paste
+  Audio stored: NO (but costs $500+ and the UI hasn't changed since 2010)
+
+Mumble:
+  Mic → local faster-whisper (CTranslate2) → [optional: TEXT → your AI key] → paste
+  Audio stored: NEVER (discarded after transcription)
+
+The key difference: Mumble's architecture means the audio pipeline
+stops at your CPU. The audio buffer is processed, the result is
+returned, and the buffer is freed. There is no code path that
+uploads audio — it's not "we promise not to," it's "the code
+literally cannot."
+
+For the paranoid: you can verify this yourself. The transcription
+code is in mumble.py, lines ~800-900. The AI call is in ai.py,
+which sends JSON text payloads — no multipart/form-data audio
+uploads exist anywhere in the codebase.
+
+github.com/[org]/mumble</code></pre>
+  </div>
+</details>
+
+<details>
+  <summary>Content #3: "Benchmark Post" (for AI/ML communities)</summary>
+  <div class="detail-body">
+    <pre><code>TITLE: "faster-whisper vs whisper.cpp vs Cohere Transcribe: real-world dictation benchmarks"
+
+I ran the same 50 audio clips (5-60 seconds, real dictation with
+background noise) through three local STT engines. Here are the
+results:
+
+[TABLE: engine, model, RTF, WER, RAM, disk]
+
+Key findings:
+- faster-whisper tiny.en: 10.2× realtime, 8.1% WER, 500 MB RAM
+  → Best balance of speed/accuracy for dictation on consumer hardware
+
+- whisper.cpp small: 4.1× realtime, 7.2% WER, 1.2 GB RAM
+  → Better accuracy, slower, works on ARM/RPi
+
+- Cohere Transcribe (raw PyTorch): 2.0× realtime, 5.4% WER, 3.5 GB RAM
+  → Best accuracy but heavy. Needs a CTranslate2 port to be practical.
+
+Reproduction: all scripts, audio clips, and raw results at
+github.com/[org]/mumble-benchmarks
+
+These benchmarks directly informed the model selection in Mumble
+(github.com/[org]/mumble), which uses faster-whisper by default
+with hardware-aware tier selection (tiny for weak machines,
+small for mid-tier, distil-large-v3 for powerful machines).</code></pre>
+  </div>
+</details>
+
+<details>
+  <summary>Content #4: "RIP Dragon" (for productivity/ergonomics communities)</summary>
+  <div class="detail-body">
+    <pre><code>TITLE: "After 20 years of Dragon NaturallySpeaking, I switched to a free open-source app"
+
+I've used Dragon since version 8 (2005). I've spent thousands of
+dollars on upgrades. Here's why I finally left:
+
+1. Dragon costs $500+. Mumble is free.
+2. Dragon's UI looks like Windows XP. Mumble has a premium dark
+   UI with a floating island status indicator.
+3. Dragon has no AI modes. Mumble can restructure a rambling
+   dictation into a structured email, a bulleted list, or an
+   AI prompt — automatically.
+4. Dragon is Windows-only (and barely maintained). Mumble has
+   macOS and Linux ports.
+5. Dragon requires per-app configuration. Mumble works in any
+   app, any text field, with zero configuration.
+
+The honest trade-off: Dragon's accuracy on medical/legal
+vocabulary is still better (it has decades of domain-specific
+models). But for general dictation, Mumble's faster-whisper +
+AI polish produces cleaner output than Dragon in my testing.
+
+If you're locked into Dragon by muscle memory: Mumble uses
+Ctrl+Win (not Dragon's Numpad+), but you can rebind the hotkey
+to anything in Settings.
+
+github.com/[org]/mumble</code></pre>
+  </div>
+</details>
+
+<details>
+  <summary>Content #5: "The 3× Writing Speed Workflow" (for writers/creators)</summary>
+  <div class="detail-body">
+    <pre><code>TITLE: "How I 3×'d my writing output without buying any SaaS"
+
+My writing workflow:
+
+1. Brain-dump via dictation (Mumble, Ctrl+Win)
+   → Speak for 5-10 minutes. Don't edit. Just get the ideas out.
+   → Mumble transcribes locally and pastes into my editor.
+
+2. Clean up with Smart Modes
+   → If it's a structured piece, I re-dictate key sections in
+     Prompt Mode — Mumble structures the output for me.
+   → If it's a listicle, List Mode auto-bullets everything.
+
+3. Polish with AI (optional)
+   → Mumble sends the text (never audio) to my Cerebras API key.
+   → The AI tightens the prose without changing my voice.
+
+4. Edit manually
+   → The Deck (Ctrl+Alt+H) holds my entire dictation history.
+   → I can pull old passages, starred clips, and clipboard
+     history without leaving my editor.
+
+The whole stack:
+- Mumble (dictation + AI polish) — free, open-source
+- VS Code (editor) — free
+- Cerebras API (optional AI polish) — free tier is generous
+
+Total monthly cost: $0.
+Words per hour before this workflow: ~800.
+Words per hour after: ~2,400.
+
+github.com/[org]/mumble</code></pre>
+  </div>
+</details>
+
+<hr>
+
+<div style="margin-top:64px;padding-top:32px;border-top:1px solid var(--border);text-align:center;color:var(--text-mute);font-size:.85em;">
+  <p><strong>Mumble — Master Marketing Game Plan</strong></p>
+  <p style="color:var(--gold-dim);">$0 Budget • Open-Source GTM • Developer-First Growth</p>
+  <p>Execute in order. Track what works. Iterate ruthlessly. The timber is excellent. This document is the fire.</p>
+  <p style="margin-top:16px;font-size:.8em;">Document version 1.0 · Last updated 2026-06-29 · Built for the Mumble v0.9 "The Big Shift" launch</p>
+</div>
+
+</div>
+
+</body>
+</html>

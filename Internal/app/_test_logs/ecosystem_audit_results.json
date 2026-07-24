@@ -1,0 +1,351 @@
+{
+  "mode": "offline",
+  "total": 57,
+  "passed": 57,
+  "failed": 0,
+  "seconds": 484.23,
+  "results": [
+    {
+      "test": "test_api_stability.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 67.76
+    },
+    {
+      "test": "test_big_shift.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.41
+    },
+    {
+      "test": "test_bindings.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.72
+    },
+    {
+      "test": "test_bug_audit_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.13
+    },
+    {
+      "test": "test_cache.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.54
+    },
+    {
+      "test": "test_cloud_sync.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 3.95
+    },
+    {
+      "test": "test_cmd_auth.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 17.08
+    },
+    {
+      "test": "test_constitution.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.9
+    },
+    {
+      "test": "test_context_store.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.39
+    },
+    {
+      "test": "test_core_engine_audit.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.76
+    },
+    {
+      "test": "test_core_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 17.03
+    },
+    {
+      "test": "test_downloader.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 15.29
+    },
+    {
+      "test": "test_end_to_end.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.65
+    },
+    {
+      "test": "test_error_recovery.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 9.56
+    },
+    {
+      "test": "test_eval.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.81
+    },
+    {
+      "test": "test_eval_reporter.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.36
+    },
+    {
+      "test": "test_fallback.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 70.19
+    },
+    {
+      "test": "test_favorites.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 3.19
+    },
+    {
+      "test": "test_foreign_boost.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.22
+    },
+    {
+      "test": "test_foreign_mode_cross.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 19.83
+    },
+    {
+      "test": "test_formatting.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.74
+    },
+    {
+      "test": "test_island_bar.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.59
+    },
+    {
+      "test": "test_lightweight.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 17.67
+    },
+    {
+      "test": "test_local_engine.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.15
+    },
+    {
+      "test": "test_local_wiring.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test_macos_audio.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 4.97
+    },
+    {
+      "test": "test_meeting.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 7.73
+    },
+    {
+      "test": "test_meeting_controller.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 13.06
+    },
+    {
+      "test": "test_mode_select.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.27
+    },
+    {
+      "test": "test_model_backend.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.13
+    },
+    {
+      "test": "test_models.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.67
+    },
+    {
+      "test": "test_output_quality.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.92
+    },
+    {
+      "test": "test_perf.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 25.05
+    },
+    {
+      "test": "test_pipeline.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 30.07
+    },
+    {
+      "test": "test_pipeline_stage2_stage3.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 19.15
+    },
+    {
+      "test": "test_presets.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.17
+    },
+    {
+      "test": "test_providers.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 6.54
+    },
+    {
+      "test": "test_reader.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.42
+    },
+    {
+      "test": "test_reader_parser.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 34.83
+    },
+    {
+      "test": "test_recording_gate.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 9.35
+    },
+    {
+      "test": "test_service_platform_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.08
+    },
+    {
+      "test": "test_session_token.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.19
+    },
+    {
+      "test": "test_settings_merge.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.2
+    },
+    {
+      "test": "test_settings_recovery.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.3
+    },
+    {
+      "test": "test_stage_cleanup.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 16.98
+    },
+    {
+      "test": "test_stats.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.58
+    },
+    {
+      "test": "test_stream_seam.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 17.37
+    },
+    {
+      "test": "test_stt_providers.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.39
+    },
+    {
+      "test": "test_tips.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.1
+    },
+    {
+      "test": "test_transcription_diag.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.5
+    },
+    {
+      "test": "test_transcription_edge_cases.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 15.57
+    },
+    {
+      "test": "test_tts_providers.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.57
+    },
+    {
+      "test": "test_ui.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 11.93
+    },
+    {
+      "test": "test_ui_bug_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.23
+    },
+    {
+      "test": "test_update.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.34
+    },
+    {
+      "test": "test_webui_api.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.2
+    },
+    {
+      "test": "test_windows_dml.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 3.22
+    }
+  ]
+}

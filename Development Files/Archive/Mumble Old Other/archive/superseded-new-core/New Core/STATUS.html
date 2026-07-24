@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Current Mumble engineering status, release posture and active priorities.">
+  <title>Mumble Core — Status</title>
+  <link rel="stylesheet" href="_assets/core.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="README.html" aria-label="Mumble Core home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="brand-copy"><b>Mumble Core</b><span>Development system</span></span></a>
+    <div class="top-meta"><span>STATUS / Present truth</span><span class="freshness">Snapshot 21 July 2026</span></div>
+  </header>
+  <aside class="rail" aria-label="Documentation navigation">
+    <p class="rail-label">Core set</p>
+    <nav class="doc-switch">
+      <a href="README.html"><span>README</span><small>START</small></a>
+      <a href="HANDBOOK.html"><span>Handbook</span><small>BUILD</small></a>
+      <a class="active" href="STATUS.html"><span>Status</span><small>NOW</small></a>
+      <a href="LOGS.html"><span>Logs</span><small>DONE</small></a>
+    </nav>
+    <p class="rail-label">On this page</p>
+    <nav class="section-nav">
+      <a href="#verdict">Verdict</a>
+      <a href="#capabilities">Capability health</a>
+      <a href="#working-tree">Working tree</a>
+      <a href="#blockers">Release blockers</a>
+      <a href="#next">Ordered plan</a>
+      <a href="#platforms">Platforms</a>
+      <a href="#evidence">Evidence rules</a>
+    </nav>
+    <div class="rail-note">This file is present tense only. Completed work belongs in <a href="LOGS.html">LOGS</a>; architecture belongs in <a href="HANDBOOK.html">HANDBOOK</a>.</div>
+  </aside>
+
+  <main class="main" id="main"><div class="content">
+    <header class="hero">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="eyebrow">03 · Current-state control room</div>
+      <h1>Strong foundation.<br>Not yet 1.0.</h1>
+      <p class="lede">The canonical Windows source has completed a green offline reliability, dependency and security audit, and the local 0.9.1 archive has been rebuilt from that tree. Physical-device, installation, signing, privacy and cross-platform release gates remain open.</p>
+      <div class="hero-meta">
+        <span class="pill"><span class="dot amber"></span>Source version 0.9.1</span>
+        <span class="pill"><span class="dot red"></span>1.0 blocked</span>
+        <span class="pill"><span class="dot blue"></span>Windows canonical</span>
+        <span class="pill"><span class="dot green"></span>0.9.1 archive rebuilt</span>
+        <span class="pill"><span class="dot green"></span>Workspace UI native-verified</span>
+      </div>
+    </header>
+
+    <section id="verdict">
+      <div class="section-head"><div class="section-no">01</div><div><h2>Release verdict</h2><p class="section-intro">Continue the product; do not rewrite it; pause breadth until the release foundation is trustworthy.</p></div></div>
+      <div class="grid-4">
+        <article class="card good"><span class="metric">Good</span><span class="label">Product idea</span><h3>Clear core value</h3><p>System-wide speech-to-text with visible state and local-first options is coherent and differentiated.</p></article>
+        <article class="card good"><span class="metric">Green</span><span class="label">Windows offline</span><h3>Repairs verified</h3><p>The isolated Windows runner completed all 69 scripts after persistence, concurrency, false-success and sync repairs.</p></article>
+        <article class="card bad"><span class="metric">Blocked</span><span class="label">Release</span><h3>Trust gates remain</h3><p>The 0.9.1 archive is fresh and manifest-checked; physical smoke, clean installation, signing and publishing remain incomplete.</p></article>
+        <article class="card bad"><span class="metric">Drift</span><span class="label">Platforms</span><h3>Copied trees diverge</h3><p>macOS and Linux are not yet credible parity builds of one shared application core.</p></article>
+      </div>
+      <div class="callout critical" style="margin-top:16px"><div class="callout-icon">!</div><div><h3>Do not relabel the current root archive as version 1.0</h3><p><code>Mumble.zip</code> is a fresh, manifest-checked 0.9.1 build. Version 1.0 still requires a clean committed build plus extraction, install, run, update and uninstall smoke tests, signing and publisher validation.</p></div></div>
+    </section>
+
+    <section id="capabilities">
+      <div class="section-head"><div class="section-no">02</div><div><h2>Capability health</h2><p class="section-intro">“Implemented” means reachable in source. It does not automatically mean verified, safe or ready to advertise.</p></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Current state</th><th>Health</th><th>What must still be true</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Core dictation</strong></td><td>Capture, local/cloud STT routing, shaping, durable history and paste are wired and covered by the green offline production seam.</td><td><span class="status green">Offline verified</span></td><td>Exercise physical microphone → local STT → process → paste and safe live cloud fallback.</td></tr>
+            <tr><td><strong>Island + tray</strong></td><td>In-process island reflects controller state; tray and shortcuts are active.</td><td><span class="status green">Implemented</span></td><td>Keep state authoritative and avoid false success or startup flashes.</td></tr>
+            <tr><td><strong>Deck + history</strong></td><td>Clipboard is a first-class content lane beside transcripts, prompts and emails. The native toolbar now follows the golden-black liquid-glass system; user-facing Smart Modes are Prompt, Email and Foreign.</td><td><span class="status green">Native + focused verified</span></td><td>Keep the functional Deck workflow and responsive layout covered while ports and Lite deliberately converge.</td></tr>
+            <tr><td><strong>Mumble Search</strong></td><td>Canonical Windows source has a standalone 700 by 520 app-first launcher with real installed-app icons, path-free result metadata, files/folders on query, configurable <code>Ctrl+Alt+F</code>, warm Escape dismissal and independent cold start.</td><td><span class="status green">Native WebView verified</span></td><td>Smoke the physical global hook and coexistence with external shortcuts before release; port parity is not claimed.</td></tr>
+            <tr><td><strong>Statistics</strong></td><td>The first viewport now presents ten cross-product metrics spanning dictation, pace, time saved, streak, Reader and retained Meetings; deeper trends remain below with explicit empty/unavailable states and chart alternatives.</td><td><span class="status green">Dashboard + native verified</span></td><td>Keep calculation, persistence and reset contracts covered as the underlying stores evolve.</td></tr>
+            <tr><td><strong>Reader</strong></td><td>Parsing, library, progress, cloud TTS and summary paths exist.</td><td><span class="status red">Trust gate open</span></td><td>Ship required parsers and disclose document text sent to each provider before the operation.</td></tr>
+            <tr><td><strong>Meetings</strong></td><td>Capture/recovery contracts remain intact; the native top workflow is now centred, concise and uses Mumble's warm layered glass while transcript/result content remains left-aligned for reading.</td><td><span class="status amber">UI verified; repair unshipped</span></td><td>Stress physical mic, power-loss/restart and Windows delete-sharing; native-test capture targets.</td></tr>
+            <tr><td><strong>Local AI shaping</strong></td><td>Rules/local/cloud routing and GGUF/backend plumbing exist.</td><td><span class="status amber">Advanced</span></td><td>Clarify supported consumer route, dependencies and fallback behaviour.</td></tr>
+            <tr><td><strong>Account / sync</strong></td><td>Supabase foundation exists; consumer card is hidden in the working tree.</td><td><span class="status blue">Developer-only</span></td><td>Keep hidden or ship backend, schema, dependencies, privacy and end-to-end tests.</td></tr>
+            <tr><td><strong>Updates</strong></td><td>Unsigned downgrade is refused; production checks are disabled until an Ed25519 publisher key is configured.</td><td><span class="status amber">Safe but unavailable</span></td><td>Provision key, publish signed HTTPS feed, test invalid/missing signatures and signed update install.</td></tr>
+            <tr><td><strong>Share / distribution</strong></td><td>Placeholder action is hidden; no production distribution URL is asserted.</td><td><span class="status blue">Not published</span></td><td>Add only when a real signed release location exists.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="working-tree">
+      <div class="section-head"><div class="section-no">03</div><div><h2>Current source reality</h2><p class="section-intro">These improvements exist in current source and the rebuilt 0.9.1 archive, but are not yet fully verified as a public release.</p></div></div>
+      <div class="grid-3">
+        <article class="card good"><h3>Dictation repair present</h3><p><code>formatting.sanitize_hotwords()</code> is restored, closing the known pre-Whisper failure in canonical local STT source.</p></article>
+        <article class="card good"><h3>Meeting durability improved</h3><p>Capture journals its UUID WAV before the microphone starts, writes private audio incrementally, repairs canonical headers after hard exit, resumes pending work at boot and refreshes the open Meetings view as recovery advances.</p></article>
+        <article class="card good"><h3>Settings routes made explicit</h3><p>Overview, Transcription and Processing show requested versus effective routes, no-key/provider fallback and whether audio or transcript text can leave the device.</p></article>
+        <article class="card good"><h3>False success closed at the bridge</h3><p>History, clipboard, favourites, presets and settings now wait for durable backend success before the Windows UI removes data or reports completion.</p></article>
+        <article class="card good"><h3>Persistence hardened</h3><p>Settings validate loads and writes, preserve legacy/future values, recover visibly and merge top-level plus nested edits without stale-writer resurrection.</p></article>
+        <article class="card good"><h3>Windows gate authoritative</h3><p>The isolated runner completed 69/69 offline scripts in 355.1 seconds. Critical lint, compilation, JavaScript syntax, high-severity source scanning and pinned dependency auditing are clean.</p></article>
+        <article class="card good"><h3>Workspace presentation consolidated</h3><p>Home no longer wastes space on duplicate live state or an empty grid gap; Deck and Meetings use the warm glass system; Stats opens with a screenshot-ready cross-product snapshot.</p></article>
+        <article class="card good"><h3>Search route made independent</h3><p>Search starts as its own compact app-first window, shows native icons without exposing indexed targets, stays warm when hidden and coexists with a lazily-created full workspace in either startup order.</p></article>
+      </div>
+      <div class="callout" style="margin-top:14px"><div class="callout-icon">i</div><div><h3>Verification boundary</h3><p>Home, Deck, Stats, Meetings and both Search/main startup orders were exercised in native Windows WebView2, and the 0.9.1 archive passed its manifest checks. That does not prove the physical global hook, microphone behavior or clean installation; those remain separate release gates.</p></div></div>
+    </section>
+
+    <section id="blockers">
+      <div class="section-head"><div class="section-no">04</div><div><h2>Open release blockers</h2><p class="section-intro">Ordered by user harm and release confidence, not by implementation convenience.</p></div></div>
+      <div class="table-wrap">
+        <div class="priority"><div class="priority-id">REL-01</div><div><h3>Complete the physical core-loop smoke</h3><p>The offline local/cloud transcription seam is green. Exercise microphone → local STT → process → paste on a real Windows desktop, then safely verify configured cloud fallback.</p></div><span class="severity blocker">Blocker</span></div>
+        <div class="priority"><div class="priority-id">REL-02</div><div><h3>Make Meetings demonstrably durable</h3><p>Unit coverage now proves journaled hard-exit repair, retryable processing and bounded chunk processing. Still verify physical stop→quit→restart and power loss, Windows delete sharing, concurrent/import safety and long-session resource use.</p></div><span class="severity blocker">Blocker</span></div>
+        <div class="priority"><div class="priority-id">REL-03</div><div><h3>Prove the clean-install dependency contract</h3><p>Exact runtime pins now cover visible Reader and Meeting imports. Build an empty environment, run <code>pip check</code>, exercise every visible format and define verified platform-specific sets or hashes.</p></div><span class="severity blocker">Blocker</span></div>
+        <div class="priority"><div class="priority-id">REL-05</div><div><h3>Close Reader privacy and reliability gaps</h3><p>Disclose provider and payload for TTS/summary, preserve useful provider errors, define fallback, and apply long-document safety limits.</p></div><span class="severity blocker">Blocker</span></div>
+        <div class="priority"><div class="priority-id">REL-06</div><div><h3>Complete the release trust pipeline</h3><p>A Windows compile/lint/offline-test workflow now exists. Add clean artifact creation and manifest checks, install/uninstall tests, signed executables, macOS signing/notarisation and a signed update feed.</p></div><span class="severity blocker">Blocker</span></div>
+        <div class="priority"><div class="priority-id">REL-07</div><div><h3>Make the platform claim honest</h3><p>Move shared code/UI out of copied port trees, define capability adapters, add parity contracts and run native verification.</p></div><span class="severity high">High</span></div>
+        <div class="priority"><div class="priority-id">REL-08</div><div><h3>Unify the remaining mode and shortcut experience</h3><p>Canonical Windows user-facing Smart Modes are Prompt, Email and Foreign; Search is <code>Ctrl+Alt+F</code>, Deck is <code>Ctrl+Alt+D</code> and latest paste is <code>Ctrl+Alt+V</code>. Deliberately converge Lite, ports and the user guide.</p></div><span class="severity high">High</span></div>
+        <div class="priority"><div class="priority-id">REL-09</div><div><h3>Finish accessibility and settings IA</h3><p>The standalone Search launcher has semantic navigation, announced results and native keyboard dismissal; Settings separates everyday routes from progressive provider setup; Stats supplies chart alternatives. Complete broader assistive-technology verification.</p></div><span class="severity medium">Medium</span></div>
+        <div class="priority"><div class="priority-id">REL-10</div><div><h3>Reduce orchestration coupling</h3><p>After functional gates, extract recording, transcription, processing, IPC and window coordination incrementally; remove duplicate AI facade implementations.</p></div><span class="severity medium">Medium</span></div>
+      </div>
+    </section>
+
+    <section id="next">
+      <div class="section-head"><div class="section-no">05</div><div><h2>Ordered remediation plan</h2><p class="section-intro">Work in vertical slices. Do not reopen feature breadth until the first three waves are green.</p></div></div>
+      <div class="steps">
+        <article class="step"><div><h3>Stabilise the checked-out repairs</h3><p>Add targeted tests for hotwords/local STT, meeting durability/deletion/pause, settings concurrency, privacy copy and disabled update behaviour. Resolve any regression before further work.</p></div></article>
+        <article class="step"><div><h3>Keep the isolated test baseline green</h3><p>Use the runner as the Windows entry point, retain per-test timeouts and explicit live opt-in, and preserve machine-readable results in CI.</p></div></article>
+        <article class="step"><div><h3>Prove installation reproducibility</h3><p>Install the new exact runtime set into an empty environment, resolve any platform conflict, run import/feature gates and convert successful resolution into verified platform constraints.</p></div></article>
+        <article class="step"><div><h3>Close privacy and product contradictions</h3><p>Finish Reader disclosures, settle Smart Mode instructions, correct the user guide and keep unavailable service surfaces hidden.</p></div></article>
+        <article class="step"><div><h3>Build release and trust infrastructure</h3><p>CI, artifact manifest, signed binaries, owner-provisioned publisher key, signed feed and clean archive verification.</p></div></article>
+        <article class="step"><div><h3>Converge platforms and architecture</h3><p>Shared core + shared Web UI + explicit OS adapters, followed by native platform qualification and incremental controller extraction.</p></div></article>
+      </div>
+    </section>
+
+    <section id="platforms">
+      <div class="section-head"><div class="section-no">06</div><div><h2>Platform confidence</h2><p class="section-intro">Do not turn source presence into a support claim.</p></div></div>
+      <div class="grid-3">
+        <article class="card good"><span class="label">Windows</span><span class="metric">Offline green</span><h3>Canonical implementation</h3><p>The current Windows source passed all 69 isolated offline scripts plus static and dependency gates. The 0.9.1 archive is fresh and manifest-checked; physical microphone/paste and clean-install smoke remain.</p></article>
+        <article class="card bad"><span class="label">macOS</span><span class="metric">Source only</span><h3>Parity not established</h3><p>Copied tree has material Web UI and architecture drift. Native audio, permissions, signing and notarisation remain unverified.</p></article>
+        <article class="card bad"><span class="label">Linux</span><span class="metric">Source only</span><h3>Parity not established</h3><p>Copied tree diverges from canonical source. Native hotkey, paste, audio, packaging and desktop integration require verification.</p></article>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <div class="section-head"><div class="section-no">07</div><div><h2>How to update this page</h2><p class="section-intro">Status changes only when evidence changes.</p></div></div>
+      <div class="grid-2">
+        <ul class="checklist">
+          <li>Mark <strong>implemented</strong> only when the path is reachable in current source.</li>
+          <li>Mark <strong>verified</strong> only when the production path or equivalent behavioural seam ran successfully.</li>
+          <li>Mark <strong>shipped</strong> only when the tested artifact contains the change.</li>
+        </ul>
+        <ul class="checklist block">
+          <li>Never copy a completed session into STATUS; move it to a one-line LOG entry.</li>
+          <li>Never keep closed blockers for historical colour.</li>
+          <li>Never infer parity from copied files or successful Python compilation alone.</li>
+        </ul>
+      </div>
+      <div class="callout ok" style="margin-top:14px"><div class="callout-icon">✓</div><div><h3>Exit condition for version 1.0</h3><p>All blocker rows are closed with direct evidence, a fresh signed artifact passes clean install/run/update/uninstall validation, and the supported platform claim matches native results.</p></div></div>
+    </section>
+
+    <footer class="foot"><span>Present truth only · no closed issues · no speculative features</span><strong>STATUS / 03</strong></footer>
+  </div></main>
+</div>
+<script src="_assets/core.js"></script>
+</body>
+</html>

@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Island Overlay</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script> window.FontAwesomeConfig = { autoReplaceSvg: 'nest'};</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        ::-webkit-scrollbar { display: none; }
+        * { scrollbar-width: none; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+
+        @keyframes waveBar {
+            0%, 100% { height: 3px; }
+            50% { height: 100%; }
+        }
+        @keyframes pulse-gold {
+            0%, 100% { opacity: 0.55; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.18); }
+        }
+        @keyframes ripple {
+            0% { transform: scale(1); opacity: 0.7; }
+            100% { transform: scale(2.6); opacity: 0; }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+        @keyframes dotBounce {
+            0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+            40% { transform: translateY(-5px); opacity: 1; }
+        }
+        @keyframes splitPulse {
+            0%, 100% { opacity: 0.5; box-shadow: 0 0 0px rgba(212,175,55,0); }
+            50% { opacity: 1; box-shadow: 0 0 10px rgba(212,175,55,0.6); }
+        }
+        @keyframes glassSheen {
+            0% { transform: translateX(-100%) skewX(-15deg); opacity: 0; }
+            40% { opacity: 0.07; }
+            100% { transform: translateX(200%) skewX(-15deg); opacity: 0; }
+        }
+        @keyframes borderGlow {
+            0%, 100% { box-shadow: 0 0 0px rgba(212,175,55,0), 0 8px 40px rgba(0,0,0,0.85); }
+            50% { box-shadow: 0 0 16px rgba(212,175,55,0.18), 0 8px 40px rgba(0,0,0,0.85); }
+        }
+        @keyframes pasteFailSlide {
+            0% { opacity: 0; transform: translateY(6px); }
+            15% { opacity: 1; transform: translateY(0); }
+            85% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-4px); }
+        }
+
+        .wave-bar {
+            width: 2.5px;
+            border-radius: 2px;
+            animation: waveBar 0.8s ease-in-out infinite;
+        }
+        .ripple-ring {
+            animation: ripple 1.6s ease-out infinite;
+        }
+        .dot-bounce {
+            animation: dotBounce 1.2s ease-in-out infinite;
+        }
+
+        /* Liquid glass island */
+        .island-glass {
+            background: linear-gradient(135deg, rgba(18,16,14,0.92) 0%, rgba(10,10,11,0.96) 100%);
+            backdrop-filter: blur(32px) saturate(1.4);
+            -webkit-backdrop-filter: blur(32px) saturate(1.4);
+            border: 1px solid rgba(212,175,55,0.22);
+            border-radius: 28px;
+            box-shadow: 0 8px 48px rgba(0,0,0,0.9), inset 0 1px 0 rgba(212,175,55,0.08);
+            animation: borderGlow 3s ease-in-out infinite;
+            position: relative;
+            overflow: hidden;
+        }
+        .island-glass::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, rgba(212,175,55,0.04) 0%, transparent 60%);
+            pointer-events: none;
+            border-radius: inherit;
+        }
+        .island-glass::after {
+            content: '';
+            position: absolute;
+            top: 0; left: -60%;
+            width: 40%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+            animation: glassSheen 5s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        /* Preview island */
+        .island-preview {
+            background: linear-gradient(135deg, rgba(14,12,10,0.95) 0%, rgba(10,10,11,0.98) 100%);
+            backdrop-filter: blur(28px);
+            -webkit-backdrop-filter: blur(28px);
+            border: 1px solid rgba(212,175,55,0.2);
+            border-radius: 20px;
+            padding: 9px 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 6px 32px rgba(0,0,0,0.85), inset 0 1px 0 rgba(212,175,55,0.06);
+            position: relative;
+            overflow: hidden;
+        }
+        .island-preview::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(212,175,55,0.03) 0%, transparent 60%);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+
+        /* State cards */
+        .state-card {
+            background: linear-gradient(135deg, #131210 0%, #0F0E0C 100%);
+            border: 1px solid #252320;
+            border-radius: 20px;
+            transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
+            position: relative;
+            overflow: hidden;
+        }
+        .state-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(212,175,55,0.02) 0%, transparent 70%);
+            border-radius: inherit;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+        .state-card:hover {
+            border-color: rgba(212,175,55,0.28);
+            background: linear-gradient(135deg, #1C1A17 0%, #161410 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        }
+        .state-card:hover::before { opacity: 1; }
+        .state-card.active-state {
+            border-color: rgba(212,175,55,0.42);
+            background: linear-gradient(135deg, rgba(212,175,55,0.06) 0%, rgba(212,175,55,0.02) 100%);
+            box-shadow: 0 0 0 1px rgba(212,175,55,0.12), 0 8px 28px rgba(0,0,0,0.7);
+        }
+
+        .mode-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            letter-spacing: 0.01em;
+        }
+        .mode-chip:hover {
+            transform: scale(1.04);
+        }
+
+        .shimmer-text {
+            background: linear-gradient(90deg, #D4AF37 0%, #EBCB65 30%, #F3EEE1 50%, #EBCB65 70%, #D4AF37 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: shimmer 2s linear infinite;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 38px;
+            height: 21px;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #201E1A;
+            border-radius: 21px;
+            transition: 0.25s;
+            border: 1px solid #333028;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 15px;
+            width: 15px;
+            left: 2px;
+            bottom: 2px;
+            background: #6B6351;
+            border-radius: 50%;
+            transition: 0.25s;
+        }
+        input:checked + .toggle-slider { background: rgba(212,175,55,0.2); border-color: rgba(212,175,55,0.7); }
+        input:checked + .toggle-slider:before { transform: translateX(17px); background: #D4AF37; box-shadow: 0 0 6px rgba(212,175,55,0.5); }
+
+        .mic-meter-bar {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.1s ease-out;
+            background: linear-gradient(90deg, #7ABFB0, #D4AF37, #E0A92E);
+        }
+
+        /* Paste fail pill */
+        .paste-fail-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 14px;
+            font-size: 10px;
+            font-weight: 600;
+            background: rgba(217,84,77,0.12);
+            border: 1px solid rgba(217,84,77,0.3);
+            color: #D9544D;
+            animation: pasteFailSlide 4s ease-in-out infinite;
+        }
+
+        /* Section divider */
+        .section-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #5A5444;
+        }
+
+        /* Elevated card */
+        .card-elevated-bg {
+            background: linear-gradient(135deg, #1A1816 0%, #161410 100%);
+        }
+
+        /* Teal-gold accent */
+        .accent-teal-gold { color: #7ABFB0; }
+        .bg-accent-teal-gold { background-color: #7ABFB0; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'Segoe UI', 'sans-serif'],
+                    },
+                    colors: {
+                        'app-bg': '#0A0A0B',
+                        'card-bg': '#111009',
+                        'card-elevated': '#1A1816',
+                        'card-border': '#252320',
+                        'gold': '#D4AF37',
+                        'gold-light': '#EBCB65',
+                        'gold-dim': '#A8892A',
+                        'amber': '#E0A92E',
+                        'cherry': '#D9544D',
+                        'teal-gold': '#7ABFB0',
+                        'text-primary': '#F3EEE1',
+                        'text-dim': '#B6AE99',
+                        'text-muted': '#7C745F',
+                        'text-faint': '#4A4438',
+                        'mode-violet': '#8B5CF6',
+                        'mode-blue': '#3B82F6',
+                        'mode-teal': '#14B8A6',
+                        'mode-coral': '#F97316',
+                        'mode-sand': '#D4A96A',
+                        'burgundy': '#6B2232',
+                    },
+                    borderRadius: {
+                        '2xl': '18px',
+                        '3xl': '24px',
+                        '4xl': '28px',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-app-bg font-sans text-text-primary antialiased">
+
+<div id="app-window" class="w-full max-w-[960px] mx-auto bg-app-bg flex flex-col min-h-0">
+
+    <!-- Title Bar -->
+    <div id="title-bar" class="flex items-center justify-between px-6 pt-5 pb-2 select-none">
+        <div class="flex items-center gap-3.5">
+            <div class="flex items-center gap-1.5">
+                <div class="w-3 h-3 rounded-full bg-cherry opacity-80 cursor-pointer hover:opacity-100 transition-opacity" style="box-shadow: 0 0 4px rgba(217,84,77,0.4);"></div>
+                <div class="w-3 h-3 rounded-full bg-amber opacity-80 cursor-pointer hover:opacity-100 transition-opacity" style="box-shadow: 0 0 4px rgba(224,169,46,0.3);"></div>
+                <div class="w-3 h-3 rounded-full bg-[#3A8A3A] opacity-80 cursor-pointer hover:opacity-100 transition-opacity" style="box-shadow: 0 0 4px rgba(58,138,58,0.3);"></div>
+            </div>
+            <div class="w-px h-5 bg-card-border ml-1"></div>
+            <div class="flex items-center gap-2">
+                <span class="text-gold font-extrabold text-lg tracking-tight" style="letter-spacing: -0.02em;">Mumble</span>
+                <span class="text-text-faint text-xs font-light tracking-wide">Speak. It types.</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style="background: rgba(58,138,58,0.08); border: 1px solid rgba(58,138,58,0.2);">
+                <div class="w-1.5 h-1.5 rounded-full bg-[#3A8A3A] animate-pulse"></div>
+                <span class="text-[#4CAF50] text-[10px] font-semibold">Ready</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation Bar -->
+    <div id="nav-bar" class="flex items-center gap-2 px-6 py-2.5 border-b border-card-border">
+        <div class="flex items-center rounded-2xl p-1 gap-0.5 border border-card-border" style="background: rgba(17,16,9,0.9);">
+            <button id="nav-home" class="px-4 py-1.5 rounded-xl text-text-muted text-xs font-medium hover:text-text-primary hover:bg-card-elevated transition-all duration-200 flex items-center gap-1.5">
+                <i class="fa-solid fa-house text-[10px]"></i>Home
+            </button>
+            <button id="nav-history" class="px-4 py-1.5 rounded-xl text-text-muted text-xs font-medium hover:text-text-primary hover:bg-card-elevated transition-all duration-200 flex items-center gap-1.5">
+                <i class="fa-solid fa-clock-rotate-left text-[10px]"></i>History
+            </button>
+            <button id="nav-stats" class="px-4 py-1.5 rounded-xl text-text-muted text-xs font-medium hover:text-text-primary hover:bg-card-elevated transition-all duration-200 flex items-center gap-1.5">
+                <i class="fa-solid fa-chart-bar text-[10px]"></i>Stats
+            </button>
+            <button id="nav-settings" class="px-4 py-1.5 rounded-xl text-text-muted text-xs font-medium hover:text-text-primary hover:bg-card-elevated transition-all duration-200 flex items-center gap-1.5">
+                <i class="fa-solid fa-gear text-[10px]"></i>Settings
+            </button>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+            <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-card-border" style="background: rgba(17,16,9,0.9);">
+                <i class="fa-solid fa-microphone text-text-faint text-[10px]"></i>
+                <span class="text-text-muted text-[10px]">MacBook Pro Mic</span>
+                <div class="w-1 h-1 rounded-full bg-teal-gold ml-0.5" style="animation: pulse-gold 2s ease-in-out infinite;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page Header -->
+    <div id="island-header" class="flex items-center justify-between px-6 pt-5 pb-3.5">
+        <div>
+            <h2 class="text-text-primary text-base font-bold tracking-tight">Island Overlay</h2>
+            <p class="text-text-muted text-[10px] mt-0.5 font-light tracking-wide">Floating always-on-top status bar — all states, behaviors &amp; interactions</p>
+        </div>
+        <div class="flex items-center gap-2.5">
+            <div id="active-state-label" class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl" style="background: rgba(212,175,55,0.07); border: 1px solid rgba(212,175,55,0.18);">
+                <div class="w-1.5 h-1.5 rounded-full bg-gold" style="animation: pulse-gold 2s ease-in-out infinite;"></div>
+                <span class="text-gold text-[11px] font-semibold">Previewing: Idle</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scrollable Content -->
+    <div id="island-scroll" class="overflow-y-auto px-6 pb-10 flex flex-col gap-4" style="max-height: calc(100vh - 125px);">
+
+        <!-- Live Preview Banner -->
+        <div id="live-preview-section" class="rounded-2xl p-4 fade-in border border-card-border" style="background: linear-gradient(135deg, #111009 0%, #0D0C0A 100%);">
+            <div class="flex items-center justify-between mb-3.5">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-7 h-7 rounded-xl flex items-center justify-center shrink-0" style="background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.18);">
+                        <i class="fa-solid fa-eye text-gold text-[10px]"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-text-primary text-sm font-semibold">Live Preview</h3>
+                        <p class="text-text-muted text-[10px]">Click any state card below to preview</p>
+                    </div>
+                </div>
+                <div class="hidden sm:flex items-center gap-1.5">
+                    <span class="text-text-faint text-[10px] font-medium px-2 py-0.5 rounded-md bg-card-elevated border border-card-border">Always on top</span>
+                    <span class="text-text-faint text-[10px] font-medium px-2 py-0.5 rounded-md bg-card-elevated border border-card-border">Click-through</span>
+                    <span class="text-text-faint text-[10px] font-medium px-2 py-0.5 rounded-md bg-card-elevated border border-card-border">Monitor-aware</span>
+                </div>
+            </div>
+
+            <!-- Preview Canvas -->
+            <div class="rounded-xl flex items-center justify-center py-10 relative overflow-hidden" style="background: radial-gradient(ellipse at 50% 60%, rgba(212,175,55,0.04) 0%, rgba(6,5,4,0.97) 65%); border: 1px solid #1A1816; min-height: 130px;">
+                <div class="absolute top-0 left-0 right-0 h-px" style="background: linear-gradient(90deg, transparent, rgba(212,175,55,0.12), transparent);"></div>
+                <div id="island-live-preview" class="island-preview relative z-10">
+                    <div class="w-2 h-2 rounded-full bg-gold" style="animation: pulse-gold 2s ease-in-out infinite;"></div>
+                    <div class="flex items-center gap-0.5 h-4">
+                        <div class="w-0.5 bg-gold/25 rounded-full" style="height: 4px;"></div>
+                        <div class="w-0.5 bg-gold/35 rounded-full" style="height: 6px;"></div>
+                        <div class="w-0.5 bg-gold/25 rounded-full" style="height: 5px;"></div>
+                        <div class="w-0.5 bg-gold/35 rounded-full" style="height: 7px;"></div>
+                        <div class="w-0.5 bg-gold/25 rounded-full" style="height: 4px;"></div>
+                    </div>
+                    <span class="text-text-dim text-xs font-medium">Idle</span>
+                    <div class="h-3 w-px bg-card-border"></div>
+                    <span class="text-text-muted text-[11px]">Ctrl+Win to start</span>
+                </div>
+            </div>
+
+            <!-- Mic meter (shown in listening) -->
+            <div id="mic-meter-section" class="mt-3 flex items-center gap-3 hidden">
+                <div class="w-5 h-5 rounded-lg flex items-center justify-center shrink-0" style="background: rgba(122,191,176,0.12);">
+                    <i class="fa-solid fa-microphone text-teal-gold text-[9px]"></i>
+                </div>
+                <div class="flex-1 h-1.5 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.05);">
+                    <div id="live-mic-bar" class="mic-meter-bar" style="width: 0%;"></div>
+                </div>
+                <span id="live-mic-pct" class="text-text-muted text-[10px] w-8 text-right font-mono">0%</span>
+            </div>
+
+            <!-- Paste fail sub-pill (shown in flash/error) -->
+            <div id="paste-fail-section" class="mt-3 flex items-center gap-2 hidden">
+                <div class="paste-fail-pill">
+                    <i class="fa-solid fa-paste text-[9px]"></i>
+                    Paste failed — press <span class="text-text-dim ml-0.5">Ctrl+Alt+H</span> to open History
+                </div>
+            </div>
+        </div>
+
+        <!-- States Grid -->
+        <div id="states-section">
+            <div class="flex items-center gap-2.5 mb-3">
+                <span class="section-label">Island States</span>
+                <div class="flex-1 h-px bg-card-border"></div>
+                <span class="text-text-faint text-[10px] font-medium px-2 py-0.5 rounded-md bg-card-elevated border border-card-border">8 states</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+
+                <!-- IDLE -->
+                <div id="state-idle" class="state-card active-state p-4 cursor-pointer fade-in" style="animation-delay: 0ms;" data-state="idle">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-gold" style="animation: pulse-gold 2s ease-in-out infinite;"></div>
+                            <span class="text-text-primary text-xs font-bold tracking-tight">Idle</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-card-elevated text-text-muted border border-card-border">Default</span>
+                    </div>
+                    <div class="island-preview mb-3" style="padding: 8px 13px; gap: 8px;">
+                        <div class="w-1.5 h-1.5 rounded-full bg-gold shrink-0" style="animation: pulse-gold 2s ease-in-out infinite;"></div>
+                        <div class="flex items-center gap-0.5 h-3">
+                            <div class="w-0.5 bg-gold/20 rounded-full" style="height: 3px;"></div>
+                            <div class="w-0.5 bg-gold/30 rounded-full" style="height: 5px;"></div>
+                            <div class="w-0.5 bg-gold/20 rounded-full" style="height: 4px;"></div>
+                            <div class="w-0.5 bg-gold/30 rounded-full" style="height: 6px;"></div>
+                            <div class="w-0.5 bg-gold/20 rounded-full" style="height: 3px;"></div>
+                        </div>
+                        <span class="text-text-dim text-[11px] font-medium">Idle</span>
+                        <div class="h-2.5 w-px bg-card-border"></div>
+                        <span class="text-text-muted text-[10px]">Ctrl+Win to start</span>
+                    </div>
+                    <p class="text-text-muted text-[10px] leading-relaxed">App ready. Dim gold dot pulses slowly, static waveform silhouette, hotkey hint visible.</p>
+                </div>
+
+                <!-- ARMED -->
+                <div id="state-armed" class="state-card p-4 cursor-pointer fade-in" style="animation-delay: 55ms;" data-state="armed">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-amber shrink-0" style="animation: pulse-gold 0.6s ease-in-out infinite;"></div>
+                            <span class="text-text-primary text-xs font-bold tracking-tight">Armed</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold" style="background: rgba(224,169,46,0.1); color: #E0A92E; border: 1px solid rgba(224,169,46,0.22);">Mode Key</span>
+                    </div>
+                    <div class="island-preview mb-3" style="padding: 8px 13px; gap: 8px; border-color: rgba(224,169,46,0.22);">
+                        <div class="w-1.5 h-1.5 rounded-full bg-amber shrink-0" style="animation: pulse-gold 0.6s ease-in-out infinite;"></div>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <div class="mode-chip" style="background: rgba(139,92,246,0.16); color: #8B5CF6; border: 1px solid rgba(139,92,246,0.28);"><div class="w-1 h-1 rounded-full bg-mode-violet"></div>Prompt</div>
+                            <div class="mode-chip" style="background: rgba(59,130,246,0.14); color: #3B82F6; border: 1px solid rgba(59,130,246,0.26);"><div class="w-1 h-1 rounded-full bg-mode-blue"></div>Email</div>
+                            <div class="mode-chip" style="background: rgba(20,184,166,0.14); color: #14B8A6; border: 1px solid rgba(20,184,166,0.26);"><div class="w-1 h-1 rounded-full bg-mode-teal"></div>List</div>
+                        </div>
+                    </div>
+                    <p class="text-text-muted text-[10px] leading-relaxed">Mode key held. Chips expand — speak mode name or release to cancel.</p>
+                </div>
+
+                <!-- LISTENING -->
+                <div id="state-listening" class="state-card p-4 cursor-pointer fade-in" style="animation-delay: 110ms;" data-state="listening">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-gold shrink-0" style="box-shadow: 0 0 7px rgba(212,175,55,0.8);"></div>
+                            <span class="text-text-primary text-xs font-bold tracking-tight">Listening</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold" style="background: rgba(212,175,55,0.1); color: #D4AF37; border: 1px solid rgba(212,175,55,0.24);">Recording</span>
+                    </div>
+                    <div class="island-preview mb-3" style="padding: 8px 13px; gap: 8px; border-color: rgba(212,175,55,0.28);">
+                        <div class="relative shrink-0">
+                            <div class="w-2 h-2 rounded-full bg-gold" style="box-shadow: 0 0 9px rgba(212,175,55,0.75);"></div>
+                            <div class="absolute inset-0 rounded-full bg-gold ripple-ring"></div>
+                        </div>
+                        <div class="flex items-end gap-0.5 h-5">
+                            <div class="wave-bar bg-gold/55" style="animation-delay: 0s;"></div>
+                            <div class="wave-bar bg-gold/75" style="animation-delay: 0.11s;"></div>
+                            <div class="wave-bar bg-gold" style="animation-delay: 0.22s;"></div>
+                            <div class="wave-bar bg-gold" style="animation-delay: 0.33s;"></div>
+                            <div class="wave-bar bg-gold/85" style="animation-delay: 0.44s;"></div>
+                            <div class="wave-bar bg-gold/65" style="animation-delay: 0.55s;"></div>
+                            <div class="wave-bar bg-gold/45" style="animation-delay: 0.66s;"></div>
+                        </div>
+                        <span class="text-gold text-[11px] font-bold">Listening…</span>
+                        <div class="h-2.5 w-px bg-card-border"></div>
+                        <span class="text-text-muted text-[10px] font-mono">0:04</span>
+                    </div>
+                    <p class="text-text-muted text-[10px] leading-relaxed">Active recording. Animated waveform bars, ripple dot, live timer. Mic meter shown.</p>
+                </div>
+
+                <!-- TRANSCRIBING -->
+                <div id="state-transcribing" class="state-card p-4 cursor-pointer fade-in" style="animation-delay: 165ms;" data-state="transcribing">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-amber shrink-0" style="animation: pulse-gold 0.8s ease-in-out infinite;"></div>
+                            <span class="text-text-primary text-xs font-bold tracking-tight">Transcribing</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold" style="background: rgba(224,169,46,0.1); color: #E0A92E; border: 1px solid rgba(224,169,46,0.22);">Processing</span>
+                    </div>
+                    <div class="island-preview mb-3" style="padding: 8px 13px; gap: 8px; border-color: rgba(224,169,46,0.18);">
+                        <div class="flex gap-1 shrink-0">
+                            <div class="w-1.5 h-1.5 rounded-full bg-amber dot-bounce" style="animation-delay: 0s;"></div>
+                            <div class="w-1.5 h-1.5 rounded-full bg-amber dot-bounce" style="animation-delay: 0.2s;"></div>
+                            <div class="w-1.5 h-1.5 rounded-full bg-amber dot-bounce" style="animation-delay: 0.4s;"></div>
+                        </div>
+                        <span class="text-amber text-[11px] font-semibold">Transcribing</span>
+                        <div class="flex-1 h-1 rounded-full overflow-hidden" style="background: rgba(224,169,46,0.1);">
+                            <div class="h-full rounded-full" style="width: 58%; background: linear-gradient(90deg, #E0A92E 0%, #EBCB65 50%, #E0A92E 100%); background-size: 200%; animation: shimmer 1.5s linear infinite;"></div>
+                        </div>
+                    </div>
+                    <p class="text-text-muted text-[10px] leading-relaxed">Audio stopped. Local Whisper model processing. Bouncing amber dots, shimmer progress.</p>
+                </div>
+
+                <!-- BUILDING -->
+                <div id="state-building" class="state-card p-4 cursor-pointer fade-in" style="animation-delay: 220ms;" data-state="building">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-mode-violet shrink-0" style="animation: pulse-gold 0.9s ease-in-out infinite;"></div>
+                            <span class="text-text-primary text-xs font-bold tracking-tight">Building</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold" style="background: rgba(139,92,246,0.1); color: #8B5CF6; border: 1px solid rgba(139,92,246,0.22);">AI Polish</span>
+                    </div>
+                    <div class="island-preview mb-3" style="padding: 8px 13px; gap: 8px; border-color: rgba(139,92,246,0.22);">
+                        <div class="w-1.5 h-1.5 rounded-full bg-mode-violet shrink-0" style="animation: pulse-gold 0.9s ease-in-out infinite;"></div>
+                        <i class="fa-solid fa-wand-magic-sparkles text-mode-violet text-[10px] shrink-0"></i>
+                        <span style="background: linear-gradient(90deg, #8B5CF6 0%, #D4AF37 40%, #8B5CF6 80%); background-size: 200%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; animation: shimmer 1.8s linear infinite; font-size: 11px; font-weight: 700;">Building output…</span>
+                        <div class="flex gap-0.5 ml-auto shrink-0">
+                            <div class="w-1 h-1 rounded-full bg-mode-violet dot-bounce" style="animation-delay: 0s;"></div>
+                            <div class="w-1 h-1 rounded-full bg-mode-violet dot-bounce" style="animation-delay: 0.15s;"></div>
+                            <div class="w-1 h-1 rounded-full bg-mode-violet dot-bounce" style="animation-delay: 0.3s;"></div>
+                        </div>
+                    </div>
+                    <p class="text-text-muted text-[10px] leading-relaxed">AI polishing via Cerebras. Violet dot, sparkle icon, shimmer gradient animation.</p>
+                </div>
+
+                <!-- FLASH / DONE -->
+                <div id="state-flash" class="state-card p-4 cursor-pointer fade-in" style="animation-delay: 275ms;" data-state="flash">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-teal-gold shrink-0"></div>
+                            <span class="text-text-primary text-xs font-bold tracking-tight">Flash</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold" style="background: rgba(122,191,176,0.1); color: #7ABFB0; border: 1px solid rgba(122,191,176,0.22);">Done</span>
+                    </div>
+                    <div class="island-preview mb-3" style="padding: 8px 13px; gap: 8px; border-color: rgba(122,191,176,0.25); background: rgba(122,191,176,0.03);">
+                        <div class="w-1.5 h-1.5 rounded-full bg-teal-gold shrink-0"></div>
+                        <i class="fa-solid fa-check text-teal-gold text-[10px] shrink-0"></i>
+                        <span class="text-teal-gold text-[11px] font-bold">Pasted!</span>
+                        <div class="h-2.5 w-px bg-card-border"></div>
+                        <span class="text-text-muted text-[10px]">142 words</span>
+                        <div class="h-2.5 w-px bg-card-border"></div>
+                        <span class="text-text-muted text-[10px]">Email mode</span>
+                    </div>
+                    <p class="text-text-muted text-[10px] leading-relaxed">Output pasted successfully. Teal-gold flash (1.2s), word count &amp; mode shown, fades to idle.</p>
+                </div>
+
+                <!-- ERROR -->
+                <div id="state-error" class="state-card p-4 cursor-pointer fade-in" style="animation-delay: 330ms;" data-state="error">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-cherry shrink-0" style="animation: pulse-gold 0.5s ease-in-out infinite;"></div>
+                            <span class="text-text-primary text-xs font-bold tracking-tight">Error</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold" style="background: rgba(217,84,77,0.1); color: #D9544D; border: 1px solid rgba(217,84,77,0.24);">Alert</span>
+                    </div>
+                    <div class="island-preview mb-3" style="padding: 8px 13px; gap: 8px; border-color: rgba(217,84,77,0.28);">
+                        <div class="w-1.5 h-1.5 rounded-full bg-cherry shrink-0" style="animation: pulse-gold 0.5s ease-in-out infinite;"></div>
+                        <i class="fa-solid fa-triangle-exclamation text-cherry text-[10px] shrink-0"></i>
+                        <span class="text-cherry text-[11px] font-bold">No audio captured</span>
+                        <div class="h-2.5 w-px bg-card-border"></div>
+                        <span class="text-text-muted text-[10px]">Check mic</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 mb-2">
+                        <div class="px-2 py-0.5 rounded-lg text-[9px] font-semibold" style="background: rgba(217,84,77,0.08); color: rgba(217,84,77,0.7); border: 1px solid rgba(217,84,77,0.15);">
+                            <i class="fa-solid fa-rotate-right mr-1 text-[8px]"></i>Redo — re-dictate
+                        </div>
+                    </div>
+                    <p class="text-text-muted text-[10px] leading-relaxed">Red dot pulses fast. Error message shown. Auto-clears after 4s. Redo key available.</p>
+                </div>
+
+                <!-- LOW CONFIDENCE -->
+                <div id="state-lowconf" class="state-card p-4 cursor-pointer fade-in md:col-span-2" style="animation-delay: 385ms;" data-state="lowconf">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 rounded-full bg-mode-violet shrink-0" style="animation: pulse-gold 1.2s ease-in-out infinite;"></div>
+                            <span class="text-text-primary text-xs font-bold tracking-tight">Low Confidence</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold" style="background: rgba(139,92,246,0.1); color: #8B5CF6; border: 1px solid rgba(139,92,246,0.22);">Suggestion</span>
+                    </div>
+                    <div class="island-preview mb-3" style="padding: 8px 14px; gap: 10px; border-color: rgba(139,92,246,0.22);">
+                        <div class="w-1.5 h-1.5 rounded-full bg-mode-violet shrink-0" style="animation: pulse-gold 1.2s ease-in-out infinite;"></div>
+                        <span class="text-text-dim text-[11px] font-semibold shrink-0">Unclear —</span>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <div class="mode-chip" style="background: rgba(139,92,246,0.18); color: #8B5CF6; border: 1px solid rgba(139,92,246,0.32);"><div class="w-1 h-1 rounded-full bg-mode-violet"></div>Prompt mode?</div>
+                            <div class="mode-chip" style="background: rgba(59,130,246,0.14); color: #3B82F6; border: 1px solid rgba(59,130,246,0.28);"><div class="w-1 h-1 rounded-full bg-mode-blue"></div>Email mode?</div>
+                            <div class="mode-chip" style="background: rgba(249,115,22,0.14); color: #F97316; border: 1px solid rgba(249,115,22,0.28);"><div class="w-1 h-1 rounded-full bg-mode-coral"></div>Reply mode?</div>
+                        </div>
+                        <div class="ml-auto shrink-0 flex flex-col items-end gap-0.5">
+                            <span class="text-text-muted text-[10px]">tap to re-dictate</span>
+                            <span class="text-text-faint text-[10px]">or press mode key</span>
+                        </div>
+                    </div>
+                    <p class="text-text-muted text-[10px] leading-relaxed">Whisper confidence below threshold. Violet chips appear — tap chip to re-dictate with confirmed mode, or press mode key to re-arm, or dismiss to accept.</p>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Mode Dots Reference -->
+        <div id="mode-dots-section" class="rounded-2xl p-4 fade-in border border-card-border" style="background: linear-gradient(135deg, #111009 0%, #0D0C0A 100%);">
+            <div class="flex items-center gap-2.5 mb-3.5">
+                <div class="w-7 h-7 rounded-xl flex items-center justify-center shrink-0" style="background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.18);">
+                    <i class="fa-solid fa-circle-dot text-gold text-[10px]"></i>
+                </div>
+                <div>
+                    <h3 class="text-text-primary text-sm font-semibold">Mode Color Dots</h3>
+                    <p class="text-text-muted text-[10px]">Distinct color per mode — used in island dot, history entries &amp; chips</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                <div class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl" style="background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.16);">
+                    <div class="w-2.5 h-2.5 rounded-full bg-mode-violet shrink-0" style="box-shadow: 0 0 5px rgba(139,92,246,0.4);"></div>
+                    <div><p class="text-mode-violet text-xs font-bold">Prompt</p><p class="text-text-muted text-[10px]">AI instruction</p></div>
+                </div>
+                <div class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl" style="background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.16);">
+                    <div class="w-2.5 h-2.5 rounded-full bg-mode-blue shrink-0" style="box-shadow: 0 0 5px rgba(59,130,246,0.4);"></div>
+                    <div><p class="text-mode-blue text-xs font-bold">Email</p><p class="text-text-muted text-[10px]">Email compose</p></div>
+                </div>
+                <div class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl" style="background: rgba(20,184,166,0.06); border: 1px solid rgba(20,184,166,0.16);">
+                    <div class="w-2.5 h-2.5 rounded-full bg-mode-teal shrink-0" style="box-shadow: 0 0 5px rgba(20,184,166,0.4);"></div>
+                    <div><p class="text-mode-teal text-xs font-bold">List</p><p class="text-text-muted text-[10px]">Bullet / tasks</p></div>
+                </div>
+                <div class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl" style="background: rgba(249,115,22,0.06); border: 1px solid rgba(249,115,22,0.16);">
+                    <div class="w-2.5 h-2.5 rounded-full bg-mode-coral shrink-0" style="box-shadow: 0 0 5px rgba(249,115,22,0.4);"></div>
+                    <div><p class="text-mode-coral text-xs font-bold">Reply</p><p class="text-text-muted text-[10px]">Quick response</p></div>
+                </div>
+                <div class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl" style="background: rgba(212,169,106,0.06); border: 1px solid rgba(212,169,106,0.16);">
+                    <div class="w-2.5 h-2.5 rounded-full bg-mode-sand shrink-0" style="box-shadow: 0 0 5px rgba(212,169,106,0.4);"></div>
+                    <div><p class="text-mode-sand text-xs font-bold">Foreign</p><p class="text-text-muted text-[10px]">Language assist</p></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Behavior + Mic Row -->
+        <div class="flex flex-col lg:flex-row gap-3">
+
+            <!-- Behavior Notes -->
+            <div id="behavior-section" class="flex-1 rounded-2xl p-4 fade-in border border-card-border" style="background: linear-gradient(135deg, #111009 0%, #0D0C0A 100%);">
+                <div class="flex items-center gap-2.5 mb-3.5">
+                    <div class="w-7 h-7 rounded-xl flex items-center justify-center shrink-0" style="background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.18);">
+                        <i class="fa-solid fa-circle-info text-mode-blue text-[10px]"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-text-primary text-sm font-semibold">Behavior & Properties</h3>
+                        <p class="text-text-muted text-[10px]">How the island operates on-screen</p>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                        <i class="fa-solid fa-arrow-pointer text-gold/50 text-[10px] mt-0.5 shrink-0"></i>
+                        <div><p class="text-text-dim text-xs font-semibold">Click-through</p><p class="text-text-muted text-[10px] mt-0.5">Mouse events pass through — never blocks app interaction underneath.</p></div>
+                    </div>
+                    <div class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                        <i class="fa-solid fa-layer-group text-gold/50 text-[10px] mt-0.5 shrink-0"></i>
+                        <div><p class="text-text-dim text-xs font-semibold">Always on top</p><p class="text-text-muted text-[10px] mt-0.5">Stays above all windows including fullscreen. Z-order is system-level.</p></div>
+                    </div>
+                    <div class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                        <i class="fa-solid fa-display text-gold/50 text-[10px] mt-0.5 shrink-0"></i>
+                        <div><p class="text-text-dim text-xs font-semibold">Monitor-aware</p><p class="text-text-muted text-[10px] mt-0.5">Appears on configured display (primary, secondary, all). Settings → System.</p></div>
+                    </div>
+                    <div class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                        <i class="fa-solid fa-location-dot text-gold/50 text-[10px] mt-0.5 shrink-0"></i>
+                        <div><p class="text-text-dim text-xs font-semibold">Fixed position</p><p class="text-text-muted text-[10px] mt-0.5">Bottom-right anchor with 32px margin. Not draggable in this version.</p></div>
+                    </div>
+                    <div class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                        <i class="fa-solid fa-paste text-gold/50 text-[10px] mt-0.5 shrink-0"></i>
+                        <div>
+                            <p class="text-text-dim text-xs font-semibold">Paste-fail fallback</p>
+                            <p class="text-text-muted text-[10px] mt-0.5">If clipboard paste fails, island shows <span class="text-cherry text-[10px]">Ctrl+Alt+H</span> prompt to open History manually.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-2.5 px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                        <i class="fa-solid fa-eye-slash text-gold/50 text-[10px] mt-0.5 shrink-0"></i>
+                        <div><p class="text-text-dim text-xs font-semibold">Toggle visibility</p><p class="text-text-muted text-[10px] mt-0.5">Hidden via Settings → System or system tray right-click menu.</p></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mic Meter -->
+            <div id="mic-meter-card" class="w-full lg:w-[268px] rounded-2xl p-4 fade-in border border-card-border flex flex-col" style="background: linear-gradient(135deg, #111009 0%, #0D0C0A 100%);">
+                <div class="flex items-center gap-2.5 mb-3.5">
+                    <div class="w-7 h-7 rounded-xl flex items-center justify-center shrink-0" style="background: rgba(122,191,176,0.1); border: 1px solid rgba(122,191,176,0.18);">
+                        <i class="fa-solid fa-microphone text-teal-gold text-[10px]"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-text-primary text-sm font-semibold">Mic Input Meter</h3>
+                        <p class="text-text-muted text-[10px]">Active during Listening state</p>
+                    </div>
+                </div>
+
+                <!-- Vertical bars -->
+                <div class="flex items-end justify-center gap-1 h-24 mb-3 px-1">
+                    <div id="vbar-1" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #D4AF37); height: 30%;"></div>
+                    <div id="vbar-2" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #D4AF37); height: 55%;"></div>
+                    <div id="vbar-3" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #E0A92E); height: 78%;"></div>
+                    <div id="vbar-4" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #E0A92E); height: 65%;"></div>
+                    <div id="vbar-5" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #D4AF37); height: 45%;"></div>
+                    <div id="vbar-6" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #D4AF37); height: 70%;"></div>
+                    <div id="vbar-7" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #E0A92E); height: 88%;"></div>
+                    <div id="vbar-8" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #D4AF37); height: 60%;"></div>
+                    <div id="vbar-9" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #D4AF37); height: 38%;"></div>
+                    <div id="vbar-10" class="flex-1 rounded-t-sm transition-all duration-100" style="background: linear-gradient(to top, #7ABFB0, #D4AF37); height: 22%;"></div>
+                </div>
+
+                <!-- Horizontal meter -->
+                <div class="mb-3">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-text-muted text-[10px]">Input Level</span>
+                        <span id="meter-pct" class="text-text-dim text-[10px] font-semibold font-mono">68%</span>
+                    </div>
+                    <div class="h-1.5 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.05);">
+                        <div id="meter-bar" class="mic-meter-bar" style="width: 68%;"></div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 px-3 py-2.5 rounded-xl mt-auto" style="background: rgba(122,191,176,0.05); border: 1px solid rgba(122,191,176,0.14);">
+                    <div class="w-1.5 h-1.5 rounded-full bg-teal-gold animate-pulse shrink-0"></div>
+                    <span class="text-teal-gold text-[10px] font-semibold">MacBook Pro Mic · Active</span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Island Controls -->
+        <div id="island-controls-section" class="rounded-2xl p-4 fade-in border border-card-border" style="background: linear-gradient(135deg, #111009 0%, #0D0C0A 100%);">
+            <div class="flex items-center gap-2.5 mb-3.5">
+                <div class="w-7 h-7 rounded-xl flex items-center justify-center shrink-0" style="background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.18);">
+                    <i class="fa-solid fa-sliders text-gold text-[10px]"></i>
+                </div>
+                <div>
+                    <h3 class="text-text-primary text-sm font-semibold">Island Controls</h3>
+                    <p class="text-text-muted text-[10px]">Quick-access toggles — backend integration pending</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                <div class="flex items-center justify-between px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                    <div><p class="text-text-dim text-xs font-semibold">Show island</p><p class="text-text-muted text-[10px] mt-0.5">Toggle visibility</p></div>
+                    <label class="toggle-switch"><input type="checkbox" id="toggle-island-vis" checked /><span class="toggle-slider"></span></label>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                    <div><p class="text-text-dim text-xs font-semibold">Sound feedback</p><p class="text-text-muted text-[10px] mt-0.5">Audio cues on events</p></div>
+                    <label class="toggle-switch"><input type="checkbox" id="toggle-sound-fb" checked /><span class="toggle-slider"></span></label>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                    <div><p class="text-text-dim text-xs font-semibold">Suggestion chips</p><p class="text-text-muted text-[10px] mt-0.5">Low-confidence prompts</p></div>
+                    <label class="toggle-switch"><input type="checkbox" id="toggle-chips" checked /><span class="toggle-slider"></span></label>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2.5 rounded-xl card-elevated-bg border border-card-border">
+                    <div><p class="text-text-dim text-xs font-semibold">Show mic meter</p><p class="text-text-muted text-[10px] mt-0.5">Level bar in island</p></div>
+                    <label class="toggle-switch"><input type="checkbox" id="toggle-mic-meter" checked /><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Floating Island Overlay -->
+<div id="island-overlay" class="fixed bottom-7 right-7 z-50 pointer-events-none select-none">
+    <div id="island-pill" class="island-glass px-5 py-2.5 flex items-center gap-3" style="min-width: 190px;">
+        <div id="island-dot" class="w-2 h-2 rounded-full bg-gold shrink-0" style="animation: pulse-gold 2s ease-in-out infinite;"></div>
+        <div id="island-wave" class="flex items-end gap-0.5 h-4">
+            <div class="w-0.5 bg-gold/25 rounded-full" style="height: 4px;"></div>
+            <div class="w-0.5 bg-gold/35 rounded-full" style="height: 6px;"></div>
+            <div class="w-0.5 bg-gold/25 rounded-full" style="height: 5px;"></div>
+            <div class="w-0.5 bg-gold/35 rounded-full" style="height: 7px;"></div>
+            <div class="w-0.5 bg-gold/25 rounded-full" style="height: 4px;"></div>
+        </div>
+        <span id="island-label" class="text-text-dim text-xs font-semibold">Idle</span>
+        <div class="h-3 w-px bg-card-border"></div>
+        <span id="island-hint" class="text-text-muted text-[11px]">Ctrl+Win to start</span>
+    </div>
+</div>
+
+<script>
+window.addEventListener('load', function() {
+
+    // Nav highlight
+    var navButtons = document.querySelectorAll('#nav-bar button');
+    navButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            navButtons.forEach(function(b) {
+                b.classList.remove('bg-gold', 'text-app-bg', 'font-bold');
+                b.classList.add('text-text-muted', 'font-medium');
+                b.style.color = '';
+            });
+            btn.classList.add('bg-gold', 'text-app-bg', 'font-bold');
+            btn.classList.remove('text-text-muted', 'font-medium');
+        });
+    });
+
+    var states = {
+        idle: {
+            stateLabel: 'Idle',
+            previewHTML: function() {
+                return '<div class="w-1.5 h-1.5 rounded-full bg-gold shrink-0" style="animation: pulse-gold 2s ease-in-out infinite;"></div>' +
+                    '<div class="flex items-center gap-0.5 h-3">' +
+                    '<div class="w-0.5 bg-gold/20 rounded-full" style="height:3px;"></div>' +
+                    '<div class="w-0.5 bg-gold/30 rounded-full" style="height:5px;"></div>' +
+                    '<div class="w-0.5 bg-gold/20 rounded-full" style="height:4px;"></div>' +
+                    '<div class="w-0.5 bg-gold/30 rounded-full" style="height:6px;"></div>' +
+                    '<div class="w-0.5 bg-gold/20 rounded-full" style="height:3px;"></div>' +
+                    '</div>' +
+                    '<span class="text-text-dim text-xs font-medium">Idle</span>' +
+                    '<div class="h-3 w-px bg-card-border"></div>' +
+                    '<span class="text-text-muted text-xs">Ctrl+Win to start</span>';
+            },
+            borderColor: 'rgba(212,175,55,0.15)',
+            dotColor: '#D4AF37',
+            dotAnim: 'pulse-gold 2s ease-in-out infinite',
+            previewLabel: 'Idle'
+        },
+        armed: {
+            stateLabel: 'Armed',
+            previewHTML: function() {
+                return '<div class="w-1.5 h-1.5 rounded-full bg-amber shrink-0" style="animation: pulse-gold 0.6s ease-in-out infinite;"></div>' +
+                    '<div class="flex items-center gap-1.5"><span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(139,92,246,0.18);color:#8B5CF6;border:1px solid rgba(139,92,246,0.3);"><span style="width:6px;height:6px;border-radius:50%;background:#8B5CF6;display:inline-block;"></span>Prompt</span>' +
+                    '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(59,130,246,0.15);color:#3B82F6;border:1px solid rgba(59,130,246,0.3);"><span style="width:6px;height:6px;border-radius:50%;background:#3B82F6;display:inline-block;"></span>Email</span>' +
+                    '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(20,184,166,0.15);color:#14B8A6;border:1px solid rgba(20,184,166,0.3);"><span style="width:6px;height:6px;border-radius:50%;background:#14B8A6;display:inline-block;"></span>List</span></div>';
+            }
+        },
+        listening: {
+            stateLabel: 'Listening',
+            previewHTML: function() {
+                return '<div class="relative shrink-0"><div class="w-2 h-2 rounded-full bg-gold" style="box-shadow: 0 0 8px rgba(212,175,55,0.7);"></div><div class="absolute inset-0 rounded-full bg-gold ripple-ring"></div></div>' +
+                    '<div class="flex items-end gap-0.5 h-5"><div class="wave-bar bg-gold/60" style="animation-delay:0s;"></div><div class="wave-bar bg-gold/80" style="animation-delay:0.12s;"></div><div class="wave-bar bg-gold" style="animation-delay:0.24s;"></div><div class="wave-bar bg-gold" style="animation-delay:0.36s;"></div><div class="wave-bar bg-gold/90" style="animation-delay:0.48s;"></div><div class="wave-bar bg-gold/70" style="animation-delay:0.6s;"></div><div class="wave-bar bg-gold/50" style="animation-delay:0.72s;"></div></div>' +
+                    '<span class="text-gold text-xs font-semibold">Listening…</span>' +
+                    '<div class="h-3 w-px bg-card-border"></div>' +
+                    '<span class="text-text-muted text-xs" id="live-timer">0:00</span>';
+            },
+            showMic: true
+        },
+        transcribing: {
+            stateLabel: 'Transcribing',
+            previewHTML: function() {
+                return '<div class="flex gap-0.5 shrink-0"><div class="w-1.5 h-1.5 rounded-full bg-amber dot-bounce" style="animation-delay:0s;"></div><div class="w-1.5 h-1.5 rounded-full bg-amber dot-bounce" style="animation-delay:0.2s;"></div><div class="w-1.5 h-1.5 rounded-full bg-amber dot-bounce" style="animation-delay:0.4s;"></div></div>' +
+                    '<span class="text-amber text-xs font-medium">Transcribing</span>' +
+                    '<div class="flex-1 h-1.5 rounded-full overflow-hidden" style="background:rgba(224,169,46,0.1);"><div class="h-full rounded-full" style="width:60%;background:linear-gradient(90deg,#E0A92E 0%,#EBCB65 50%,#E0A92E 100%);background-size:200%;animation:shimmer 1.5s linear infinite;"></div></div>';
+            }
+        },
+        building: {
+            stateLabel: 'Building',
+            previewHTML: function() {
+                return '<div class="w-1.5 h-1.5 rounded-full bg-mode-violet shrink-0" style="animation: pulse-gold 0.9s ease-in-out infinite;"></div>' +
+                    '<i class="fa-solid fa-wand-magic-sparkles text-mode-violet text-xs shrink-0"></i>' +
+                    '<span style="background:linear-gradient(90deg,#8B5CF6 0%,#D4AF37 40%,#8B5CF6 80%);background-size:200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:shimmer 1.8s linear infinite;font-size:12px;font-weight:600;">Building output…</span>' +
+                    '<div class="flex gap-0.5 ml-auto shrink-0"><div class="w-1.5 h-1.5 rounded-full bg-mode-violet dot-bounce" style="animation-delay:0s;"></div><div class="w-1.5 h-1.5 rounded-full bg-mode-violet dot-bounce" style="animation-delay:0.15s;"></div><div class="w-1.5 h-1.5 rounded-full bg-mode-violet dot-bounce" style="animation-delay:0.3s;"></div></div>';
+            }
+        },
+        flash: {
+            stateLabel: 'Flash / Done',
+            previewHTML: function() {
+                return '<div class="w-1.5 h-1.5 rounded-full bg-mode-teal shrink-0"></div>' +
+                    '<i class="fa-solid fa-check text-mode-teal text-xs shrink-0"></i>' +
+                    '<span class="text-mode-teal text-xs font-semibold">Pasted!</span>' +
+                    '<div class="h-3 w-px bg-card-border"></div>' +
+                    '<span class="text-text-muted text-xs">142 words</span>' +
+                    '<div class="h-3 w-px bg-card-border"></div>' +
+                    '<span class="text-text-muted text-xs">Email mode</span>';
+            }
+        },
+        error: {
+            stateLabel: 'Error',
+            previewHTML: function() {
+                return '<div class="w-1.5 h-1.5 rounded-full bg-cherry shrink-0" style="animation: pulse-gold 0.5s ease-in-out infinite;"></div>' +
+                    '<i class="fa-solid fa-triangle-exclamation text-cherry text-xs shrink-0"></i>' +
+                    '<span class="text-cherry text-xs font-semibold">No audio captured</span>' +
+                    '<div class="h-3 w-px bg-card-border"></div>' +
+                    '<span class="text-text-muted text-xs">Check mic</span>';
+            }
+        },
+        lowconf: {
+            stateLabel: 'Low Confidence',
+            previewHTML: function() {
+                return '<div class="w-1.5 h-1.5 rounded-full bg-mode-violet shrink-0" style="animation: pulse-gold 1.2s ease-in-out infinite;"></div>' +
+                    '<span class="text-text-dim text-xs font-medium shrink-0">Unclear mode —</span>' +
+                    '<div class="flex items-center gap-1.5 flex-wrap">' +
+                    '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(139,92,246,0.2);color:#8B5CF6;border:1px solid rgba(139,92,246,0.35);"><span style="width:6px;height:6px;border-radius:50%;background:#8B5CF6;display:inline-block;"></span>Prompt?</span>' +
+                    '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:600;background:rgba(59,130,246,0.15);color:#3B82F6;border:1px solid rgba(59,130,246,0.3);"><span style="width:6px;height:6px;border-radius:50%;background:#3B82F6;display:inline-block;"></span>Email?</span>' +
+                    '</div>';
+            }
+        }
+    };
+
+    var currentState = 'idle';
+    var timerInterval = null;
+    var micAnimInterval = null;
+    var timerSeconds = 0;
+
+    function setActiveState(stateName) {
+        currentState = stateName;
+
+        // Update state cards
+        document.querySelectorAll('.state-card').forEach(function(card) {
+            card.classList.remove('active-state');
+            if (card.getAttribute('data-state') === stateName) {
+                card.classList.add('active-state');
+            }
+        });
+
+        // Update active label
+        var stateObj = states[stateName];
+        var labelEl = document.getElementById('active-state-label');
+        labelEl.innerHTML = '<div class="w-1.5 h-1.5 rounded-full bg-gold animate-pulse"></div><span class="text-gold text-[11px] font-semibold">Previewing: ' + (stateObj.stateLabel || stateName) + '</span>';
+
+        // Update live preview
+        var preview = document.getElementById('island-live-preview');
+        preview.innerHTML = stateObj.previewHTML();
+        preview.style.borderColor = '';
+        preview.style.background = '';
+
+        // Style overrides per state
+        if (stateName === 'armed') {
+            preview.style.borderColor = 'rgba(224,169,46,0.25)';
+        } else if (stateName === 'listening') {
+            preview.style.borderColor = 'rgba(212,175,55,0.35)';
+        } else if (stateName === 'transcribing') {
+            preview.style.borderColor = 'rgba(224,169,46,0.2)';
+        } else if (stateName === 'building') {
+            preview.style.borderColor = 'rgba(139,92,246,0.3)';
+        } else if (stateName === 'flash') {
+            preview.style.borderColor = 'rgba(20,184,166,0.35)';
+            preview.style.background = 'rgba(20,184,166,0.04)';
+        } else if (stateName === 'error') {
+            preview.style.borderColor = 'rgba(217,84,77,0.3)';
+        } else if (stateName === 'lowconf') {
+            preview.style.borderColor = 'rgba(139,92,246,0.25)';
+        }
+
+        // Mic meter
+        var micSection = document.getElementById('mic-meter-section');
+        if (stateName === 'listening') {
+            micSection.classList.remove('hidden');
+        } else {
+            micSection.classList.add('hidden');
+        }
+
+        // Timer
+        clearInterval(timerInterval);
+        timerSeconds = 0;
+        if (stateName === 'listening') {
+            timerInterval = setInterval(function() {
+                timerSeconds++;
+                var timerEl = document.getElementById('live-timer');
+                if (timerEl) {
+                    var m = Math.floor(timerSeconds / 60);
+                    var s = timerSeconds % 60;
+                    timerEl.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+                }
+            }, 1000);
+        }
+
+        // Update actual floating island
+        updateFloatingIsland(stateName);
+    }
+
+    function updateFloatingIsland(stateName) {
+        var pill = document.getElementById('island-pill');
+        var dot = document.getElementById('island-dot');
+        var wave = document.getElementById('island-wave');
+        var label = document.getElementById('island-label');
+        var hint = document.getElementById('island-hint');
+
+        if (stateName === 'idle') {
+            pill.style.borderColor = 'rgba(212,175,55,0.15)';
+            dot.style.background = '#D4AF37';
+            dot.style.animation = 'pulse-gold 2s ease-in-out infinite';
+            dot.style.boxShadow = '';
+            wave.innerHTML = '<div class="w-0.5 bg-gold/25 rounded-full" style="height:4px;"></div><div class="w-0.5 bg-gold/35 rounded-full" style="height:6px;"></div><div class="w-0.5 bg-gold/25 rounded-full" style="height:5px;"></div><div class="w-0.5 bg-gold/35 rounded-full" style="height:7px;"></div><div class="w-0.5 bg-gold/25 rounded-full" style="height:4px;"></div>';
+            label.textContent = 'Idle';
+            label.style.color = '#B6AE99';
+            hint.textContent = 'Ctrl+Win to start';
+            hint.style.display = '';
+        } else if (stateName === 'listening') {
+            pill.style.borderColor = 'rgba(212,175,55,0.3)';
+            dot.style.background = '#D4AF37';
+            dot.style.boxShadow = '0 0 8px rgba(212,175,55,0.7)';
+            dot.style.animation = '';
+            wave.innerHTML = '<div class="wave-bar bg-gold/55" style="animation-delay:0s;"></div><div class="wave-bar bg-gold/75" style="animation-delay:0.11s;"></div><div class="wave-bar bg-gold" style="animation-delay:0.22s;"></div><div class="wave-bar bg-gold" style="animation-delay:0.33s;"></div><div class="wave-bar bg-gold/85" style="animation-delay:0.44s;"></div><div class="wave-bar bg-gold/65" style="animation-delay:0.55s;"></div><div class="wave-bar bg-gold/45" style="animation-delay:0.66s;"></div>';
+            label.textContent = 'Listening…';
+            label.style.color = '#D4AF37';
+            hint.textContent = '0:00';
+            hint.style.display = '';
+        } else if (stateName === 'armed') {
+            pill.style.borderColor = 'rgba(224,169,46,0.3)';
+            dot.style.background = '#E0A92E';
+            dot.style.boxShadow = '';
+            dot.style.animation = 'pulse-gold 0.6s ease-in-out infinite';
+            wave.innerHTML = '';
+            label.textContent = 'Armed';
+            label.style.color = '#E0A92E';
+            hint.textContent = 'Speak mode name';
+            hint.style.display = '';
+        } else if (stateName === 'transcribing') {
+            pill.style.borderColor = 'rgba(224,169,46,0.2)';
+            dot.style.background = '#E0A92E';
+            dot.style.animation = 'pulse-gold 0.8s ease-in-out infinite';
+            dot.style.boxShadow = '';
+            wave.innerHTML = '';
+            label.textContent = 'Transcribing…';
+            label.style.color = '#E0A92E';
+            hint.textContent = '';
+            hint.style.display = 'none';
+        } else if (stateName === 'building') {
+            pill.style.borderColor = 'rgba(139,92,246,0.3)';
+            dot.style.background = '#8B5CF6';
+            dot.style.animation = 'pulse-gold 0.9s ease-in-out infinite';
+            dot.style.boxShadow = '';
+            wave.innerHTML = '';
+            label.textContent = 'Building…';
+            label.style.color = '#8B5CF6';
+            hint.textContent = '';
+            hint.style.display = 'none';
+        } else if (stateName === 'flash') {
+            pill.style.borderColor = 'rgba(20,184,166,0.35)';
+            dot.style.background = '#14B8A6';
+            dot.style.animation = '';
+            dot.style.boxShadow = '';
+            wave.innerHTML = '<i class="fa-solid fa-check text-mode-teal text-xs"></i>';
+            label.textContent = 'Pasted!';
+            label.style.color = '#14B8A6';
+            hint.textContent = '142 words';
+            hint.style.display = '';
+        } else if (stateName === 'error') {
+            pill.style.borderColor = 'rgba(217,84,77,0.3)';
+            dot.style.background = '#D9544D';
+            dot.style.animation = 'pulse-gold 0.5s ease-in-out infinite';
+            dot.style.boxShadow = '';
+            wave.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-cherry text-xs"></i>';
+            label.textContent = 'No audio';
+            label.style.color = '#D9544D';
+            hint.textContent = 'Check mic';
+            hint.style.display = '';
+        } else if (stateName === 'lowconf') {
+            pill.style.borderColor = 'rgba(139,92,246,0.3)';
+            dot.style.background = '#8B5CF6';
+            dot.style.animation = 'pulse-gold 1.2s ease-in-out infinite';
+            dot.style.boxShadow = '';
+            wave.innerHTML = '';
+            label.textContent = 'Unclear mode';
+            label.style.color = '#8B5CF6';
+            hint.textContent = 'Tap to re-dictate';
+            hint.style.display = '';
+        }
+    }
+
+    // State card click handlers
+    document.querySelectorAll('.state-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+            var state = card.getAttribute('data-state');
+            setActiveState(state);
+        });
+    });
+
+    // Mic meter animation
+    var liveMicBar = document.getElementById('live-mic-bar');
+    var liveMicPct = document.getElementById('live-mic-pct');
+    setInterval(function() {
+        if (currentState === 'listening') {
+            var level = 25 + Math.random() * 65;
+            if (liveMicBar) {
+                liveMicBar.style.width = level.toFixed(0) + '%';
+            }
+            if (liveMicPct) {
+                liveMicPct.textContent = level.toFixed(0) + '%';
+            }
+        }
+    }, 120);
+
+    // Vertical bar animation
+    var vbars = [];
+    for (var i = 1; i <= 10; i++) {
+        vbars.push(document.getElementById('vbar-' + i));
+    }
+    var meterBar = document.getElementById('meter-bar');
+    var meterPct = document.getElementById('meter-pct');
+    setInterval(function() {
+        var level = 20 + Math.random() * 75;
+        if (meterBar) {
+            meterBar.style.width = level.toFixed(0) + '%';
+        }
+        if (meterPct) {
+            meterPct.textContent = level.toFixed(0) + '%';
+        }
+        vbars.forEach(function(bar) {
+            if (bar) {
+                var h = 15 + Math.random() * 80;
+                bar.style.height = h.toFixed(0) + '%';
+            }
+        });
+    }, 150);
+
+    // Demo: cycle through states automatically after 4s if user hasn't interacted
+    var autoDemo = true;
+    document.querySelectorAll('.state-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+            autoDemo = false;
+        });
+    });
+
+    var stateOrder = ['idle', 'armed', 'listening', 'transcribing', 'building', 'flash', 'error', 'lowconf'];
+    var autoDemoIndex = 0;
+    setTimeout(function() {
+        if (!autoDemo) return;
+        var autoCycle = setInterval(function() {
+            if (!autoDemo) {
+                clearInterval(autoCycle);
+                return;
+            }
+            autoDemoIndex = (autoDemoIndex + 1) % stateOrder.length;
+            setActiveState(stateOrder[autoDemoIndex]);
+        }, 2500);
+    }, 4000);
+
+    // Island visibility toggle
+    var toggleIslandVis = document.getElementById('toggle-island-vis');
+    var islandOverlay = document.getElementById('island-overlay');
+    toggleIslandVis.addEventListener('change', function() {
+        if (toggleIslandVis.checked) {
+            islandOverlay.style.display = '';
+        } else {
+            islandOverlay.style.display = 'none';
+        }
+    });
+
+});
+</script>
+
+</body>
+</html>

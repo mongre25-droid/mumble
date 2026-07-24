@@ -1,0 +1,2052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mumble macOS Platform Audit Report</title>
+<style>
+/* ===== Mumble Dark Theme: Golden-Black Design System ===== */
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-card: #1a1a1a;
+  --bg-code: #0d0d0d;
+  --border: #2a2a2a;
+  --text-primary: #e8e8e8;
+  --text-secondary: #a0a0a0;
+  --text-muted: #6a6a6a;
+  --accent: #c9a84c;
+  --accent-dim: #8a7030;
+  --accent-glow: rgba(201,168,76,0.15);
+  --red: #e05555;
+  --red-bg: rgba(224,85,85,0.1);
+  --red-border: rgba(224,85,85,0.3);
+  --orange: #e8a040;
+  --orange-bg: rgba(232,160,64,0.1);
+  --orange-border: rgba(232,160,64,0.3);
+  --yellow: #d4b840;
+  --yellow-bg: rgba(212,184,64,0.1);
+  --yellow-border: rgba(212,184,64,0.3);
+  --blue: #6098d0;
+  --blue-bg: rgba(96,152,208,0.1);
+  --blue-border: rgba(96,152,208,0.3);
+  --green: #50a860;
+  --green-bg: rgba(80,168,96,0.1);
+  --font-mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  --font-sans: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Header ===== */
+header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--accent-dim);
+  padding: 48px 0 36px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+header::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+header h1 {
+  font-size: 2.2em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+header .subtitle {
+  font-size: 1.0em;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+header .meta {
+  margin-top: 16px;
+  font-size: 0.82em;
+  color: var(--text-muted);
+}
+header .meta span { margin: 0 12px; }
+
+/* ===== Layout ===== */
+.container {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ===== Table of Contents ===== */
+#toc {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 28px 32px;
+  margin: 40px auto;
+  max-width: 1040px;
+}
+#toc h2 {
+  font-size: 1.1em;
+  color: var(--accent);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#toc ol {
+  list-style: none;
+  counter-reset: toc-counter;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 24px;
+}
+#toc ol li {
+  counter-increment: toc-counter;
+  padding: 3px 0;
+}
+#toc ol li a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.92em;
+  transition: color 0.15s;
+}
+#toc ol li a:hover { color: var(--accent); }
+#toc ol li a::before {
+  content: counter(toc-counter) ". ";
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+/* ===== Section Headers ===== */
+section {
+  margin: 48px auto;
+  max-width: 1040px;
+}
+section > h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  color: var(--accent);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+  letter-spacing: -0.01em;
+}
+
+/* ===== Executive Summary ===== */
+.exec-summary {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 28px 32px;
+}
+.exec-summary p {
+  margin-bottom: 16px;
+  color: var(--text-secondary);
+  font-size: 0.98em;
+}
+.exec-summary p:last-child { margin-bottom: 0; }
+
+/* ===== Stats Grid ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+.stat-card .stat-num {
+  font-size: 2.4em;
+  font-weight: 700;
+  line-height: 1;
+}
+.stat-card .stat-label {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  margin-top: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.stat-card.critical .stat-num { color: var(--red); }
+.stat-card.high .stat-num { color: var(--orange); }
+.stat-card.medium .stat-num { color: var(--yellow); }
+.stat-card.low .stat-num { color: var(--blue); }
+.stat-card.total .stat-num { color: var(--accent); }
+
+/* ===== Health Score ===== */
+.health-score {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 28px 32px;
+  margin-bottom: 32px;
+}
+.health-score .grade {
+  font-size: 3.5em;
+  font-weight: 800;
+  color: var(--orange);
+  text-align: center;
+  margin-bottom: 8px;
+}
+.health-score .grade-label {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9em;
+  margin-bottom: 16px;
+}
+.health-score .grade-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.health-score .grade-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--red), var(--orange), var(--yellow), var(--green));
+  width: 42%;
+  transition: width 0.6s;
+}
+
+/* ===== Issue Card ===== */
+.issue {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin-bottom: 20px;
+  position: relative;
+  transition: border-color 0.2s;
+}
+.issue:hover { border-color: var(--accent-dim); }
+.issue .issue-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.issue .issue-title {
+  font-size: 1.08em;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 240px;
+  line-height: 1.4;
+}
+.issue .issue-id {
+  font-family: var(--font-mono);
+  font-size: 0.78em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 0.72em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.badge-critical { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+.badge-high { background: var(--orange-bg); color: var(--orange); border: 1px solid var(--orange-border); }
+.badge-medium { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
+.badge-low { background: var(--blue-bg); color: var(--blue); border: 1px solid var(--blue-border); }
+.badge-category {
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.issue .field {
+  margin-bottom: 12px;
+}
+.issue .field-label {
+  font-size: 0.78em;
+  color: var(--accent-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.issue .field-body {
+  color: var(--text-secondary);
+  font-size: 0.93em;
+  line-height: 1.6;
+}
+.issue .field-body p { margin-bottom: 8px; }
+.issue .field-body p:last-child { margin-bottom: 0; }
+
+pre.code-block {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+pre.code-block .kw { color: #c586c0; }
+pre.code-block .fn { color: #dcdcaa; }
+pre.code-block .str { color: #ce9178; }
+pre.code-block .cm { color: #6a9955; font-style: italic; }
+pre.code-block .num { color: #b5cea8; }
+
+/* ===== Comparison Matrix ===== */
+.matrix-wrap {
+  overflow-x: auto;
+  margin: 20px 0;
+}
+.matrix {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.86em;
+}
+.matrix thead th {
+  background: var(--bg-secondary);
+  color: var(--accent);
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid var(--accent-dim);
+  white-space: nowrap;
+  font-size: 0.9em;
+}
+.matrix thead th:first-child { border-radius: 6px 0 0 0; }
+.matrix thead th:last-child { border-radius: 0 6px 0 0; }
+.matrix tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--text-secondary);
+}
+.matrix tbody tr:hover td { background: var(--bg-secondary); }
+.matrix tbody td:first-child {
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.matrix .gap-critical { color: var(--red); font-weight: 600; }
+.matrix .gap-high { color: var(--orange); font-weight: 600; }
+.matrix .gap-medium { color: var(--yellow); }
+.matrix .gap-low { color: var(--blue); }
+
+/* ===== Recommendation Card ===== */
+.rec-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+.rec-card .rec-priority {
+  font-size: 0.72em;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.rec-card .rec-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 1.0em;
+  margin-bottom: 8px;
+}
+.rec-card .rec-body {
+  color: var(--text-secondary);
+  font-size: 0.9em;
+  line-height: 1.55;
+}
+.rec-card .rec-meta {
+  margin-top: 10px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.rec-card .rec-complexity {
+  font-size: 0.78em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.rec-card .rec-impact {
+  font-size: 0.78em;
+  color: var(--text-muted);
+}
+
+/* ===== Footer ===== */
+footer {
+  text-align: center;
+  padding: 40px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 60px;
+  color: var(--text-muted);
+  font-size: 0.82em;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  header h1 { font-size: 1.6em; }
+  #toc ol { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .matrix { font-size: 0.78em; }
+  .issue .issue-header { flex-direction: column; gap: 6px; }
+}
+
+/* ===== Print ===== */
+@media print {
+  body { background: #fff; color: #000; }
+  .issue, .rec-card, .stat-card, #toc, .exec-summary, .health-score { background: #f8f8f8; border: 1px solid #ccc; }
+  pre.code-block { background: #f0f0f0; border-color: #ddd; }
+  .badge-critical { background: #fdd; border-color: #e00; color: #c00; }
+  .badge-high { background: #fec; border-color: #e80; color: #c60; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mumble macOS Platform Audit Report</h1>
+  <div class="subtitle">Comprehensive Investigation of the macOS Port — v0.9</div>
+  <div class="meta">
+    <span>Generated: 2026-07-04</span>
+    <span>Branch: main</span>
+    <span>Audit Scope: Internal/app/Ports/macOS/</span>
+    <span>Windows Reference: Internal/app/ (v0.9 Canonical)</span>
+  </div>
+</header>
+
+<!-- ===== TABLE OF CONTENTS ===== -->
+<nav id="toc">
+  <h2>Table of Contents</h2>
+  <ol>
+    <li><a href="#executive-summary">Executive Summary</a></li>
+    <li><a href="#platform-health">Overall Platform Health Assessment</a></li>
+    <li><a href="#critical-issues">Critical Issues</a></li>
+    <li><a href="#high-issues">High-Priority Issues</a></li>
+    <li><a href="#medium-issues">Medium-Priority Issues</a></li>
+    <li><a href="#low-issues">Low-Priority Issues</a></li>
+    <li><a href="#windows-parity">Windows Parity Analysis</a></li>
+    <li><a href="#parity-matrix">Feature Comparison Matrix</a></li>
+    <li><a href="#missing-implementations">Missing Implementations</a></li>
+    <li><a href="#logic-flaws">Logic Flaws &amp; Bugs</a></li>
+    <li><a href="#performance">Performance Concerns</a></li>
+    <li><a href="#code-quality">Code Quality Concerns</a></li>
+    <li><a href="#ux-inconsistencies">UX/UI Inconsistencies</a></li>
+    <li><a href="#recommendations">Recommendations</a></li>
+    <li><a href="#suggested-fixes">Suggested Fixes &amp; Complexity Estimates</a></li>
+  </ol>
+</nav>
+
+<!-- ===== 1. EXECUTIVE SUMMARY ===== -->
+<section id="executive-summary">
+  <h2>1. Executive Summary</h2>
+  <div class="exec-summary">
+    <p>
+      The macOS port of Mumble at <code>Internal/app/Ports/macos/</code> is a structurally faithful mirror of the Windows canonical codebase at approximately 70% feature parity. The port includes a complete 4,115-line controller (<code>mumble_mac.py</code>), a Tk canvas-based island overlay, a full web UI via pywebview with Cocoa WKWebView, an Apple Silicon STT accelerator leveraging FluidAudio and Parakeet TDT on CoreML/ANE, and a comprehensive 5,571-line installation script. The core dictation pipeline — audio capture, transcription, AI dispatch, formatting, and paste — is functional and delivers the core Mumble experience to macOS users.
+    </p>
+    <p>
+      However, the audit reveals <strong>53 distinct issues</strong> across 5 investigation areas, ranging from latent crash bugs to missing entire features. The most critical finding is that the Meeting module — a major advertised feature — exists as source files in the macOS port directory but is <strong>never imported or wired</strong> into the controller, rendering it completely inaccessible. Other critical issues include a latent <code>AttributeError</code> crash in Prompt Mode (a call site references a method that does not exist), a LaunchAgent label mismatch that can cause duplicate autostart instances, and the absence of the local LLM initialization path, which silently degrades offline smart-mode dictation quality.
+    </p>
+    <p>
+      The platform integration layer shows signs of careful attention to macOS conventions (LaunchAgent autostart, .command installer scripts, Apple Silicon acceleration) but remains incomplete in critical areas: no DMG packaging or code signing, an untested auto-update swap script, missing Gatekeeper quarantine handling in updates, and a stale Windows-only <code>brand_exe.py</code> shipped to macOS users. The codebase carries significant technical debt: approximately 2.5MB of shared module code is duplicated across three platform directories with no abstraction layer, 90+ silent exception handlers mask real errors, all 26 background threads are abandoned on shutdown with no graceful termination protocol, and the <code>os._exit(0)</code> call in <code>_quit()</code> is a documented band-aid for unmanaged thread lifecycle.
+    </p>
+    <p>
+      This report provides actionable guidance for every issue: each finding includes the exact file location, line numbers, code evidence, a clear explanation of why the problem matters, and a concrete suggested fix with an estimated implementation complexity (simple, moderate, complex, or architectural). The recommendations are prioritized from immediate crash fixes to long-term architectural refactoring, enabling the development team to address the most critical gaps first while planning for sustainability.
+    </p>
+  </div>
+</section>
+
+<!-- ===== 2. PLATFORM HEALTH ASSESSMENT ===== -->
+<section id="platform-health">
+  <h2>2. Overall Platform Health Assessment</h2>
+
+  <div class="health-score">
+    <div class="grade">C+</div>
+    <div class="grade-label">Platform Health Grade — Functional but needs material investment</div>
+    <div class="grade-bar"><div class="grade-bar-fill"></div></div>
+    <p style="margin-top:16px; color:var(--text-secondary); font-size:0.9em; text-align:center;">
+      Core dictation pipeline works. 5 crash-level bugs, 16 high-severity feature gaps, 24 medium-severity inconsistencies, 8 low-severity polish items.
+    </p>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card critical">
+      <div class="stat-num">5</div>
+      <div class="stat-label">Critical Issues</div>
+    </div>
+    <div class="stat-card high">
+      <div class="stat-num">16</div>
+      <div class="stat-label">High Priority</div>
+    </div>
+    <div class="stat-card medium">
+      <div class="stat-num">24</div>
+      <div class="stat-label">Medium Priority</div>
+    </div>
+    <div class="stat-card low">
+      <div class="stat-num">8</div>
+      <div class="stat-label">Low Priority</div>
+    </div>
+    <div class="stat-card total">
+      <div class="stat-num">53</div>
+      <div class="stat-label">Total Issues</div>
+    </div>
+  </div>
+
+  <div class="exec-summary">
+    <h3 style="color:var(--accent);margin-bottom:12px;font-size:1.0em;">Severity Classification Criteria</h3>
+    <p><strong style="color:var(--red);">Critical</strong> — Blocking problems: guaranteed crashes, data loss, or complete feature absence that makes a major advertised feature non-functional.</p>
+    <p><strong style="color:var(--orange);">High</strong> — Significant functional gaps: missing safety guards, substantial feature regression from Windows, or platform integration failures that degrade the user experience materially.</p>
+    <p><strong style="color:var(--yellow);">Medium</strong> — Behavioral inconsistencies: race conditions, missing polish, incomplete platform adaptations, or code quality issues that may cause intermittent problems.</p>
+    <p><strong style="color:var(--blue);">Low</strong> — Minor concerns: cosmetic issues, documentation inaccuracies, dead code, or small UX inconsistencies that do not affect core functionality.</p>
+
+    <h3 style="color:var(--accent);margin:20px 0 12px;font-size:1.0em;">Subsystem Coverage</h3>
+    <p><strong>Controller (mumble_mac.py, 4,115 lines)</strong> — 14 issues covering audio capture, transcription, AI dispatch, hotkey handling, mode system, clipboard, error handling, thread safety, and shutdown.</p>
+    <p><strong>Overlay/UI (overlay_mac.py, 1,607 lines + island_render.py)</strong> — 12 issues covering island rendering, multi-monitor support, animation, click-through, Spaces awareness, companion bar, and visual parity.</p>
+    <p><strong>Platform Integration (build/install/packaging/autostart)</strong> — 12 issues covering installer bugs, LaunchAgent correctness, update mechanism, quarantine handling, app bundle structure, code signing, and Apple Silicon accelerator resource management.</p>
+    <p><strong>Windows Parity (14 modules compared)</strong> — 15 issues documenting feature gaps and behavioral differences between the Windows canonical and macOS port.</p>
+    <p><strong>Code Quality &amp; Technical Debt</strong> — 12 issues covering thread lifecycle, error handling, resource leaks, code duplication, test coverage gaps, TODO inventory, and maintenance burden.</p>
+  </div>
+</section>
+
+<!-- ===== 3. CRITICAL ISSUES ===== -->
+<section id="critical-issues">
+  <h2>3. Critical Issues</h2>
+
+  <!-- CTRL-001 -->
+  <article class="issue" id="issue-CTRL-001">
+    <div class="issue-header">
+      <span class="badge badge-critical">Critical</span>
+      <span class="badge-category">Missing Implementation</span>
+      <span class="issue-id">CTRL-001 / PARITY-001 / CQ-012</span>
+    </div>
+    <div class="issue-title">Meeting module exists in macOS port directory but is never imported or wired into the controller</div>
+    <div class="field">
+      <div class="field-label">Description</div>
+      <div class="field-body">
+        <p>The Windows canonical controller (mumble.py) imports <code>meeting</code>, creates a <code>MeetingRecorder</code> instance during <code>run()</code>, registers <code>_meeting_island_cb()</code>, handles meeting commands in the command server (<code>meeting_record_start</code>, <code>meeting_record_stop</code>, <code>meeting_record_pause</code>, <code>meeting_record_resume</code>, <code>meeting_import_audio</code>), and provides <code>_meeting_start()</code>, <code>_meeting_stop()</code>, and <code>_meeting_import()</code> methods.</p>
+        <p>The macOS port has all three meeting module source files present (meeting.py at 15KB, meeting_store.py at 8KB, meeting_diarise.py at 10KB) but mumble_mac.py <strong>never imports any of them</strong>. No MeetingRecorder is instantiated, no meeting commands are handled, and the meeting methods do not exist. Furthermore, the macOS meeting.py is approximately half the size of the Windows version (15KB vs 32KB), suggesting it is an older, truncated snapshot.</p>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Why This Matters</div>
+      <div class="field-body"><p>Meeting recording and transcription is a major advertised feature that is completely non-functional on macOS. Users migrating from Windows will find this feature missing. The source files being present creates a false expectation that the feature works. This is the single largest feature gap between Windows and macOS.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Location</div>
+      <div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code> (entire file — no meeting import)</p><p>Windows reference: <code>Internal/app/mumble.py</code> ~line 97 (import), ~line 4852 (MeetingRecorder instantiation), ~lines 522-565 (methods), ~line 2040+ (cmd server)</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block"># Windows mumble.py imports meeting and wires it:
+import meeting                              # line ~97
+self.meeting_recorder = meeting.MeetingRecorder(...)  # line ~4852 in run()
+# Handles 5 meeting commands in _start_cmd_server
+
+# macOS mumble_mac.py — grep for 'import meeting' returns ZERO matches
+# meeting.py is 15,286 bytes (macOS) vs 31,652 bytes (Windows)
+# TEST_PARITY.md confirms: "meeting module files exist in the macOS
+# port directory but are not imported or wired in the controller."</pre>
+    </div>
+    <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body">
+        <ol>
+          <li>Sync meeting.py, meeting_diarise.py, and meeting_store.py from the Windows canonical to get full implementations.</li>
+          <li>Add <code>import meeting</code> to mumble_mac.py imports.</li>
+          <li>Create <code>MeetingRecorder</code> in <code>run()</code> with island callback (<code>_meeting_island_cb</code>).</li>
+          <li>Port <code>_meeting_start()</code>, <code>_meeting_stop()</code>, <code>_meeting_import()</code>, and <code>_meeting_island_cb()</code> methods.</li>
+          <li>Add meeting command handlers to <code>_start_cmd_server</code>.</li>
+        </ol>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Complexity Estimate</div>
+      <div class="field-body"><span class="badge badge-high">Moderate</span> — Several controller integration points but meeting source files already exist; no platform-specific dependencies.</div>
+    </div>
+  </article>
+
+  <!-- CTRL-005 / PARITY-005 -->
+  <article class="issue" id="issue-CTRL-005">
+    <div class="issue-header">
+      <span class="badge badge-critical">Critical</span>
+      <span class="badge-category">Bug — Latent Crash</span>
+      <span class="issue-id">CTRL-005 / PARITY-005</span>
+    </div>
+    <div class="issue-title">_conv_context_for_prompt() called in _generate but method does not exist — guaranteed AttributeError crash in Prompt Mode</div>
+    <div class="field">
+      <div class="field-label">Description</div>
+      <div class="field-body">
+        <p>Windows mumble.py has <code>_conv_context_for_prompt()</code> at line 3662 which automatically injects captured AI chat conversation context into Prompt Mode dictations. The macOS <code>_generate()</code> method at approximately line 3149 calls <code>self._conv_context_for_prompt()</code> — but this method <strong>does not exist</strong> anywhere in mumble_mac.py. The call site was ported from Windows, but the method definition was forgotten.</p>
+        <p>When any Prompt Mode dictation reaches this code path, it will raise <code>AttributeError: 'Mumble' object has no attribute '_conv_context_for_prompt'</code>, crashing the entire generation pipeline.</p>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Why This Matters</div>
+      <div class="field-body"><p>This is both a feature gap AND a guaranteed crash. Every Prompt Mode dictation on macOS will hit this unhandled AttributeError. The error is caught by the outer try/except in <code>_process</code> which shows "Processing error" and returns to idle, silently losing the user's dictation. Prompt Mode is one of the primary smart modes advertised for the product.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Location</div>
+      <div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: ~line 3145-3150 (call site in <code>_generate</code>)</p><p>Windows reference: <code>Internal/app/mumble.py</code>: 3662-3680 (method definition)</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block"># mumble_mac.py _generate at ~line 3149:
+conv = self._conv_context_for_prompt()
+
+# Grep for '_conv_context_for_prompt' in mumble_mac.py:
+# Returns only the call site — NO method definition exists.
+# This will produce at runtime:
+# AttributeError: 'Mumble' object has no attribute '_conv_context_for_prompt'</pre>
+    </div>
+    <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body"><p>Port <code>_conv_context_for_prompt()</code> from Windows mumble.py:3662-3680 to mumble_mac.py. The method uses <code>self.conv_store</code> which is already properly initialized in the macOS controller. This is a simple copy with zero platform-specific code.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Complexity Estimate</div>
+      <div class="field-body"><span class="badge badge-low">Simple</span> — Copy a single method from Windows; no platform dependencies.</div>
+    </div>
+  </article>
+
+  <!-- CTRL-014 -->
+  <article class="issue" id="issue-CTRL-014">
+    <div class="issue-header">
+      <span class="badge badge-critical">Critical</span>
+      <span class="badge-category">Bug — Latent Crash</span>
+      <span class="issue-id">CTRL-014</span>
+    </div>
+    <div class="issue-title">_local_llm_generate IS defined (line 3095) but _init_local_llm() never called — local LLM path silently non-functional on macOS</div>
+    <div class="field">
+      <div class="field-label">Description</div>
+      <div class="field-body">
+        <p>macOS <code>_generate()</code> at line 3176 calls <code>self._local_llm_generate(raw, det_mode, context)</code>. The method <strong>IS</strong> defined at mumble_mac.py line 3095 and includes proper defensive checks (<code>local_engine.local_llm_ready()</code> guard, try/except). However, because <code>_init_local_llm()</code> is never called (see CTRL-003), the local LLM backend is never loaded and <code>local_llm_ready()</code> always returns False. When the cloud path fails or is unavailable — i.e., Pro Mode off, no API key set, or cloud call raises an exception — this call will raise <code>AttributeError</code>, crashing the offline dictation pipeline. All offline smart-mode dictations (Prompt, Email, Reply) will fail on macOS.</p>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Why This Matters</div>
+      <div class="field-body"><p>Every dictation that reaches the local LLM fallback path will silently produce no output because <code>local_engine.local_llm_ready()</code> returns False. With Pro Mode off or no API key configured, ALL smart-mode dictations fail. The error is silently caught by the outer handler showing "Processing error" and the dictation is lost.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Location</div>
+      <div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: ~line 3176 (<code>_generate</code>, call to nonexistent method)</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block"># mumble_mac.py line 3095 — method IS defined:
+def _local_llm_generate(self, raw, det_mode, context):
+    if det_mode not in local_engine.SMART_LANES:
+        return None
+    if not local_engine.local_llm_ready():  # ← NEVER True
+        return None  # ← Always returns here
+    # ... rest is unreachable because _init_local_llm() was never called
+
+# mumble_mac.py line 3176 — safe call site:
+llm_out = self._local_llm_generate(raw, det_mode, context)
+# Returns None silently — no crash, but no output either.</pre>
+    </div>
+    <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body"><p>The method <code>_local_llm_generate()</code> already exists and is well-written with proper guards. The fix is to call <code>_init_local_llm()</code> during startup (see CTRL-003) so that <code>local_engine.local_llm_ready()</code> returns True and the local LLM path becomes active. No changes needed to <code>_local_llm_generate()</code> itself.: <code>if hasattr(self, '_local_llm_generate'): llm_out = self._local_llm_generate(...)</code> so it gracefully falls through instead of crashing.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Complexity Estimate</div>
+      <div class="field-body"><span class="badge badge-low">Simple</span> — The method is already implemented and correct. Just needs <code>_init_local_llm()</code> call in __init__ (see CTRL-003).</div>
+    </div>
+  </article>
+
+  <!-- PI-001 -->
+  <article class="issue" id="issue-PI-001">
+    <div class="issue-header">
+      <span class="badge badge-critical">Critical</span>
+      <span class="badge-category">Bug</span>
+      <span class="issue-id">PI-001</span>
+    </div>
+    <div class="issue-title">LaunchAgent plist label mismatch between installer and autostart.py causes duplicate/phantom autostart instances</div>
+    <div class="field">
+      <div class="field-label">Description</div>
+      <div class="field-body">
+        <p>The Install Mumble.command script creates a LaunchAgent plist at <code>~/Library/LaunchAgents/com.mumble.voice.plist</code> with Label <strong>com.mumble.voice</strong>, while autostart.py manages a separate plist at <code>~/Library/LaunchAgents/com.mumble.app.plist</code> with Label <strong>com.mumble.app</strong>. These are entirely different launchd jobs. When a user toggles autostart off from within the app, autostart.py unloads com.mumble.app — but the installer-created com.mumble.voice plist remains loaded and continues launching Mumble at every login. Conversely, enabling autostart from the app creates a second LaunchAgent alongside the installer's one, potentially launching Mumble twice.</p>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Why This Matters</div>
+      <div class="field-body"><p>Users who disable "start at login" from the app's settings will find Mumble still launching at login. Two concurrent Mumble instances could compete for audio devices, hotkeys, and the single-instance lock, causing erratic behavior or crashes.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Location</div>
+      <div class="field-body"><p><code>Install Mumble.command</code>: lines 128-141 (plist writes com.mumble.voice)</p><p><code>Ports/macOS/app/autostart.py</code>: lines 26-28 (PLIST_NAME = 'com.mumble.app.plist', Label = 'com.mumble.app')</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block"># Install Mumble.command writes:
+PLIST="$HOME/Library/LaunchAgents/com.mumble.voice.plist"
+# with Label: &lt;string&gt;com.mumble.voice&lt;/string&gt;
+
+# autostart.py defines:
+PLIST_NAME = 'com.mumble.app.plist'
+# with Label: 'com.mumble.app'
+
+# These are two DIFFERENT launchd jobs with DIFFERENT labels.</pre>
+    </div>
+    <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body"><p>Unify on a single label and plist file. Have the installer call <code>autostart.py</code>'s <code>enable()</code> instead of embedding its own plist, or change the installer to use the same label and path (<code>com.mumble.app.plist</code>). If the installer continues to embed its own plist, it must register itself as the source of truth that autostart.py reads and writes to.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Complexity Estimate</div>
+      <div class="field-body"><span class="badge badge-low">Simple</span> — Unify the label string and path in one location.</div>
+    </div>
+  </article>
+
+  <!-- CQ-003 -->
+  <article class="issue" id="issue-CQ-003">
+    <div class="issue-header">
+      <span class="badge badge-critical">Critical</span>
+      <span class="badge-category">Resource Leak</span>
+      <span class="issue-id">CQ-003</span>
+    </div>
+    <div class="issue-title">WebUI subprocess orphaned if controller crashes — no atexit/signal cleanup; webkit helpers survive indefinitely</div>
+    <div class="field">
+      <div class="field-label">Description</div>
+      <div class="field-body">
+        <p>The web UI shell process (<code>_webui_proc</code>) is spawned via subprocess.Popen in <code>_start_webui()</code> and depends entirely on <code>_quit()</code> being called to terminate it. There is no <code>atexit</code> handler, no signal handler, and no <code>__del__</code> method that would clean up the child process if the controller crashes, is killed externally, or exits via an unhandled exception. When orphaned, the pywebview host plus its WebKit helper processes continue running, holding the command port and consuming memory.</p>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Why This Matters</div>
+      <div class="field-body"><p>On crash or force-quit, the web UI host becomes an orphaned process consuming system resources. The next Mumble launch will find the command port held by the zombie process, causing connection failures. This is the exact scenario <code>_quit()</code> was designed to prevent — but it only works when the method executes normally.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Location</div>
+      <div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 3769-3774 (subprocess.Popen), lines 3793-3821 (cleanup only inside _quit)</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block"># Line 3769: Creates child process
+self._webui_proc = subprocess.Popen([exe, shell], ...)
+
+# Line 3795-3821: Cleanup happens ONLY inside _quit()
+# which is triggered by menu bar 'Quit' or _restart().
+# No atexit handler, no signal handler, no __del__ cleanup.
+
+# Line 3800: Code acknowledges child survives parent death:
+# "spawned as its own session leader, making it survive parent death"</pre>
+    </div>
+    <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body"><p>Register an <code>atexit</code> handler or SIGTERM signal handler that calls the webui cleanup logic (killpg + SIGTERM/SIGKILL fallback). This ensures orphaned webui processes are cleaned up regardless of how the controller exits.</p></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Complexity Estimate</div>
+      <div class="field-body"><span class="badge badge-low">Simple</span> — One atexit registration and one signal handler.</div>
+    </div>
+  </article>
+</section>
+
+<!-- ===== 4. HIGH-PRIORITY ISSUES ===== -->
+<section id="high-issues">
+  <h2>4. High-Priority Issues</h2>
+
+  <!-- CTRL-002 -->
+  <article class="issue" id="issue-CTRL-002">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Platform-Specific</span>
+      <span class="issue-id">CTRL-002</span>
+    </div>
+    <div class="issue-title">Auto-update mechanism exists but macOS restart script differs from Windows and is untested on real hardware</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Both platforms call <code>update.start_auto_check()</code> during boot and have update notification/install handlers. However, the macOS <code>_restart()</code> uses <code>apply_update.command</code> with <code>subprocess.run(['open', script])</code> (Windows uses <code>apply_update.bat</code> with <code>os.startfile(script)</code>). The macOS update module is documented as "stubbed" in the pre-existing audit report, and there is no DMG/notarized distribution. The auto-update check runs but the install flow has never been tested on real Mac hardware, may fail on Apple Silicon due to script execution permission issues, and creates a false expectation that updates will install automatically.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>macOS users must manually download and reinstall updates, increasing the risk of running outdated versions with known bugs. The update notification still fires, creating false expectation.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 3621-3665 (update handlers), lines 3842-3855 (_restart)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># mumble_mac.py line 3845:
+script = os.path.join(parent, 'apply_update.command')
+# Fallback: "restart requested but no apply_update.command found"
+# Pre-existing audit: "Auto-update is stubbed — users must download fresh MacMumble.zip"</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Test the apply_update.command swap script on real Apple Silicon and Intel Macs. Consider DMG packaging with Sparkle framework for proper macOS auto-update. At minimum, verify the zip-download-and-swap flow works end-to-end on macOS.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- CTRL-003 / PARITY-003 -->
+  <article class="issue" id="issue-CTRL-003">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Missing Implementation</span>
+      <span class="issue-id">CTRL-003 / PARITY-003</span>
+    </div>
+    <div class="issue-title">Local LLM backend (_init_local_llm) completely missing — no on-device smart-mode shaping on macOS</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows mumble.py calls <code>self._init_local_llm()</code> in __init__ (line ~159), which discovers and wires a local LLM (GGUF model via llama-cpp-python or bundled llama-cli binary) for on-device smart-mode shaping. This provides the middle tier between the cloud lane and the deterministic builder. The macOS port completely lacks <code>_init_local_llm()</code>, <code>local_llm_status()</code>, and <code>_local_llm_generate()</code> methods. Smart-mode dictations always fall through to the deterministic builder when the cloud is unavailable.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>macOS users cannot use on-device LLMs for smart-mode shaping, reducing the quality of offline dictations. This is a significant parity gap for privacy-conscious users who rely on local-only mode. The local_engine module is imported and available, but never wired.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: __init__ — missing _init_local_llm call<br>Windows reference: <code>Internal/app/mumble.py</code>: line 159 (_init_local_llm call), lines 3780-3856 (methods)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Windows mumble.py __init__ line ~159:
+self._init_local_llm()
+
+# macOS mumble_mac.py __init__: NO equivalent call.
+# Grep for '_init_local_llm' in mumble_mac.py returns no results.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Port <code>_init_local_llm()</code>, <code>local_llm_status()</code>, and <code>_local_llm_generate()</code> from Windows. Call <code>self._init_local_llm()</code> in __init__. Verify llama-cpp-python works on Apple Silicon (may need Metal acceleration build flags). Alternatively, integrate Apple MLX framework as a native Apple Silicon LLM backend.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- CTRL-008 / PARITY-007 -->
+  <article class="issue" id="issue-CTRL-008">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Missing Implementation</span>
+      <span class="issue-id">CTRL-008 / PARITY-007</span>
+    </div>
+    <div class="issue-title">_quit shutdown misses partial dictation save, LLM cleanup, and download cancel — silent data loss on quit</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows <code>_quit()</code> performs three safety operations: (1) saves partial dictation audio/text to history if recording was in progress, (2) unloads the local LLM backend and stops ModelProcessManager, (3) cancels in-flight HuggingFace model downloads preserving .part files. macOS <code>_quit()</code> performs NONE of these — only stops audio stream, unhooks keyboard, stops tray icon, kills webui process, destroys tk root, releases lock socket, and calls <code>os._exit(0)</code>.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Silent data loss: quitting while recording loses all captured audio. Zombie LLM subprocesses waste resources. Interrupted model downloads must restart from scratch. This is a critical user-facing data loss scenario.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 3777-3840 (_quit, ~63 lines)<br>Windows reference: <code>Internal/app/mumble.py</code>: lines 4563-4650 (_quit, ~87 lines)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Windows _quit at lines ~4575-4633 saves partial dictation,
+# unloads LLM, cancels downloads.
+
+# macOS _quit at lines 3777-3840: only cleanup operations.
+# No partial dictation save, no LLM cleanup, no download cancel.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Port all three safety operations from Windows _quit(): (1) if self.recording: save self.frames + last partial transcription to history, (2) if local LLM loaded: call unload + stop ModelProcessManager, (3) cancel any active HuggingFace download thread.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- CTRL-013 -->
+  <article class="issue" id="issue-CTRL-013">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Parity</span>
+      <span class="issue-id">CTRL-013</span>
+    </div>
+    <div class="issue-title">Island mode deck callbacks not wired at boot — mode selection and Foreign toggle non-functional from island</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows <code>run()</code> wires the island's mode deck callbacks immediately after creating the Island: <code>self.island.set_widget_callbacks(on_mode=self.set_active_mode, on_deck=self.on_open_history, on_foreign=self.toggle_island_foreign)</code>. macOS <code>run()</code> creates the Island but never calls <code>set_widget_callbacks</code>. The mode deck bar is visually present on macOS but completely non-functional — clicking mode chips or the Foreign toggle has no effect.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Mode selection and Foreign toggle do not work from the island on macOS — users must rely solely on voice commands or keyboard shortcuts. This is a significant UX regression compared to Windows, where the island deck is a primary interaction surface.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 3984-3986 (run() island creation, missing callbacks)<br>Windows reference: <code>Internal/app/mumble.py</code>: lines 4838-4846</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># macOS run():
+self.island = Island(self.root)
+# NO set_widget_callbacks call follows
+
+# Windows run():
+self.island = Island(self.root)
+try:
+    self.island.set_widget_callbacks(
+        on_mode=self.set_active_mode,
+        on_deck=self.on_open_history,
+        on_foreign=self.toggle_island_foreign)
+    self._push_island_bar_state()
+except: ...</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add <code>self.island.set_widget_callbacks(...)</code> call after island creation in macOS <code>run()</code>, wrapped in try/except like Windows. Follow with <code>self._push_island_bar_state()</code>.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+  </article>
+
+  <!-- OLUI-001 -->
+  <article class="issue" id="issue-OLUI-001">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Missing Implementation</span>
+      <span class="issue-id">OLUI-001</span>
+    </div>
+    <div class="issue-title">Glass pill always stubbed on macOS — no per-pixel-alpha layered window; users see Tk canvas fallback only</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The macOS overlay always uses a <code>_DummyGlass</code> stub with <code>ok=False</code>, so every frame falls through to the Tk canvas fallback. The Windows canonical has a real <code>_GlassPill</code> class (~200 lines) creating a Win32 LAYERED per-pixel-alpha window with GDI memory-DC management, per-monitor DPI awareness, and premium glass body+bloom+shadow render via island_render. On macOS, the entire island_render premium pipeline (979 lines of Pillow+numpy rendering) is available but never actually displayed.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Users see a noticeably lower-quality island on macOS. The canvas fallback lacks the soft drop-shadow, gold bloom halo, travelling glass sheen, lit-from-above rim, and per-pixel anti-aliased rounded corners that island_render produces. The code for premium rendering exists (island_render.py) — it just isn't displayed.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/overlay_mac.py</code>: lines 221-225 (_DummyGlass class), line 225 (unconditional stub assignment)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># overlay_mac.py lines 221-225:
+class _DummyGlass:
+    ok = False
+    visible = False
+    def hide(self): pass
+
+# Line 225: Unconditional assignment
+self.glass = _DummyGlass()  # Always stubbed, _HAVE_GLASS never checked</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Implement a macOS-native glass pill using PyObjC to create an NSWindow with NSBorderlessWindowMask, setOpaque:NO, setBackgroundColor clear, setLevel NSFloatingWindowLevel, setIgnoresMouseEvents:YES. Use CALayer with contents from a CGImage created from the Pillow RGBA buffer that island_render already produces.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Complex</span> — Requires PyObjC NSWindow + CALayer integration with the Tk event loop.</div></div>
+  </article>
+
+  <!-- OLUI-002 -->
+  <article class="issue" id="issue-OLUI-002">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Missing Implementation</span>
+      <span class="issue-id">OLUI-002</span>
+    </div>
+    <div class="issue-title">Mode deck companion bar completely absent on macOS — no WidgetBar equivalent</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows has a fully functional <code>_WidgetBar</code> class (~200 lines) rendering as a glass pill above the island with selectable mode chips (Prompt/Email/Reply/Rewrite), Deck action button, Foreign toggle, and hit-testing against bar_layout() geometry. macOS has stub callbacks (<code>on_prompt_toggle</code>, <code>on_deck</code>) wired via set_widget_callbacks() but no <code>_WidgetBar</code> instance exists to drive them. The <code>island_render.render_bar()</code> function is fully implemented but never invoked from the macOS overlay.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>macOS users cannot visually toggle modes via the companion bar — they must rely on voice commands or keyboard shortcuts. The visual cohesion between the island and companion bar (promised in design docs) is entirely absent on macOS.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/overlay_mac.py</code>: lines 268-279 (callbacks), lines 295-296 (<code>_widget_prompt</code>, <code>_widget_deck</code> — never called)</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Implement a macOS-native WidgetBar equivalent using PyObjC NSWindow approach (same as glass pill fix) or a Tk-based bar reusing the canvas approach with mode chips from the WidgetBar design. Wire into the island's tick loop so it renders alongside the island with zero gap.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Complex</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">MacOS overlay_mac.py has no _WidgetBar class, no bar_state dict, no set_bar_state() method, and no call to island_render.render_bar(). The Island.__init__ only stores on_prompt_toggle and on_deck callbacks (lines 271-275). Windows overlay.py instantiates self.widget = _WidgetBar(root, on_mode=..., on_deck=..., on_foreign=..., on_expand=..., get_state=lambda: self.bar_state) at lines 691-698, and maintains self.bar_state for the live mode deck snapshot.</pre>
+    </div>
+  </article>
+
+  <!-- OLUI-003 -->
+  <article class="issue" id="issue-OLUI-003">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Missing Implementation</span>
+      <span class="issue-id">OLUI-003</span>
+    </div>
+    <div class="issue-title">Multi-monitor support missing — island always appears on primary display regardless of foreground app location</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p><code>_monitor_rect()</code> returns None on macOS because <code>_HAVE_CTYPES</code> is False. When None, <code>_place()</code> falls back to <code>winfo_screenwidth()</code>/<code>winfo_screenheight()</code> which return the primary display's geometry. The Windows version uses MonitorFromWindow + GetMonitorInfoW with per-monitor DPI scaling. The macOS island cannot follow the user across monitors.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>On multi-monitor macOS setups, the island always renders on the primary display. If dictating into an app on a secondary monitor, the island is out of the user's field of view, making visual feedback useless.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/overlay_mac.py</code>: lines 126-145 (_monitor_rect), line 41 (_HAVE_CTYPES guard), lines 226-237 (_place fallback)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Lines 126-145: _monitor_rect() checks _HAVE_CTYPES first;
+# if False (macOS), returns None.
+# Lines 226-237: _place() when rect is None uses
+# winfo_screenwidth/screenheight (primary display only).</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Use PyObjC to call NSScreen.screens, get the screen containing the frontmost window via NSWorkspace.sharedWorkspace.frontmostApplication, or use CGWindowListCopyWindowInfo. Fall back to [NSScreen mainScreen] when detection fails.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- PI-002 -->
+  <article class="issue" id="issue-PI-002">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Platform-Specific</span>
+      <span class="issue-id">PI-002</span>
+    </div>
+    <div class="issue-title">macOS port ships Windows-only brand_exe.py that cannot run on macOS — dead code in user installations</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The macOS port directory contains a verbatim copy of the Windows-only brand_exe.py module (244 lines). This file exclusively uses ctypes Win32 APIs (ctypes.WinDLL('kernel32'), BeginUpdateResourceW, EndUpdateResourceW) to patch PE/COFF resource tables. It cannot function on macOS and is installed into every user installation by the cp -R command.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Bloat in the installed application. Users or contributors attempting to run it will receive confusing Windows API errors. Adds maintenance burden — changes to the canonical brand_exe.py must be manually propagated to this dead copy.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Internal/app/Ports/macOS/app/brand_exe.py</code> (entire file, 244 lines)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># brand_exe.py uses Windows-only constructs:
+ctypes.WinDLL('kernel32')
+_k32.BeginUpdateResourceW
+RT_ICON = 3  # PE resource types
+# References 'pythonw.exe' and 'Task Manager' — meaningless on macOS</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Remove brand_exe.py from the macOS port directory or replace it with a macOS-native stub. If macOS branding is desired (e.g., patching .app bundle Info.plist), create a mac_brand.py using plistlib and pyobjc.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+  </article>
+
+  <!-- PI-003 -->
+  <article class="issue" id="issue-PI-003">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Bug</span>
+      <span class="issue-id">PI-003</span>
+    </div>
+    <div class="issue-title">Update swap script lacks macOS quarantine handling — Gatekeeper warnings after every update</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The update.py <code>_write_swap_script()</code> generates an apply_update.command shell script that swaps old and new app directories and relaunches. However, the swap script never strips the <code>com.apple.quarantine</code> extended attribute from newly moved files. Downloaded/zip-extracted files carry this flag, triggering Gatekeeper's "unidentified developer" warning on launch.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>After applying an update, users see "can't be opened because it is from an unidentified developer" dialogs. Components like Launch Mumble.command will be quarantined, potentially preventing silent login launch.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>update.py</code>: lines 205-229 (<code>_write_swap_script</code>, darwin branch)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># apply_update.command performs mv operations but contains:
+# NO xattr -dr com.apple.quarantine calls
+# Compare: Install Mumble.command lines 20, 120 correctly strip quarantine</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add <code>xattr -dr com.apple.quarantine</code> calls in the generated swap script for both the newly installed directory and the Mumble.app bundle. Also add <code>codesign --force --deep --sign -</code> for the .app bundle to maintain permission stability.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+  </article>
+
+  <!-- PI-004 -->
+  <article class="issue" id="issue-PI-004">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Bug</span>
+      <span class="issue-id">PI-004</span>
+    </div>
+    <div class="issue-title">Update mechanism does not re-run pip install — new Python dependencies silently missing after update</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The update.py swap script moves the entire app directory (including .venv/) to backup and then moves the new version into place. The new version may specify different/additional Python packages, but the swap script never runs pip install. The old .venv is moved to backup, and the new directory contains only source files — no .venv (build_mac_release.sh explicitly excludes .venv from zip).</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>After an update, the app fails to start with ImportError for any new dependencies. The LaunchAgent attempts to run python from a venv that no longer exists at the expected path, and macOS gives no user-visible error for failed LaunchAgent jobs.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>update.py</code>: lines 205-229 (darwin branch), <code>build_mac_release.sh</code>: line 8 (excludes .venv from zip)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># build_mac_release.sh:8 — excludes .venv from zip:
+zip -r MacMumble.zip MacMumble -x '*/.venv/*' ...
+
+# update.py:217-224 (darwin branch) — only mv commands, no pip install.
+# LaunchAgent plist points to $APP/.venv/bin/python
+# which won't exist after the swap.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>The swap script should create a fresh venv and run <code>pip install -r requirements.txt</code> before relaunching. Better: keep the venv at a fixed parent path that is NOT swapped during updates, only swap the source code directory.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- PI-005 -->
+  <article class="issue" id="issue-PI-005">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Incomplete</span>
+      <span class="issue-id">PI-005</span>
+    </div>
+    <div class="issue-title">Installer's Mumble.app bundle missing critical Info.plist keys — poor macOS integration</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The Install Mumble.command creates a minimal Mumble.app with Info.plist missing: CFBundleVersion, CFBundleShortVersionString (no version shown in Finder), LSMinimumSystemVersion (no minimum OS enforcement), NSHighResolutionCapable (Retina not declared), NSSupportsAutomaticGraphicsSwitching (unnecessary discrete GPU on dual-GPU MacBooks), and CFBundleDocumentTypes or UTExportedTypeDeclarations (no file associations).</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Without version keys, Finder's Get Info shows no version. Without NSHighResolutionCapable, macOS may render in low-resolution on Retina displays. Missing NSSupportsAutomaticGraphicsSwitching forces discrete GPU on dual-GPU MacBooks, wasting battery.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Install Mumble.command</code>: lines 84-99 (Info.plist cat heredoc)</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add CFBundleVersion and CFBundleShortVersionString from branding.VERSION. Add LSMinimumSystemVersion ('12.0'). Add NSHighResolutionCapable=true and NSSupportsAutomaticGraphicsSwitching=true.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">The generated Info.plist contains only: CFBundleExecutable, CFBundleIconFile, CFBundleIdentifier, CFBundleName, CFBundlePackageType, LSUIElement. All other standard keys are absent.</pre>
+    </div>
+  </article>
+
+  <!-- CQ-001 -->
+  <article class="issue" id="issue-CQ-001">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Code Quality</span>
+      <span class="issue-id">CQ-001</span>
+    </div>
+    <div class="issue-title">Daemon threads abandoned on shutdown with no graceful termination — os._exit(0) is a band-aid</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Every thread spawned by mumble_mac.py is created with <code>daemon=True</code>. The <code>_quit()</code> method calls <code>os._exit(0)</code> as a final resort, forcibly terminating all threads. The stream worker thread is only <code>join()</code>'d during normal <code>stop_recording</code>, never during shutdown. Background threads for AI warm-up, web server, clipboard monitor, cloud sync, and update checks are all abandoned.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Abandoned threads can leave files half-written, database transactions incomplete, network connections dangling, and subprocess state inconsistent. The <code>os._exit(0)</code> commentary at line 3828 acknowledges this is a band-aid: "tkinter + pystray + keyboard can leave non-daemon threads alive, so a normal return would leave the process hanging."</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 3760-3840 (_quit), line 496 (AI warm-up thread), line 1826 (cmd server), line 3966 (pro key check), line 4001 (boot), line 4085 (instance signal)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Line 3828-3830 (comment in _quit):
+# "tkinter + pystray + keyboard can leave non-daemon threads
+# alive, so a normal return would leave the process
+# (and the lock port) hanging"
+
+# 26 daemon threads created; only 1 ever joined.
+# os._exit(0) is the final resort — band-aid, not a fix.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Implement a proper shutdown protocol: (1) Add threading.Event 'shutting_down', (2) each long-running thread checks this event, (3) _quit() sets the event then join()s each thread with timeout, (4) remove os._exit(0) and let process exit naturally, (5) close lock socket in finally block or atexit handler.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- CQ-004 -->
+  <article class="issue" id="issue-CQ-004">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Code Quality</span>
+      <span class="issue-id">CQ-004</span>
+    </div>
+    <div class="issue-title">Extensive silent exception swallowing (90+ instances) masks real errors across critical paths</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>mumble_mac.py contains 90+ instances of <code>except Exception: pass</code> or <code>except Exception:</code> with no logging, across critical paths including transcription, model loading, hotkey registration, audio device handling, and the main application loop. Specific examples: model load failures silently return False without surfacing to user (line 2415-2416), <code>_focused_editable()</code> silently returns True on any AX error (line 1277), and transcription errors at line 1091 only print without user notification.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Silent exception swallowing makes debugging nearly impossible. The app degrades silently rather than failing explicitly, creating a "works sometimes" experience. The <code>_focused_editable()</code> case means any AX API failure causes the app to NOT paste into a real text field, silently losing user dictation.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code> — 90+ locations across transcription (lines 640-1236), hotkeys (1277-1347), audio (2284-2353), cleanup (3782-3839)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Representative example — line 1277-1278:
+except Exception:
+    return True
+# _focused_editable() silently returns True on ANY AX error,
+# causing the app to NOT paste, silently losing user dictation.
+
+# Line 966: Lock timeout silently returns '' instead of error.
+# Line 2415-2416: Model load fails, prints to console, returns False.
+# No user-visible notification when the failure also fails silently.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Audit all silent except blocks: (1) Critical paths — replace pass with explicit logging and surface user-visible errors; (2) Cleanup paths — use try/finally with debug-level logging; (3) UI refresh — keep try/except but log at trace level; (4) Add global exception hook logging unhandled exceptions to mumble.log.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- CQ-006 -->
+  <article class="issue" id="issue-CQ-006">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Code Quality</span>
+      <span class="issue-id">CQ-006</span>
+    </div>
+    <div class="issue-title">Code duplication: ~2.5MB of shared module code copied across three platform directories</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The Mumble codebase maintains three nearly-identical copies of ~30 shared modules across Windows (Internal/app/), macOS (Ports/macOS/app/), and Linux (Ports/Linux/app/) directories. Total duplication is approximately 2.5MB across ~90 files. Modules like ai.py (111-113KB), island_render.py (47-52KB), prompt_constitution.py (46.6KB), formatting.py (60-62KB), and webui_shell.py (104-113KB) are byte-similar but not identical across platforms. The macOS port alone contains ~820KB of shared module code that could be abstracted.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Any bug fix, feature, or improvement to shared logic must be manually replicated across three directories. High risk of divergence: the Windows version gets a fix, but macOS/Linux don't until someone remembers. Meeting module divergence (32KB Windows vs 15KB macOS) illustrates how ports drift apart.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Internal/app/</code> (~830KB shared modules), <code>Ports/macOS/app/</code> (~820KB), <code>Ports/Linux/app/</code> (~800KB)</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># File size deltas (Windows vs macOS):
+local_engine.py:  38KB vs 20KB  (-48% — major gap)
+meeting.py:       32KB vs 15KB  (-52% — truncated)
+tips.py:          11KB vs  4KB  (-61% — missing content)
+context_store.py: 21KB vs 16KB  (-24%)
+meeting_diarise:  24KB vs 10KB  (-60%)
+
+# 7 modules are byte-identical and could be shared immediately.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Phase 1: Move byte-identical modules (branding.py, bindings.py, favorites.py, foreign_boost.py, mode_select.py, presets.py, prompt_constitution.py) to shared mumble_core directory. Phase 2: Extract platform-specific behavior from near-identical modules behind strategy interfaces. Phase 3: Unify controllers behind common base class with platform-specific subclasses.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Architectural</span> — Multi-release effort requiring coordinated changes across all three ports.</div></div>
+  </article>
+
+  <!-- CQ-008 -->
+  <article class="issue" id="issue-CQ-008">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Code Quality</span>
+      <span class="issue-id">CQ-008</span>
+    </div>
+    <div class="issue-title">Maintenance burden: three parallel codebases with no shared abstraction layer</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Each port has its own controller (~4000 lines), overlay (~1000-2600 lines), and ~30 shared modules. Total: ~1.4MB of Python across three directories with ~70% duplicated logic. Every change to shared logic requires manual propagation across three codebases. Adding a single feature that touches controller + overlay + 3 shared modules requires edits across 15+ files in 3 directories.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Constant risk of: (1) bug fixes applied to Windows but not macOS/Linux, (2) new features available on Windows but missing from ports, (3) subtle behavioral differences as codebases drift. The meeting module gap (32KB Windows vs 15KB macOS) is a concrete example of port divergence.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p>Controller files: <code>mumble.py</code> (4,993 lines), <code>mumble_mac.py</code> (4,115), <code>mumble_linux.py</code> (4,089). Overlays: <code>overlay.py</code> (2,600), <code>overlay_mac.py</code> (1,607), <code>overlay_linux.py</code> (962).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Phase 1: Move byte-identical modules to shared directory. Phase 2: Extract platform-specific behavior behind interfaces. Phase 3: Unify controllers behind common base class. This is a multi-release effort but byte-identical modules can be shared immediately with zero risk.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Architectural</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Metrics: Controller files: mumble.py (4,993 lines, 212KB), mumble_mac.py (4,115 lines, 194KB), mumble_linux.py (4,089 lines, 189KB) — total ~12,200 lines, ~595KB. Overlay files: overlay.py (2,600 lines, 97KB), overlay_mac.py (1,607 lines, 74KB), overlay_linux.py (962 lines, 42KB) — total ~5,200 lines, ~213KB. Shared modules: ~30 files per port, ~800KB per port, ~2.4MB total. Approximately 70% of logic is duplicated. Adding a single feature that touches controller + overlay + 3 shared modules requires edits across 15+ files in 3 directories.</pre>
+    </div>
+  </article>
+
+  <!-- CQ-012 -->
+  <article class="issue" id="issue-CQ-012">
+    <div class="issue-header">
+      <span class="badge badge-high">High</span>
+      <span class="badge-category">Code Quality</span>
+      <span class="issue-id">CQ-012</span>
+    </div>
+    <div class="issue-title">Meeting module files present in port directory but zero integration — half the code of Windows version</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The meeting module files (meeting.py 15KB, meeting_store.py 8KB, meeting_diarise.py 10KB) exist in the macOS port directory but mumble_mac.py contains zero references to them — no import, no initialization, no dispatch. The macOS meeting.py is less than half the size of the Windows version (15KB vs 32KB), suggesting it is an older or stripped-down copy. Meeting functionality is completely inaccessible to macOS users.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Users who discover Mumble's meeting mode feature will find it doesn't work on macOS. Files are present, creating a false expectation. Meeting-related bug fixes and improvements to Windows are never tested on macOS even though code is present.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code> (no meeting import), <code>meeting.py</code> (present but unused, 15KB vs Windows 32KB), <code>meeting_store.py</code> (8KB), <code>meeting_diarise.py</code> (10KB)</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Wire meeting module: import components, initialize meeting_store and controller in __init__, add meeting start/stop methods, wire meeting mode into island mode deck, add meeting hotkey registration, update macOS meeting.py to match Windows functionality.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Complex</span> — This is the single largest feature gap between Windows and macOS.</div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">ripgrep search for 'import meeting' in mumble_mac.py returns no matches. The meeting module is not listed in the imports at lines 66-95. The Windows mumble.py imports and uses meeting components. The macOS meeting.py (15,286 bytes) is less than half the size of Windows meeting.py (31,652 bytes), suggesting it's either an older version or a stripped-down copy. TEST_PARITY.md confirms: 'meeting module files exist in the macOS port directory but are not imported or wired in the controller.'</pre>
+    </div>
+  </article>
+</section>
+
+<!-- ===== 5. MEDIUM-PRIORITY ISSUES ===== -->
+<section id="medium-issues">
+  <h2>5. Medium-Priority Issues</h2>
+
+  <!-- CTRL-004 -->
+  <article class="issue" id="issue-CTRL-004">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Missing Implementation</span><span class="issue-id">CTRL-004</span></div>
+    <div class="issue-title">Island tips system (usage-aware feature discovery) completely absent on macOS</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows implements 5 island tip methods: _bump_feature, _tip_usage, _maybe_island_tip, _show_island_tip, _fire_island_tip. Called from 6 integration points. Tips auto-retire upon adoption. macOS has none of these methods and never shows island tips.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>macOS users receive no contextual, in-app guidance about undiscovered features. The tips system is non-intrusive by design, so its absence means users may never learn about key features.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code> — missing all 5 tip methods. Windows reference: <code>Internal/app/mumble.py</code>: lines 304-380.</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Grep for '_bump_feature', '_tip_usage', '_maybe_island_tip'
+# in mumble_mac.py returns NO matches.
+# macOS tips.py is 4,228 bytes vs Windows 10,855 bytes.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Port the 5 tip methods from Windows. Add _bump_feature calls at integration points. Add self._maybe_island_tip(pasted) at end of _process. Sync tips.py content from Windows.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- CTRL-006 / PARITY-008 -->
+  <article class="issue" id="issue-CTRL-006">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Bug</span><span class="issue-id">CTRL-006 / PARITY-008</span></div>
+    <div class="issue-title">Audio callback lacks system sleep/resume detection — stale audio corrupts transcription after Mac sleep</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows _audio_cb tracks _last_audio_cb_time and detects gaps >2s as system sleep, discarding stale frames and resetting stream state. macOS _audio_cb only has microphone-permission silence detection but no sleep gap detection. If Mac sleeps mid-recording, stale pre-sleep frames remain and get transcribed after wake, producing garbled output.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Closing a MacBook lid accidentally while recording is a common scenario. The resulting transcription will be nonsensical, eroding user trust.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 306-335 (_audio_cb). Windows reference: <code>Internal/app/mumble.py</code>: lines 412-433.</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Windows _audio_cb tracks _last_audio_cb_time, detects gap >2s,
+# resets frames and stream state.
+# macOS _audio_cb has NO _last_audio_cb_time tracking.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add _last_audio_cb_time tracking and sleep gap detection to macOS _audio_cb. The two detection mechanisms (sleep gap >2s and mic-permission silence) are complementary and should coexist.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+  </article>
+
+  <!-- CTRL-007 / PARITY-009 -->
+  <article class="issue" id="issue-CTRL-007">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Bug</span><span class="issue-id">CTRL-007 / PARITY-009</span></div>
+    <div class="issue-title">Missing _processing guard in on_hotkey allows overlapping recording starts — race condition</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows on_hotkey() checks self._processing before starting a new recording. macOS on_hotkey() only checks self.paused and self.busy, NOT self._processing. A rapid hotkey double-tap can start a second recording while the previous dictation's _process is still running, corrupting shared stream state.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Race condition affecting power users. Can cause interleaved frame data, dropped transcriptions, or island state corruption. The _processing attribute IS set in macOS code (line ~200) but never checked in the hotkey path.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 1389-1400 (on_hotkey).</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># macOS on_hotkey guard:
+if self.paused: return None
+if self.busy: return None
+# MISSING: if self._processing: return None
+
+# Windows adds: "Previous dictation is still transcribing/pasting —
+# starting now would corrupt shared stream state"</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add <code>if self._processing: return None</code> check to macOS on_hotkey() at line 1392. One-line fix.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+  </article>
+
+  <!-- CTRL-009 -->
+  <article class="issue" id="issue-CTRL-009">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Bug</span><span class="issue-id">CTRL-009</span></div>
+    <div class="issue-title">_safe_start does not clean up partially-started stream on failure — mic may stay open</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows _safe_start() includes recovery: if start_recording() raises, it checks if self.recording and calls stop_recording() to clean up a partially-started stream. macOS _safe_start() has no such cleanup — on exception it only prints, notifies, sets state to 'error', sleeps 1s, and returns to idle. If stream was opened but then failed, the mic handle is leaked.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>A microphone error during recording start can leave the audio stream partially open, with the OS indicating the mic is in use even after Mumble appears recovered. Only fix is to quit and restart.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 1402-1412 (_safe_start). Windows reference: <code>Internal/app/mumble.py</code>: lines 1708-1722.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add cleanup code to macOS _safe_start except block: <code>if self.recording: try: self.stop_recording() except Exception: pass</code>.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">macOS _safe_start: `try: self.start_recording() except: print... self._notify... self._set_state('error'); time.sleep(1.0); self._idle()`. Windows _safe_start: additionally has `if self.recording: try: self.stop_recording() except: pass` in the except block, with comment 'Clean up a partially-started stream so the mic isn't left open.'</pre>
+    </div>
+  </article>
+
+  <!-- CTRL-010 -->
+  <article class="issue" id="issue-CTRL-010">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Bug</span><span class="issue-id">CTRL-010</span></div>
+    <div class="issue-title">_toggle_pause does not stop active recording — audio accumulates in memory while paused</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows _toggle_pause() checks if self.paused and self.recording and stops any active recording before pausing. macOS _toggle_pause() simply flips self.paused, refreshes the tray menu, and sends a notification. If the user pauses while recording, audio frames silently accumulate in self.frames with no visual feedback, and self.paused blocks the hotkey so the user cannot stop — they must unpause first.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Pausing while recording causes audio to silently accumulate in memory with no user feedback. The hotkey is blocked by self.paused until unpaused, by which time self.frames could contain minutes of unwanted audio.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 3605-3608 (_toggle_pause). Windows reference: <code>Internal/app/mumble.py</code>: lines 4378-4392.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Port the recording-stop guard from Windows _toggle_pause: if pausing while recording, stop the active recording on a daemon thread before setting the paused flag.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">macOS _toggle_pause: 3 lines — `self.paused = not self.paused; self.refresh_tray_menu(); self._notify(...)`. Windows _toggle_pause adds: `if self.paused and self.recording: with self.lock: self.busy = True; threading.Thread(target=self._safe_stop, daemon=True).start()`</pre>
+    </div>
+  </article>
+
+  <!-- CTRL-011 -->
+  <article class="issue" id="issue-CTRL-011">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Bug</span><span class="issue-id">CTRL-011</span></div>
+    <div class="issue-title">_generate is missing AI config snapshot — settings-change race condition on in-flight cloud calls</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows _generate() captures full AI configuration (cfg and prompt_cfg) at the start of generation and passes these snapshots to _cloud_generate(), ensuring an in-flight cloud request uses the key it was launched with even if the user changes/deletes the key mid-call. macOS _generate() only calls key = self._ai_key() and does NOT capture cfg or prompt_cfg. If the user changes their API key during an in-flight call, the call may use the wrong key or provider.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>If a macOS user changes their API key in Settings while a dictation's AI call is in progress, the in-flight call could use the new (potentially invalid) key instead of the original valid one, causing failure. This is a data race on settings.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 3115-3160 (_generate). Windows reference: <code>Internal/app/mumble.py</code>: lines 3838-3870.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add <code>cfg = self._ai_cfg()</code> and <code>prompt_cfg = self._prompt_ai_cfg()</code> at the start of macOS _generate(), and pass them to _cloud_generate() as cfg=cfg, prompt_cfg=prompt_cfg.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">macOS _generate line ~3133: `key = self._ai_key()`. Windows _generate lines ~3855-3858: `cfg = self._ai_cfg(); prompt_cfg = self._prompt_ai_cfg(); key = cfg['key']`. Windows then passes `cfg=cfg, prompt_cfg=prompt_cfg` to `_cloud_generate()`. macOS does not pass cfg/prompt_cfg to `_cloud_generate()`.</pre>
+    </div>
+  </article>
+
+  <!-- OLUI-004 -->
+  <article class="issue" id="issue-OLUI-004">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Incomplete</span><span class="issue-id">OLUI-004</span></div>
+    <div class="issue-title">Click-through behavior unverified — relies on unconfirmed Tk -transparent side effect</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The macOS overlay claims click-through is provided by Tk's -transparent attribute as a "native click-through behaviour" (line 259). However, MAC_TESTING.md line 80 flags this as unverified: "Island click-through — the Tk overlay may not be click-through on macOS (needs pyobjc ignoresMouseEvents)". The code has no PyObjC call to setIgnoresMouseEvents:YES on the underlying NSWindow. Windows explicitly sets WS_EX_TRANSPARENT via SetWindowLongW.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>If the island is not actually click-through, clicks on the island area would be intercepted, breaking dictation into text fields behind the island — a core UX requirement.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/overlay_mac.py</code>: lines 253-265 (_click_through), <code>Ports/macOS/MAC_TESTING.md</code>: line 80.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Use PyObjC to access the underlying NSWindow from Tk Toplevel and call setIgnoresMouseEvents_(True). Verify on real Mac that clicks pass through.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Lines 253-260: _click_through() returns immediately when _HAVE_CTYPES is False with the comment 'On macOS the -transparent Tk attribute already provides native click-through behaviour'. MAC_TESTING.md:79-80 lists 'Island click-through' under TODO(mac-verify) item 5. Compare Windows overlay.py _click_through at lines 809-817 which explicitly sets WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW via SetWindowLongW.</pre>
+    </div>
+  </article>
+
+  <!-- OLUI-005 -->
+  <article class="issue" id="issue-OLUI-005">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">UX Inconsistency</span><span class="issue-id">OLUI-005</span></div>
+    <div class="issue-title">Dark title bar support is Windows-only — no macOS dark appearance</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>ui.py's dark_titlebar() returns immediately when not on Windows. On Windows it sets DWMWA_USE_IMMERSIVE_DARK_MODE. The macOS app_window.py calls ui.dark_titlebar() but it's a no-op. macOS has NSAppearanceNameDarkAqua via PyObjC.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>The app window on macOS uses the system default light appearance, creating a visual mismatch between the dark-themed Golden-Black content and the light title bar.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/ui.py</code>: lines 378-392 (dark_titlebar), <code>app_window.py</code>: line 184 (call site).</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Line 378:
+if not sys.platform.startswith('win'): return
+# Entire function body skipped on macOS.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Extend dark_titlebar() to set NSAppearanceNameDarkAqua on macOS via PyObjC. PyObjC is already in requirements.txt.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+  </article>
+
+  <!-- OLUI-006 -->
+  <article class="issue" id="issue-OLUI-006">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Parity</span><span class="issue-id">OLUI-006</span></div>
+    <div class="issue-title">Fade-in animation (APPEAR_FRAMES) missing on macOS — island snaps into view</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows has APPEAR_FRAMES=7 (~0.3s) controlling a fade-in animation from APPEAR_FLOOR=0.30 to 1.0. macOS has no equivalent — the island snaps into view at full opacity. This was part of a refinement pass that made the island entrance "quieter, more premium".</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>The macOS island's sudden appearance feels less polished than Windows. The entrance animation was explicitly added for UX quality but was not ported.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/overlay_mac.py</code>: lines 400-414 (_show). Windows reference: <code>Internal/app/overlay.py</code>: lines 110-113 (constants), ~line 1000 (fade logic).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add APPEAR_FRAMES/APPEAR_FLOOR constants. In _show(), initialize an _appear_left counter. Apply a fade multiplier to win.attributes('-alpha', computed_alpha) for the first APPEAR_FRAMES ticks.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Windows overlay.py lines 110-113 define APPEAR_FRAMES=7 and APPEAR_FLOOR=0.30. The _show() method at line ~986 sets self._appear_left = APPEAR_FRAMES. The _paint_frame() method applies fade = APPEAR_FLOOR + (1.0 - APPEAR_FLOOR) * (1.0 - appear/float(APPEAR_FRAMES)). None of these exist in overlay_mac.py.</pre>
+    </div>
+  </article>
+
+  <!-- OLUI-008 -->
+  <article class="issue" id="issue-OLUI-008">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Platform-Specific</span><span class="issue-id">OLUI-008</span></div>
+    <div class="issue-title">No macOS Spaces/Mission Control awareness — island may appear on wrong desktop</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Neither macOS nor Windows overlay has handling for virtual desktops. On macOS, the Tk Toplevel with overrideredirect(True) and topmost will appear on ALL spaces by default. The island could be visible on a different Space than the foreground app, or follow the user across Spaces when it shouldn't. AppKit NSWindow has collectionBehavior to control this.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>If the island appears on a different Space, users can't see visual feedback. If it follows to every Space, it may distract where Mumble isn't being used.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/overlay_mac.py</code>: lines 214-224 (_make_window), lines 400-414 (_show).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Set NSWindow's collectionBehavior to NSWindowCollectionBehaviorMoveToActiveSpace | NSWindowCollectionBehaviorTransient via PyObjC when showing. Listen for NSWorkspaceActiveSpaceDidChangeNotification to hide/show island.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Lines 214-224: _make_window creates a Tk Toplevel with overrideredirect(True) and -topmost True, but sets no macOS-specific NSWindow properties for Spaces behavior. The island shown via _show() at lines 400-414 uses deiconify + -topmost True without any Space-relative positioning.</pre>
+    </div>
+  </article>
+
+  <!-- More Medium Issues -->
+  <article class="issue" id="issue-OLUI-011">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Incomplete</span><span class="issue-id">OLUI-011</span></div>
+    <div class="issue-title">Accessibility permission check exists in controller but not surfaced through overlay — silent hotkey failure</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The controller checks AXIsProcessTrusted() at startup, but the overlay has no programmatic awareness of whether accessibility is granted. If accessibility is not granted, pynput hotkeys fail silently. There is no visual indicator on the island or in the app that accessibility is needed.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>If the user hasn't granted accessibility permissions, the island appears to work (showing 'Listening' state) but hotkeys won't fire and click-through may not work. Users are confused about why Mumble "doesn't work".</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code> (AXIsProcessTrusted check), <code>overlay_mac.py</code>: lines 253-265 (_click_through no-op).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add an 'accessibility' state to the Island showing a warning indicator (yellow/red dot). Periodically check AXIsProcessTrusted() and push state to island. Add indicator in app window status area.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">MAC_TESTING.md:78-81 lists click-through as unverified and notes 'needs pyobjc ignoresMouseEvents'. The controller's startup check for AXIsProcessTrusted is separate from the overlay. The overlay has no method to display an accessibility warning state (the 'error' state exists for audio errors but not for permission issues).</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-OLUI-007">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Parity</span><span class="issue-id">OLUI-007</span></div>
+    <div class="issue-title">Animation timing constants match but macOS lacks the glass pill that would use the premium renderer</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Cross-platform timing constants (DONE_FRAMES=30, HINT_FRAMES=90, etc.) are synchronized. However, the macOS canvas fallback runs at 45ms (22fps) vs island_render's premium pipeline at a different cadence. The canvas fallback's _render() is a simplified Tk drawing path that cannot match island_render's Pillow+numpy renderer for soft shadows, gold bloom, travelling sheen, and per-pixel anti-aliasing.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Users on macOS experience different animation fidelity. The canvas fallback uses Tk primitives which cannot match the premium renderer's visual quality. island_render.py exists (979 lines) but its output is never displayed.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/overlay_mac.py</code>: lines 78-88 (timing constants), lines 632-740 (canvas _render fallback).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Fix OLUI-001 (glass pill) — once the glass pill renders on macOS, the premium island_render pipeline will automatically produce visually identical output. Timing constants are already correct.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Architectural</span> — Depends on OLUI-001.</div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Timing constants are byte-identical across platforms. But the canvas fallback at _render() (lines 632-740) uses basic Tk drawing, while island_render.render() (979 lines) uses: np.linspace gradient body, ImageFilter.GaussianBlur shadows, _gold_absorb particle system, travelling sheen with diagonal band, _gradient_text animated shimmer, ripple annulus rendering, and _resize_premult for anti-aliased downscaling.</pre>
+    </div>
+  </article>
+
+  <!-- PI-006 -->
+  <article class="issue" id="issue-PI-006">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Incomplete</span><span class="issue-id">PI-006</span></div>
+    <div class="issue-title">build_mac_release.sh produces unsigned, unnotarized zip — no distribution integrity guarantees</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The build script produces a bare MacMumble.zip with no code signing, no notarization, no SHA256 checksum, and no version in the zip filename. Every macOS user must bypass Gatekeeper to run the app. On each update, users repeat this process.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Users are trained by macOS to distrust unsigned software. Friction of bypassing Gatekeeper reduces adoption. Without checksums, users cannot verify download integrity. Without version in filename, it's impossible to tell which version a zip contains.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>build_mac_release.sh</code>: lines 4-11, <code>_rebuild_zip.py</code> (entire file).</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># build_mac_release.sh:8
+zip -r MacMumble.zip MacMumble ...
+# No --sign, no checksum, no version in filename.
+# _rebuild_zip.py:66
+ZIP = os.path.join(ROOT, 'MacMumble.zip')  # hardcoded name</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Include version in zip filename (MacMumble-0.9.zip), generate SHA256 checksum, document notarization instructions for Apple Developer account holders. Full notarization requires $99/year Apple Developer account.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <article class="issue" id="issue-PI-007">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Bug</span><span class="issue-id">PI-007</span></div>
+    <div class="issue-title">macos_audio.py unload() does not release GPU/ANE resources — potential memory leak</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>MacOSTranscriber.unload() sets self._fluid_recognizer = None and self._parakeet_decoder = None without calling any cleanup/close/release methods. If these objects hold Metal buffers, CoreML model instances, or ANE allocations, dropping the Python reference orphans native resources until GC runs. ANE has limited shared memory.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Repeated model switches could exhaust ANE memory or cause CoreML initialization failures. On Apple Silicon Macs, ANE memory is a shared, limited resource.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Internal/app/platform/macos_audio.py</code>: lines 232-244 (unload method).</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># unload() body:
+self._fluid_recognizer = None     # line 237
+self._parakeet_decoder = None     # line 241
+# No .close(), .release(), .destroy(), or del calls.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>In unload(), attempt to call close()/release()/destroy() on _fluid_recognizer and _parakeet_decoder before setting to None. Wrap each in try/except. Consider implementing __del__ as a safety net.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+  </article>
+
+  <article class="issue" id="issue-PI-008">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Code Quality</span><span class="issue-id">PI-008</span></div>
+    <div class="issue-title">platform stdlib shadow workaround duplicated across platform/__init__.py and macos_audio.py</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The package platform/ shadows Python's stdlib platform module. Both platform/__init__.py and platform/macos_audio.py independently implement the same workaround: searching sys.path for stdlib platform.py, loading via importlib, caching as _stdlib_platform. Two separate implementations of the same fragile workaround.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Code duplication creates maintenance hazard. If the stdlib detection logic needs to change (Python 3.13 path changes), both files must be updated. Two different import paths could resolve different modules.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>platform/__init__.py</code>: lines 50-84, <code>platform/macos_audio.py</code>: lines 39-56.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Refactor into single shared helper in platform/__init__.py; have macos_audio.py import it: <code>from . import _stdlib_platform</code>.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">__init__.py defines _load_stdlib_platform() function (~35 lines) and sets _stdlib_platform. macos_audio.py implements the same logic inline (~18 lines) at module level with identical importlib pattern: search sys.path for platform.py not containing 'Internal', spec_from_file_location, module_from_spec, exec_module. Two separate implementations of the same fragile workaround.</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-PI-009">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Code Quality</span><span class="issue-id">PI-009</span></div>
+    <div class="issue-title">Installer process termination uses fragile pkill pattern matching — false positives and negatives</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Install Mumble.command uses <code>pkill -f 'mumble_mac.py'</code> and <code>pkill -f 'webui_shell.py'</code> to stop running Mumble before installing. The -f flag matches against the full command line: could kill unrelated processes (text editor viewing mumble_mac.py, grep commands). Also won't match if launched through .app bundle's MumbleLauncher script.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>False-positive kills could terminate unrelated user processes. False-negatives mean a running Mumble survives the install, potentially holding file locks or port bindings.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Install Mumble.command</code>: lines 37-38, <code>Uninstall Mumble.command</code>: lines 3-5.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Write a PID file to DATA_DIR/mumble.pid at startup. Installer/uninstaller can use <code>kill $(cat ~/Library/Application Support/Mumble/mumble.pid)</code> for precise targeting. Keep pkill as fallback only.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Install Mumble.command:37 — pkill -f 'mumble_mac.py' 2&gt;/dev/null || true; Install Mumble.command:38 — pkill -f 'webui_shell.py' 2&gt;/dev/null || true; Uninstall Mumble.command:5 — pkill -f 'mumble_mac.py' 2&gt;/dev/null || true.</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-PI-011">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Incomplete</span><span class="issue-id">PI-011</span></div>
+    <div class="issue-title">requirements.txt missing version pin for pywebview and lacks Apple Silicon GPU fallback (mlx-whisper)</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>pywebview has no version constraint, making builds non-reproducible. When FluidAudio/Parakeet TDT are unavailable (Intel Mac, macOS <13), the only fallback is CPU-only faster-whisper — no Metal-accelerated alternative. MAC_TESTING.md acknowledges the mlx-whisper gap but it's not tracked.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Unpinned pywebview means a future breaking release could silently break the app. Intel Mac users get significantly slower transcription without a Metal-accelerated fallback.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>requirements.txt</code>: line 9 (pywebview no version), <code>MAC_TESTING.md</code>: lines 34-35 (mlx-whisper gap acknowledged).</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># requirements.txt line 9:
+pywebview
+# No >= or == constraint.
+
+# MAC_TESTING.md:34-35:
+# "Upgrade path to test on-device: mlx-whisper/whisper.cpp
+# (Metal, ~2-6x faster) would need a _local_transcribe rewrite."</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Pin pywebview to a known-good version (pywebview>=4.4,<5.0). Add commented-out mlx-whisper dependency with note that it's an optional accelerator for Intel Macs. Track mlx-whisper integration as a feature.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <!-- CQ Issues -->
+  <article class="issue" id="issue-CQ-002">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Code Quality</span><span class="issue-id">CQ-002</span></div>
+    <div class="issue-title">Log file handle (_log) opened at module level and never explicitly closed</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>At line 30 of mumble_mac.py, a file handle is opened to tee stdout/stderr to the log file. This handle is never explicitly closed anywhere. Relies on Python's garbage collector or process exit to flush and close. If the process terminates abnormally, buffered log data may be lost.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>On abnormal termination, the last log entries before a crash may never be written, making crash diagnosis impossible — precisely when the log is most needed.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: line 30.</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># Line 30:
+_log = open(branding.LOG_PATH, 'a', encoding='utf-8', buffering=1)
+# No corresponding _log.close() or atexit.register(_log.close) anywhere.</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Register <code>_log.close()</code> with <code>atexit.register()</code>, or add close() method to _Tee calling all underlying streams from _quit(). Also register SIGTERM handler that flushes and closes the log.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+  </article>
+
+  <article class="issue" id="issue-CQ-005">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Code Quality</span><span class="issue-id">CQ-005</span></div>
+    <div class="issue-title">TODO/FIXME inventory nearly empty — known gaps not tracked in source code</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Only one TODO/FIXME marker exists across all macOS port files: <code>TODO(mac-verify)</code> in MAC_TESTING.md with 5 hardware-dependent items. No TODO/FIXME markers exist in the Python source files despite known gaps: auto-update stubbed, meeting module not wired, glass pill stub, 5 excluded tests. Known gaps are invisible to developers reading the code.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Without TODO markers in source code, developers cannot easily discover known gaps when reading code. The meeting module files exist in the directory but mumble_mac.py contains zero references to them with no explanation why.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/MAC_TESTING.md</code>: line 59 (only TODO), multiple source files lacking markers.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add TODO comments at each known gap: (1) mumble_mac.py imports — meeting module not wired, (2) update.py — auto-update stubbed, (3) overlay_mac.py — glass pill stubbed. Create TRACKING.md listing all known gaps.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">ripgrep search for 'TODO|FIXME|HACK|XXX|WORKAROUND' across all files under Ports/macOS/ returned only one match: MAC_TESTING.md line 59. The meeting module files (meeting.py, meeting_store.py, meeting_diarise.py) exist in the port directory but mumble_mac.py contains zero references to them — with no comment explaining why. The update.py file at lines 1-3 makes no mention that auto-update is stubbed on macOS. The overlay_mac.py glass pill methods return empty/default values with no comment about the Windows feature gap.</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-CQ-007">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Code Quality</span><span class="issue-id">CQ-007</span></div>
+    <div class="issue-title">Five test files excluded from macOS runner due to API divergence — coverage gap hiding regressions</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>macOS test runner runs 14 of 31 test files. 5 are excluded due to API divergence: test_context_store.py (missing 'ui' field), test_local_wiring.py (missing MODELS_DIR/llama_cli_path), test_reader_parser.py (missing save_doc_parsed()), test_meeting.py (missing key_decisions/open_questions), test_meeting_controller.py (missing _meeting_start()). These API gaps mean macOS users get a subset of Windows features with no automated test to catch if gaps widen.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Excluded tests represent a coverage gap hiding potential regressions. The API divergences themselves are bugs or missing features. No automated test catches if the gaps widen further.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/TEST_PARITY.md</code> (exclusion documentation), <code>run_tests.py</code> (14 tests in runner).</p></div></div>
+    <div class="field"><div class="field-label">Evidence</div><pre class="code-block"># TEST_PARITY.md: 5 tests excluded from runner:
+# test_context_store.py — macOS dict shape missing 'ui' field
+# test_local_wiring.py — branding.py lacks MODELS_DIR/llama_cli_path
+# test_reader_parser.py — reader_store.py missing save_doc_parsed()
+# test_meeting.py — meeting records lack key_decisions/open_questions
+# test_meeting_controller.py — no _meeting_start() method exposed</pre></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Adapt each excluded test for the macOS API surface. Prioritize meeting and context_store gaps (affect user-visible features). Short-term: add the missing fields/methods to macOS versions.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+  </article>
+
+  <article class="issue" id="issue-CQ-009">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Code Quality</span><span class="issue-id">CQ-009</span></div>
+    <div class="issue-title">Lock acquisition with timeout returns silently instead of raising errors — transcription lost silently</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The _tx_lock uses acquire(timeout=N) in two places (lines 966 and 2465) and silently returns an empty string or skips the operation if the lock cannot be acquired. Under contention, transcription silently produces no output rather than reporting an error. A lock timeout indicates abnormal contention: either previous transcription still running or a deadlock.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>User's dictation is silently lost with no indication of failure. User sees 'Ready' state and assumes speech wasn't heard, rather than understanding there was a system error.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: line 966 (transcription lock timeout), line 2465 (model warm-up lock timeout).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Replace manual lock.acquire(timeout=N) with <code>with self._tx_lock:</code> context managers. If timeout is genuinely needed, raise a custom TranscriptionError that the caller can catch and surface to user via _notify().</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Line 966: `if not self._tx_lock.acquire(timeout=25):` followed by `print('transcription lock timeout'); return ''` — the calling code receives an empty string and proceeds as if transcription produced no text. Line 1072: `with self.lock:` is used for state protection — this is the correct pattern (raises on failure). The inconsistency between using context-manager-with for self.lock vs manual acquire for self._tx_lock is a code smell.</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-CQ-010">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Code Quality</span><span class="issue-id">CQ-010</span></div>
+    <div class="issue-title">No signal handlers for graceful shutdown on SIGTERM/SIGINT — lock port may stay bound</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>mumble_mac.py main entry point has no signal handlers for SIGTERM, SIGINT, or SIGHUP. When process receives these signals (from kill, system shutdown, or terminal Ctrl+C), it terminates immediately without calling _quit(), leaving webui subprocess orphaned, lock socket bound, and threads abandoned.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>On macOS, system shutdown sends SIGTERM. Without a handler, Mumble cannot clean up. Next launch finds lock port still held and either fails or triggers "stuck copy" dialog — poor UX after a simple system restart.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: lines 4090-4115 (main entry point).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add signal handlers: <code>signal.signal(signal.SIGTERM, lambda s, f: _app._quit()); signal.signal(signal.SIGINT, lambda s, f: _app._quit())</code>. One-line change per signal.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Lines 4090-4115: The if __name__ == '__main__' block does `_app = Mumble(); _serve_instance_signals(_app); _app.run()` with no `signal.signal(signal.SIGTERM, handler)` or `signal.signal(signal.SIGINT, handler)` calls. The _quit() method at line 3760 does proper cleanup but is only reachable via the menu bar 'Quit' action or _restart(). It is never invoked by external signals.</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-CQ-011">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Code Quality</span><span class="issue-id">CQ-011</span></div>
+    <div class="issue-title">Race condition in _mode_windows timestamp closure during concurrent access</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The _mode_windows list is accessed from both the main thread (via mode key callbacks) and the transcription thread (via _process). While the critical section copies the list under self.lock, the mode key callbacks spawn _safe_start from within the lock, which accesses shared state without re-acquiring the lock, creating a TOCTOU window.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Concurrent modification without proper synchronization can lead to missed mode-key windows, corrupted window data (list modified during iteration), and incorrect utterance durations reported to the AI pipeline. Impact is probabilistic — depends on exact timing.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: line 189 (_mode_windows init), lines 527-562 (mode key callbacks), lines 862-869 (_process read).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Audit all thread spawns inside <code>with self.lock:</code> blocks and ensure spawned threads don't access shared state without re-acquiring the lock. Consider dedicated lock for _mode_windows or use queue.Queue.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Moderate</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Lines 527-562: The mode key press/release handlers are inside `with self.lock:` blocks, which is correct. However, the spawn of `_safe_start` at line 555 happens inside the lock and the `_safe_start` method at line 1402 accesses `self.recording` and `self.busy` without holding the lock, creating a TOCTOU window. The `_safe_stop` at line 572 similarly spawns a thread that calls `stop_recording()` at line 824, which accesses `self.frames` and `self._stream_done` — these are also accessed by the stream worker thread at line 368. While self.lock protects some shared state, the pattern of spawning threads from within locked sections creates non-obvious concurrency hazards.</pre>
+    </div>
+  </article>
+
+  <!-- PARITY additional medium issues -->
+  <article class="issue" id="issue-PARITY-012">
+    <div class="issue-header"><span class="badge badge-medium">Medium</span><span class="badge-category">Parity</span><span class="issue-id">PARITY-012</span></div>
+    <div class="issue-title">Keyboard input library discrepancy — documented as pynput but code uses keyboard library</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>macOS documentation (MAC_TESTING.md, platform-report.md) consistently references "pynput via bindings" as the macOS keyboard input mechanism. However, actual code in both bindings.py and mumble_mac.py uses the <code>keyboard</code> library (aliased as <code>import bindings as keyboard</code>). The pynput library is NOT imported anywhere. This documentation-code mismatch creates confusion about what library is in use and what permissions are required.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Incorrect documentation leads to wrong troubleshooting guidance, wrong permission requirements, developers trying to install pynput when not needed, and MAC_TESTING.md TODO items testing the wrong library.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/bindings.py</code>: line 19 (imports keyboard), <code>mumble_mac.py</code>: line 62 (import bindings as keyboard). MAC_TESTING.md references pynput.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Update MAC_TESTING.md and platform-report.md to accurately document that the <code>keyboard</code> library (not pynput) is the active input library. Update TODO items. If pynput is preferred, switch the code — but don't leave documentation inaccurate.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">bindings.py line 19: `import keyboard`. mumble_mac.py line 62: `import bindings as keyboard`. MAC_TESTING.md TODO item 1: 'Hotkey verification (pynput layout resolution of Option-modified letters)'. No `import pynput` found in any macOS app file. requirements.txt does not list pynput.</pre>
+    </div>
+  </article>
+</section>
+
+<!-- ===== 6. LOW-PRIORITY ISSUES ===== -->
+<section id="low-issues">
+  <h2>6. Low-Priority Issues</h2>
+
+  <article class="issue" id="issue-CTRL-012">
+    <div class="issue-header"><span class="badge badge-low">Low</span><span class="badge-category">Missing Implementation</span><span class="issue-id">CTRL-012</span></div>
+    <div class="issue-title">Feature adoption tracking (_bump_feature) absent — no usage analytics for island tips retirement</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows calls _bump_feature() from 8 integration points to increment coarse feature-adoption counters so island tips can retire once user adopts a feature. macOS has no _bump_feature calls at any point. Even if island tips system were ported, there would be no adoption data to gate tip retirement.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Without adoption tracking, tips system cannot retire tips after user adopts a feature, violating "never nag about something they already use" design principle.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code> — missing _bump_feature at all 8 Windows call sites.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Grep for '_bump_feature' in mumble_mac.py returns no matches. Compare against mumble.py which has the method definition at line 304 and call sites at 8 distinct integration points.</pre>
+    </div>
+      <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body"><p>1) Port `_bump_feature()` method from Windows mumble.py. 2) Add `self._bump_feature('quick_paste')` in `on_quick_paste`, `self._bump_feature('deck')` in `on_open_history`, `self._bump_feature('search')` in `on_search_hotkey`, etc. at the same call sites as Windows.</p></div>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-OLUI-009">
+    <div class="issue-header"><span class="badge badge-low">Low</span><span class="badge-category">Code Quality</span><span class="issue-id">OLUI-009</span></div>
+    <div class="issue-title">island_render.py identical across platforms but macOS never uses its output for display</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>island_render.py (979 lines) is identical between Windows and macOS but due to glass pill being stubbed, render() output is never displayed on macOS. render_bar() is also never invoked. 979 lines of premium rendering code is dead on macOS, costing numpy/PIL import time at startup (~50ms).</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Code duplication adds maintenance burden without delivering macOS benefit. Changes to the renderer must be manually synced. The macOS port pays the cost of importing numpy and PIL without using the rendered output.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/island_render.py</code>: lines 1-979, <code>overlay_mac.py</code>: lines 47-51 (import guard, always succeeds).</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-high">Architectural</span> — Depends on OLUI-001 and OLUI-002.</div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Lines 47-51 of overlay_mac.py: `try: import numpy as _np; import island_render; _HAVE_GLASS = True; except: _HAVE_GLASS = False`. This always succeeds (numpy and PIL are in requirements.txt), setting _HAVE_GLASS to True. But then line 197: `self.glass = _DummyGlass()` unconditionally overrides the glass with a stub — _HAVE_GLASS is never checked.</pre>
+    </div>
+      <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body"><p>Once OLUI-001 and OLUI-002 are implemented (macOS-native glass pill and WidgetBar), the island_render module will be fully utilized. Consider sharing the file rather than duplicating it across platform directories.</p></div>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-OLUI-010">
+    <div class="issue-header"><span class="badge badge-low">Low</span><span class="badge-category">UX Inconsistency</span><span class="issue-id">OLUI-010</span></div>
+    <div class="issue-title">Hotkey hint text defaults to 'ctrl+windows' instead of macOS-correct 'ctrl+option+d'</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The app window's Home tab shows 'ctrl+windows' as the default hotkey despite the macOS default being 'ctrl+option+d'. The island hint correctly shows 'Ctrl + Option + H' but the app window shows the Windows-centric default.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Users may try the wrong key combination based on the app window's hint if they don't check Settings. The correct default is Ctrl+Option+D as documented in MAC_TESTING.md.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/overlay_mac.py</code>: line 282 (correct), <code>app_window.py</code>: line 550 (incorrect default).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Change default hotkey fallback in app_window.py _build_home() from 'ctrl+windows' to 'ctrl+option+d' when running on macOS.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">overlay_mac.py:282: `self.hint_text = text or 'Ctrl + Option + H'` (correct). app_window.py:550: `self.settings.get('hotkey', 'ctrl+windows')` — this default is 'ctrl+windows' which is the Windows default, not the macOS default 'ctrl+option+d'.</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-OLUI-012">
+    <div class="issue-header"><span class="badge badge-low">Low</span><span class="badge-category">Code Quality</span><span class="issue-id">OLUI-012</span></div>
+    <div class="issue-title">Tips module is pure logic utility with no visual integration into the island — dead code</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>tips.py (165 lines) implements a well-tested tip rotation system with spacing gates, per-tip caps, and "least-shown first" selection. Documentation states "rendering uses the island's own hint chip" — but no code in overlay_mac.py or the controller actually calls next_tip() from tips.py to feed tips to the island.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>A well-designed tip system exists but is dead code. Tip rotation logic (avoiding spam, spacing out appearances) is wasted effort if never connected to UI.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/tips.py</code>: lines 1-165, no callers found in overlay_mac.py or mumble_mac.py.</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Wire tips module into controller's dictation completion path: after successful paste, call tips.next_tip() with persisted state. If tip returned, call island.hint(tip['text']). Persist state to settings.json under 'island_tips'.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Grep for 'next_tip' or 'tips' across overlay_mac.py and mumble_mac.py returns no results — the tips module is imported nowhere. The module's docstring at line 1 says 'Rendering uses the island's own hint chip', suggesting intent to connect it but it was never wired.</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-PI-010">
+    <div class="issue-header"><span class="badge badge-low">Low</span><span class="badge-category">Bug</span><span class="issue-id">PI-010</span></div>
+    <div class="issue-title">Install Mumble.command user-facing hotkey documentation says Ctrl+Option+M instead of Ctrl+Option+D</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>READ ME FIRST.txt and Install Mumble.command's final message tell users 'Control + Option + M', but the actual default dictation hotkey is 'Control + Option + D' per MAC_TESTING.md.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>First-time users following installer instructions will press wrong key combination and think the app is broken. Leads to unnecessary support requests or abandonment.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Install Mumble.command</code>: line 153, <code>READ ME FIRST.txt</code>.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">Install Mumble.command:153 — 'press  Control + Option + M'. MAC_TESTING.md table — 'Ctrl+Option+D' for Record/dictate. The mismatch between the installer's printed instructions and the actual keybinding.</pre>
+    </div>
+      <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body"><p>Update the hotkey string in Install Mumble.command and READ ME FIRST.txt to match the actual default: Ctrl+Option+D. Consider pulling the default hotkey from branding.py or a settings module rather than hardcoding it in prose to prevent future drift.</p></div>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-PI-012">
+    <div class="issue-header"><span class="badge badge-low">Low</span><span class="badge-category">Code Quality</span><span class="issue-id">PI-012</span></div>
+    <div class="issue-title">Build-only utility files (brand_exe.py, assets_gen.py, _rebuild_zip.py) shipped to end-user installations</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>cp -R copies the entire app/ directory including developer/build-only files that serve no purpose in a user installation and add ~15KB of dead code.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Clutters installation directory. Well-meaning users who explore the app directory may attempt to run these scripts and encounter errors.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Install Mumble.command</code>: line 42 (cp -R "$SRC/." "$APP/").</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Add build step that copies only runtime-necessary files to dist/ directory for zipping. Simplest: add brand_exe.py, assets_gen.py, _rebuild_zip.py to zip exclude list in build_mac_release.sh.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">The app directory listing shows brand_exe.py (9687 bytes), assets_gen.py (1614 bytes), _rebuild_zip.py (3105 bytes) alongside runtime files. These files reference build/packaging tasks and Windows APIs not relevant to macOS end users.</pre>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-PARITY-014">
+    <div class="issue-header"><span class="badge badge-low">Low</span><span class="badge-category">Parity</span><span class="issue-id">PARITY-014</span></div>
+    <div class="issue-title">Model defaults differ — Windows uses small.en, macOS uses base.en</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>Windows defaults to 'small.en' (~466MB, better accuracy). macOS defaults to 'base.en' (~142MB, lower memory). The difference may be deliberate for Apple Silicon base models (8GB RAM) or accidental drift.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>Different default models mean different accuracy and memory usage out of the box. Users comparing platforms will notice quality differences. The choice may be justified but should be documented.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>Ports/macOS/app/mumble_mac.py</code>: line 155 (default 'base.en'). <code>Internal/app/mumble.py</code>: line 156 (default 'small.en').</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">mumble_mac.py line 155: `self.model_name = self.settings.get("model", "base.en")`. mumble.py line 156: `self.model_name = self.settings.get("model", "small.en")`.</pre>
+    </div>
+      <div class="field">
+      <div class="field-label">Suggested Fix</div>
+      <div class="field-body"><p>1) If intentional: add a comment explaining that macOS uses base.en because Apple Silicon base models have less RAM available for the model. 2) If accidental: change to 'small.en' to match Windows. 3) Note that macOS also has Resource Saver mode which forces tiny.en, providing another path for low-memory scenarios.</p></div>
+    </div>
+  </article>
+
+  <article class="issue" id="issue-PARITY-015">
+    <div class="issue-header"><span class="badge badge-low">Low</span><span class="badge-category">Parity</span><span class="issue-id">PARITY-015</span></div>
+    <div class="issue-title">Companion control bar differences — macOS has THE BIG SHIFT bar, Windows has _WidgetBar</div>
+    <div class="field"><div class="field-label">Description</div><div class="field-body"><p>The macOS overlay has a "companion control bar" (THE BIG SHIFT) providing Prompt toggle and Deck button integrated into the canvas island. Windows has a separate _WidgetBar class using GDI layered window infrastructure. Both serve the same purpose but are implemented differently. The macOS approach is simpler; Windows provides more visual polish.</p></div></div>
+    <div class="field"><div class="field-label">Why This Matters</div><div class="field-body"><p>The companion bar is a key interaction surface. Different implementations mean different visual experience. The macOS bar may feel less polished than the Windows glass-layered version.</p></div></div>
+    <div class="field"><div class="field-label">Location</div><div class="field-body"><p><code>overlay_mac.py</code>: lines 228-245 (companion bar). <code>overlay.py</code>: line 699+ (_WidgetBar).</p></div></div>
+    <div class="field"><div class="field-label">Suggested Fix</div><div class="field-body"><p>Style the macOS bar to visually match the Windows _WidgetBar appearance. Ensure same control set (Prompt toggle, Deck button, mode indicators) on both platforms.</p></div></div>
+    <div class="field"><div class="field-label">Complexity Estimate</div><div class="field-body"><span class="badge badge-low">Simple</span></div></div>
+      <div class="field">
+      <div class="field-label">Evidence</div>
+      <pre class="code-block">overlay_mac.py line 228: `# THE BIG SHIFT — the companion control bar (Prompt toggle + Deck button)` with inline canvas widgets. overlay.py: _WidgetBar class at line ~699 using GDI layered window (same infrastructure as _GlassPill).</pre>
+    </div>
+  </article>
+</section>
+
+<!-- ===== 7. WINDOWS PARITY ===== -->
+<section id="windows-parity">
+  <h2>7. Windows Parity Analysis</h2>
+  <div class="exec-summary">
+    <p>The macOS port achieves approximately <strong>70% feature parity</strong> with the Windows canonical implementation. Of the 14 major feature areas compared, 4 are at parity (bindings, system tray, platform STT accelerator, autostart), 5 have medium gaps (overlay quality, keyboard input, installer, GUI toolkit, branded executable), and 5 have critical or high gaps (controller features, meeting module, auto-update, local LLM, island tips).</p>
+    <p>The core dictation pipeline (audio capture → transcription → AI dispatch → formatting → paste) is functionally complete on macOS. The gaps are concentrated in secondary features (meeting, tips, auto-update), visual quality (glass pill, WidgetBar, fade-in), and platform integration (DMG packaging, code signing, branded executable). Several shared modules have diverged by up to 61% in size, representing real feature differences rather than cosmetic drift.</p>
+  </div>
+</section>
+
+<!-- ===== 8. FEATURE COMPARISON MATRIX ===== -->
+<section id="parity-matrix">
+  <h2>8. Feature Comparison Matrix</h2>
+  <div class="matrix-wrap">
+    <table class="matrix">
+      <thead>
+        <tr><th>Feature</th><th>Windows (Canonical)</th><th>macOS (Port)</th><th>Gap</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Controller</td>
+          <td>mumble.py — 4,994 lines. Meeting wired, local LLM init, island tips, conversation context, sleep detection, _processing guard, safe shutdown</td>
+          <td>mumble_mac.py — 4,115 lines. Missing: meeting wiring, LLM init, tips, conv context (latent crash), sleep detection, _processing guard. Has: resource saver, mode_select module</td>
+          <td class="gap-critical">Critical</td>
+        </tr>
+        <tr>
+          <td>Overlay/Island</td>
+          <td>Win32 LAYERED per-pixel-alpha glass pill + Tk fallback. Per-monitor DPI, taskbar detection, fade-in animation, _WidgetBar companion bar, WS_EX_TRANSPARENT</td>
+          <td>Tk canvas only with systemTransparent. No per-monitor placement, no fade-in, no WidgetBar, unverified click-through</td>
+          <td class="gap-high">High</td>
+        </tr>
+        <tr>
+          <td>Island Renderer</td>
+          <td>island_render.py — 1,097 lines. Premium Pillow renderer, glass gradient, shadow, glow. Output displayed via glass pill</td>
+          <td>island_render.py — 1,021 lines. Same architecture but output never displayed (glass pill stubbed). Dead code</td>
+          <td class="gap-high">High</td>
+        </tr>
+        <tr>
+          <td>Meeting Module</td>
+          <td>Fully integrated. meeting.py 32KB, MeetingRecorder instantiated, island callback, 5 cmd handlers, _meeting_start/stop/import</td>
+          <td>Files present (meeting.py 15KB — half size) but NOT imported or wired. Meeting completely inaccessible</td>
+          <td class="gap-critical">Critical</td>
+        </tr>
+        <tr>
+          <td>Auto-Update</td>
+          <td>Full implementation. ed25519 signature verification, sha256 integrity, atomic folder-swap, rollback</td>
+          <td>Reduced. No ed25519 signing. apply_update.command swap script untested. Raw .zip distribution (no DMG, no notarization)</td>
+          <td class="gap-high">High</td>
+        </tr>
+        <tr>
+          <td>Local LLM (GGUF)</td>
+          <td>Fully wired: _init_local_llm(), local_llm_status(), _local_llm_generate(). Middle tier between cloud and deterministic builder</td>
+          <td>_local_llm_generate() exists at line 3095 but _init_local_llm() never called. local_llm_status() missing. Offline smart-mode degrades silently</td>
+          <td class="gap-high">High</td>
+        </tr>
+        <tr>
+          <td>Island Tips</td>
+          <td>5 methods: _bump_feature, _tip_usage, _maybe_island_tip, _show_island_tip, _fire_island_tip. 6 integration points. Auto-retire on adoption</td>
+          <td>Completely absent. No methods, no call sites, no integration. tips.py is 4KB vs 11KB (missing tip content)</td>
+          <td class="gap-high">High</td>
+        </tr>
+        <tr>
+          <td>Keyboard Input</td>
+          <td><code>keyboard</code> library (Windows global hooks). Mouse side-button support</td>
+          <td><code>keyboard</code> library via bindings alias. Same mouse lib. Documentation incorrectly says pynput</td>
+          <td class="gap-medium">Medium</td>
+        </tr>
+        <tr>
+          <td>Installer/Packaging</td>
+          <td>install.ps1 (140 lines): Python detection, venv, pip, model, shortcuts, launch. Mumble.exe branded executable. Mumble.zip</td>
+          <td>Install Mumble.command (5,571 lines): comprehensive but produces folder of .py files. No .app bundle, no DMG, no notarization</td>
+          <td class="gap-medium">Medium</td>
+        </tr>
+        <tr>
+          <td>GUI Toolkit</td>
+          <td>tkinter + pywebview (Edge WebView2). Win32 ctypes for glass pill, DPI, monitor detection</td>
+          <td>tkinter + pywebview (Cocoa WKWebView). No Win32 ctypes. Tk -transparent for overlay. Screen geometry fallback</td>
+          <td class="gap-medium">Medium</td>
+        </tr>
+        <tr>
+          <td>Branded Executable</td>
+          <td>brand_exe.py patches pythonw.exe PE resources. Mumble.exe (34KB) shows 'Mumble' in Task Manager</td>
+          <td>No equivalent. Runs as 'python3 mumble_mac.py'. Shows as 'python3' in Activity Monitor. No .app bundle</td>
+          <td class="gap-medium">Medium</td>
+        </tr>
+        <tr>
+          <td>Shutdown Safety</td>
+          <td>_quit() saves partial dictation, unloads LLM, cancels downloads. ~87 lines</td>
+          <td>_quit() skips all three safety ops. ~63 lines. Silent data loss on quit</td>
+          <td class="gap-high">High</td>
+        </tr>
+        <tr>
+          <td>Shared Module Divergence</td>
+          <td>Canonical versions. Full implementations</td>
+          <td>12 of 25 modules diverge in size. Largest gaps: local_engine (-48%), meeting (-52%), tips (-61%), meeting_diarise (-60%)</td>
+          <td class="gap-high">High</td>
+        </tr>
+        <tr>
+          <td>Bindings (Hotkeys)</td>
+          <td>bindings.py — 342 lines. keyboard library. Modifier canonicalization</td>
+          <td>bindings.py — 342 lines. Identical source. Aliased as keyboard for API compatibility</td>
+          <td class="gap-low">Low</td>
+        </tr>
+        <tr>
+          <td>System Tray</td>
+          <td>pystray with Win32 backend. State-colored icon. Right-click menu</td>
+          <td>pystray with Cocoa/rumps backend. Same icon and menu structure. macOS Notification Center</td>
+          <td class="gap-low">Low</td>
+        </tr>
+        <tr>
+          <td>Platform STT Accelerator</td>
+          <td>DirectMLTranscriber: sherpa-onnx SenseVoice + DirectML GPU acceleration. Auto device resolution</td>
+          <td>MacOSTranscriber: FluidAudio + Parakeet TDT on CoreML/ANE. Same API surface and degradation pattern</td>
+          <td class="gap-low">Low</td>
+        </tr>
+        <tr>
+          <td>Autostart</td>
+          <td>Startup folder .lnk shortcuts + Registry Run key cleanup</td>
+          <td>LaunchAgent plist (~/Library/LaunchAgents/com.mumble.app.plist). launchctl load/unload. Correct conventions</td>
+          <td class="gap-low">Low</td>
+        </tr>
+        <tr>
+          <td>Default Hotkeys</td>
+          <td>Record: Ctrl+Win. Quick Paste: Ctrl+Alt+V. History: Ctrl+Alt+D</td>
+          <td>Record: Ctrl+Option+D. Quick Paste: Ctrl+Option+V. History: Ctrl+Option+H. Platform-appropriate</td>
+          <td class="gap-low">Low</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== 9. MISSING IMPLEMENTATIONS ===== -->
+<section id="missing-implementations">
+  <h2>9. Missing Implementations</h2>
+  <div class="exec-summary">
+    <p>The following features are present in the Windows canonical but absent from the macOS port. For detailed analysis of each item, see the corresponding issue entries above.</p>
+    <table class="matrix" style="margin-top:16px;">
+      <thead><tr><th>Feature</th><th>Issue IDs</th><th>Impact</th><th>Complexity</th></tr></thead>
+      <tbody>
+        <tr><td>Meeting module wiring</td><td>CTRL-001, PARITY-001, CQ-012</td><td>Major advertised feature completely non-functional</td><td>Complex</td></tr>
+        <tr><td>Local LLM initialization</td><td>CTRL-003, PARITY-003, CTRL-014</td><td>No on-device smart-mode shaping; latent crash bug</td><td>Moderate</td></tr>
+        <tr><td>Island tips system</td><td>CTRL-004, PARITY-004</td><td>No in-app feature discovery</td><td>Moderate</td></tr>
+        <tr><td>Conversation context for Prompt Mode</td><td>CTRL-005, PARITY-005</td><td>Latent AttributeError crash + missing feature</td><td>Simple</td></tr>
+        <tr><td>Glass pill (per-pixel-alpha window)</td><td>OLUI-001</td><td>Lower-quality island rendering</td><td>Complex</td></tr>
+        <tr><td>WidgetBar companion bar</td><td>OLUI-002</td><td>No visual mode selection from island</td><td>Complex</td></tr>
+        <tr><td>Feature adoption tracking</td><td>CTRL-012</td><td>Tips can't auto-retire</td><td>Simple</td></tr>
+        <tr><td>Branded executable (.app bundle)</td><td>PARITY-011</td><td>Poor macOS app identity</td><td>Moderate</td></tr>
+        <tr><td>DMG packaging + code signing</td><td>PI-006</td><td>Gatekeeper friction, no distribution integrity</td><td>Moderate</td></tr>
+        <tr><td>mlx-whisper Metal fallback</td><td>PI-011</td><td>Slow transcription on Intel Macs</td><td>Moderate</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== 10. LOGIC FLAWS & BUGS ===== -->
+<section id="logic-flaws">
+  <h2>10. Logic Flaws &amp; Bugs</h2>
+  <div class="exec-summary">
+    <p>Beyond missing features, the macOS port contains several logic bugs that affect correct behavior in existing implementations:</p>
+    <ul style="color:var(--text-secondary);padding-left:24px;margin-top:12px;">
+      <li style="margin-bottom:8px;"><strong>CTRL-005:</strong> Latent AttributeError crash — <code>_conv_context_for_prompt()</code> called in Prompt Mode but method is not defined. <strong>CTRL-014:</strong> <code>_local_llm_generate()</code> IS defined (line 3095) with proper defensive guards, but <code>_init_local_llm()</code> is never called (see CTRL-003), so <code>local_engine.local_llm_ready()</code> always returns False and the local LLM path silently produces no output.</li>
+      <li style="margin-bottom:8px;"><strong>CTRL-006:</strong> No audio sleep detection — stale frames transcribed after Mac wakes, producing garbled output.</li>
+      <li style="margin-bottom:8px;"><strong>CTRL-007:</strong> Missing _processing guard — rapid hotkey double-tap can open second mic stream, corrupting state.</li>
+      <li style="margin-bottom:8px;"><strong>CTRL-009:</strong> _safe_start doesn't clean up partially-started stream — mic may stay open after error.</li>
+      <li style="margin-bottom:8px;"><strong>CTRL-010:</strong> _toggle_pause doesn't stop recording — audio silently accumulates in memory.</li>
+      <li style="margin-bottom:8px;"><strong>CTRL-011:</strong> Missing AI config snapshot — in-flight cloud call may use wrong API key if user changes settings mid-call.</li>
+      <li style="margin-bottom:8px;"><strong>PI-001:</strong> LaunchAgent label mismatch — toggling autostart off in app doesn't actually stop autostart.</li>
+      <li style="margin-bottom:8px;"><strong>PI-003:</strong> Update swap script missing quarantine stripping — Gatekeeper warnings after every update.</li>
+      <li style="margin-bottom:8px;"><strong>PI-004:</strong> No pip install after update — new Python dependencies silently missing.</li>
+      <li style="margin-bottom:8px;"><strong>PI-007:</strong> macos_audio.py unload() doesn't release GPU/ANE resources — potential memory leak.</li>
+      <li style="margin-bottom:8px;"><strong>CQ-011:</strong> Race condition in _mode_windows — concurrent access without proper synchronization.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===== 11. PERFORMANCE CONCERNS ===== -->
+<section id="performance">
+  <h2>11. Performance Concerns</h2>
+  <div class="exec-summary">
+    <ul style="color:var(--text-secondary);padding-left:24px;margin-top:12px;">
+      <li style="margin-bottom:8px;"><strong>Canvas fallback renderer (OLUI-007):</strong> The Tk canvas fallback runs at 45ms (22fps) but the premium island_render pipeline is available. CPU time spent on Tk drawing could be redirected to rendering the premium output.</li>
+      <li style="margin-bottom:8px;"><strong>Dead import cost (OLUI-009):</strong> numpy and PIL are imported at startup (~50ms) for island_render but the output is never displayed due to glass pill being stubbed.</li>
+      <li style="margin-bottom:8px;"><strong>ANE resource leak (PI-007):</strong> MacOSTranscriber.unload() doesn't release GPU/ANE resources. On Apple Silicon, ANE memory is limited. Repeated model switches could exhaust it.</li>
+      <li style="margin-bottom:8px;"><strong>No Metal fallback (PI-011):</strong> Intel Macs and pre-macOS 13 users get CPU-only faster-whisper. mlx-whisper could provide 2-6x speedup on Metal.</li>
+      <li style="margin-bottom:8px;"><strong>Model default difference (PARITY-014):</strong> macOS defaults to base.en (142MB, lower accuracy) vs Windows small.en (466MB, higher accuracy). May be a deliberate memory tradeoff for Apple Silicon base models.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===== 12. CODE QUALITY CONCERNS ===== -->
+<section id="code-quality">
+  <h2>12. Code Quality Concerns</h2>
+  <div class="exec-summary">
+    <ul style="color:var(--text-secondary);padding-left:24px;margin-top:12px;">
+      <li style="margin-bottom:8px;"><strong>Thread lifecycle (CQ-001):</strong> 26 daemon threads, only 1 ever joined. os._exit(0) is the documented band-aid for unmanaged threads.</li>
+      <li style="margin-bottom:8px;"><strong>Silent exception swallowing (CQ-004):</strong> 90+ instances of <code>except Exception: pass</code> across critical paths. Makes debugging nearly impossible.</li>
+      <li style="margin-bottom:8px;"><strong>Code duplication (CQ-006):</strong> ~2.5MB of shared module code in 3 parallel directories. 70% estimated duplication.</li>
+      <li style="margin-bottom:8px;"><strong>No shared abstraction (CQ-008):</strong> Three controllers (~4000 lines each), three overlays (~1000-2600 lines). Any cross-cutting change touches 15+ files.</li>
+      <li style="margin-bottom:8px;"><strong>Subprocess orphan risk (CQ-003):</strong> WebUI host survives controller crash. No atexit or signal cleanup.</li>
+      <li style="margin-bottom:8px;"><strong>No signal handlers (CQ-010):</strong> SIGTERM/SIGINT cause unclean shutdown. Lock port stays bound after system restart.</li>
+      <li style="margin-bottom:8px;"><strong>Log file never closed (CQ-002):</strong> Crash logs may be lost. Relies on GC for cleanup.</li>
+      <li style="margin-bottom:8px;"><strong>TODO gap (CQ-005):</strong> Only 1 TODO marker across entire port. Known gaps untracked in source code.</li>
+      <li style="margin-bottom:8px;"><strong>Test coverage (CQ-007):</strong> Only 14 of 31 test files run automatically. 5 excluded due to API divergence.</li>
+      <li style="margin-bottom:8px;"><strong>Lock timeout silence (CQ-009):</strong> _tx_lock.acquire(timeout=N) returns empty string on failure — transcription silently lost.</li>
+      <li style="margin-bottom:8px;"><strong>Platform shadow duplication (PI-008):</strong> stdlib platform shadow workaround duplicated across two files.</li>
+      <li style="margin-bottom:8px;"><strong>Fragile pkill (PI-009):</strong> Installer uses pkill -f pattern matching — false positives and negatives on process termination.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===== 13. UX/UI INCONSISTENCIES ===== -->
+<section id="ux-inconsistencies">
+  <h2>13. UX/UI Inconsistencies</h2>
+  <div class="exec-summary">
+    <ul style="color:var(--text-secondary);padding-left:24px;margin-top:12px;">
+      <li style="margin-bottom:8px;"><strong>Dark title bar (OLUI-005):</strong> macOS app window has light title bar despite dark-themed content.</li>
+      <li style="margin-bottom:8px;"><strong>Fade-in animation (OLUI-006):</strong> Island snaps into view on macOS vs smooth fade-in on Windows.</li>
+      <li style="margin-bottom:8px;"><strong>Hotkey hint text (OLUI-010):</strong> Home tab says 'ctrl+windows' instead of 'ctrl+option+d'.</li>
+      <li style="margin-bottom:8px;"><strong>Hotkey documentation (PI-010):</strong> Installer says Ctrl+Option+M instead of actual default Ctrl+Option+D.</li>
+      <li style="margin-bottom:8px;"><strong>Click-through (OLUI-004):</strong> Behavior unverified — may not work on macOS.</li>
+      <li style="margin-bottom:8px;"><strong>Spaces awareness (OLUI-008):</strong> Island may appear on wrong desktop.</li>
+      <li style="margin-bottom:8px;"><strong>Accessibility indicator (OLUI-011):</strong> No visual warning when accessibility permissions are missing.</li>
+      <li style="margin-bottom:8px;"><strong>Companion bar styling (PARITY-015):</strong> macOS bar lacks the visual polish of Windows _WidgetBar.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ===== 14. RECOMMENDATIONS ===== -->
+<section id="recommendations">
+  <h2>14. Recommendations</h2>
+  <div class="exec-summary" style="margin-bottom:24px;">
+    <p>Below are prioritized, actionable recommendations for addressing the most critical issues. Each recommendation includes the related issue IDs, estimated implementation complexity, and expected impact.</p>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 1 — Immediate (Crash Fix)</div>
+    <div class="rec-title">Fix latent AttributeError crash in Prompt Mode and initialize local LLM backend</div>
+    <div class="rec-body">Port <code>_conv_context_for_prompt()</code> from Windows mumble.py:3662-3680 to mumble_mac.py (simple copy, zero platform-specific code). Call <code>_init_local_llm()</code> during startup so the already-implemented <code>_local_llm_generate()</code> method (line 3095) becomes active. <strong>CTRL-005 is a guaranteed runtime crash; CTRL-014 is the already-correct method gated behind missing initialization (CTRL-003).</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Simple</span>
+      <span class="rec-impact">Issues: CTRL-005, CTRL-014, CTRL-003, PARITY-005, PARITY-003</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 2 — Immediate (Data Loss Prevention)</div>
+    <div class="rec-title">Port shutdown safety operations from Windows _quit()</div>
+    <div class="rec-body">Save partial dictation audio/text on quit, unload local LLM, cancel in-flight downloads. <strong>Prevents silent data loss when users quit while recording.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Moderate</span>
+      <span class="rec-impact">Issues: CTRL-008, PARITY-007</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 3 — Critical (Autostart Fix)</div>
+    <div class="rec-title">Unify LaunchAgent plist label between installer and autostart.py</div>
+    <div class="rec-body">Use a single label (com.mumble.app) and plist path. Have installer call autostart.py's enable() instead of embedding its own plist. <strong>Fixes duplicate autostart and "can't turn off autostart" bug.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Simple</span>
+      <span class="rec-impact">Issue: PI-001</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 4 — Critical (Feature Gap)</div>
+    <div class="rec-title">Wire meeting module into macOS controller</div>
+    <div class="rec-body">Sync meeting source files from Windows, import in mumble_mac.py, create MeetingRecorder, add meeting methods and command handlers. <strong>This is the single largest feature gap between platforms.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Moderate</span>
+      <span class="rec-impact">Issues: CTRL-001, PARITY-001, CQ-012</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 5 — High (Controller Gaps)</div>
+    <div class="rec-title">Add _processing guard, sleep detection, and _safe_start cleanup to controller</div>
+    <div class="rec-body">Three simple fixes: <code>if self._processing: return None</code> in on_hotkey(), sleep gap detection in _audio_cb, and stream cleanup in _safe_start() except block. <strong>Prevents race conditions, garbled transcriptions, and stuck microphones.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Simple</span>
+      <span class="rec-impact">Issues: CTRL-006, CTRL-007, CTRL-009, CTRL-010, PARITY-008, PARITY-009</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 6 — High (Orphan Prevention)</div>
+    <div class="rec-title">Add atexit handler and SIGTERM signal handler for graceful shutdown</div>
+    <div class="rec-body">Register webui subprocess cleanup, log file close, and lock socket release for abnormal exit. <strong>Prevents zombie processes and stuck lock ports after crash or system restart.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Simple</span>
+      <span class="rec-impact">Issues: CQ-003, CQ-010, CQ-002</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 7 — High (Controller Gaps)</div>
+    <div class="rec-title">Initialize local LLM backend and restore AI config snapshot in _generate</div>
+    <div class="rec-body">Port _init_local_llm() and local_llm_status() from Windows. Capture cfg/prompt_cfg at start of _generate(). <strong>Enables offline smart-mode shaping and prevents settings-change race condition.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Moderate</span>
+      <span class="rec-impact">Issues: CTRL-003, CTRL-011, PARITY-003</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 8 — High (Island UX)</div>
+    <div class="rec-title">Wire island mode deck callbacks at boot</div>
+    <div class="rec-body">Add <code>set_widget_callbacks()</code> call after island creation in run(). <strong>Makes the visually-present mode deck bar actually functional.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Simple</span>
+      <span class="rec-impact">Issue: CTRL-013</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 9 — Medium (Platform Integration)</div>
+    <div class="rec-title">Fix update mechanism: quarantine handling, pip install, and swap script testing</div>
+    <div class="rec-body">Add xattr -dr com.apple.quarantine, pip install -r requirements.txt in swap script. Test end-to-end on real Apple Silicon and Intel Macs. <strong>Makes auto-update actually work on macOS.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Moderate</span>
+      <span class="rec-impact">Issues: CTRL-002, PI-003, PI-004, PARITY-002</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 10 — Medium (Code Quality)</div>
+    <div class="rec-title">Audit and reduce silent exception swallowing in critical paths</div>
+    <div class="rec-body">Replace <code>except Exception: pass</code> with explicit logging in transcription, model loading, and hotkey paths. Surface user-visible errors where appropriate. <strong>Improves debuggability and user trust.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Moderate</span>
+      <span class="rec-impact">Issue: CQ-004</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 11 — Long-Term (Architecture)</div>
+    <div class="rec-title">Refactor shared modules into common mumble_core package</div>
+    <div class="rec-body">Phase 1: Move byte-identical modules to shared directory. Phase 2: Extract platform-specific behavior behind interfaces. Phase 3: Unify controllers behind common base class. <strong>Eliminates 2.5MB duplication and ensures all platforms benefit from every improvement.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Architectural</span>
+      <span class="rec-impact">Issues: CQ-006, CQ-008, PARITY-010</span>
+    </div>
+  </div>
+
+  <div class="rec-card">
+    <div class="rec-priority">Priority 12 — Long-Term (macOS Polish)</div>
+    <div class="rec-title">Implement macOS-native glass pill, WidgetBar, and DMG packaging</div>
+    <div class="rec-body">Use PyObjC for NSWindow-based glass pill with island_render output. Add DMG packaging with code signing. Add .app bundle for proper macOS identity. <strong>Closes the visual quality and platform integration gap entirely.</strong></div>
+    <div class="rec-meta">
+      <span class="rec-complexity">Complex–Architectural</span>
+      <span class="rec-impact">Issues: OLUI-001, OLUI-002, OLUI-003, PARITY-006, PARITY-011, PARITY-013</span>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 15. SUGGESTED FIXES ===== -->
+<section id="suggested-fixes">
+  <h2>15. Suggested Fixes &amp; Complexity Estimates</h2>
+  <div class="exec-summary">
+    <p>The 53 issues documented in this report span a range of implementation complexity. Below is a summary organized by effort level. For detailed fix guidance on each issue, see the "Suggested Fix" field in each issue entry above.</p>
+
+    <h3 style="color:var(--green);margin:24px 0 12px;font-size:0.95em;">Simple Fixes (1-2 hours each) — 28 issues</h3>
+    <p style="color:var(--text-secondary);">These are straightforward ports from Windows or single-line changes with no platform-specific dependencies:</p>
+    <ul style="color:var(--text-secondary);padding-left:24px;">
+      <li>CTRL-005: Port _conv_context_for_prompt() — copy a single method</li>
+      <li>CTRL-014: Call _init_local_llm() in __init__ — method already exists and is well-written (see CTRL-003)</li>
+      <li>CTRL-007: Add _processing guard to on_hotkey()</li>
+      <li>CTRL-009: Add stream cleanup to _safe_start() except block</li>
+      <li>CTRL-010: Add recording-stop to _toggle_pause()</li>
+      <li>CTRL-011: Add cfg/prompt_cfg snapshot to _generate()</li>
+      <li>CTRL-012: Port _bump_feature() method</li>
+      <li>CTRL-013: Add set_widget_callbacks() in run()</li>
+      <li>OLUI-005: Extend dark_titlebar() for macOS</li>
+      <li>OLUI-006: Add APPEAR_FRAMES fade-in animation</li>
+      <li>OLUI-010: Fix hotkey default from 'ctrl+windows' to 'ctrl+option+d' in app window</li>
+      <li>OLUI-012: Wire tips.py module into controller dictation completion path</li>
+      <li>PI-001: Unify LaunchAgent label string</li>
+      <li>PI-002: Remove dead brand_exe.py from macOS port</li>
+      <li>PI-003: Add xattr quarantine stripping to swap script</li>
+      <li>PI-005: Add missing Info.plist keys</li>
+      <li>PI-007: Add close() calls in macos_audio.py unload()</li>
+      <li>PI-008: Consolidate stdlib platform shadow workaround</li>
+      <li>PI-010: Fix hotkey string in installer documentation</li>
+      <li>PI-012: Exclude build-only files from zip</li>
+      <li>PARITY-012: Update MAC_TESTING.md to accurately document keyboard library (not pynput)</li>
+      <li>PARITY-014: Document or align model default (base.en vs small.en) across platforms</li>
+      <li>PARITY-015: Style macOS companion bar to match Windows WidgetBar appearance</li>
+      <li>CQ-002: Register atexit handler to close log file handle</li>
+      <li>CQ-003: Register atexit and signal handler to clean up webui subprocess on abnormal exit</li>
+      <li>CQ-005: Add TODO markers at known gap locations in source code</li>
+      <li>CQ-009: Replace lock.acquire(timeout=N) with context manager or raise on failure</li>
+      <li>CQ-010: Add SIGTERM/SIGINT signal handlers that call _quit()</li>
+    </ul>
+
+    <h3 style="color:var(--yellow);margin:24px 0 12px;font-size:0.95em;">Moderate Complexity (1-3 days) — 18 issues</h3>
+    <p style="color:var(--text-secondary);">These require porting multiple methods, testing, or moderate platform integration work:</p>
+    <ul style="color:var(--text-secondary);padding-left:24px;">
+      <li>CTRL-001: Wire meeting module (source files need syncing from Windows)</li>
+      <li>CTRL-002: Test and validate macOS auto-update flow</li>
+      <li>CTRL-003: Port _init_local_llm() and related methods</li>
+      <li>CTRL-004: Port island tips system (5 methods + 6 call sites)</li>
+      <li>CTRL-006: Add sleep detection to _audio_cb</li>
+      <li>CTRL-008: Port shutdown safety operations (3 blocks)</li>
+      <li>OLUI-003: Implement multi-monitor support via NSScreen</li>
+      <li>OLUI-004: Verify and fix click-through via PyObjC</li>
+      <li>OLUI-008: Add Spaces/Mission Control awareness</li>
+      <li>OLUI-011: Surface accessibility permission status in overlay</li>
+      <li>PI-004: Add pip install to update swap script</li>
+      <li>PI-006: Add versioned filename, SHA256, notarization docs</li>
+      <li>PI-009: Implement PID file for targeted process termination</li>
+      <li>PI-011: Pin pywebview, add mlx-whisper fallback path</li>
+      <li>PARITY-011: Create minimal .app bundle wrapper</li>
+      <li>CQ-004: Audit silent exception swallowing in critical paths (transcription, hotkeys)</li>
+      <li>CQ-007: Adapt 5 excluded test files for macOS API surface</li>
+      <li>CQ-011: Audit thread spawns inside locked sections for concurrency hazards</li>
+    </ul>
+
+    <h3 style="color:var(--orange);margin:24px 0 12px;font-size:0.95em;">Complex (1-2 weeks) — 4 issues</h3>
+    <p style="color:var(--text-secondary);">These require significant new implementation with platform-specific APIs:</p>
+    <ul style="color:var(--text-secondary);padding-left:24px;">
+      <li>OLUI-001: Implement macOS-native glass pill via PyObjC NSWindow + CALayer</li>
+      <li>OLUI-002: Implement WidgetBar equivalent for macOS</li>
+      <li>CQ-001: Implement proper thread shutdown protocol (affects all 26 daemon threads)</li>
+      <li>CQ-012: Full meeting module integration with updated source files</li>
+    </ul>
+
+    <h3 style="color:var(--red);margin:24px 0 12px;font-size:0.95em;">Architectural (Multi-release) — 4 issues</h3>
+    <p style="color:var(--text-secondary);">These require coordinated changes across all three platform ports:</p>
+    <ul style="color:var(--text-secondary);padding-left:24px;">
+      <li>CQ-006: Refactor 2.5MB of duplicated code into shared mumble_core package</li>
+      <li>CQ-008: Unify three controllers behind common base class with platform subclasses</li>
+      <li>OLUI-007/OLUI-009: Glass pill implementation enables premium renderer on macOS (depends on OLUI-001/002)</li>
+      <li>PARITY-010: Audit and sync all 12 diverged shared modules</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <p>Mumble macOS Platform Audit Report — Generated 2026-07-04</p>
+  <p>Scope: 53 issues across Controller, Overlay/UI, Platform Integration, Windows Parity, and Code Quality</p>
+  <p>Audit files reviewed: controller.json, overlay-ui.json, platform-integration.json, windows-parity.json, code-quality.json</p>
+  <p>Pre-existing audit reference: mission/audit-fixes/platform-report.md</p>
+</footer>
+
+</body>
+</html>

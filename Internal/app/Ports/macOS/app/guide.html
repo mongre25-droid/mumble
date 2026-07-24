@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble for Mac — Guide</title>
+<style>
+  :root{
+    --bg:#0A0A0B; --surface:#121110; --surface2:#1A1813; --border:#2B2519;
+    --text:#F3EEE1; --dim:#B6AE99; --mute:#7C745F;
+    --gold:#D4AF37; --gold-hi:#EBCB65;
+    --violet:#B98AF0; --blue:#5AA9E6; --teal:#46C9A8; --coral:#E8825A;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    padding:0 0 80px}
+  .wrap{max-width:760px;margin:0 auto;padding:0 24px}
+  header{padding:48px 0 24px;text-align:center}
+  .logo{font-size:13px;letter-spacing:.3em;color:var(--gold);text-transform:uppercase}
+  h1{font-size:34px;margin:8px 0 6px;color:var(--gold-hi)}
+  .tag{color:var(--dim);font-size:16px}
+  h2{font-size:20px;margin:36px 0 4px;color:var(--gold-hi)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:18px;
+    padding:20px 22px;margin:14px 0}
+  .kbd{display:inline-block;background:var(--surface2);border:1px solid var(--border);
+    border-radius:8px;padding:2px 9px;font-weight:600;color:var(--gold-hi);font-size:13px}
+  .dim{color:var(--dim)} .mute{color:var(--mute);font-size:13px}
+  ol,ul{padding-left:22px} li{margin:6px 0}
+  .mode{border-left:3px solid var(--gold);padding-left:14px;margin:16px 0}
+  .mode.prompt{border-color:var(--violet)} .mode.email{border-color:var(--blue)}
+  .mode.list{border-color:var(--teal)} .mode.reply{border-color:var(--coral)}
+  .mode h3{margin:0 0 2px;font-size:16px}
+  .mode.text h3{color:var(--gold)} .mode.prompt h3{color:var(--violet)}
+  .mode.email h3{color:var(--blue)} .mode.list h3{color:var(--teal)}
+  .mode.reply h3{color:var(--coral)}
+  code{background:var(--surface2);padding:1px 6px;border-radius:6px;font-size:13px}
+  .warn{border-color:#5a4a1f;background:#16130b}
+  a{color:var(--gold-hi)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">▮▮▮ Mumble</div>
+  <h1>Speak. It types.</h1>
+  <div class="tag">Private voice-to-text for your Mac.</div>
+</header>
+
+<div class="wrap">
+
+  <div class="card warn">
+    <h2 style="margin-top:0">First: grant two permissions</h2>
+    <p class="dim">macOS will ask the first time — or turn them on in
+    <b>System Settings ▸ Privacy &amp; Security</b>:</p>
+    <ul>
+      <li><b>Microphone</b> — so Mumble can hear you.</li>
+      <li><b>Accessibility</b> — so the global hotkey works and Mumble can paste for you.</li>
+    </ul>
+    <p class="mute">If the hotkey ever does nothing, it's almost always the Accessibility
+    permission — add Mumble (or your Terminal/Python) under Accessibility and try again.</p>
+  </div>
+
+  <h2>How to use it</h2>
+  <div class="card">
+    <ol>
+      <li>Click into any text field (an email, a chat, a doc — anywhere).</li>
+      <li>Press <span class="kbd">Control + Option + M</span>.</li>
+      <li>Speak naturally.</li>
+      <li>Press <span class="kbd">Control + Option + M</span> again — your words appear.</li>
+    </ol>
+    <p class="dim">A small <b>island</b> appears near the bottom of the current screen while
+    it listens and works, glowing in the colour of the mode it's writing. Re-paste your last
+    result anywhere with <span class="kbd">Control + Option + V</span>.</p>
+    <p class="dim" style="margin-top:10px"><b>Turn any text into a prompt — use the
+    Deck:</b> highlight some text and hit <b>Convert</b> on any Deck item to route it into
+    another Smart Mode (email, prompt, reply). Mumble files the result under that mode.
+    If it can’t paste (say, a read-only page), the result is kept on your clipboard and
+    the island shows <span class="kbd">⌃ ⌥ V</span> to remind you to paste it yourself.</p>
+  </div>
+
+  <h2>Smart Modes — one Prompt toggle, everything else in the Deck</h2>
+  <div class="card">
+    <p class="dim">Ordinary dictation always produces clean text. Turn <b>Prompt</b> on
+    from the island when you want a rough idea shaped into an AI prompt. Use the
+    <b>Deck</b> for Email, Reply, Foreign, lists and other transformations so the
+    source and action are always deliberate. Spoken mode names are ordinary words.</p>
+  </div>
+
+  <h2>Pro Mode &amp; privacy</h2>
+  <div class="card">
+    <p class="dim"><b>Local transcription</b> keeps audio on your Mac. Optional
+    <b>Cloud transcription</b> sends each audio clip to the selected provider. Pro Mode
+    sends transcript text to the selected AI provider for shaping. The Home privacy
+    badge shows which transcription mode is active.</p>
+    <ul>
+      <li>Turn Pro Mode off (menu ▸ Pro Mode) to keep everything on your Mac — it uses an
+        instant built-in builder instead.</li>
+      <li>You can add your own DeepSeek key (menu ▸ Pro Mode ▸ Set your DeepSeek key) — optional.</li>
+      <li>If the key is ever unavailable, Mumble automatically falls back so it keeps working,
+        and the island shows a small ring when it's running offline.</li>
+    </ul>
+    <p class="mute">Memory &amp; context: Mumble does not record or remember your
+    conversations. The only context it uses is in Reply mode — the message you copied.</p>
+  </div>
+
+  <h2>Sharing Mumble</h2>
+  <div class="card">
+    <p class="dim">Send a friend the <code>MacMumble.zip</code> file. They unzip it, run
+    <b>Install Mumble.command</b>, approve the Microphone + Accessibility permissions, and
+    it lives in their menu bar. (Mac users get the Mac zip; Windows users get the Windows
+    zip — they're separate.)</p>
+  </div>
+
+  <p class="mute" style="text-align:center;margin-top:40px">
+    Mumble · inspired by Wispr Flow · your words stay yours.
+  </p>
+</div>
+</body>
+</html>

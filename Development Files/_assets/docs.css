@@ -1,0 +1,250 @@
+/* ============================================================================
+   Mumble 0.95 Development Docs — shared golden-black glass theme
+   One stylesheet, linked by every converted HTML doc. Editing this restyles
+   all of them at once. Deliberately NOT the in-app Mumble look — this is a
+   quiet, premium reading theme for humans.
+   ============================================================================ */
+
+:root {
+  --bg:        #0a0a0c;   /* page background, near-black            */
+  --bg-2:      #0e0e12;   /* gradient partner                       */
+  --panel:     #141419;   /* cards, header                          */
+  --panel-2:   #1b1b22;   /* table headers, raised cells            */
+  --ink:       #ece8df;   /* primary text, warm off-white           */
+  --ink-soft:  #cfc9bd;
+  --muted:     #968f82;   /* secondary text                         */
+  --line:      #2a2a31;   /* hairline borders                       */
+  --gold:      #d8b15a;   /* primary accent                         */
+  --gold-bri:  #f1d489;   /* highlight / hover                      */
+  --gold-dim:  #8c7437;   /* deep gold for lines                    */
+  --gold-haze: rgba(216,177,90,.10);
+  --green:     #7fc08a;   /* "done / shipped"                       */
+  --green-bg:  rgba(127,192,138,.13);
+  --amber:     #e0b765;   /* "gated / caution"                      */
+  --amber-bg:  rgba(224,183,101,.13);
+  --slate:     #8fa6c4;   /* "existing / neutral"                   */
+  --slate-bg:  rgba(143,166,196,.13);
+  --code-bg:   #0f0f14;
+  --max:       880px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 600px at 50% -200px, var(--gold-haze), transparent 70%),
+    linear-gradient(180deg, var(--bg-2), var(--bg) 380px);
+  background-attachment: fixed;
+  color: var(--ink);
+  font: 16px/1.7 ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: var(--max); margin: 0 auto; padding: 40px 24px 110px; }
+
+/* ---- Document header ----------------------------------------------------- */
+.doc-head {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 34px 34px 30px;
+  background: linear-gradient(155deg, rgba(26,26,32,.94), rgba(14,14,19,.88) 70%);
+  box-shadow: 0 18px 55px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.035);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.doc-head::before {           /* gold top hairline */
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: .8;
+}
+.kicker {
+  font-size: .72rem; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--gold); font-weight: 600; margin-bottom: 12px;
+}
+.doc-head h1 {
+  margin: 0 0 16px; font-size: 2rem; line-height: 1.15; letter-spacing: -.015em;
+  color: #fff;
+}
+.meta { display: grid; gap: 7px; color: var(--muted); font-size: .9rem; }
+.meta b { color: var(--ink-soft); font-weight: 600; }
+.meta .ico { color: var(--gold); margin-right: 6px; }
+
+/* ---- Typography ---------------------------------------------------------- */
+h2 {
+  margin: 56px 0 16px; font-size: 1.45rem; letter-spacing: -.01em; color: #fff;
+  padding-bottom: 12px; border-bottom: 1px solid var(--line); position: relative;
+}
+h2::after {
+  content: ""; position: absolute; left: 0; bottom: -1px; width: 64px; height: 2px;
+  background: var(--gold);
+}
+h2 .sec { color: var(--gold-dim); font-weight: 600; font-size: .8em; margin-right: 10px; }
+h3 { margin: 34px 0 12px; font-size: 1.14rem; color: var(--gold-bri); font-weight: 600; }
+h4 { margin: 24px 0 8px; font-size: 1rem; color: var(--ink); }
+p { margin: 14px 0; color: var(--ink-soft); }
+a { color: var(--gold); text-decoration: none; border-bottom: 1px solid var(--gold-dim); }
+a:hover { color: var(--gold-bri); border-bottom-color: var(--gold-bri); }
+strong { color: var(--ink); font-weight: 650; }
+em { color: var(--ink); }
+hr { border: none; border-top: 1px solid var(--line); margin: 48px 0; }
+
+/* ---- Plain-language lead (beginner rule) --------------------------------- */
+.plain {
+  display: flex; gap: 14px; align-items: flex-start;
+  background: var(--gold-haze); border: 1px solid var(--gold-dim);
+  border-radius: 12px; padding: 15px 18px; margin: 18px 0;
+}
+.plain .tag {
+  flex: none; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--gold-bri); font-weight: 700; padding-top: 3px; white-space: nowrap;
+}
+.plain p { margin: 0; color: var(--ink); }
+.plain p + p { margin-top: 8px; }
+
+/* ---- Callout / blockquote ------------------------------------------------ */
+blockquote, .callout {
+  margin: 20px 0; padding: 16px 20px; background: var(--panel);
+  border: 1px solid var(--line); border-left: 3px solid var(--gold);
+  border-radius: 0 12px 12px 0;
+}
+blockquote p:first-child, .callout p:first-child { margin-top: 0; }
+blockquote p:last-child, .callout p:last-child { margin-bottom: 0; }
+blockquote strong:first-child { color: var(--gold-bri); }
+
+/* ---- Code ---------------------------------------------------------------- */
+code {
+  font-family: "Cascadia Code", "SF Mono", Consolas, ui-monospace, monospace;
+  font-size: .85em; background: var(--code-bg); border: 1px solid var(--line);
+  color: var(--gold-bri); padding: .12em .42em; border-radius: 5px;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px 18px; overflow-x: auto; line-height: 1.55; margin: 18px 0;
+}
+pre code { background: none; border: none; color: var(--ink-soft); padding: 0; font-size: .82rem; }
+
+/* ---- Tables -------------------------------------------------------------- */
+table {
+  width: 100%; border-collapse: collapse; margin: 22px 0; font-size: .9rem;
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+}
+th, td { padding: 11px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+th { background: var(--panel-2); color: var(--gold-bri); font-weight: 600;
+     border-bottom: 1px solid var(--gold-dim); }
+td { color: var(--ink-soft); }
+tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+td:first-child, th:first-child { border-left: none; }
+
+/* ---- Lists --------------------------------------------------------------- */
+ul, ol { padding-left: 22px; }
+li { margin: 8px 0; color: var(--ink-soft); }
+li::marker { color: var(--gold); }
+
+/* ---- Badges -------------------------------------------------------------- */
+.badge {
+  display: inline-block; font-size: .76rem; font-weight: 650; line-height: 1.4;
+  padding: .1em .6em; border-radius: 20px; white-space: nowrap; border: 1px solid transparent;
+}
+.b-done   { background: var(--green-bg); color: var(--green); border-color: rgba(127,192,138,.35); }
+.b-gated  { background: var(--amber-bg); color: var(--amber); border-color: rgba(224,183,101,.35); }
+.b-exist  { background: var(--slate-bg); color: var(--slate); border-color: rgba(143,166,196,.35); }
+.b-gold   { background: var(--gold-haze); color: var(--gold-bri); border-color: var(--gold-dim); }
+
+/* ---- Table of contents --------------------------------------------------- */
+.toc {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 18px 26px; margin: 18px 0 8px;
+}
+.toc .tt { font-size: .72rem; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--gold); font-weight: 600; margin-bottom: 10px; }
+.toc ol { margin: 0; columns: 2; column-gap: 34px; padding-left: 18px; }
+.toc li { margin: 6px 0; }
+.toc a { border-bottom: none; color: var(--ink-soft); }
+.toc a:hover { color: var(--gold-bri); }
+@media (max-width: 620px) { .toc ol { columns: 1; } }
+
+/* ============================================================================
+   WIDGETS — replace ASCII diagrams with real visuals
+   ============================================================================ */
+
+/* ---- Vertical numbered flow (pipelines, stage-by-stage) ------------------ */
+.flow { margin: 24px 0; display: flex; flex-direction: column; gap: 0; }
+.flow-step {
+  position: relative; display: flex; gap: 18px; padding: 4px 0 22px 0;
+}
+.flow-step:last-child { padding-bottom: 0; }
+.flow-node {
+  flex: none; width: 42px; height: 42px; border-radius: 11px;
+  display: grid; place-items: center; font-weight: 700; font-size: 1rem;
+  color: #0a0a0c; background: linear-gradient(150deg, var(--gold-bri), var(--gold));
+  box-shadow: 0 0 0 1px var(--gold-dim), 0 6px 16px rgba(216,177,90,.18); z-index: 1;
+}
+.flow-step:not(:last-child)::before {        /* connector line */
+  content: ""; position: absolute; left: 20px; top: 42px; bottom: 0; width: 2px;
+  background: linear-gradient(var(--gold-dim), transparent); z-index: 0;
+}
+.flow-body {
+  flex: 1; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 16px;
+}
+.flow-body .ft { font-weight: 650; color: var(--gold-bri); font-size: .82rem;
+  letter-spacing: .04em; text-transform: uppercase; margin-bottom: 4px; }
+.flow-body p { margin: 0; color: var(--ink-soft); font-size: .94rem; }
+.flow-body p + p { margin-top: 6px; }
+
+/* ---- Two-column branch (e.g. cloud path | local path) -------------------- */
+.branch { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+@media (max-width: 620px) { .branch { grid-template-columns: 1fr; } }
+.branch-col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px 18px; }
+.branch-col.is-gold { border-color: var(--gold-dim); box-shadow: inset 0 0 0 1px var(--gold-haze); }
+.branch-col h4 { margin: 0 0 10px; color: var(--gold-bri); display: flex; align-items: center; gap: 8px; }
+.branch-col h4 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gold); flex: none; }
+.branch-col p, .branch-col li { font-size: .92rem; }
+
+/* ---- Stat / fact tiles --------------------------------------------------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 22px 0; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px 18px; box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
+.tile .n { font-size: 1.7rem; font-weight: 700; color: var(--gold-bri); line-height: 1; }
+.tile .l { font-size: .82rem; color: var(--muted); margin-top: 6px; }
+
+/* ---- Collapsible developer / AI detail (progressive disclosure) ----------
+   Plain-English stays on the page. Code and dense technical prose live inside
+   these, COLLAPSED by default. The content is still in the HTML source, so any
+   AI (or curious human) that opens it — or scans the raw file — sees it all.
+   Nothing is lost; it is only folded away from the casual reader.            */
+details.dev {
+  border: 1px solid var(--line); border-radius: 11px; margin: 16px 0;
+  background: var(--panel); overflow: hidden;
+}
+details.dev > summary {
+  cursor: pointer; list-style: none; user-select: none;
+  padding: 11px 16px; display: flex; align-items: center; gap: 11px;
+  color: var(--muted); font-size: .82rem; font-weight: 600; letter-spacing: .02em;
+}
+details.dev > summary::-webkit-details-marker { display: none; }
+details.dev > summary::before {
+  content: "›"; color: var(--gold); font-size: 1.2em; line-height: 1;
+  transition: transform .15s ease; display: inline-block;
+}
+details.dev[open] > summary::before { transform: rotate(90deg); }
+details.dev > summary:hover { color: var(--gold-bri); }
+details.dev[open] > summary { border-bottom: 1px solid var(--line); }
+.devchip {
+  font-size: .64rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700;
+  color: var(--gold-bri); background: var(--gold-haze); border: 1px solid var(--gold-dim);
+  padding: .18em .55em; border-radius: 20px; white-space: nowrap;
+}
+details.dev .body { padding: 4px 16px 14px; }
+details.dev .body > pre:first-child,
+details.dev > pre { margin: 14px 16px; }
+details.dev[open] > pre:last-child { margin-bottom: 16px; }
+
+/* ---- Footer -------------------------------------------------------------- */
+.doc-foot { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: .82rem; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.doc-foot .gold { color: var(--gold); }

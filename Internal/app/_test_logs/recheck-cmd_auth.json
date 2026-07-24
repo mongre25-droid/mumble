@@ -1,0 +1,15 @@
+{
+  "mode": "offline",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "seconds": 7.66,
+  "results": [
+    {
+      "test": "test_cmd_auth.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 7.66
+    }
+  ]
+}

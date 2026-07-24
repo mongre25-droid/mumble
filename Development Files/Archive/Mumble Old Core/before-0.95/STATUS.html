@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STATUS</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body>
+<!-- Core docs refreshed 2026-07-15 by Mumble Search refactor -->
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">The Present State</div>
+  <h1>STATUS</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Scope:</b> the present tense of the project</div>
+    <div><span class="ico">◆</span><b>App version:</b> 0.9.1 ("The Big Shift")</div>
+    <div><span class="ico">◆</span><b>Last verified vs code:</b> 2026-07-23 specification branch (67/69 isolated Windows scripts; focused API stability 98/98; fatal flake8 and compileall pass; baseline failures retained under #7)</div>
+    <div><span class="ico">◆</span><b>History lives in:</b> <a href="LOGS.html">LOGS.html</a></div>
+  </div>
+</header>
+
+<blockquote>
+  <strong>The present tense of the project.</strong> Current health, active priorities, known bugs,
+  technical debt, the roadmap, and the live TODO. <strong>No history lives here</strong> — completed
+  work moves to <a href="LOGS.html"><code>LOGS.html</code></a>. If something survives beyond a single
+  prompt, it belongs here; if it's a record of what was done, it belongs in LOGS.
+  <br><br>
+  <strong>How this file is organised:</strong> §1 health snapshot · §2 active priorities · §3 known bugs
+  (verified against code, by area/severity) · §4 technical debt · §5 roadmap · §6 the live TODO + owner
+  actions · §7 the "depicted-but-not-real" guardrail.
+  <br><br>
+  Last verified against the codebase: <strong>2026-07-23</strong> (the clean-suite exceptions are listed in §3). App version: <strong>0.9.1</strong>
+  (<code>Internal/app/branding.py</code>).
+</blockquote>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This page is the project's "right now" dashboard. Windows is the main, healthy version of
+    Mumble and is now the platform for the local AI / LLM refactor (<code>ai/</code> package,
+    <code>models/</code>, <code>pipeline/</code>, <code>eval/</code>, <code>perf/</code>,
+    <code>platform/</code>, meeting modules). The macOS and Linux snapshots were reconciled on 2026-07-15: they now
+    use the <code>ai/</code> package and current shared package shape, with retired duplicate controllers,
+    Prompt Memory/provider and held-mode-key paths removed. Platform-native seams and real-device
+    qualification remain intentionally separate.</p>
+    <p>What's left to do splits into three piles: (a) a few <strong>security and correctness bugs</strong>
+    that affect every platform, (b) <strong>port sync / package parity</strong> and live verification on
+    real hardware, and (c) <strong>owner-only blockers</strong> (cloud credentials, signing keypair, real
+    update feed). Everything below is the detailed, verified list — nothing has been summarised away.</p>
+  </div>
+</div>
+
+<div class="plain" style="border-color:var(--gold)">
+  <div class="tag">Approved delivery and dictation specification</div>
+  <div>
+    <p>The GitHub Wayfinder map is complete. The authoritative target contract now lives in
+    <a href="MUMBLE_MASTER_SYSTEM_DOCUMENTATION.md"><code>MUMBLE_MASTER_SYSTEM_DOCUMENTATION.md</code></a>
+    sections N0-N12. It separates accepted source from approved releases; defines the current
+    Windows portable/launcher contract; specifies release-to-VPS identity, health and rollback;
+    sets internal dictation responsiveness and regression budgets; locks local-first model and
+    explicit-cloud behaviour; and makes exact open-source compliance a release gate.</p>
+    <p>This is a specification milestone, not an implementation or release claim. The startup repair
+    evidence in closed, unmerged PR #10, VPS snapshot documentation in closed, unmerged PR #24, and
+    latency trace work in closed, unmerged PR #25 are not present on <code>main</code>. Issues #7, #8
+    and #9 remain open. Issues #12 and #17 are explicitly deferred external qualification, not passes.</p>
+  </div>
+</div>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">Project health</a></li>
+    <li><a href="#s2">Active priorities (top of the queue)</a></li>
+    <li><a href="#s3">Known bugs</a></li>
+    <li><a href="#s4">Technical debt</a></li>
+    <li><a href="#s5">Roadmap — Mumble V1 → Local AI Conversion</a></li>
+    <li><a href="#s6">Persistent TODO &amp; owner actions</a></li>
+    <li><a href="#s7">Guardrail — "depicted-but-not-real" features</a></li>
+    <li><a href="#s8">Performance architecture audit</a></li>
+    <li><a href="#s9">System Consistency &amp; README Compliance</a></li>
+  </ol>
+</nav>
+
+<!-- ===================== SECTION 1 ===================== -->
+<h2 id="s1"><span class="sec">1</span>Project health</h2>
+
+<div class="plain">
+  <div class="tag">Current</div>
+  <div><p><strong>Audit remediation complete in source on 2026-07-10.</strong> The 33 findings in <code>Other/Mumble Current State Audit - 2026-07-10.html</code> were re-checked against production code. Runtime, durability, privacy copy, UI truthfulness, dependency, test-runner, CI, and cross-platform parity fixes are now applied. The Windows distributable is rebuilt from the live tree.</p></div>
+</div>
+
+<table>
+  <thead><tr><th>Aspect</th><th>State</th></tr></thead>
+  <tbody>
+    <tr><td>App version</td><td><strong>0.9.1</strong> ("The Big Shift")</td></tr>
+    <tr><td>Primary platform</td><td><strong>Windows</strong> — canonical runtime <span class="badge b-done">✓ healthy</span></td></tr>
+    <tr><td>Port sync</td><td>Windows is canonical. The macOS and Linux sources were reconciled to the current product contract on 2026-07-15; Mumble Search remains intentionally absent on Mac. Native install, permissions, hotkeys, paste/focus and compositor checks remain for both ports. <span class="badge b-gated">hardware verification pending</span></td></tr>
+    <tr><td>Test suite</td><td><code>run_tests.py</code> is the authoritative isolated, offline-by-default runner; live tests require an explicit two-part opt-in. The startup-repair branch previously passed <strong>69/69</strong>. On the specification branch from current <code>main</code>, the 2026-07-23 clean run passed <strong>67/69</strong> in 648.3 seconds: <code>test_api_stability.py</code> timed out in aggregate but passed 98/98 focused, while <code>test_webui_api.py</code> retained a baseline failure. Fatal flake8 and compileall passed. The final network-disabled macOS run passed <strong>47/47</strong>; Linux passed <strong>38/38 safe</strong> and <strong>53/53 exhaustive</strong> on the audit host.</td></tr>
+    <tr><td>Repository delivery</td><td>GitHub <code>main</code> is the Accepted Source and was verified at <code>cde2372</code> when the specification branch began on 2026-07-23. The GitHub Actions pre-job validation failure is repaired: live run <code>29973965626</code> created and ran all four jobs, then exposed the separate dependency and clean-run gates recorded below. No merge or branch head is automatically an Approved Release.</td></tr>
+    <tr><td>Hostinger VPS</td><td>SSH alias <code>hostinger-vps</code> reaches the Hostinger server. The original checkout at <code>/root/projects/mumble</code> remains a quarantined development copy with 71 modified and 5 untracked paths at <code>181e6d8</code>; its complete private snapshot is <code>/root/backups/mumble-wayfinder/20260723T073614Z</code>. A separate clean worktree at <code>/root/projects/mumble-current</code> tracks the current consolidation branch without overwriting that work. Neither directory is an identified production service, and no Mumble system service is installed.</td></tr>
+    <tr><td>Transcription privacy</td><td>Local is the default. Opt-in Cloud STT sends the disclosed audio clip to the selected provider; UI and docs now say this consistently. Reader voice discloses passage text transfer before first use.</td></tr>
+    <tr><td>Windows transcription performance</td><td>Production Text dictation now uses one-pass greedy decoding, timestamp-free ordinary inference, four-second background ranges, same-session stop harvesting, physical-core-aware threads, instant local cleanup, and release-to-visible-paste timing. An opt-in, local-only, content-free trace now measures the full activation-to-paste path for hardware qualification. Focused latency/concurrency/performance suites are green. <span class="badge b-done">✓ instrumented in source</span></td></tr>
+    <tr><td>Meetings</td><td>Capture streams to a unique private WAV, is registered as pending before AI work, resumes after interruption, deletes audio with metadata, reports pause/resume truthfully, and can be unstarred. The library now filters cached title/transcript previews and the detail view filters/highlights transcript segments.</td></tr>
+    <tr><td>Reader</td><td>Document playback and structured rendering remain intact; Ctrl+F now searches the open document with Enter/Shift+Enter navigation and bounded match painting.</td></tr>
+    <tr><td>Mumble Search</td><td><strong>Experimental, Windows + Linux only.</strong> The bounded local app/file/folder launcher now shares Mumble's golden-black glass language and uses native shell/theme application icons with bounded caching; Windows Settings and other virtual Start apps resolve through Explorer. Fuzzy ranking, favourites/recency, explicit safe actions and a low-ranked web fallback remain. macOS has no loader or bridge by design.</td></tr>
+    <tr><td>Updates</td><td>The production channel is disabled unless both an HTTPS feed and embedded Ed25519 publisher key are configured. Unsigned manifests fail closed; the UI no longer presents an unavailable feed as live.</td></tr>
+    <tr><td>Account / Sync</td><td>Hidden from consumer UI until an operated backend exists. Code remains parked for future owner provisioning.</td></tr>
+  </tbody>
+</table>
+
+<div class="plain" style="border-color:var(--gold)">
+  <div class="tag">2026-07-20 product state</div>
+  <div>
+    <p>The canonical Windows UI now presents Mumble as a coherent voice workspace: Home shows live dictation state; the compact Island and Deck expose Prompt, Email, Reply, and Foreign consistently; redundant page headings are removed; Deck pinning reads as an action; settings are organised as two stages (speech-to-text, then optional text processing); and Reader metrics live inside Stats without altering dictation totals.</p>
+    <p><strong>Removed from the Windows product:</strong> Your PC selection, Prompt Memory/continuity, the separate Prompting Provider, and all processing-provider choices except Cerebras and OpenRouter. Migration tombstones prevent stale settings from returning.</p>
+    <p><strong>macOS parity:</strong> those removals now apply to the Mac controller, settings, fallback UI and WebUI too. The retired Right-Shift mode button no longer blocks cloud transcription or streaming for explicit modes; Prompt/Email/Reply/Foreign are selected from the Island/Deck.</p>
+    <p><strong>Linux parity:</strong> the same product removals, instant local Text path, stateless Prompt history, provider restrictions, settings tombstones, current WebUI/Search assets and release closure now apply to Linux. Linux-native hotkeys, paste, GTK/WebKit, XDG paths, autostart and updater seams are preserved.</p>
+    <p><strong>Experimental Mumble Search:</strong> Control's autonomous planner/executor, approvals, wake service and UI-automation dependency are removed. Search indexes known local applications and user folders, accepts actions only for opaque indexed result IDs, and never evaluates query text as a command.</p>
+    <p><strong>Canonical Windows polish:</strong> Home now places all four live global shortcuts beside the primary dictation path; the Deck reflows its filters and secondary actions without a horizontal tray at narrow widths; Search uses the product's liquid-glass design and native icons; and the Island hides after ordinary completion instead of lingering for a generic Fix action. A correction review appears only after a concrete detected edit and remains confirmation-gated.</p>
+    <p><strong>On-device AI:</strong> the llama.cpp runtime and GGUF discovery/generation path are implemented, but no model is bundled. The UI calls this a technical preview, keeps it opt-in, and falls back to the deterministic local formatter when no compatible model is available.</p>
+  </div>
+</div>
+
+<blockquote><strong>Headline:</strong> no reproducible code defect from the 2026-07-15 macOS or Linux source audits remains open in either port snapshot. Remaining release gates require real hardware, signing/notarisation identity, and the broader dependency-licence decisions listed below.</blockquote>
+
+<h2 id="s2"><span class="sec">2</span>Active priorities (top of the queue)</h2>
+<ol>
+  <li><strong>Implement only from the approved specification in small slices.</strong> The completed <a href="https://github.com/mongre25-droid/mumble/issues/1">Wayfinder map</a> has been converted into the normative N0-N12 contract in the master system documentation. Start with issue #7 (clean reproducible CI and release-identity foundations); do not treat the closed map or specification as shipped behaviour.</li>
+  <li><strong>Owner: provision release trust.</strong> Create and protect the Ed25519 manifest-signing private key, embed only its public key, publish a real HTTPS feed, and sign Windows/macOS release artefacts with owner-controlled identities.</li>
+  <li><strong>Owner: live platform smoke tests.</strong> Run the documented macOS and Linux install, hotkey, paste, meeting durability, permission, and WebUI checks on real hardware. Source parity and offline tests cannot prove OS permission prompts or compositor behaviour.</li>
+  <li><strong>Continue architecture reduction.</strong> Split the large controller/WebUI modules behind stable interfaces and converge legacy port snapshots without changing user behaviour. This is maintainability work, not a known consumer defect.</li>
+</ol>
+
+<h2 id="s3"><span class="sec">3</span>Known bugs and release gates</h2>
+<div class="plain">
+  <div class="tag">Honest state</div>
+  <div><p><strong>No source-level privacy defect from this pass remains open.</strong> Dependency-licensing, publisher identity, release signing, port parity, and real-hardware verification gates remain; none can be closed by inventing tests or assumptions.</p></div>
+</div>
+<ul>
+  <li><span class="badge b-gated">LICENCE</span> <strong>PyMuPDF 1.27.2.3 and EbookLib 0.20 are direct AGPL Reader dependencies.</strong> EbookLib was previously misclassified as BSD. Resolve both through replacement, suitable commercial terms, or specialist compatibility advice; generate a clean-build SBOM and verbatim notice bundle before distribution.</li>
+  <li><span class="badge b-gated">OWNER</span> <strong>Publisher signing is not provisioned.</strong> The safe interim behaviour is deliberate: production update checks remain disabled and unsigned manifests are rejected.</li>
+  <li><span class="badge b-gated">OWNER</span> <strong>Windows/macOS release binaries are not code-signed or notarised.</strong> CI validates source and produces no trusted public release until owner certificates are supplied.</li>
+  <li><span class="badge b-gated">HARDWARE</span> <strong>macOS and Linux live verification remains pending.</strong> Do not describe either port as hardware-verified until the real-device checklist is completed.</li>
+  <li><span class="badge b-gated">VPS</span> <strong>The Hostinger development checkout's 76 unsaved paths are privately snapshotted but not reconciled.</strong> The verified snapshot preserves the repository, working tree, patch, inventory and checksums. The clean sibling worktree <code>/root/projects/mumble-current</code> may be refreshed from the consolidation branch, but do not pull, reset or deploy over <code>/root/projects/mumble</code> until the 38 Linux and 38 macOS paths are reviewed against GitHub and promoted or retired deliberately.</li>
+  <li><span class="badge b-gated">HARDWARE</span> <strong>Dictation targets still need representative measurements.</strong> The privacy-safe trace is implemented, but cold and warm targets cannot be approved until the Wayfinder benchmark covers the named CPU-only, modest-GPU, and strong-GPU tiers. The current engine exposes stable four-second chunks only; it has no tentative-token result to measure.</li>
+  <li><span class="badge b-gated">CI</span> <strong>Live run <code>29973965626</code> is red after the workflow startup repair.</strong> macOS and Linux pin vulnerable Pillow <code>12.2.0</code> (the audit names <code>12.3.0</code> as the fix); the website lockfile reports one moderate and three high advisories with normal fixes available; and the clean Windows runner passed 67/69 scripts because <code>test_lightweight.py</code> assumes a cached speech model while offline and <code>test_service_platform_regressions.py</code> rejects one contained meeting-audio path. Local Windows still passes 69/69 because the speech model is already cached. Resolve and re-run CI before calling the cross-platform gate green.</li>
+  <li><span class="badge b-gated">CI</span> <strong>The specification-branch isolated suite also remains 67/69 on current <code>main</code>.</strong> <code>test_api_stability.py</code> exceeded the aggregate 180-second ceiling but immediately passed 98/98 focused. <code>test_webui_api.py</code> failed its “deck job returns honest notice” check in the isolated aggregate; a direct non-isolated rerun produced different meeting-state failures, confirming that state isolation remains part of the baseline problem. Documentation, fatal flake8 and compileall are clean. This work does not alter product code; issue #7 owns the fix.</li>
+  <li><span class="badge b-gated">CI</span> <strong>Windows local suite: <code>test_webui_api.py</code> currently fails five Meeting checks after the test environment is fully installed.</strong> The failures cover later-segment search, library total, recording-status shape, and Action Items in text and Markdown exports. The focused file failed after 69 of 70 suite files passed; fatal flake8 and compileall passed. This GitHub/setup task does not alter Meeting behaviour, so investigate and fix it in a dedicated issue before treating the local suite as green.</li>
+  <li><span class="badge b-gated">CI</span> <strong>The first run on the new <code>mongre25-droid/mumble</code> repository, <code>30057561784</code>, started all four jobs but is red.</strong> Website stopped at its dependency audit; macOS and Linux packaging checks failed; Windows passed dependency installation, compileall, fatal flake8, Bandit and pip-audit but its suite failed on the offline Whisper model cache and a contained meeting-audio regression. The repository move is verified, but no release or green-CI claim is permitted until these existing gates are resolved.</li>
+  <li><span class="badge b-gated">WINDOWS</span> <strong>Destructive lifecycle qualification is deferred, not passed.</strong> Issue #12 records what normal-profile manual, login and Flow launch evidence exists and what was not tested: clean install, update, uninstall, retained-data reinstall, rollback, multi-user/elevation, antivirus, signing and publisher behaviour. The self-healing implementation remains in closed, unmerged PR #10.</li>
+  <li><span class="badge b-gated">PERFORMANCE</span> <strong>No public hardware-wide latency or partial-text claim is permitted.</strong> Issue #17 retains one Ryzen Z1 CPU synthetic pilot only. The named hardware matrix, physical microphones, realistic corpus, power/thermal evidence, true visible stable partials and alternative runtimes remain deferred. Closed, unmerged PR #25 is evidence, not shipped instrumentation.</li>
+  <li><span class="badge b-gated">RELEASE</span> <strong>No 1.0, approved public release, VPS parity or automatic-update claim.</strong> An approved release requires exact green CI-built bytes, explicit owner approval, immutable tag, durable GitHub Release, checksums, manifest, SBOM/notices and applicable lifecycle/hardware/signing/publisher gates. VPS promotion remains disabled until such a release and a concrete health-checked component exist.</li>
+</ul>
+<h2 id="s4"><span class="sec">4</span>Technical debt</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>"Technical debt" is messy-but-working code that we owe a cleanup on. The old held "mode key"
+    route is no longer active in any shipping controller, although unreachable helpers and a test-only
+    Linux state-machine module still need deletion. There's also an unfinished rename (the feature users call "Deck" is still called "Hub"
+    inside the code). Release trust is fail-closed in source but still awaits owner-held signing identities and a live signed feed.</p>
+    <p>The good news box at the end lists debts that turned out to be already paid off since the reorg.</p>
+  </div>
+</div>
+
+<ul>
+  <li><strong>T3 — Internal Deck↔History rename incomplete (confirmed).</strong> User-facing terminology is
+    "Deck", but the code still uses <code>show_hub</code> (<code>overlay.py</code>), <code>_run_hub_job</code>
+    (<code>mumble.py</code>), <code>hub_open</code> (<code>overlay.py</code>),
+    <code>run_deck_job</code>/<code>deck_paste</code> (<code>webui_shell.py</code>), wired through
+    <code>webui/app.js</code> and the tests. A careful cross-file rename + test sweep is still owed.</li>
+  <li><strong>T6 — Legacy mode-key cleanup: runtime retired, dead scaffolding remains.</strong> On Windows,
+    <code>mode_select</code> (the <code>import</code> lingers, unused), <code>detect_mode_button</code>,
+    <code>_maybe_apply_suggestion</code>, <code>_match_keyword_template</code>, the <code>convert</code>
+    router, and the second-opinion <code>MODE/CONF</code> path are no longer reached from
+    <code>_process</code> — cleanup candidates. The 2026-07-15 Mac pass removed its runtime, settings and UI
+    route plus the duplicate <code>mode_select.py</code>. Linux now also uses explicit Island/Deck modes and
+    a no-op held-key registration; its controller does not import or call <code>mode_select</code>. Remove the
+    remaining unreachable helper methods and test-only Linux module in a dedicated architecture-reduction pass.</li>
+  <li><span class="badge b-done">✓ hardened 2026-07-10</span> <strong>T7 — Update manifest signing is mandatory.</strong>
+    <code>update.py</code> now fails closed: with no embedded Ed25519 public key the production channel is
+    disabled, unsigned manifests are rejected, and the UI says the signed channel is not configured.
+    Owner key provisioning is a release gate, not an unsigned fallback.</li>
+  <li><span class="badge b-done">✓ resolved 2026-07-15</span> <strong>T8 — <code>mode_select</code> dead import.</strong> No shipping controller imports it. The Mac duplicate is deleted; the Linux copy is test-only cleanup tracked under T6.</li>
+</ul>
+
+<blockquote>
+  <strong>Updated 2026-07-15:</strong> the macOS and Linux runtimes, settings, stores, WebUIs, tests and release builders were reconciled and audited. Platform seam differences and real-hardware qualification remain intentional separate gates.
+</blockquote>
+
+<ul>
+  <li><strong>T5 — The web island is decorative.</strong> The always-on-top island is the in-process Win32
+    layered-window overlay (<code>overlay.py</code>); the island chip in <code>webui/app.js</code> only
+    mirrors status. (By design, but noted so no one assumes the web island is the real one.)</li>
+</ul>
+
+<!-- ===================== SECTION 5 ===================== -->
+<h2 id="s5"><span class="sec">5</span>Roadmap — Mumble V1 → Local AI Conversion</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble already has production local transcription and a guarded llama.cpp text-processing path, but it does not ship a text model. This roadmap promotes that foundation only after model licensing, download integrity, representative hardware measurements, cancellation, recovery, and cross-platform packaging are proved.</p>
+    <p>The product must always show which of its two stages—speech-to-text and text processing—is local or cloud-based. Local-only mode is an egress boundary, not a marketing label: it disables cloud transcription, cloud generation, and provider-key network checks.</p>
+  </div>
+</div>
+
+<blockquote>
+  <strong>Current boundary:</strong> Windows is canonical. Local Whisper transcription is production code. The llama.cpp/GGUF adapter, lazy construction, prompt contracts, deterministic fallback, and explicit settings are implemented and source-tested on Windows, macOS and Linux, but no model is selected, downloaded, verified, bundled, or performance-qualified. Mac and Linux hardware qualification remains pending.
+</blockquote>
+
+<!-- ======================================================================== -->
+<h3>Current local-AI foundation</h3>
+<table>
+  <thead><tr><th>Layer</th><th>Honest current state</th></tr></thead>
+  <tbody>
+    <tr><td>Runtime</td><td>Bundled llama.cpp executables and lazy backend construction are implemented.</td></tr>
+    <tr><td>Model</td><td>No GGUF model is bundled or automatically downloaded. The user must supply a compatible file; performance and quality are therefore not guaranteed.</td></tr>
+    <tr><td>Settings</td><td><code>local_llm_enabled</code> is opt-in (default false); <code>local_llm_model</code> is the single explicit path. The conflicting legacy boot path and old setting names were removed.</td></tr>
+    <tr><td>Routing</td><td>Prompt, Email and Reply can use the local backend when it is ready; otherwise Mumble falls back to the disclosed cloud route or deterministic formatter.</td></tr>
+    <tr><td>Next gate</td><td>Select and licence-review a model, define hardware acceptance thresholds, add integrity-checked download/update UX, and run representative quality/latency evaluation before promoting beyond technical preview.</td></tr>
+  </tbody>
+</table>
+
+<h3>Target architecture</h3>
+<table>
+  <thead><tr><th>Component</th><th>Contract</th></tr></thead>
+  <tbody>
+    <tr><td>Transcription engines</td><td>One job interface for bundled local Whisper and explicitly selected cloud STT; language/model capability, progress, cancellation and typed error events are reported without leaking provider details into the ordinary UI.</td></tr>
+    <tr><td>Text-processing engines</td><td>One input/output contract for deterministic local formatting, llama.cpp/GGUF, Cerebras and OpenRouter. Modes supply versioned templates; validators reject empty, unrelated or contract-breaking output and fall back without losing the transcript.</td></tr>
+    <tr><td>Model manager</td><td>Owns a signed catalogue, licence/notice metadata, resumable downloads, SHA-256 verification, available disk checks, versioned storage, activation, rollback and deletion. A user-selected file remains an advanced escape hatch.</td></tr>
+    <tr><td>Routing and privacy</td><td>Each stage records its effective local/cloud route. Mixed mode is allowed only when clearly selected. Local-only is enforced at the egress call sites. Cloud keys move from masked local settings to OS credential storage with migration and deletion support.</td></tr>
+    <tr><td>Jobs and resources</td><td>Every transcription/download/generation job has an id, progress, cancellation token, timeout, terminal event and cleanup path. Only one local model owner controls context lifetime; crashes quarantine the model for that session and preserve the source transcript.</td></tr>
+    <tr><td>Verification</td><td>Contract tests cover every engine; golden prompt cases cover names, numbers, URLs, corrections, multilingual text and instruction-injection attempts; hardware runs record latency, peak memory, cancellation and output quality.</td></tr>
+  </tbody>
+</table>
+
+<h3>Current delivery plan</h3>
+<table>
+  <thead><tr><th>Phase</th><th>Scope and dependencies</th><th>Acceptance criteria</th></tr></thead>
+  <tbody>
+    <tr><td><strong>A — Contract hardening</strong><br><span class="badge b-done">foundation in source</span></td><td>Keep one canonical local setting path; enforce local-only at real egress points; version prompt templates; expose processing progress; preserve deterministic fallback. No credentials or hardware lab required.</td><td>Offline tests prove no cloud STT, generation or key validation occurs in local-only mode; missing/broken GGUF never loses dictated text; cancellation and errors return the UI to an actionable state.</td></tr>
+    <tr><td><strong>B — Model-manager prototype</strong><br><span class="badge b-gated">licence decision</span></td><td>Benchmark a small licence-compatible instruct GGUF shortlist, define minimum/recommended RAM and disk, then implement catalogue, resumable download, hash verification, progress, removal and notices. Requires legal/licence review and hosted artefacts.</td><td>A clean Windows install can download, verify, activate, update/rollback and remove one approved model; corrupt or incomplete files never activate; required notices remain viewable offline.</td></tr>
+    <tr><td><strong>C — Windows end-to-end qualification</strong><br><span class="badge b-gated">physical hardware</span></td><td>Exercise local Whisper plus local text processing on representative CPU, NVIDIA and AMD/DirectML-capable machines; add streaming/cancellation where the chosen runtimes support it; measure English and multilingual modes.</td><td>Dictation, Prompt, Email, Reply and Foreign complete without network; latency, peak RAM/VRAM and quality meet published thresholds; suspend, low disk, model crash and cancellation recover without transcript loss.</td></tr>
+    <tr><td><strong>D — macOS/Linux packaging</strong><br><span class="badge b-gated">port parity</span></td><td>Converge controller/settings/UI snapshots, package Metal/CPU and Linux CPU/Vulkan candidates only after measured prototypes, use native data paths and permission flows, and repeat Phase C on real devices.</td><td>Fresh signed/notarised candidate builds pass the same engine contracts and offline flows; model storage/update/removal and OS permissions work on supported macOS and Linux hardware.</td></tr>
+    <tr><td><strong>E — Product promotion</strong><br><span class="badge b-gated">evidence required</span></td><td>Add onboarding recommendations by measured capability, storage management, privacy route summaries and support diagnostics. Cloud/local mixing remains explicit and reversible.</td><td>No technical-preview wording is removed until the approved model, notices, performance envelope, recovery paths and all supported-platform smoke tests are published and green.</td></tr>
+  </tbody>
+</table>
+
+<details class="dev"><summary><span class="devchip">Superseded</span> Original five-phase local-AI roadmap (historical; do not implement verbatim)</summary>
+<h3>Phase 1 — Core Local AI Activation <span class="badge b-done">V1.0</span></h3>
+<p><strong>Goal:</strong> The local post-processing pipeline runs on every capable machine. Cloud becomes a fallback, not the default. Users on weak hardware are guided to Cerebras/OpenRouter.</p>
+
+<table>
+  <thead><tr><th>P</th><th>Task</th><th>Effort</th><th>Depends on</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="badge b-done">✓ DONE</span></td>
+      <td><strong>Wire LlamaCppBackend into mumble.py</strong><br><code>_init_local_backend()</code> called at boot. <code>route()</code> wired into <code>_builder()</code> for per-lane engine decisions. <code>set_backend(LlamaCppBackend(…))</code> activates when <code>local_ai_enabled</code> + model file present. Falls back to <code>NullBackend</code> (no-op) when disabled — zero dependency required to run.</td>
+      <td>✅</td>
+      <td>—</td>
+      <td><span class="badge b-gated">owner-gated dep</span> — <code>llama-cpp-python</code> still needs installation + model download to actually run the LLM. Code is import-guarded.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b-done">✓ DONE</span></td>
+      <td><strong>Add rpunct punctuation pre-pass</strong><br>Import-guarded <code>restore_punctuation()</code> in <code>formatting.py</code>. Lazy-loads ~80 MB BERT model when <code>rpunct</code> package installed. Called as post-pass in <code>formatting.process()</code> when <code>rpunct_enabled=True</code>. Falls back silently to rules-only when unavailable.</td>
+      <td>✅</td>
+      <td>—</td>
+      <td>Code is ready. <code>rpunct</code> package has pandas build conflict on Python 3.12 — commented out in <code>requirements.txt</code> until resolved. Activates automatically when installable.</td>
+    </tr>
+    <tr>
+      <td><span class="badge b-done">✓ DONE</span></td>
+      <td><strong>Wire foreign_boost.py into Foreign Mode path</strong><br>Cloud path: <code>mark_uncertainty()</code> adds <code>//</code> markers before Cerebras dispatch. Offline path: <code>boost()</code> + <code>strip_flags()</code> resolves high-confidence terms on-device. Both wired in <code>_builder()</code> and <code>_cloud_generate()</code>.</td>
+      <td>✅</td>
+      <td>—</td>
+      <td>Pure stdlib, no new dep. 20/20 tests. Multi-language (Arabic, Spanish, French starters).</td>
+    </tr>
+    <tr>
+      <td><span class="badge b-done">✓ DONE</span></td>
+      <td><strong>Add settings to DEFAULTS</strong><br><code>local_ai_enabled</code> (default False), <code>local_ai_model_path</code>, <code>local_only_mode</code>, <code>rpunct_enabled</code> (default True). All four keys in <code>settings.DEFAULTS</code> with correct defaults.</td>
+      <td>✅</td>
+      <td>—</td>
+      <td>Settings are read at runtime — no restart needed. <code>llama-cpp-python</code> + <code>rpunct</code> added as commented optional deps in <code>requirements.txt</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>P0</strong></td>
+      <td><strong>Add Edge AI UI toggles to Settings</strong><br>Add Edge AI section to Settings UI with toggle for <code>local_ai_enabled</code>, model path picker, download button, hardware compatibility warning. Add <code>local_only_mode</code> toggle. Wire through <code>webui_shell.py</code> Api bridge.</td>
+      <td>1–2 days</td>
+      <td>LlamaCppBackend wired</td>
+      <td>UI in webui/app.js + webui_shell.py Api bridge.</td>
+    </tr>
+    <tr>
+      <td><strong>P0</strong></td>
+      <td><strong>Model download UX + tiered deployment</strong><br>One-click download of Qwen3.5-4B GGUF (~2.5 GB) from HuggingFace with progress bar. Auto-select Qwen3.5-2B (~1.3 GB) for mid-tier, skip download on weak tier (cloud-only). Fallback: Phi-4-mini (MIT, 2.49 GB).</td>
+      <td>2–3 days</td>
+      <td>Settings UI toggles</td>
+      <td>Use <code>branding.detect_hardware_tier</code> to pick model. Download to <code>DATA_DIR/models/</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>P0</strong></td>
+      <td><strong>Update onboarding flow</strong><br>After "what kind of PC?" step, add: "Mumble can use a local AI model to clean up your dictation — better quality, fully offline, but uses ~2–3 GB RAM. Enable Edge AI?" with clear "Not recommended for 4 GB RAM or less" warning. <code>local_ai_enabled</code> defaults based on tier.</td>
+      <td>1 day</td>
+      <td>Settings UI toggles</td>
+      <td>webui/app.js onboarding steps.</td>
+    </tr>
+    <tr>
+      <td><strong>P1</strong></td>
+      <td><strong>Add Cerebras/OpenRouter guidance for weak hardware</strong><br>When Edge AI is off or unavailable, show a settings card: "For the best offline experience, enable Edge AI. For cloud quality on any PC, link a Cerebras API key (free tier)." Deep-link to Settings → Pro Mode.</td>
+      <td>1 day</td>
+      <td>None</td>
+      <td>Uses existing <code>cloud_fallback_hint()</code> infrastructure.</td>
+    </tr>
+    <tr>
+      <td><strong>P1</strong></td>
+      <td><strong>Per-tier model selection wiring</strong><br><code>branding.MODEL_BY_LANGUAGE</code> extension. <code>primary_language</code> setting (default "en"). Onboarding question: "Do you speak more than one language while dictating?" Sets <code>english_only</code>. Per-language <code>initial_prompt</code> seeding.</td>
+      <td>1 day</td>
+      <td>None</td>
+      <td>Mostly a copy + UX change. Resolver already exists.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Phase 1 progress:</strong> 4/8 items done (backend wired, rpunct integrated, foreign_boost wired, settings added). ~3–5 days remaining (UI toggles, model download UX, onboarding, Cerebras guidance, per-tier wiring). <strong>Partial deliverable:</strong> the local AI pipeline is fully coded and import-guarded — activates automatically when <code>llama-cpp-python</code> and a GGUF model are installed. Foreign Mode works fully offline. 55 test files present; offline suite green under UTF-8 with a full venv.</p>
+
+<!-- ======================================================================== -->
+<h3>Phase 2 — Platform Acceleration <span class="badge b-exist">V1.1</span></h3>
+<p><strong>Goal:</strong> Select a measured, licence-cleared low-latency engine per platform. CUDA remains available on NVIDIA; Apple needs a real Core ML helper; Windows CPU/AMD needs a validated streaming backend; Linux ARM/Vulkan needs a packaged native path.</p>
+
+<table>
+  <thead><tr><th>P</th><th>Task</th><th>Effort</th><th>Depends on</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>P2</strong></td>
+      <td><strong>macOS FluidAudio Parakeet TDT</strong><br>Swift helper binary (~200 lines) communicating via stdin/stdout JSON with Python glue (~100 lines). Parakeet TDT on Apple Neural Engine: 5–10× faster than faster-whisper, ~66 MB RAM (vs 500 MB–1.5 GB), 6.32% WER (vs 7.44%), zero silence hallucinations. 25 European languages. Keep faster-whisper as fallback for non-European languages.</td>
+      <td>1–2 weeks</td>
+      <td>macOS build environment</td>
+      <td><span class="badge b-done">P1 priority</span> from architecture review. FluidAudio is Apache 2.0. Model from HuggingFace.</td>
+    </tr>
+    <tr>
+      <td><strong>P2</strong></td>
+      <td><strong>Moonshine streaming evaluation for Windows English</strong><br>Prototype a queued native stream alongside the warm faster-whisper fallback. The MIT Windows wheel and bundled English model are viable, but the tiny model showed real word errors and has no word timings, so it must pass the Mumble accent/vocabulary corpus before becoming automatic.</td>
+      <td>3–5 days</td>
+      <td>Corpus benchmark + third-party notice</td>
+      <td>The existing sherpa-onnx <code>provider="dml"</code> prototype is not a production route: upstream Python/native packages do not expose DirectML. Do not ship or advertise it.</td>
+    </tr>
+    <tr>
+      <td><strong>P3</strong></td>
+      <td><strong>whisper.cpp fallback for Linux ARM/Vulkan</strong><br>Add whisper.cpp as alternative backend for Linux ARM (Raspberry Pi 5, etc.) and Vulkan-capable GPUs. ARM Neon optimised inference.</td>
+      <td>2–3 days</td>
+      <td>None</td>
+      <td>MIT licensed. Already proven on embedded Linux.</td>
+    </tr>
+    <tr>
+      <td><strong>P6</strong></td>
+      <td><strong>DeepFilterNet3 noise suppression spike</strong><br>Evaluate whether <code>pip install deepfilternet</code> (MIT, ~5ms per frame) meaningfully improves transcription accuracy in noisy environments. If yes, add as optional pre-processing stage.</td>
+      <td>2 days</td>
+      <td>None</td>
+      <td><span class="badge b-gated">spike</span> — evaluate before committing.</td>
+    </tr>
+    <tr>
+      <td><strong>P6</strong></td>
+      <td><strong>Cohere Transcribe evaluation spike</strong><br>Monitor for CTranslate2/ONNX port of the 2B Cohere Transcribe model (5.42% WER, Apache 2.0, 14 languages). Currently too new for production (March 2026).</td>
+      <td>Monitor</td>
+      <td>Ecosystem maturity</td>
+      <td><span class="badge b-gated">monitor</span> — could become single best model for all platforms.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Phase 2 total:</strong> ~3–5 weeks. <strong>Deliverable:</strong> Mumble V1.1 — GPU-accelerated STT on every platform. No user left on CPU-only due to their GPU vendor.</p>
+
+<!-- ======================================================================== -->
+<h3>Phase 3 — Meeting Intelligence <span class="badge b-exist">V1.2</span></h3>
+<p><strong>Goal:</strong> Mumble can record, transcribe, and summarise meetings — fully offline, with speaker labels. Best-in-class open-source components integrated rather than built from scratch.</p>
+
+<table>
+  <thead><tr><th>P</th><th>Task</th><th>Effort</th><th>Depends on</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>P3</strong></td>
+      <td><strong>Windows system audio capture</strong><br>Adapt TalkTrack's WASAPI loopback + per-app capture patterns (MIT, Python). Dual-channel: microphone + system audio. Handle <code>AUDCLNT_STREAMFLAGS_EXCLUDE_FROM_PROCESS_LOOPBACK_CAPTURE</code> opt-out that Teams/Zoom use. Per-app capture on Windows 11.</td>
+      <td>3–5 days</td>
+      <td>None</td>
+      <td>Use <code>sounddevice</code> + WASAPI host API. TalkTrack is the best Python reference implementation.</td>
+    </tr>
+    <tr>
+      <td><strong>P3</strong></td>
+      <td><strong>macOS system audio capture</strong><br>Swift helper binary using ScreenCaptureKit (macOS 14.2+). Pattern-adopt from Ownscribe's helper. System audio + mic dual capture.</td>
+      <td>3–5 days</td>
+      <td>macOS build environment</td>
+      <td>Requires Screen Recording permission. Ownscribe helper is MIT.</td>
+    </tr>
+    <tr>
+      <td><strong>P3</strong></td>
+      <td><strong>Linux system audio capture</strong><br>PulseAudio monitor sources / PipeWire capture via <code>sounddevice</code>. Mic + system audio dual capture. Per-app capture significantly harder on Linux — device-level only for V1.</td>
+      <td>2–3 days</td>
+      <td>None</td>
+      <td>PulseAudio creates monitor sources for output devices. PipeWire has equivalent functionality.</td>
+    </tr>
+    <tr>
+      <td><strong>P3</strong></td>
+      <td><strong>Meeting transcription + diarization pipeline</strong><br>Adopt Ownscribe's WhisperX + pyannote pipeline (MIT, Python, importable). Word-level timestamps + VAD segmentation + speaker diarization. Opt-in (requires free HuggingFace token for pyannote). Reuse Mumble's existing faster-whisper model.</td>
+      <td>3–5 days</td>
+      <td>System audio capture</td>
+      <td>Ownscribe v0.13.0, last updated June 23, 2026. 13 releases, actively maintained.</td>
+    </tr>
+    <tr>
+      <td><strong>P3</strong></td>
+      <td><strong>Meeting UI follow-up</strong><br>Recording controls, saved-meeting detail, speaker labels, summaries, export, library filtering and transcript search now exist. Remaining work is an Island/Deck Record Meeting affordance and a genuinely live transcription panel.</td>
+      <td>5–7 days</td>
+      <td>Transcription pipeline</td>
+      <td>New webui panel + island state. Use existing Deck architecture as pattern.</td>
+    </tr>
+    <tr>
+      <td><strong>P3</strong></td>
+      <td><strong>Meeting summarization</strong><br>Post-meeting summary via local LLM (Qwen3.5-4B): key points, action items, decisions. Fallback to cloud (Cerebras) when local model unavailable. Structured output via GBNF grammar.</td>
+      <td>2–3 days</td>
+      <td>Local LLM active (Phase 1)</td>
+      <td>Reuses existing GBNF + LlamaCppBackend infrastructure.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Phase 3 total:</strong> ~3–4 weeks. <strong>Deliverable:</strong> Mumble V1.2 — fully offline meeting recording, transcription with speaker labels, and AI summaries.</p>
+
+<!-- ======================================================================== -->
+<h3>Phase 4 — Mumble Custom Model <span class="badge b-exist">V1.3</span></h3>
+<p><strong>Goal:</strong> A recognisable Mumble-branded AI model, fine-tuned specifically for speech transcription post-processing. Better quality than the base model for Mumble's exact use case.</p>
+
+<table>
+  <thead><tr><th>P</th><th>Task</th><th>Effort</th><th>Depends on</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>P4</strong></td>
+      <td><strong>Dataset collection</strong><br>Gather 5,000–10,000 pairs of (raw_whisper_output, cleaned_corrected_output). Sources: opt-in Mumble user history, synthetic generation (LLM creates raw→clean pairs), public ASR correction datasets. Task distribution: 40% text cleanup, 20% grammar, 15% email, 15% list, 10% prompt. Store in standard format (JSONL) under <code>Development Files/Other/datasets/</code>.</td>
+      <td>1–2 weeks</td>
+      <td>Phase 1 complete (for generation)</td>
+      <td>Must respect privacy: user data is opt-in only. Synthetic data avoids privacy concerns entirely.</td>
+    </tr>
+    <tr>
+      <td><strong>P4</strong></td>
+      <td><strong>QLoRA fine-tuning</strong><br>Fine-tune Qwen3.5-4B (Apache 2.0) using QLoRA on the collected dataset. Base model stays quantized (Q4_K_M), only train small adapter weights (~10–50 MB). Framework: Unsloth or Axolotl. Training hardware: single GPU with 12–24 GB VRAM. Target: measurably better grammar correction, punctuation, and formatting than the base model.</td>
+      <td>2–4 weeks</td>
+      <td>Dataset ready</td>
+      <td>QLoRA adapters are small enough to bundle with the app. License: Apache 2.0 — must include original license + state changes.</td>
+    </tr>
+    <tr>
+      <td><strong>P4</strong></td>
+      <td><strong>Model evaluation framework</strong><br>Build automated A/B eval: base model vs fine-tuned on held-out test set. Metrics: BLEU, ROUGE, grammar error rate, punctuation F1, mode classification accuracy. Human evaluation on 100 samples. Regression test: fine-tuned model must not regress on general language tasks.</td>
+      <td>1 week</td>
+      <td>Fine-tuning complete</td>
+      <td>Scripts in <code>Development Files/Other/eval/</code>. Run before every model release.</td>
+    </tr>
+    <tr>
+      <td><strong>P4</strong></td>
+      <td><strong>Mumble LM v1.0 release</strong><br>Package the QLoRA adapter + base model as a distributable GGUF. Name: "Mumble LM v1.0." Attribution: "Based on Qwen3.5-4B (Apache 2.0), fine-tuned for transcription post-processing." Distribute via HuggingFace + direct download in Mumble's model picker. Update licensing register in HANDBOOK §11.</td>
+      <td>3–5 days</td>
+      <td>Evaluation passed</td>
+      <td>Apache 2.0 compliant. Include LICENSE, NOTICE, and change description. Mumble-branded but legally clear.</td>
+    </tr>
+    <tr>
+      <td><strong>P5</strong></td>
+      <td><strong>Phase 3: Continued domain pre-training</strong><br>If Phase 2 quality gains plateau: continued pre-training on a larger corpus of dictated/transcribed text. Model merging with specialized components (punctuation-specific head). Reinforcement-based refinement for instruction following.</td>
+      <td>1–3 months</td>
+      <td>Mumble LM v1.0 released</td>
+      <td><span class="badge b-gated">owner call</span> — significant compute investment. Only if Phase 2 gains justify deeper investment.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Phase 4 total:</strong> ~5–8 weeks for v1.0. <strong>Deliverable:</strong> Mumble V1.3 — ships with "Mumble LM v1.0," a recognisably branded model that outperforms the base Qwen3.5-4B on transcription tasks.</p>
+
+<!-- ======================================================================== -->
+<h3>Phase 5 — Polish, Ports &amp; Completion <span class="badge b-exist">V1.4</span></h3>
+<p><strong>Goal:</strong> Every platform is complete. Technical debt is resolved. The UX is premium. Mumble V1 is a finished product.</p>
+
+<table>
+  <thead><tr><th>P</th><th>Task</th><th>Effort</th><th>Depends on</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>P5</strong></td>
+      <td><strong>Port completion — real Mac/Linux qualification</strong><br>The macOS and Linux source/package flows were reconciled on 2026-07-15. Run native install, permission, hotkey, paste, meeting, X11/Wayland and packaging checks on both operating systems; separately remove the dead helpers tracked in T6.</td>
+      <td>Hardware access + cleanup pass</td>
+      <td>Phase 1 complete</td>
+      <td>STATUS §3 port items + §4 T6.</td>
+    </tr>
+    <tr>
+      <td><strong>P5</strong></td>
+      <td><strong>Retire context_store completely</strong><br>Remove <code>context_store.py</code> from all platforms. Remove <code>ConversationStore</code> import from controllers. Purge <code>conv_store.json</code> on upgrade. The write path was removed 2026-06-28; the module itself is next.</td>
+      <td>1–2 days</td>
+      <td>Port completion</td>
+      <td>Touches shared store + ports — careful pass. STATUS §3 #19 (write path fixed, module deferred).</td>
+    </tr>
+    <tr>
+      <td><strong>P5</strong></td>
+      <td><strong>Hub → Deck rename</strong><br>Rename <code>show_hub</code>, <code>_run_hub_job</code>, <code>hub_open</code> across <code>mumble.py</code>, <code>overlay.py</code>, <code>webui_shell.py</code>, <code>webui/app.js</code>, and tests. Cross-file rename + test sweep.</td>
+      <td>2–3 days</td>
+      <td>Port completion</td>
+      <td>STATUS §4 T3. User-facing terminology is already "Deck."</td>
+    </tr>
+    <tr>
+      <td><strong>P5</strong></td>
+      <td><strong>Retire mode_select on Windows</strong><br>Remove <code>import mode_select</code> from <code>mumble.py</code> (dead import). Remove <code>detect_mode_button</code> and legacy mode-key code from formatting.py once port controllers adopt Big Shift <code>_process</code>.</td>
+      <td>1 day</td>
+      <td>Port completion</td>
+      <td>STATUS §4 T6 + T8.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Phase 5 — Bug Fixes (from §3)</h3>
+<table>
+  <thead><tr><th>P</th><th>Bug</th><th>Effort</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P5</td><td>TTS intra-catalogue model fallback (#11/#12)</td><td>1–2 days</td><td>Iterate OpenRouter catalogue models before falling back to OpenAI.</td></tr>
+    <tr><td>P5</td><td>Reader persists failed provider on fallback (#15)</td><td>1 day</td><td>Return effective provider/model/voice from <code>synthesize_with_fallback</code>.</td></tr>
+    <tr><td>P5</td><td>Off-thread tray mutation (#8)</td><td>1 day</td><td>Funnel <code>pystray</code> writes through <code>_tk_schedule</code>.</td></tr>
+    <tr><td>P5</td><td>Silent CMD-server bind failure (#9)</td><td>1 day</td><td><code>_notify</code> on bind failure.</td></tr>
+    <tr><td>P5</td><td>Uncapped Lite Prompts render (#18)</td><td>1 day</td><td>Cap Canvas cards at 30 (matches clipboard cap).</td></tr>
+    <tr><td>P5</td><td>Mode-key cloud fallback (#4)</td><td>1 day</td><td>Cloud text-only fallback when local model fails to load.</td></tr>
+    <tr><td>P5</td><td>Reader PDF / Word import</td><td>2–3 days</td><td>Currently <code>.txt</code> + paste only.</td></tr>
+    <tr><td>P5</td><td>Reader very-long-document chunk cap</td><td>1 day</td><td>Hard cap on <code>&lt;span&gt;</code> per word.</td></tr>
+  </tbody>
+</table>
+
+<h3>Phase 5 — UI Polish</h3>
+<table>
+  <thead><tr><th>P</th><th>Task</th><th>Effort</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>P5</td><td>Island single-pill + dropdown</td><td>2–3 days</td><td>Merge companion bar into one seamless animated pill. Win32 layered surface — needs live render verification.</td></tr>
+    <tr><td>P5</td><td>Autostart taskbar-icon placement</td><td>1 day</td><td>Boot shows dock/taskbar icon, not tray-only.</td></tr>
+    <tr><td>P5</td><td>Deck/Island non-overlap positioning</td><td>1 day</td><td>Geometry in <code>autostart.py</code>/<code>overlay.py</code>.</td></tr>
+    <tr><td>P5</td><td>Settings: search routing toggle, Foreign-Mode Deck toggle, username→onboarding</td><td>2–3 days</td><td>Collection of small settings/UX improvements from the 2026-06-27 polish pass.</td></tr>
+    <tr><td>P5</td><td>Richer per-tier model hints + first-run pre-download progress</td><td>1–2 days</td><td>Show estimated RAM/speed per model tier during onboarding.</td></tr>
+    <tr><td>P5</td><td>Transcription accuracy: <code>initial_prompt</code> seeding, VAD tuning</td><td>2–3 days</td><td>Seed with personal vocabulary + recent context. Tune VAD for clipped first words.</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Phase 5 total:</strong> ~4–6 weeks. <strong>Deliverable:</strong> Mumble V1.4 — complete, polished, all platforms equal, all known bugs fixed, technical debt retired.</p>
+
+<!-- ======================================================================== -->
+<h3>Deferred — owner call required</h3>
+<table>
+  <thead><tr><th>Item</th><th>Why deferred</th></tr></thead>
+  <tbody>
+    <tr><td>Auto-update venv gap + manifest signing</td><td><span class="badge b-gated">HIGH · blocker before update feed is trusted</span>. Needs venv provisioning + Ed25519 keypair. Unverifiable without a real update cycle. STATUS §3.</td></tr>
+    <tr><td><code>Mumble.zip</code> rebuild for <code>app/</code> layout</td><td><span class="badge b-done">DONE · 2026-07-21</span>. Version 0.9.1 rebuilt from the tested live tree with 120 entries; package manifest and exclusions passed.</td></tr>
+    <tr><td>Island "Context" button + deep scraper</td><td><span class="badge b-gated">Big feature — design first</span>. Scrapes active AI chat into condensed context. Needs real browser/desktop frame reading.</td></tr>
+    <tr><td>Vision-based context grab (OCR)</td><td><span class="badge b-gated">Needs latency/perf spike</span>.</td></tr>
+    <tr><td>Semantic search for History</td><td><span class="badge b-gated">Needs embedding store</span>.</td></tr>
+    <tr><td>Reader as browser extension (MV3)</td><td><span class="badge b-gated">Breaks local-first privacy</span>. Owner call.</td></tr>
+    <tr><td>Reader mobile PWA</td><td><span class="badge b-gated">Forces cloud-synced library</span>. Owner call.</td></tr>
+    <tr><td>Opt-in two-pass "accuracy mode"</td><td><span class="badge b-gated">Nice-to-have</span>. Evaluate after Phase 1 LLM quality is known.</td></tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h3>Summary Timeline</h3>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">V1.0</div>
+    <div class="flow-body">
+      <div class="ft">Core Local AI · 8–12 days</div>
+      <p>LlamaCppBackend active · rpunct punctuation · foreign_boost active · Qwen3.5-4B running · Edge AI toggle · onboarding updated · cloud = fallback</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">V1.1</div>
+    <div class="flow-body">
+      <div class="ft">Platform Acceleration · 3–5 weeks</div>
+      <p>Mac Neural Engine STT · Windows Moonshine/whisper.cpp benchmark · Linux ARM whisper.cpp · DeepFilterNet3 spike · Cohere monitoring</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">V1.2</div>
+    <div class="flow-body">
+      <div class="ft">Meeting Intelligence · 3–4 weeks</div>
+      <p>System audio capture (Win/Mac/Linux) · speaker diarization · meeting UI · AI summaries</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">V1.3</div>
+    <div class="flow-body">
+      <div class="ft">Custom Model · 5–8 weeks</div>
+      <p>Dataset collection · QLoRA fine-tuning · evaluation framework · Mumble LM v1.0 release</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">V1.4</div>
+    <div class="flow-body">
+      <div class="ft">Polish &amp; Complete · 4–6 weeks</div>
+      <p>Ports complete · tech debt retired · all bugs fixed · UX premium</p>
+    </div>
+  </div>
+</div>
+
+<p><strong>Total estimated: 16–23 weeks (~4–6 months) to V1.4.</strong> Phases can overlap — Phase 2 platform work can run in parallel with Phase 1 local AI testing. Phase 4 model training can start as soon as Phase 1 produces output data. Phase 5 polish can run throughout.</p>
+</details>
+
+<!-- ===================== SECTION 6 ===================== -->
+<h2 id="s6"><span class="sec">6</span>Persistent TODO &amp; owner actions</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>The live checklist. Many of these are <strong>owner-only</strong> — they need accounts, keys, or a
+    human running the real app on real hardware, so no amount of coding finishes them. A second group is
+    "live-only verification": things that compile and look right but must be confirmed by actually using the
+    app. The last group is optional housekeeping.</p>
+  </div>
+</div>
+
+<h3>Owner-only (blocked until the owner does them)</h3>
+<ul>
+  <li><span class="badge b-gated">☐ blocked</span> <strong>Cloud sync</strong> — create a Supabase project;
+    enter URL + anon key; run the live cloud-sync validators.</li>
+  <li><span class="badge b-gated">☐ blocked</span> <strong>Update feed</strong> — <code>MANIFEST_URL</code>
+    is set, but <strong>do not rely on the feed until the auto-update venv gap is fixed</strong> (§3). Also
+    publish a version numerically greater than installed (the 3.x→0.9 reset means bump to ≥4.0 or
+    re-version the 3.x installs), and sign the manifest (T7).</li>
+  <li><span class="badge b-gated">☐ blocked</span> <strong>Website real links</strong> —
+    <code>Other/website/index.html</code> ships <code>#</code> placeholders on every Download/GitHub/Star
+    link.</li>
+  <li><span class="badge b-gated">☐ blocked</span> <strong>Big Shift live mic smoke test</strong> — verify
+    ordinary dictation stays plain text; select Prompt/Email/Reply/Foreign from the Island/Deck and confirm
+    each explicit lane; bring the Deck to front and verify paste-at-cursor.</li>
+  <li><span class="badge b-gated">☐ blocked</span> <strong>Real-Mac smoke test</strong> — compiles/lints
+    clean but never run on real macOS; hotkeys need Accessibility permission.</li>
+  <li><span class="badge b-gated">☐ blocked</span> <strong>Linux live verification</strong> — run X11 then
+    Wayland; verify island click-through, global hotkeys, paste focus and each explicit Island/Deck mode.</li>
+</ul>
+
+<h3>Live-only verification backlog (Windows, owner verifies on restart)</h3>
+<ul>
+  <li><span class="badge b-gated">☐ verify live</span> Record-hotkey paste-at-cursor; mic select/test;
+    Reset window size; Open data folder / Replay tour; clipboard image thumbnails; island click-through +
+    follow-foreground monitor; F11 fullscreen; ~15-min dictation polishes fully; Reader reads aloud with
+    live word-highlighting on real audio; cloud-STT lower RAM at boot + lazy local load.</li>
+</ul>
+
+<h3>Housekeeping (owner's call)</h3>
+<ul>
+  <li><span class="badge b-exist">☐ optional</span> Delete stale duplicate installs if any remain (older
+    <code>…\Mumble</code> copies at v3.x).</li>
+  <li><span class="badge b-exist">☐ optional</span> (If wanted) re-attach <code>bug_audit.md</code> /
+    <code>mumble_test_matrix.md</code> to re-run the §24/§25 QA passes.</li>
+</ul>
+
+<!-- ===================== SECTION 7 ===================== -->
+<h2 id="s7"><span class="sec">7</span>Guardrail — "depicted-but-not-real" features (do NOT reintroduce)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>A hard rule. An earlier audit removed UI that <em>implied</em> Mumble could do things it actually
+    can't. Don't add any of these back unless they are genuinely built and connected to real data — showing
+    a fake stat or a button that does nothing breaks the project's honesty principle.</p>
+  </div>
+</div>
+
+<blockquote>
+  A 2026-06-10 audit removed UI that implied capabilities Mumble does not have. <strong>Never add these
+  back</strong> unless they are genuinely built and wired to real data: invented stats (accuracy %, activity
+  heatmap, top-apps, weekly insight); per-word confidence; OS-keychain / Electron / Tauri / GPU claims;
+  clipboard 7-day expiry; a referral program; release/Beta channels; macOS window chrome on non-mac builds.
+  Honesty in the product is a core principle (see <a href="README.html">README</a> §2).
+</blockquote>
+
+<h3 id="exp-operator-56">Isolated experiment — Operator (5.6 sol xtra high)</h3>
+<div class="plain">
+  <div class="tag">Experiment only</div>
+  <div>
+    <p>A polished hands-free desktop-assistant prototype now lives under <code>Other/experiments/AIs - DO NOT TOUCH/Experimental Feature - 5.6 sol xtra high/</code>. It includes a Right Shift interaction, natural command plans, a narrow optional Windows executor, the one-time 20-hours-saved appreciation popup, and the newsletter-unlocked Archetype Report flow. It is <strong>not part of Mumble's runtime or normal application flow</strong>.</p>
+    <p>The experiment labels its boundaries honestly: microphone transcription, clipboard-safe paste, file editing, current-tab Brave automation, newsletter submission, and transcript analysis are not connected. Twelve isolated planner tests pass; production tests and release packaging are unaffected. Removal is one directory plus the four clearly labelled core-doc blocks recorded in its AI-specific audit.</p>
+  </div>
+</div>
+
+<!-- ===================== SECTION 8 ===================== -->
+<h2 id="s8"><span class="sec">8</span>Architecture Review — Open-Source Findings (2026-06-28)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>A comprehensive open-source architecture review was conducted on 2026-06-28. This section captures
+    the key findings and decisions. The full detailed analysis lives in
+    <a href="../Other/research/architecture-review-2026-06-28.html"><code>Other/research/architecture-review-2026-06-28.html</code></a>. Items marked ✓ are confirmed decisions;
+    items marked ⚡ need a spike before committing.</p>
+  </div>
+</div>
+
+<h3>8.1 Windows Acceleration Beyond CUDA — Corrected Path</h3>
+
+<blockquote>
+  <strong>Finding:</strong> CTranslate2 only accelerates on NVIDIA CUDA GPUs. AMD, Intel, and integrated
+  GPUs get <strong>zero GPU acceleration</strong> — affecting ~40% of Windows users.
+  <br><br>
+  <strong>Correction:</strong> DirectML exists, but the current sherpa-onnx Python/native recognizer does
+  not expose a <code>dml</code> provider. Installing <code>onnxruntime-directml</code> does not change the
+  separately bundled runtime used by sherpa-onnx. Mumble's old <code>windows_dml.py</code> is also unwired
+  and its dependencies are not shipped; it is prototype code, not acceleration users receive.
+  <br><br>
+  <strong>Decision:</strong> <span class="badge b-gated">benchmark first</span> — Keep the now-optimised
+  faster-whisper CPU/CUDA path in production. Evaluate Moonshine's queued Windows stream for English
+  and whisper.cpp Vulkan for cross-vendor GPU use against the same Mumble corpus, installer and licence
+  gates. No backend becomes automatic from an upstream speed claim alone.
+</blockquote>
+
+<h3>8.2 macOS — FluidAudio + Parakeet TDT on Apple Neural Engine</h3>
+
+<blockquote>
+  <strong>Finding:</strong> FluidAudio (Apache 2.0, github.com/FluidInference/FluidAudio) runs Parakeet TDT
+  on Apple's Neural Engine via CoreML. Benchmarks vs current faster-whisper:
+  <br><br>
+  <strong>Speed:</strong> 155–237× realtime vs 15–30× (5–10× faster)<br>
+  <strong>Accuracy:</strong> 6.32% WER vs 7.44% (15% fewer errors)<br>
+  <strong>RAM:</strong> ~66 MB vs ~500 MB – 1.5 GB (90–95% less)<br>
+  <strong>Battery:</strong> Neural Engine ~2–3W vs GPU ~10–30W (no fans)<br>
+  <strong>Hallucinations:</strong> Zero vs classic Whisper silence hallucinations<br>
+  <strong>Trade-off:</strong> 25 European languages vs Whisper's 99 (keep Whisper as fallback for
+  non-European languages)
+  <br><br>
+  <strong>Integration:</strong> Swift helper binary (FluidAudio is Swift) communicating via stdin/stdout
+  JSON. ~200 lines Swift + ~100 lines Python glue.
+  <br><br>
+  <strong>Decision:</strong> <span class="badge b-done">✓ adopt — P1 priority</span>. Single highest-impact
+  architectural change in this review.
+</blockquote>
+
+<h3>8.3 Local LLM Post-Processing — Replacing the Cloud API</h3>
+
+<blockquote>
+  <strong>Goal:</strong> Replace Cerebras/OpenAI cloud post-processing with a fully local pipeline.
+  <br><br>
+  <strong>Finding:</strong> A multi-model pipeline beats a single general LLM for transcription
+  post-processing. Each stage uses a purpose-built model:
+  <br><br>
+  <strong>Stage 1 — Punctuation:</strong> <code>rpunct</code> (BERT, ~80 MB, pip-installable). Restores
+  . , ? ! and capitalisation. Near-perfect accuracy, runs in ~5ms. A dedicated BERT model is more
+  accurate AND faster than an LLM for this specific task.
+  <br>
+  <strong>Stage 2 — Grammar:</strong> <code>GRMR-2B-Instruct</code> (2B params, ~1.5 GB GGUF).
+  Purpose-built for grammar correction. Beats Llama-3.1-8B on this task despite being 4× smaller.
+  Removes fillers, fixes grammar, cleans artefacts.
+  <br>
+  <strong>Stage 3 — Formatting:</strong> <code>Qwen2.5-1.5B-Instruct</code> (1.5B params, ~2 GB GGUF).
+  Mode formatting — prompt structure, email skeleton, bullet lists, contextual replies. The existing
+  LlamaCppBackend in <code>local_engine.py</code> is fully coded and just needs a GGUF model file.
+  <br>
+  <strong>Stage 4 — Surface:</strong> Existing <code>formatting.py</code> — spacing, glued punctuation,
+  contraction fix. Already implemented and tested.
+  <br><br>
+  <strong>Cloud replacement viability:</strong> This pipeline handles ~90% of usage at near-cloud quality.
+  Heavy presets (multi-document, contextual replies with long history) still benefit from cloud — the
+  existing <code>UPGRADE_NOTICE</code> degradation handles this gracefully.
+  <br><br>
+  <strong>Decision:</strong> <span class="badge b-done">✓ adopt</span> — P0: Wire Qwen2.5-1.5B via existing
+  LlamaCppBackend (1–2 days, code is already written). P4: Add rpunct pre-pass (1 day).
+  P5: Evaluate GRMR-2B (spike).
+</blockquote>
+
+<h3>8.4 New STT Contender — Cohere Transcribe (March 2026)</h3>
+
+<blockquote>
+  <strong>Finding:</strong> Cohere released a 2B-param STT model (Apache 2.0) achieving <strong>5.42%
+  WER</strong> — beating Whisper (7.44%) and Parakeet (6.32%). Supports 14 languages including English +
+  Asian/Middle Eastern languages Parakeet misses (Japanese, Korean, Chinese, Arabic, Hindi).
+  <br><br>
+  <strong>Caveat:</strong> Very new (3 months). No CTranslate2 or ONNX port yet. Inference requires
+  PyTorch — heavier than CTranslate2. Ecosystem immature.
+  <br><br>
+  <strong>Decision:</strong> <span class="badge b-gated">monitor</span> — Watch for a CTranslate2/ONNX port.
+  Could become the single best model for all platforms.
+</blockquote>
+
+<h3>8.5 Audio Pre-Processing — DeepFilterNet3</h3>
+
+<blockquote>
+  <strong>Finding:</strong> <code>deepfilternet</code> (pip install) provides real-time AI noise suppression
+  that outperforms RNNoise. Cleans keyboard clicks, fan hum, cafe chatter before STT.
+  <br><br>
+  <strong>Decision:</strong> <span class="badge b-gated">⚡ spike</span> — Evaluate whether accuracy gain
+  in noisy environments justifies ~5ms latency cost.
+</blockquote>
+
+<h3>8.6 Linux — PipeWire, Wayland, ARM</h3>
+
+<blockquote>
+  <strong>PipeWire:</strong> Already supported via PortAudio. No changes needed.<br>
+  <strong>Wayland:</strong> Linux has an evdev input path for global hotkeys (the user must have readable
+  <code>/dev/input/event*</code> devices, normally via the <code>input</code> group) and ydotool/wl-clipboard
+  output fallbacks. Real compositor behaviour remains a <span class="badge b-gated">hardware gate</span>.<br>
+  <strong>ARM:</strong> whisper.cpp provides ARM Neon optimised inference. Add as Linux fallback.
+</blockquote>
+
+<h3>8.7 What We Are KEEPING (Near-Optimal)</h3>
+
+<blockquote>
+  • <strong>Audio Capture:</strong> sounddevice/PortAudio — industry standard, no worthwhile alternative.<br>
+  • <strong>VAD:</strong> Silero VAD — best open-source VAD, already integrated.<br>
+  • <strong>Streaming:</strong> The corrected four-second worker has exact sample seams, same-session
+  in-flight harvesting and stale-worker guards. It is the production bridge, not the final word:
+  a genuine streaming engine still needs corpus and packaging evidence.<br>
+  • <strong>Cloud Post-Processing:</strong> ai/ package with multi-provider — sound architecture, cloud is a
+  commodity.<br>
+  • <strong>Overlay/Island:</strong> Custom Pillow + Win32 — unique to Mumble, no equivalent exists.<br>
+  • <strong>Update System:</strong> Manifest + zip + atomic swap — correct for a Python app.<br>
+  • <strong>Data Layer:</strong> Settings, history, clipboard, stats, cloud sync — all well-scoped.
+</blockquote>
+
+<h3>8.8 Implementation Priority</h3>
+
+<table>
+  <thead><tr><th>P</th><th>Task</th><th>Impact</th><th>Effort</th></tr></thead>
+  <tbody>
+    <tr><td>P0</td><td>Wire LlamaCppBackend + Qwen2.5-1.5B GGUF</td><td>Unlocks offline smart modes</td><td>1–2 days</td></tr>
+    <tr><td>P1</td><td>macOS FluidAudio Swift bridge</td><td>5–10× faster, 90% less RAM on Mac</td><td>1–2 weeks</td></tr>
+    <tr><td>P2</td><td>Moonshine Windows streaming corpus spike</td><td>Potential near-zero stop latency for English, with faster-whisper fallback</td><td>3–5 days</td></tr>
+    <tr><td>P3</td><td>whisper.cpp fallback for Linux ARM/Vulkan</td><td>Broader Linux GPU + ARM support</td><td>2–3 days</td></tr>
+    <tr><td>P4</td><td>rpunct punctuation pre-pass</td><td>Fast dedicated punctuation restoration</td><td>1 day</td></tr>
+    <tr><td>P5</td><td>Cohere Transcribe + GRMR-2B spikes</td><td>Evaluate next-gen models</td><td>2–3 days each</td></tr>
+    <tr><td>P6</td><td>DeepFilterNet3 noise suppression spike</td><td>Better accuracy in noisy envs</td><td>2 days</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="s9"><span class="sec">9</span>System Consistency &amp; README Compliance Investigation <span style="font-size:.62em;color:var(--muted)">(2026-07-05 · VAL-SYS-005)</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>A formal investigation into whether the project follows its own documentation rules
+    (<a href="README.html#s7">README §7</a> and <a href="README.html#s8">§8</a>) and whether the
+    core system files are internally consistent across platforms. The investigation covers:
+    documentation format policy conformance, logging format alignment, shutdown safety,
+    exception handling, status message accuracy, and WebUI consistency.</p>
+  </div>
+</div>
+
+<h3>9.1 Documentation Policy Conformance</h3>
+
+<p><strong>Core docs (README, STATUS, HANDBOOK, LOGS):</strong> All four core docs are HTML format
+on <code>docs.css</code> — compliant with §7.2 rule 1. No parallel Markdown copies exist for these
+four files — compliant with §7.2 rule 2.</p>
+
+<p><strong>MUMBLE_MASTER_SYSTEM_DOCUMENTATION.md:</strong> This 67KB Markdown file lives in
+<code>Development Files/Core/</code> alongside the HTML core docs. Per §7.2 rule 5 ("When in doubt,
+HTML"), this file's format is inconsistent with the HTML-default policy. It pre-dates the current
+documentation rules and remains as a legacy reference document. The content has not been lost
+(§7.1 rule 1 is satisfied) — the information it contains has been folded into the HTML core docs
+where appropriate. VAL-DOC-008 tracks whether this file should be converted to HTML or retain its
+format with documented justification.</p>
+
+<p><strong>Audit scratchpad files:</strong> The four <code>_*-audit.md</code> files in
+<code>Development Files/Other/audits/</code> are research scratchpad notes from the mission audit
+phase. They are correctly placed in <code>Other/</code> (not Core), compliant with §7's rule against
+top-level dated docs. They serve as archival references for the audit IDs used throughout the codebase.</p>
+
+<p><strong>Internal/README.md:</strong> This is the user-facing product guide. Per §7.2 rule 3, a
+repo-conventional <code>README.md</code> rendered by GitHub is a legitimate Markdown use. The file
+correctly links to Core docs for development details (§9 of the Internal README includes a
+cross-reference to <code>Development Files/Core/</code>). Compliant.</p>
+
+<p><strong>Key finding — why rules aren't consistently followed:</strong> The HTML documentation
+policy (§7.2) was established as part of the repository reorganisation (the "v1" generation)
+<em>after</em> many documents were originally authored in Markdown. The legacy files
+(<code>MUMBLE_MASTER_SYSTEM_DOCUMENTATION.md</code>, audit scratchpad notes) were not
+retroactively converted. The core docs (README, STATUS, HANDBOOK, LOGS) are fully compliant.
+The gap is a known state, not a violation of active rules — the policy applies to
+<em>new</em> documentation, and legacy files persist with their original formats until
+intentionally converted. No rule is being actively broken; the legacy files simply pre-date
+the current policy.</p>
+
+<h3>9.2 Logging Format Alignment</h3>
+
+<p><strong>Controllers (mumble.py / mumble_mac.py / mumble_linux.py):</strong> All three use
+a consistent <code>print("[tag] message")</code> pattern with tags like <code>[startup]</code>,
+<code>[shutdown]</code>, <code>[audio]</code>, <code>[gate]</code>, <code>[meeting]</code>,
+<code>[cloud-stt]</code>, <code>[perf]</code>. Log output is captured via a <code>_Tee</code>
+class that mirrors stdout/stderr to a log file. Consistent across platforms.</p>
+
+<p><strong>settings.py (all three platforms):</strong> Previously used inconsistent prefixes
+(<code>"settings load error"</code>, <code>"settings:"</code>). <strong>Fixed 2026-07-05:</strong>
+all print statements now use <code>"[settings]"</code> prefix for consistency with the
+rest of the codebase. The macOS and Linux port copies have been updated to match.</p>
+
+<p><strong>ai/ package (all three platforms):</strong> Use consistent <code>"[prompt]"</code>,
+<code>"[context]"</code>, <code>"[cerebras_chat]"</code> (and provider-specific lane tags) prefixes.
+Windows, macOS and Linux use the <code>ai/</code> package; the Mac and Linux top-level compatibility
+modules were deleted in the 2026-07-15 audits.</p>
+
+<p><strong>formatting.py:</strong> Uses <code>"[gate]"</code> and <code>"[ml-punct]"</code>
+prefixes. Consistent.</p>
+
+<h3>9.3 Shutdown Safety (os._exit guards)</h3>
+
+<p><strong>Windows mumble.py:</strong> Full shutdown sequence: save partial dictation → stop
+local LLM → cancel model downloads → stop audio stream → unhook keyboard → stop tray icon
+→ terminate webUI subprocess (taskkill /T) → destroy Tk root → close lock socket → os._exit(0).
+<span class="badge b-pass">Complete</span></p>
+
+<p><strong>Linux mumble_linux.py:</strong> Full shutdown sequence matching Windows pattern:
+save partial dictation → stop local LLM → cancel model downloads → stop audio stream → unhook
+keyboard → stop tray icon → terminate webUI subprocess (SIGTERM → SIGKILL) → destroy root
+→ close lock socket → os._exit(0). <span class="badge b-pass">Complete</span></p>
+
+<p><strong>macOS mumble_mac.py:</strong> Previously missing save partial dictation, stop local
+LLM, and cancel model downloads blocks. <strong>Fixed 2026-07-05:</strong> these three safety
+operations now execute before the coordinated thread shutdown (threading.Event set, thread joins).
+The full shutdown sequence is now: save partial dictation → stop local LLM → cancel model
+downloads → signal threads → join threads → stop audio stream → unhook keyboard → stop icon
+→ terminate webUI subprocess (killpg SIGTERM → SIGKILL) → destroy root → close lock socket
+→ clean PID file → flush/close log → os._exit(0). <span class="badge b-pass">Fixed</span></p>
+
+<h3>9.4 _tk_queue Exception Handling</h3>
+
+<p>All three controllers previously used <code>except Exception: pass</code> in the _tk_queue
+dispatch loop, silently swallowing widget errors. <strong>Fixed 2026-07-05:</strong> all three
+now log the exception via <code>print(f"[tk_queue] widget error: {e}")</code> while continuing
+to drain the queue (a single broken widget should not block the rest).</p>
+
+<h3>9.5 Outdated Status Messages</h3>
+
+<p>A search for hardcoded version strings (<code>"v0.9"</code>), stale mode strings
+(<code>"list"</code> as an active mode), and removed-feature references across all three
+controllers and webui files found <strong>no stale status messages</strong>. The version
+string is sourced from <code>branding.py</code> (currently <code>0.9.1</code>) in all locations.
+One historical comment in mumble.py (line 1150) references "v0.9" in documenting a past
+regression — this is accurate historical context, not an outdated status message.</p>
+
+<h3>9.6 WebUI Status Reporting</h3>
+
+<p>The macOS and Linux WebUIs were product-reconciled on 2026-07-15 while retaining platform-specific
+onboarding, shortcuts and system seams. Neither exposes Your PC, Prompt Memory, a separate Prompt
+Provider, the retired mode key, or non-product text providers. Byte identity is not expected for
+platform seams; product contracts are covered by the port audit regression suites.</p>
+
+<h3>9.7 Core File Version Accuracy</h3>
+
+<p>The app version in <code>Internal/app/branding.py</code> is <code>0.9.1</code> ("The Big Shift").
+This matches the version declared in STATUS.html and README.html. The repository is branded as
+"Mumble v1" (generation name), while the app version is 0.9.1 — this distinction is correctly
+documented in Core/README.html §1. All core files accurately reflect the current state.</p>
+
+<hr>
+
+<div class="doc-foot">
+  <span>Mumble — STATUS</span>
+  <span class="gold">The Present State · verified 2026-07-21</span>
+</div>
+
+</div>
+</body>
+</html>

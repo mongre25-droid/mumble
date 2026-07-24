@@ -1,0 +1,33 @@
+---
+// Island.astro — Floating pill with gold dot, 5 mini-wave bars, and label.
+// Used in Hero and Download sections. Accepts an optional `state` prop.
+// Default state: "listening" (gold dot, mini-wave, "Listening" label).
+
+export interface Props {
+  id?: string;
+  state?: "listening" | "transcribing" | "email" | "pasted";
+}
+
+const { id = "heroIsland", state = "listening" } = Astro.props;
+
+const stateLabels: Record<string, string> = {
+  listening: "Listening",
+  transcribing: "Transcribing…",
+  email: "Email",
+  pasted: "Pasted",
+};
+
+const label = stateLabels[state] || "Listening";
+---
+
+<div class="island" id={id} role="status" aria-live="polite" data-state={state}>
+  <span class="island-dot"></span>
+  <span class="island-mini-wave" aria-hidden="true">
+    <span style="--d:1.05s"></span>
+    <span style="--d:1.25s"></span>
+    <span style="--d:.95s"></span>
+    <span style="--d:1.15s"></span>
+    <span style="--d:1.3s"></span>
+  </span>
+  <span class="island-label">{label}</span>
+</div>

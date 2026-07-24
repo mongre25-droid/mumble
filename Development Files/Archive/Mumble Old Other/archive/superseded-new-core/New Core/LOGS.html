@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Concise Mumble development outcomes from the clean documentation baseline.">
+  <title>Mumble Core — Logs</title>
+  <link rel="stylesheet" href="_assets/core.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="README.html" aria-label="Mumble Core home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="brand-copy"><b>Mumble Core</b><span>Development system</span></span></a>
+    <div class="top-meta"><span>LOGS / Outcomes</span><span class="freshness">Updated 20 July 2026</span></div>
+  </header>
+  <aside class="rail" aria-label="Documentation navigation">
+    <p class="rail-label">Core set</p>
+    <nav class="doc-switch">
+      <a href="README.html"><span>README</span><small>START</small></a>
+      <a href="HANDBOOK.html"><span>Handbook</span><small>BUILD</small></a>
+      <a href="STATUS.html"><span>Status</span><small>NOW</small></a>
+      <a class="active" href="LOGS.html"><span>Logs</span><small>DONE</small></a>
+    </nav>
+    <p class="rail-label">On this page</p>
+    <nav class="section-nav">
+      <a href="#purpose">Purpose</a>
+      <a href="#rules">Writing rules</a>
+      <a href="#entries">Entries</a>
+      <a href="#template">Template</a>
+    </nav>
+    <div class="rail-note">If a detail can make an AI believe an inactive idea is current, it does not belong here.</div>
+  </aside>
+
+  <main class="main" id="main"><div class="content">
+    <header class="hero">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="eyebrow">04 · Deliberately quiet history</div>
+      <h1>Outcomes,<br>not archaeology.</h1>
+      <p class="lede">A fresh, low-noise record of completed work. No imported session history, abandoned concepts, speculative features or transcript-style narration.</p>
+      <div class="hero-meta">
+        <span class="pill"><span class="dot green"></span>Fresh baseline</span>
+        <span class="pill"><span class="dot gold"></span>Newest first</span>
+        <span class="pill"><span class="dot blue"></span>Outcome only</span>
+      </div>
+    </header>
+
+    <section id="purpose">
+      <div class="section-head"><div class="section-no">01</div><div><h2>What this log is for</h2><p class="section-intro">It answers one question: “What durable result changed in Mumble?”</p></div></div>
+      <div class="grid-3">
+        <article class="card good"><h3>Include</h3><p>Shipped or completed outcomes, the small set of affected areas and the verification that matters.</p></article>
+        <article class="card warn"><h3>Keep elsewhere</h3><p>Current blockers and next actions belong in STATUS. System explanation belongs in HANDBOOK.</p></article>
+        <article class="card bad"><h3>Exclude</h3><p>Brainstorms, dead ends, superseded behaviour, old feature inventories, chat narration and repeated details.</p></article>
+      </div>
+      <div class="callout" style="margin-top:14px"><div class="callout-icon">◎</div><div><h3>Version control remains the full forensic record</h3><p>This page is an index of meaningful outcomes, not a substitute for commits, diffs, tests or release notes.</p></div></div>
+    </section>
+
+    <section id="rules">
+      <div class="section-head"><div class="section-no">02</div><div><h2>Writing rules</h2><p class="section-intro">Short enough to scan; precise enough to trust.</p></div></div>
+      <div class="grid-2">
+        <ul class="checklist">
+          <li>Add an entry only after a coherent outcome is complete.</li>
+          <li>Use one heading, one sentence and at most three result bullets.</li>
+          <li>Name observable behaviour, not the session that produced it.</li>
+          <li>Record verification in a single compact bullet.</li>
+        </ul>
+        <ul class="checklist block">
+          <li>Do not preserve an old feature name for context.</li>
+          <li>Do not copy TODOs, risks or “next time” notes into LOGS.</li>
+          <li>Do not repeat architecture already explained in HANDBOOK.</li>
+          <li>Do not say “fixed” when the relevant path was not verified.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="entries">
+      <div class="section-head"><div class="section-no">03</div><div><h2>Entries</h2><p class="section-intro">This record begins with the new four-document baseline. Nothing older is imported.</p></div></div>
+      <div class="log-entry">
+        <div class="log-date">2026-07-20<br><span class="green">WORKSPACE UI</span></div>
+        <div>
+          <h3>Made the primary workspace denser, calmer and visually coherent.</h3>
+          <ul>
+            <li>Removed Home's duplicate live-state tile and deterministic grid hole, removed Reply from user-facing Smart Modes, and brought Deck and Meetings into the golden-black layered-glass system.</li>
+            <li>Made Stats open with ten useful dictation, time-saved, pace, streak, Reader and Meeting metrics; replaced in-app Search with a compact app-first window using real local icons and path-free metadata.</li>
+            <li>Verified the full 69/69 offline runner, Python/JavaScript syntax, and native Windows WebView2 flows for Home, Deck, Stats, Meetings, Search hide/reopen, and both main-first and Search-first window creation.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="log-entry">
+        <div class="log-date">2026-07-17<br><span class="green">STATS DASHBOARD</span></div>
+        <div>
+          <h3>Made the Stats dashboard coherent, truthful and failure-aware.</h3>
+          <ul>
+            <li>Balanced the dictation overview and rhythm charts, added genuine Reader listening and retained-library Meeting activity, and supplied narrow layouts, explicit empty states and text alternatives.</li>
+            <li>Made Stats mutations transactional with last-good recovery, attributed dictations to their recording start and removed non-spoken Deck jobs from dictation totals.</li>
+            <li>Verified the scoped offline Stats runner, Python and JavaScript syntax, accessibility hierarchy, 7/30/90-day controls and desktop/640px browser layouts without overflow.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="log-entry">
+        <div class="log-date">2026-07-17<br><span class="green">SETTINGS</span></div>
+        <div>
+          <h3>Made processing setup contextual, route-aware and non-destructive.</h3>
+          <ul>
+            <li>Separated Overview, Transcription, Processing, Deck/data and System; provider configuration now uses progressive disclosure and exact audio-versus-text privacy wording.</li>
+            <li>Projected requested and effective routes, preserved unsupported/legacy configuration, and closed invalid-write, failed-save, recovery and stale/nested merge paths.</li>
+            <li>Verified focused persistence, route and cloud-sync suites plus Python/JavaScript syntax and desktop/mobile keyboard browser checks.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="log-entry">
+        <div class="log-date">2026-07-17<br><span class="green">SEARCH</span></div>
+        <div>
+          <h3>Redesigned and hardened canonical Windows Mumble Search.</h3>
+          <ul>
+            <li>Moved the configurable default to <code>Ctrl+Alt+F</code> with exact-old-default migration, semantic collision rejection and transactional live rebinding.</li>
+            <li>Replaced the full-page launcher with a centred, lazy, keyboard-accessible modal; restored focus/window mode on close and kept Search inert throughout active dictation.</li>
+            <li>Verified focused shortcut/migration/Windows-target seams, Python and JavaScript syntax, and real desktop/narrow browser flows including focus, navigation and errors.</li>
+      </div>
+      <div class="log-entry">
+        <div class="log-date">2026-07-17<br><span class="green">DECK WORKFLOW</span></div>
+        <div>
+          <h3>Made Clipboard and ordered selection first-class Deck workflows.</h3>
+          <ul>
+            <li>Added visible content lanes, a globally ordered timeline, whole-row and native-checkbox selection, keyboard navigation, clearer empty states and a centred responsive bulk-action bar.</li>
+            <li>Made text/image paste and Deck-job acknowledgement truthful, removed destructive selection-capture sentinels, replayed deferred refreshes and kept controller/Web UI stores current without defeating file-signature caching.</li>
+            <li>Verified the focused procedural regression through the authoritative runner plus clean Python compilation, JavaScript syntax, HTML parsing and diff checks.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="log-entry">
+        <div class="log-date">2026-07-15<br><span class="green">WINDOWS AUDIT</span></div>
+        <div>
+          <h3>Completed the canonical Windows reliability and security audit.</h3>
+          <ul>
+            <li>Closed false-success and failed-write data-loss paths across settings, transcripts, clipboard, favourites, presets, prompts and Meetings.</li>
+            <li>Serialised cross-process stores, excluded the Windows emergency shortcut from sync and refreshed Windows installer/dependency security pins.</li>
+            <li>Verified 65/65 offline scripts in 402.14 seconds plus clean compilation, critical lint, JavaScript syntax, high-severity source and pinned dependency audits.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="log-entry">
+        <div class="log-date">2026-07-10<br><span class="green">BASELINE</span></div>
+        <div>
+          <h3>Created the clean four-document Mumble Core.</h3>
+          <ul>
+            <li>Established a current-state README, architecture Handbook, release Status and low-noise Logs in an isolated folder.</li>
+            <li>Modelled the checked-out application flow, process topology, background workers, privacy routes and persistence boundaries.</li>
+            <li>Kept the original Core set and existing application changes untouched; validated document structure and local links.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="template">
+      <div class="section-head"><div class="section-no">04</div><div><h2>Entry template</h2><p class="section-intro">Copy this shape; delete any line that adds no decision-useful information.</p></div></div>
+      <div class="prompt-box">
+        <pre id="log-template">YYYY-MM-DD · AREA
+Completed [one observable outcome].
+
+• Result: [what now works or is different]
+• Scope: [only the important modules/surfaces]
+• Verified: [the production path or targeted checks that passed]</pre>
+        <button class="copy-button" type="button" data-copy-target="#log-template">Copy template</button>
+      </div>
+      <div class="callout ok" style="margin-top:14px"><div class="callout-icon">✓</div><div><h3>The deletion test</h3><p>If removing an entry would not make it harder to understand a durable product outcome, remove it. The log should stay small.</p></div></div>
+    </section>
+
+    <footer class="foot"><span>Fresh history begins here · full detail remains in version control</span><strong>LOGS / 04</strong></footer>
+  </div></main>
+</div>
+<script src="_assets/core.js"></script>
+</body>
+</html>

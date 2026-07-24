@@ -1,0 +1,291 @@
+{
+  "mode": "offline-all",
+  "total": 47,
+  "passed": 47,
+  "failed": 0,
+  "seconds": 923.9,
+  "results": [
+    {
+      "test": "test_big_shift.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.17
+    },
+    {
+      "test": "test_bindings.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.75
+    },
+    {
+      "test": "test_bug_audit_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 3.55
+    },
+    {
+      "test": "test_cloud_sync.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 4.72
+    },
+    {
+      "test": "test_cmd_auth.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 19.89
+    },
+    {
+      "test": "test_context_store.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.13
+    },
+    {
+      "test": "test_core_engine_audit.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 3.39
+    },
+    {
+      "test": "test_core_port_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 3.1
+    },
+    {
+      "test": "test_downloader.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 16.68
+    },
+    {
+      "test": "test_end_to_end.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 5.77
+    },
+    {
+      "test": "test_favorites.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 6.55
+    },
+    {
+      "test": "test_foreign_boost.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.57
+    },
+    {
+      "test": "test_formatting.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 3.4
+    },
+    {
+      "test": "test_island_bar.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.71
+    },
+    {
+      "test": "test_lightweight.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 44.18
+    },
+    {
+      "test": "test_local_engine.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.2
+    },
+    {
+      "test": "test_local_wiring.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.97
+    },
+    {
+      "test": "test_mac_platform.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 34.72
+    },
+    {
+      "test": "test_mac_ui_parity_remediation.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 4.0
+    },
+    {
+      "test": "test_macos_audio.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 25.84
+    },
+    {
+      "test": "test_meeting.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 175.16
+    },
+    {
+      "test": "test_meeting_controller.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 29.63
+    },
+    {
+      "test": "test_mode_select.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.55
+    },
+    {
+      "test": "test_model_backend.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.59
+    },
+    {
+      "test": "test_model_free.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.37
+    },
+    {
+      "test": "test_perf.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 128.34
+    },
+    {
+      "test": "test_pipeline_stage2_stage3.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 73.24
+    },
+    {
+      "test": "test_presets.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.05
+    },
+    {
+      "test": "test_providers.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 11.2
+    },
+    {
+      "test": "test_reader.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.75
+    },
+    {
+      "test": "test_reader_parser.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 89.67
+    },
+    {
+      "test": "test_recording_gate.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 35.77
+    },
+    {
+      "test": "test_recording_limits.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 92.36
+    },
+    {
+      "test": "test_service_platform_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 6.94
+    },
+    {
+      "test": "test_service_port_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 2.42
+    },
+    {
+      "test": "test_session_token.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.64
+    },
+    {
+      "test": "test_settings_merge.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.54
+    },
+    {
+      "test": "test_settings_recovery.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.98
+    },
+    {
+      "test": "test_stats.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.84
+    },
+    {
+      "test": "test_stream_seam.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 56.45
+    },
+    {
+      "test": "test_stt_providers.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.04
+    },
+    {
+      "test": "test_tips.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.21
+    },
+    {
+      "test": "test_tts_providers.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.33
+    },
+    {
+      "test": "test_ui.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 18.31
+    },
+    {
+      "test": "test_ui_bug_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.45
+    },
+    {
+      "test": "test_ui_port_regressions.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.19
+    },
+    {
+      "test": "test_webui_api.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 1.79
+    }
+  ]
+}

@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble — Potential Features Catalogue</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Long-term feature garden</div>
+  <h1>Mumble — Potential Features Catalogue</h1>
+  <div class="meta">
+    <div><span class="ico">&#9670;</span><b>Scope:</b> useful features and capabilities that could extend Mumble beyond the current v0.9 codebase and the official V1.0&ndash;V1.4 roadmap.</div>
+    <div><span class="ico">&#9670;</span><b>Status:</b> idea catalogue &mdash; not a committed roadmap.</div>
+    <div><span class="ico">&#9670;</span><b>Source:</b> derived from <code>Internal/app/</code>, the core docs, and the current UX spec.</div>
+    <div><span class="ico">&#9670;</span><b>Last updated:</b> 2026-07-08</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This document is a place to park feature ideas without letting them scatter across chat logs or private notes. Every entry is grounded in Mumble's existing architecture or user value. The goal is to keep the list honest: no fake capabilities, no features that contradict the local-first, privacy-first stance unless the trade-off is explicitly flagged.</p>
+    <p>The official roadmap already covers local AI post-processing, platform acceleration, meeting intelligence, and a custom Mumble model. The entries below are complementary: they are things that could be added after (or alongside) that roadmap, or that extend features already present in the codebase.</p>
+  </div>
+</div>
+
+<div class="plain" style="border-color:var(--gold); background:rgba(216,177,90,.06);">
+  <div class="tag">Legend</div>
+  <div>
+    <p><span class="badge b-gold">High impact</span> &mdash; a standout capability that would materially change how users experience Mumble.</p>
+    <p><span class="badge b-done">Quick win</span> &mdash; small surface area, mostly reusing existing code paths.</p>
+    <p><span class="badge b-exist">Builds on existing</span> &mdash; extends a module that already exists (e.g. Deck, Reader, meeting_store, local_engine).</p>
+    <p><span class="badge b-gated">Heavy / owner call</span> &mdash; large architectural work, significant compute, or a product decision that needs the owner.</p>
+  </div>
+</div>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">Dictation loop &amp; input</a></li>
+    <li><a href="#s2">Output shaping &amp; smart modes</a></li>
+    <li><a href="#s3">Accuracy, adaptation &amp; audio quality</a></li>
+    <li><a href="#s4">The Deck &amp; knowledge management</a></li>
+    <li><a href="#s5">Meeting intelligence</a></li>
+    <li><a href="#s6">Reader &amp; text-to-speech</a></li>
+    <li><a href="#s7">Integrations &amp; workflows</a></li>
+    <li><a href="#s8">Privacy, sync &amp; data ownership</a></li>
+    <li><a href="#s9">Performance &amp; platform</a></li>
+    <li><a href="#s10">Accessibility &amp; usability</a></li>
+    <li><a href="#s11">Ecosystem &amp; extensibility</a></li>
+  </ol>
+</nav>
+
+<!-- ======================================================================== -->
+<h2 id="s1"><span class="sec">1</span>Dictation loop &amp; input</h2>
+
+<p>These ideas change the moment-to-moment dictation experience: how you start, stop, correct, and control Mumble with your voice.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Pre-paste preview bubble</strong></td>
+      <td>Show the shaped text for 1&ndash;2 seconds before pasting, with quick actions to edit, re-run, or undo.</td>
+      <td>Reduces the cost of a mis-transcription without breaking the zero-friction loop. Reuses the existing island overlay and hint system.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Spoken punctuation &amp; formatting commands</strong></td>
+      <td>Recognise commands like "new line", "comma", "delete last word", "capitalize that" inside dictation and apply them locally.</td>
+      <td>Keeps hands off the keyboard for longer; fits naturally into the local formatting pipeline.</td>
+      <td><span class="badge b-done">Quick win</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Spoken mode switching</strong></td>
+      <td>Phrases like "make it an email" or "turn this into a prompt" switch the active mode mid-utterance.</td>
+      <td>Matches the "infer, don't configure" philosophy; reduces UI interaction.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Real-time partial transcript in the island</strong></td>
+      <td>Stream the 5-second chunk transcriptions into the island as you speak, so you can abort early if the text is wrong.</td>
+      <td>Catches errors before the AI pass and paste step; uses the existing <code>_stream_worker</code>.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Per-app output profiles</strong></td>
+      <td>Detect the foreground window and bias the output: Outlook gets email formatting, Slack gets short chat, VS Code gets a code comment.</td>
+      <td>Delivers on "infer, don't configure" at the OS level; only needs the window class/title, not its content.</td>
+      <td><span class="badge b-gold">High impact</span></td>
+    </tr>
+    <tr>
+      <td><strong>Multi-language auto-detection &amp; code-switching</strong></td>
+      <td>Detect the spoken language per utterance and load the right Whisper model; tolerate mid-sentence language switches.</td>
+      <td>Essential for multilingual users; currently the language is a single global setting.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>Continuous dictation mode</strong></td>
+      <td>An optional hands-free mode where Mumble listens continuously and segments utterances by silence, rather than push-to-talk.</td>
+      <td>Useful for long-form writing sessions; can be done locally with the existing VAD path.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Voice-activated undo / redo</strong></td>
+      <td>Say "undo that" or "redo that" to revert or re-apply the last paste without touching the keyboard.</td>
+      <td>Closes the error-recovery loop for hands-free workflows.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Adjustable pre-roll buffer</strong></td>
+      <td>Keep a rolling 1&ndash;2 second audio buffer before the hotkey press, so words spoken just before pressing are not clipped.</td>
+      <td>Solves the common "first word cut off" problem; small audio pipeline change.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Local audio replay per dictation</strong></td>
+      <td>Optionally save the raw audio of each dictation (local-only, encrypted) so the user can replay it to resolve a transcription dispute.</td>
+      <td>Helps users improve accuracy over time; must be strictly opt-in because it changes the privacy promise.</td>
+      <td><span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s2"><span class="sec">2</span>Output shaping &amp; smart modes</h2>
+
+<p>Ideas for making the Text / Prompt / Email / Reply / Foreign modes smarter and more controllable.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>"Translate" mode</strong></td>
+      <td>Translate the dictated text into another language, not just repair foreign terms.</td>
+      <td>Natural extension of Foreign mode; cloud or local LLM can handle it.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>User style examples</strong></td>
+      <td>Let the user paste a sample of their own writing and ask Mumble to "make it sound like this".</td>
+      <td>Gives consistent personal voice across AI-shaped output; can be added as a custom preset field.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Per-mode preview before paste</strong></td>
+      <td>Show a side-by-side or inline preview of what Email mode vs Text mode will produce before choosing one.</td>
+      <td>Reduces mode mistakes, especially when the auto-detection is uncertain.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Tone &amp; audience presets</strong></td>
+      <td>Quick selectors like "Executive summary", "Friendly colleague", "Formal client", "Plain English" that feed the prompt preferences.</td>
+      <td>Makes prompt preferences less abstract and faster to switch.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Output length target</strong></td>
+      <td>Spoken length constraints: "in 50 words", "one paragraph", "three bullets".</td>
+      <td>Common user intent; easy to inject into the prompt constitution.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Custom snippet / template expansion</strong></td>
+      <td>User-defined voice triggers like "insert signature" or "insert standup" that paste a templated block of text.</td>
+      <td>Complements the Deck presets by adding direct dictation shortcuts.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Multi-step prompt chaining</strong></td>
+      <td>For complex Prompt-mode requests, let the user chain follow-ups ("now make it shorter", "add a risk section") within one session.</td>
+      <td>Builds on the existing prompt memory window; turns Mumble into a lightweight writing companion.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Inline editing mode</strong></td>
+      <td>Dictate edits to existing text: "make this shorter", "add a joke", "rewrite the second paragraph".</td>
+      <td>Extends the Deck "Improve" preset into a live dictation interaction.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s3"><span class="sec">3</span>Accuracy, adaptation &amp; audio quality</h2>
+
+<p>Features that make Mumble more accurate for individuals, noisy environments, and specialised vocabulary.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Adaptive vocabulary &amp; correction learning</strong></td>
+      <td>When the user corrects a word, Mumble learns the correction and updates its phonetic vocabulary and STT hotwords.</td>
+      <td>Closed feedback loop for names, jargon, and accents; leverages <code>foreign_boost.py</code> and settings vocabulary.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Personal name / jargon import</strong></td>
+      <td>Import contacts, email signatures, or a custom word list to seed the vocabulary before first use.</td>
+      <td>Big accuracy win for professionals with domain-specific language.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Domain-specific language packs</strong></td>
+      <td>Optional add-on vocabularies for medicine, law, software, finance, etc.</td>
+      <td>Broadens Mumble's accuracy without requiring every user to maintain their own list.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>rpunct punctuation restoration</strong></td>
+      <td>Run a small BERT model locally to restore punctuation before the cloud or local LLM pass.</td>
+      <td>Architecture review already identified this as a near-optimal local stage; improves offline quality.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>GRMR grammar correction</strong></td>
+      <td>Add a 2B-parameter grammar model as an optional local post-processing stage.</td>
+      <td>Part of the multi-stage local pipeline planned for local-only users.</td>
+      <td><span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>DeepFilterNet3 noise suppression</strong></td>
+      <td>Pre-process mic audio with AI noise suppression before sending it to Whisper.</td>
+      <td>Architecture review flagged this as a latency/accuracy spike; useful for open-plan offices and headsets.</td>
+      <td><span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>Auto gain control &amp; normalisation</strong></td>
+      <td>Normalise input volume and peak levels so quiet voices and distant mics perform consistently.</td>
+      <td>Simple audio pre-processing that improves transcription accuracy across devices.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Bluetooth / wireless headset profiles</strong></td>
+      <td>Detect headset characteristics and adjust VAD, sample handling, and latency accordingly.</td>
+      <td>Bluetooth mics behave differently from wired mics; a profile system reduces friction.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Model quality A/B comparison UI</strong></td>
+      <td>Let the user compare two transcription or post-processing models on the same audio clip to pick the best for their voice.</td>
+      <td>Turns model selection from guesswork into an evidence-based choice.</td>
+      <td><span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s4"><span class="sec">4</span>The Deck &amp; knowledge management</h2>
+
+<p>The Deck is already a powerful history/clipboard/prompt surface. These ideas turn it into a long-term knowledge tool.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Semantic search</strong></td>
+      <td>Index Deck, History, Meetings, and Reader with a local embedding model so users can search by meaning.</td>
+      <td>Already deferred for embedding-store reasons, but it is the single biggest unlock for the Deck as a knowledge base.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>Auto-tagging by topic</strong></td>
+      <td>Automatically tag transcripts with topics (work, personal, project names) using local keyword/topic models.</td>
+      <td>Makes large history libraries browsable without manual curation.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Daily / weekly writing digest</strong></td>
+      <td>Generate a private summary of what the user dictated, key decisions, action items, and time saved.</td>
+      <td>Turns the Stats tab from a dashboard into an actionable reflection tool.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Deck "Send to" destinations</strong></td>
+      <td>Send selected items to Obsidian, Notion, Todoist, a new email, a calendar event, or a file.</td>
+      <td>The meeting exporter already supports multiple formats; extending this to the Deck makes it a dispatch hub.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Folders / collections</strong></td>
+      <td>Let users organise Deck items into named collections, not just favourites.</td>
+      <td>Easier to manage long history; can reuse Reader collections logic.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Duplicate detection &amp; merging</strong></td>
+      <td>Detect near-duplicate clipboard or transcript items and offer to merge them.</td>
+      <td>Keeps the Deck clean as clipboard capture runs continuously.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Transcript versioning / diff</strong></td>
+      <td>Keep versions of a Prompt-mode rewrite or a Deck job so users can compare iterations.</td>
+      <td>Important for AI-shaped writing where users want to see what changed.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>AI-suggested presets</strong></td>
+      <td>Suggest a Deck preset based on the content of selected items (e.g. "Summarise" for a long article).</td>
+      <td>Lowers the cognitive load of choosing among 25 presets.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s5"><span class="sec">5</span>Meeting intelligence</h2>
+
+<p>Mumble already has a Meetings tab with diarisation, summaries, and exports. These ideas make it a complete meeting tool.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>System audio + microphone mix</strong></td>
+      <td>Capture both sides of a video call via WASAPI / CoreAudio / PulseAudio loopback, mixed with the mic.</td>
+      <td>The biggest blocker for the Meetings feature; already planned in the roadmap but worth restating.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>Click-to-play audio synced to transcript</strong></td>
+      <td>Click any transcript segment to play the meeting audio from that timestamp.</td>
+      <td><code>meeting_store.py</code> already saves <code>start_sec</code>/<code>end_sec</code> and <code>audio_path</code>; mostly a UI addition.</td>
+      <td><span class="badge b-done">Quick win</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Speaker voice enrolment</strong></td>
+      <td>Let users tag a few seconds of each speaker's voice and store a local embedding for persistent names.</td>
+      <td>Turns "Speaker 1/2/3" into "Alice / Bob / Carol" across meetings; can use <code>pyannote.audio</code> embeddings locally.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Live meeting transcription</strong></td>
+      <td>Show a continuously updating transcript with diarisation during the call, not just after.</td>
+      <td>Turns Mumble into a real-time captioning tool for the user's own meetings.</td>
+      <td><span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>Action item tracking</strong></td>
+      <td>Track extracted action items with status, owner, and due date across meetings.</td>
+      <td>Moves from "extract once" to a lightweight meeting task manager.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Calendar integration &amp; auto-titling</strong></td>
+      <td>Read the user's calendar to auto-title meetings and tag participants.</td>
+      <td>Saves manual naming; requires local calendar access, no cloud needed.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Meeting bookmarks</strong></td>
+      <td>Press a hotkey during recording to mark a moment (e.g. "important decision") for later review.</td>
+      <td>Simple and high-value for long meetings.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s6"><span class="sec">6</span>Reader &amp; text-to-speech</h2>
+
+<p>The Reader parses many document formats and reads them aloud. These ideas extend it in both directions.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Global "read aloud" hotkey for selected text</strong></td>
+      <td>Highlight text in any app, press a hotkey, and Mumble reads it via the existing TTS pipeline.</td>
+      <td>The inverse of dictation; makes Mumble an accessibility layer for the whole OS.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Reader import from URL</strong></td>
+      <td>Paste a URL and Mumble fetches the article, extracts readable content, and adds it to the library.</td>
+      <td><code>reader_parser.py</code> already parses HTML; only a fetch step is missing.</td>
+      <td><span class="badge b-done">Quick win</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Article readability extraction</strong></td>
+      <td>Strip navigation, ads, and comments from web pages before reading, similar to browser Reader Mode.</td>
+      <td>Improves the URL-import experience; can reuse BeautifulSoup logic.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Dictated annotations while reading</strong></td>
+      <td>While a document is playing, dictate a note that is attached to the current word/position.</td>
+      <td>Combines Mumble's two strengths: reading and dictation.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Local TTS voices</strong></td>
+      <td>Support local voices such as Piper or Coqui for users who do not want cloud TTS.</td>
+      <td>Keeps Reader fully offline; aligns with local-first posture.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Audiobook export</strong></td>
+      <td>Export a Reader document as a single MP3/M4B file with chapters derived from headings.</td>
+      <td>Lets users consume long documents offline on other devices.</td>
+      <td><span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s7"><span class="sec">7</span>Integrations &amp; workflows</h2>
+
+<p>Ideas that connect Mumble to the rest of the user's tools without compromising the local-first core.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Obsidian / Notion / Roam plugins</strong></td>
+      <td>Send a transcript or meeting summary directly to a note-taking app.</td>
+      <td>Knowledge workers already live in these apps; this closes the loop.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Task manager integrations</strong></td>
+      <td>Send action items to Todoist, Things, Microsoft To Do, etc.</td>
+      <td>Turns meeting action extraction into real task creation.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Email client integration</strong></td>
+      <td>Detect an open compose window and auto-format dictated text as an email body.</td>
+      <td>Reduces mode switches for email-heavy users.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Local API / webhook</strong></td>
+      <td>Expose a small authenticated local HTTP API so tools like n8n, Zapier (local), or AutoHotkey can trigger Mumble.</td>
+      <td>Power-user automation without adding cloud dependencies.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>CLI mode</strong></td>
+      <td>Run Mumble from the terminal: <code>mumble --record</code>, <code>mumble --paste-last</code>, <code>mumble --process-meeting file.wav</code>.</td>
+      <td>Useful for scripting, CI, and power users.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Watch folder for batch import</strong></td>
+      <td>Drop WAV/MP3/M4A files into a folder and Mumble transcribes and diarises them automatically.</td>
+      <td>Batch processing for podcasts, interview recordings, or old meeting files.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s8"><span class="sec">8</span>Privacy, sync &amp; data ownership</h2>
+
+<p>Features that strengthen Mumble's privacy promise and give users more control over their data.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>User-owned sync backends</strong></td>
+      <td>Support WebDAV, S3-compatible storage, Google Drive, Dropbox, or a "sync folder" instead of only Supabase.</td>
+      <td>Aligns better with local-first than a single third-party backend; currently cloud sync is Supabase-only.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>End-to-end encrypted cloud sync</strong></td>
+      <td>Encrypt data on the client before sending it to any sync backend.</td>
+      <td>Allows cloud convenience without trusting the server.</td>
+      <td><span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>Full data export / import archive</strong></td>
+      <td>One-click export of history, meetings, reader library, settings, and favourites to a documented zip archive.</td>
+      <td>Makes Mumble feel like a tool users truly own and can migrate.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Local data encryption at rest</strong></td>
+      <td>Optionally encrypt the Mumble data directory with a user password.</td>
+      <td>Important for shared machines or sensitive work.</td>
+      <td><span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>Automatic snapshots</strong></td>
+      <td>Keep periodic snapshots of history and settings so a bad sync or crash is recoverable.</td>
+      <td>Complements the atomic-write design with versioned recovery.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Portable mode</strong></td>
+      <td>Run Mumble from a USB drive or a chosen folder with all data stored alongside the app.</td>
+      <td>Useful for users who move between machines or do not want data in AppData.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s9"><span class="sec">9</span>Performance &amp; platform</h2>
+
+<p>Platform-specific acceleration and performance tooling.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>DirectML / ONNX STT backend</strong></td>
+      <td>Use <code>sherpa-onnx</code> with DirectML so AMD, Intel, and NPU users get GPU acceleration, not just NVIDIA CUDA.</td>
+      <td>Architecture review flagged this as high-impact for ~40% of Windows users.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>macOS Neural Engine / FluidAudio</strong></td>
+      <td>Use Apple Neural Engine for STT on Apple Silicon, with faster-whisper as fallback for unsupported languages.</td>
+      <td>Could be 5&ndash;10&times; faster with far less RAM and battery; already planned.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-gated">Heavy / owner call</span></td>
+    </tr>
+    <tr>
+      <td><strong>Linux ARM / whisper.cpp fallback</strong></td>
+      <td>Add an optimised ARM path for Linux devices such as Raspberry Pi and ARM laptops.</td>
+      <td>Broadens the Linux port to low-power devices.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>GPU selection UI</strong></td>
+      <td>Let users choose which GPU or NPU Mumble uses for STT / local LLM.</td>
+      <td>Laptops with dGPUs and hybrid graphics need explicit control.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Model download manager</strong></td>
+      <td>Show progress, estimated disk space, and RAM for each downloadable model.</td>
+      <td>Makes onboarding less opaque when models are large.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Resource saver auto-trigger</strong></td>
+      <td>Automatically enable Resource Saver when on battery or when CPU usage is high.</td>
+      <td>Improves laptop battery life without requiring the user to remember the toggle.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s10"><span class="sec">10</span>Accessibility &amp; usability</h2>
+
+<p>Small but important improvements that make Mumble easier for more people.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Command palette</strong></td>
+      <td><code>Ctrl+Shift+P</code> (or a voice trigger) opens a searchable palette of every Mumble action.</td>
+      <td>Makes the app truly keyboard-first and discoverable.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Onboarding voice tour</strong></td>
+      <td>A short interactive tour where the user actually dictates sample sentences and sees the results.</td>
+      <td>Onboarding is voice-first, so the tutorial should be too.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Screen reader labels &amp; focus</strong></td>
+      <td>Full ARIA labels, focus management, and screen-reader announcements for the web UI.</td>
+      <td>Required for users who rely on assistive technology.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>High contrast &amp; large text modes</strong></td>
+      <td>Systematic high-contrast theme and global font scaling beyond the existing responsive scaling.</td>
+      <td>Broadens accessibility without changing the default premium look.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Sticky keys / alternate activation</strong></td>
+      <td>Support one-handed activation methods: sticky hotkeys, mouse-button dictation, or tap sequences.</td>
+      <td>Important for users with motor disabilities.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Voice control of the Mumble UI</strong></td>
+      <td>Commands like "open history", "show stats", or "switch to settings" control the app itself.</td>
+      <td>Brings the voice-first philosophy to the main window as well as dictation.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2 id="s11"><span class="sec">11</span>Ecosystem &amp; extensibility</h2>
+
+<p>Ideas that let Mumble grow without the core team building every integration.</p>
+
+<table>
+  <thead><tr><th>Feature</th><th>What it would do</th><th>Why it matters</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Plugin / extension registry</strong></td>
+      <td>Allow users to add custom reader parsers, STT/LLM/TTS providers, and Deck presets via a documented API.</td>
+      <td><code>reader_parser.py</code> already has a clean registry pattern; expand it across the app.</td>
+      <td><span class="badge b-gold">High impact</span> <span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Custom provider system</strong></td>
+      <td>Let users add arbitrary OpenAI-compatible endpoints for STT, LLM, and TTS without code changes.</td>
+      <td>Keeps Mumble provider-agnostic and future-proof.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+    <tr>
+      <td><strong>Community preset gallery</strong></td>
+      <td>A curated list of user-contributed Deck presets with one-click import.</td>
+      <td>Helps users discover powerful workflows without writing prompts.</td>
+      <td><span class="badge b-done">Quick win</span></td>
+    </tr>
+    <tr>
+      <td><strong>Self-hosted update server</strong></td>
+      <td>Support a custom manifest URL and signing key for enterprise or personal update feeds.</td>
+      <td>Lets organisations control their own update channel; fits the existing update.py architecture.</td>
+      <td><span class="badge b-exist">Builds on existing</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ======================================================================== -->
+<h2>Summary — highest-impact picks</h2>
+
+<p>These are the ideas that would deliver the most user value relative to the work already present in the codebase:</p>
+
+<ol>
+  <li><strong>Pre-paste preview bubble</strong> &mdash; directly reduces the biggest user fear (wrong text landing somewhere).</li>
+  <li><strong>Semantic search across the Deck</strong> &mdash; turns accumulated transcripts into a real knowledge base.</li>
+  <li><strong>System-audio mix for Meetings</strong> &mdash; unlocks the Meetings feature for its intended use case.</li>
+  <li><strong>Adaptive vocabulary &amp; correction learning</strong> &mdash; creates a compounding accuracy improvement for every user.</li>
+  <li><strong>User-owned sync backends</strong> &mdash; better fits the privacy promise than a single cloud backend.</li>
+  <li><strong>Global read-aloud hotkey</strong> &mdash; the natural inverse of dictation and a strong accessibility feature.</li>
+  <li><strong>Plugin / extension registry</strong> &mdash; lets Mumble grow beyond what the core team can build.</li>
+</ol>
+
+<blockquote>
+  <strong>Honesty guardrail.</strong> This catalogue is a garden of possibilities, not a commitment. Any feature that implies a capability Mumble does not yet have must not be shown in the app UI until it is genuinely wired to real data. See <code>STATUS.html</code> &sect;7 for the "depicted-but-not-real" rule.
+</blockquote>
+
+</div>
+</body>
+</html>

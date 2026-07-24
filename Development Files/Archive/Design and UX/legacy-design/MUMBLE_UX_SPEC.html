@@ -1,0 +1,413 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble UX Spec</title><link rel="stylesheet" href="../../_assets/docs.css"></head>
+<body><div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Screen-by-Screen Contract</div>
+  <h1>Mumble UX Spec</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Version:</b> 3.1.0 (current with the app, 2026-06-12)</div>
+    <div><span class="ico">◆</span><b>Audience:</b> UX Pilot — and any designer/developer producing Mumble screens</div>
+    <div><span class="ico">◆</span><b>Status:</b> the single source of truth — element behaviour is contractual, not aspirational</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble lets you talk to your computer and have your words appear as typed text — anywhere, in any app. You hit a hotkey, speak, hit it again, and a second later polished text lands wherever your cursor was.</p>
+    <p>This document is the rulebook for how every part of that experience looks and behaves. It describes each screen, every button and dot on it, and exactly what happens when you use it. The important promise: the designs drawn from this document get wired straight to the real software behind Mumble. So if a control isn't written down here, the software can't do it — and a designer should flag it rather than invent it.</p>
+  </div>
+</div>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">What Mumble Is</a></li>
+    <li><a href="#s2">The Interaction Model</a></li>
+    <li><a href="#s3">The Island Overlay</a></li>
+    <li><a href="#s4">The Deck (Ctrl+Alt+V) — flagship feature</a></li>
+    <li><a href="#s5">The Main Window — screen by screen</a></li>
+    <li><a href="#s6">Data &amp; Stores</a></li>
+    <li><a href="#s7">End-to-End Flows</a></li>
+    <li><a href="#s8">Notes &amp; Corrections for UX Pilot</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ 1 -->
+<h2 id="s1"><span class="sec">1</span>What Mumble Is</h2>
+
+<p>Mumble is a <strong>private, on-device voice-to-text desktop app for Windows</strong> (with a macOS port). The core loop:</p>
+
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">PRESS &amp; SPEAK</div><p>The user presses <strong>Ctrl+Win</strong> anywhere, in any app. A small floating "island" appears and Mumble records the microphone.</p></div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">PRESS AGAIN</div><p>The user speaks, then presses <strong>Ctrl+Win</strong> again.</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">TRANSCRIBE &amp; PASTE</div><p>Mumble transcribes the audio <strong>locally</strong> (faster-whisper — audio never leaves the device), optionally shapes the text with a cloud AI (the user's own API key), and <strong>pastes the result at the cursor</strong> in whatever app they were using.</p></div></div>
+</div>
+
+<p>Everything else in the product supports that loop: smart modes that shape the output (email, list, prompt…), <strong>the Deck</strong> (Ctrl+Alt+V — a mini dashboard where previously captured material is pasted, favourited, or run through AI presets), a history of everything transcribed/copied, statistics, and settings.</p>
+
+<blockquote><strong>The whole experience takes about one second</strong> for plain dictation. Latency is a core product value; nothing in the UI may block the dictation loop. The one deliberate exception is the Deck's AI-job lane, which is allowed to think for several seconds because it does heavier work.</blockquote>
+
+<h3>1.1 The three UI surfaces</h3>
+
+<table>
+  <thead><tr><th>Surface</th><th>What it is</th><th>Technology today</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Island overlay</strong></td><td>Tiny always-on-top pill at the bottom-centre of the screen showing dictation state. Click-through, never activates.</td><td><strong>the UX-Pilot HTML pill</strong> (<code>island_shell.py</code> + <code>webui/island.html</code>, v3.4.0); tkinter canvas as automatic fallback</td></tr>
+    <tr><td><strong>The Deck</strong></td><td>The mini dashboard on <strong>Ctrl+Alt+V</strong> — unified transcripts+clipboard+prompts list with search, ★ favourites, the preset panel, MODE chips, Go. The only interactive overlay.</td><td>tkinter (being redesigned)</td></tr>
+    <tr><td><strong>Main window</strong></td><td>The app window: Home, History, Stats, Settings tabs. Opened from the system tray (golden mic icon).</td><td><strong>HTML/CSS/JS in a pywebview shell — LIVE (built 2026-06-11).</strong> All four tabs + the Deck overlay + first-run onboarding are built in <code>mumble/webui/</code> (index.html · app.css · app.js), wired read+write to the backend via <code>webui_shell.Api</code>. Zero-CDN (hand-written CSS, inline-SVG icons, system fonts). Tkinter is retired here, kept as the no-WebView2 fallback + Mumble Lite.</td></tr>
+  </tbody>
+</table>
+
+<p>A <strong>system tray icon</strong> (golden microphone, animated bars while recording) is the app's persistent presence: left-click opens the main window; right-click menu offers recent transcripts (copyable), Pause/Resume, Check for updates, Open data folder, Quit. A frozen copy of the classic tkinter interface ships as <strong>Mumble Lite</strong> (same data, same engine) and stays available throughout the UI migration.</p>
+
+<h3>1.2 Design language — "Golden Black"</h3>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Mumble looks like one thing: <strong>black and gold</strong>. Near-black surfaces, gold accents, soft rounded shapes with a subtle glassy depth. The only other colours allowed are a small fixed set of "mode" colours (each smart mode has its own hue) plus red/amber/green for status. Anything that isn't black-family, gold-family, a mode accent, or a status colour simply shouldn't appear.</p></div>
+</div>
+
+<p><strong>The colourway is BLACK &amp; GOLD — nothing else is a brand colour.</strong> Use shade variations of both freely (near-blacks for surfaces/elevation, gold tints from dim to bright for accents, highlights, and 3D/liquid-glass depth). Other colours exist ONLY as functional highlights with a job to do: the per-mode accents (table below, contractual), status red/amber/green, and nothing more. No burgundy, no cherry-as-brand, no stray greens/oranges on utility icons — if a colour isn't black-family, gold-family, a mode accent, or a status colour, it shouldn't exist.</p>
+
+<ul>
+  <li><strong>Backgrounds:</strong> near-black <code>#0A0A0B</code> (app), <code>#121110</code> (cards/surfaces), <code>#1A1916</code> (elevated/hover), borders <code>#2A2820</code>.</li>
+  <li><strong>Text:</strong> warm white <code>#F3EEE1</code> (primary), <code>#B6AE99</code> (dim), <code>#7C745F</code> (muted).</li>
+  <li><strong>Primary accent:</strong> gold <code>#D4AF37</code>, hover/bright <code>#EBCB65</code>.</li>
+  <li><strong>Status:</strong> red <code>#D9544D</code>, amber <code>#E0A92E</code>, success green <code>#3A8A3A</code>/<code>#5AB85A</code>.</li>
+  <li><strong>Shape:</strong> generously rounded (cards 18–24px radius, pills fully rounded), soft 1px warm borders, subtle radial-gold glows on hero/feature cards.</li>
+  <li><strong>Type:</strong> Inter / Segoe UI. Small and information-dense; body copy mostly 11–13px.</li>
+  <li><strong>Tone of copy:</strong> short, confident, benefit-first. British English.</li>
+</ul>
+
+<h4>Liquid-glass ("raised 3D") — approved direction, with performance rules</h4>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The fancy "glass" look — surfaces that seem to have depth, light catching the top edge, soft shadows, a gentle spring on hover — is approved. But one ingredient (the live blur that re-samples whatever sits behind an element) is expensive for the graphics chip every time the screen moves. The rule of thumb: use the real blur only on a few small floating bits, fake it on the big cards (which are nearly opaque anyway, so nobody can see the blur), and never animate it.</p></div>
+</div>
+
+<p>The raised liquid-glass look (gradient surfaces, inset top highlights, soft drop shadows, springy hover lifts) is approved. The ONE expensive ingredient is <strong><code>backdrop-filter: blur()</code></strong> — every blurred element re-samples the pixels behind it on the GPU whenever anything moves (scroll, animation). Rules:</p>
+
+<ol>
+  <li><strong>Real <code>backdrop-filter</code> only where it's visible:</strong> small chrome that sits over CONTENT — the nav pill, status chip, the hero waveform container. Budget: <strong>≤ 6–8 blurred elements per screen</strong> (the current draft has 26).</li>
+  <li><strong>Cards use FAKE glass.</strong> The draft's card surfaces are 85–98% opaque (<code>rgba(…, 0.85–0.98)</code>), so the blur behind them is <strong>invisible anyway</strong> — keep the exact gradient/inset-highlight/shadow recipe and simply drop <code>backdrop-filter</code> from <code>.liquid-glass-card</code> / <code>.hero-card-glass</code>. Identical look, ~80% of the GPU cost gone.</li>
+  <li><strong>Transform/opacity-only animation</strong> (the draft already does this — hover <code>translateY/scale</code>). Never animate <code>filter</code>/<code>backdrop-filter</code>.</li>
+  <li><strong>Idle animation is minimal (Standard tier):</strong> the island's gentle pulse plus the hero waveform's <strong>live wave</strong> (20 bars × five keyframe personalities; idle runs at ~2.6× slower tempo — deliberate, never frantic (owner 2026-06-12); recording restores the full tempo; off in Lite / reduced-motion / hidden). Nothing else moves at idle. <strong>Enhanced is a SHIPPED third tier</strong> (owner approved 2026-06-12): real glass everywhere, ambient aurora + gold dust, view transitions, hero light sweep, richer micro-interactions — selectable in onboarding + Settings → System; <code>?enhanced</code> + <code>Preview Enhanced Mode.bat</code> remain as the demo path.</li>
+  <li>Vendor Tailwind/FontAwesome/fonts <strong>locally</strong> before shipping — no CDNs at runtime (offline app, privacy posture; the CDN Tailwind build is dev-only). <em>(Done: the shipped UI is hand-written CSS + inline SVG + system fonts — zero runtime network.)</em></li>
+  <li><strong>Lite mode (v3.0.0):</strong> the <code>ui_effects</code> setting (standard | lite) renders the SAME layout with every GPU-expensive ingredient disabled (<code>body.lite</code>: no backdrop-filter, light shadows, no ambient animation, no hover lift). Offered in onboarding step 5, changeable in Settings → System. <code>prefers-reduced-motion</code> is honoured independently, and ambient animation pauses whenever the window is hidden.</li>
+</ol>
+
+<h4>Mode accent colours (used EVERYWHERE a mode appears: island dots, chips, history tags, cards)</h4>
+
+<table>
+  <thead><tr><th>Mode</th><th>Colour</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>Text (default)</td><td>gold <code>#D4AF37</code></td><td>plain dictation</td></tr>
+    <tr><td>Prompt</td><td>violet <code>#B98AF0</code></td><td>builds an AI prompt</td></tr>
+    <tr><td>Email</td><td>blue <code>#5AA9E6</code></td><td>drafts an email</td></tr>
+    <tr><td>List</td><td>teal <code>#46C9A8</code></td><td>bullet points</td></tr>
+    <tr><td>Reply</td><td>coral <code>#E8825A</code></td><td>replies to copied material</td></tr>
+    <tr><td>Foreign</td><td>sand <code>#C7A36B</code></td><td>preserves non-English terms</td></tr>
+    <tr><td>Convert</td><td>rose <code>#D86E9A</code></td><td>routes dictation into another Smart Mode (email, prompt, reply); result is filed under that mode</td></tr>
+    <tr><td><strong>Context</strong></td><td><strong>teal-gold <code>#7ABFB0</code></strong></td><td>the Deck accent + Deck-job output. Must remain visually distinct from List teal and from gold.</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ 2 -->
+<h2 id="s2"><span class="sec">2</span>The Interaction Model <span style="font-weight:400">(applies to every screen)</span></h2>
+
+<h3>2.1 Hotkeys (all user-configurable in Settings)</h3>
+
+<table>
+  <thead><tr><th>Hotkey</th><th>Default</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td>Record toggle</td><td><strong>Ctrl+Win</strong></td><td>start recording / stop-and-process</td></tr>
+    <tr><td>Paste latest</td><td><strong>Ctrl+Alt+V</strong></td><td>pastes the most recent transcript at the cursor; if nothing editable is focused, the island says so</td></tr>
+    <tr><td>Open History</td><td><strong>Ctrl+Alt+H</strong></td><td>opens the History window — transcripts, clipboard, prompts, ★ favourites, Smart Modes, Presets, multi-select and merge</td></tr>
+    <tr><td>Instant web search</td><td><strong>Ctrl+Alt+S</strong></td><td>searches highlighted text; if nothing is highlighted, starts a voice-search recording; if pressed while recording, the finished transcript is searched</td></tr>
+    <tr><td>Mode key</td><td><strong>Right Shift (held)</strong></td><td>held WHILE speaking a keyword to arm a smart mode</td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 The mode key — the single most important interaction rule</h3>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Modes only switch on while you physically hold the mode key (Right Shift). Hold it and say "email" and Mumble formats an email; let go and "email" is just the word "email". Because holding the key proves you meant it, Mumble can match the keyword very loosely — even a mishearing or a single clipped letter counts. A white ring on the island confirms the key is down.</p></div>
+</div>
+
+<p>Mode detection happens <strong>only while the mode key is physically held</strong>. Without it, every utterance is plain text — saying "email" just types the word "email". While held, the spoken keyword (prompt / email / list / reply / foreign / convert) selects the mode — <strong>"context"/"contacts" are NOT keywords</strong> (a hard stop-list protects them from convert's loose matching); saying them just types the words (material-as-context lives in the Deck); matching is deliberately aggressive (mishearings like "emal"/"concert", even a clipped single letter) because the held key proves intent. A white <strong>armed ring</strong> shows on the island while the key is down. If the key was held but no keyword was caught, the AI gives a free second opinion and may suggest a mode via a violet chip (§3).</p>
+
+<h3>2.3 Spoken commands — REMOVED (v3.1.0)</h3>
+
+<blockquote>Voice-triggered formatting is gone (owner decision: false positives — saying "new line" mid-sentence reformatted text people didn't want reformatted). Saying "new line" / "new paragraph" / "bullet point" now just types those words. Structure — paragraphs, bullets, numbered lists — is the <strong>AI polish's</strong> job (and List mode for deliberate lists). Don't design any spoken-command UI; the Home card was replaced by an Instant Web Search feature card.</blockquote>
+
+<p><em>(Engine note: detection still exists behind <code>formatting.format_transcript(commands=True)</code> for back-compat, but the live app passes <code>commands=False</code>.)</em></p>
+
+<h3>2.4 Personal vocabulary (affects transcription quality everywhere)</h3>
+
+<p>The user lists their names/brands/jargon once in Settings; Mumble biases the recogniser toward those words and auto-corrects mis-heard variants (phonetic + fuzzy matching), flagging uncertain ones for the AI. Advanced users can add exact <code>wrong = right</code> pairs. No screen other than Settings exposes this, but designers should know transcripts shown in History reflect these corrections.</p>
+
+<!-- ============================================================ 3 -->
+<h2 id="s3"><span class="sec">3</span>The Island Overlay <span style="font-weight:400">(small pill)</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The "island" is a tiny status pill that pops up at the bottom-centre of your screen while you dictate. It has no buttons — you can't click it, the mouse passes right through it. Its only job is to tell you what Mumble is doing right now: listening, transcribing, building, done. It hides when idle and hops to whichever monitor your active window is on.</p></div>
+</div>
+
+<p>A compact pill, bottom-centre of the active monitor, always on top, <strong>click-through</strong> (never intercepts the mouse), hidden when idle. Re-centres onto whichever monitor holds the focused window. It is pure status — no buttons.</p>
+
+<p><strong>Built to the HTML-island reference (v3.0.0):</strong> the pill is one content-sized capsule laid out as <strong>status dot · live animation · readable state label</strong> ("Listening", "Building · Email", "Done"). The re-paste hint and the violet mode-suggestion now render their text <strong>inline in the same pill</strong> (gold/violet pulse) — the old secondary half-size "mini" pill above it is retired. Deck jobs show the label of the composed modes (e.g. "Building · Context + Email") alongside the dual-colour dots.</p>
+
+<p>States (each defines dot/animation/label):</p>
+
+<table>
+  <thead><tr><th>State</th><th>Visual</th></tr></thead>
+  <tbody>
+    <tr><td>Hidden / idle</td><td>not shown</td></tr>
+    <tr><td><strong>Listening</strong></td><td>gold waveform bars animating with live mic level; white <strong>armed ring</strong> at the pill's left edge if the mode key is held</td></tr>
+    <tr><td><strong>Transcribing</strong></td><td>three amber dots pulsing in sequence</td></tr>
+    <tr><td><strong>Building</strong></td><td>five dots pulsing in the active mode's colour. During a Deck job with a MODE picked: <strong>dual-colour split</strong> — left dots Deck teal <code>#7ABFB0</code>, right dots the mode's colour. A small hollow ring marks OFFLINE builds (no AI).</td></tr>
+    <tr><td><strong>Done flash</strong></td><td>brief (~1.2s) bar flash in the mode colour (or Deck-teal/mode split after a Deck job), then hide</td></tr>
+    <tr><td><strong>Re-paste hint</strong></td><td>when the paste couldn't land (no editable field focused): pill lingers showing "Ctrl + Alt + V" — that key opens the Deck with the result as the top row</td></tr>
+    <tr><td><strong>Suggestion / redo chip</strong></td><td>violet chip "Prompt? hold key + say" / "wrong mode? hold key + say" when the AI suspects a missed mode. Re-pressing the mode key and saying a bare mode word re-runs the previous transcript in that mode.</td></tr>
+    <tr><td><strong>Error</strong></td><td>red dot + short message (mic failure, etc.), auto-clears</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ 4 -->
+<h2 id="s4"><span class="sec">4</span>The Deck (Ctrl+Alt+V) — flagship feature</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The Deck is a little dashboard you summon with Ctrl+Alt+V. It shows one searchable list of everything you've recently dictated, copied, or had Mumble generate. Two things you can do with it: (1) <strong>quick-paste</strong> — pick a row, hit Enter, it drops in at your cursor; or (2) <strong>run an AI job</strong> — tick some items, pick a "preset" (like Summarise or Reply) and/or a mode (like Email), hit Go, and Mumble thinks for a few seconds then pastes the result. It replaced two older features and is the only Mumble overlay you can actually click.</p></div>
+</div>
+
+<h3>4.1 When it opens</h3>
+
+<p>Press <strong>Ctrl+Alt+V</strong> anywhere (the binding is configurable; mouse buttons work too). The Deck replaced BOTH the old Paste Palette and the voice-triggered Context Island — <strong>"context" is not a spoken trigger any more</strong>; using your material as context simply lives here.</p>
+
+<h3>4.2 Layout &amp; the two flows</h3>
+
+<details class="dev"><summary><span class="devchip">Diagram</span> Deck layout (ASCII)</summary><pre>┌──────────────────────────────────────────────┬───────────────────────┐
+│  Deck     ↑↓ move · Enter paste · Esc     ✕  │ PRESETS — run on      │
+│  [ search…                                ]  │ selected items        │
+│  ★ FAVOURITES                                │ ┌───────────────────┐ │
+│   ✓ CLIP  11:00  an old starred gem      ★   │ │ 21 buttons, each  │ │
+│  RECENT                                      │ │ title + one-line  │ │
+│   TEXT  12:03  newest transcript words   ☆   │ │ description,      │ │
+│   CLIP  12:02  some copied article…      ☆   │ │ scrollable        │ │
+│   PROMPT 12:01 You are a poet…           ☆   │ └───────────────────┘ │
+│   IMG   12:01  [Image 64×64]             ☆   │ MODE — shape output   │
+│  N items                                     │ (Pro)(Em)(Li)(Re)(Fo) │
+│                                              │ ⚠ warning        [Go] │
+└──────────────────────────────────────────────┴───────────────────────┘</pre></details>
+
+<ul>
+  <li><strong>One unified list</strong> — transcripts + clipboard + saved prompts, newest first, deduped; search filters live; source badges (mode-coloured TEXT/…, CLIP teal, PROMPT, IMG); "(Mumble)" marks Mumble's own pasted outputs; <strong>★ FAVOURITES</strong> pinned on top (★ on any row toggles; favourites survive history eviction via favorites.json copies).</li>
+</ul>
+
+<div class="branch">
+  <div class="branch-col is-gold"><h4><span class="dot"></span>Flow 1 — QUICK PASTE</h4><p>(no preset/mode picked): ↑↓ + Enter, or click a row → it pastes at the cursor. Images paste as real images.</p></div>
+  <div class="branch-col"><h4><span class="dot"></span>Flow 2 — AI JOB</h4><p>pick a <strong>preset</strong> and/or a <strong>MODE chip</strong> → the hub enters job mode (the header hint changes) — clicks now <strong>check</strong> items as material (Ctrl+click / Ctrl+Space always check) → <strong>Go</strong> (or Enter) runs the job; the result pastes and is recorded in History/Stats. A MODE chip alone = a manual mode trigger over the checked items. Preset × mode compose ("a summarised email").</p></div>
+</div>
+
+<p><strong>Cancel:</strong> Esc or ✕ — NO paste, NO AI call. Go with nothing picked shows an inline warning and stays open. Render cap 60 rows ("K more — refine the search"); 3-minute safety auto-close.</p>
+
+<h3>4.3 The 17 built-in intents (button label · UI description → what it does)</h3>
+
+<p>Each preset carries a short <strong>description</strong> (the subtitle shown under its title in the island) and a long <strong>instruction</strong> (the system directive sent to the AI). The table below pairs the description with the job.</p>
+
+<table>
+  <thead><tr><th>#</th><th>Button</th><th>Description (UI subtitle)</th><th>Job</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><strong>Answer it</strong></td><td>Answers the question or task</td><td>the material contains a question/task — answer or solve it directly</td></tr>
+    <tr><td>2</td><td><strong>Summarise</strong></td><td>Condenses it to the key points</td><td>concise summary, most important point first, keeps every fact</td></tr>
+    <tr><td>3</td><td><strong>Reply</strong></td><td>Drafts your reply to it</td><td>writes the reply the user would send, matching the material's register</td></tr>
+    <tr><td>4</td><td><strong>Continue</strong></td><td>Carries on where it left off</td><td>continues writing seamlessly from where the material ends</td></tr>
+    <tr><td>5</td><td><strong>Improve</strong></td><td>Clearer &amp; tighter, same meaning</td><td>edits for clarity/flow without changing meaning or voice</td></tr>
+    <tr><td>6</td><td><strong>Fix errors</strong></td><td>Spelling &amp; grammar only</td><td>spelling/grammar/punctuation only, nothing else changes</td></tr>
+    <tr><td>7</td><td><strong>Make shorter</strong></td><td>Cuts it to half or less</td><td>cuts hard — half the length or less</td></tr>
+    <tr><td>8</td><td><strong>Expand</strong></td><td>Adds depth &amp; detail</td><td>adds depth, detail, examples — no padding</td></tr>
+    <tr><td>9</td><td><strong>Explain simply</strong></td><td>Plain-language explainer</td><td>plain-language explanation for a beginner</td></tr>
+    <tr><td>10</td><td><strong>Key points</strong></td><td>Bulleted main points</td><td>bullet list of the essentials in priority order</td></tr>
+    <tr><td>11</td><td><strong>Action items</strong></td><td>Tasks, owners &amp; deadlines</td><td>numbered checklist of tasks/owners/deadlines</td></tr>
+    <tr><td>12</td><td><strong>Humanise</strong></td><td>Makes AI text read naturally</td><td>rewrites AI-sounding text into natural human writing</td></tr>
+    <tr><td>13</td><td><strong>Merge</strong></td><td>Blends all items into one</td><td>combines ALL selected items into one coherent piece</td></tr>
+    <tr><td>14</td><td><strong>Extract facts</strong></td><td>Pulls out names, dates, numbers</td><td>every name/date/number/decision as a labelled list</td></tr>
+    <tr><td>15</td><td><strong>Make formal</strong></td><td>Professional, polished tone</td><td>professional register, meaning preserved</td></tr>
+    <tr><td>16</td><td><strong>Critique</strong></td><td>Honest feedback + fixes</td><td>what works, what's weak, top concrete improvements</td></tr>
+    <tr><td>17</td><td><strong>Chat context</strong></td><td>Rebuilds copied turns into a chat</td><td>takes prompts + AI replies copied out of an AI chat and reconstructs them into ONE labelled User/Assistant transcript so a fresh prompt understands the prior exchange — it does NOT answer or continue the conversation</td></tr>
+  </tbody>
+</table>
+
+<p>Custom slots (the four right after the built-ins, currently 18–21): user-created presets (title + description + instruction) from Settings → Preset Adder.</p>
+
+<h3>4.4 What happens on Go (the AI contract)</h3>
+
+<ul>
+  <li>The chosen preset's <strong>full instruction</strong> becomes the AI's system directive (never pasted). No preset → a default "produce the most useful faithful rendering" job.</li>
+  <li>A chosen <strong>mode</strong> appends an output-form directive (e.g. Email → "format as a ready-to-send email"), so Preset × Mode compose ("a summarised email").</li>
+  <li>The checked items are sent labelled <code>[TRANSCRIPT — time] / [CLIPBOARD — time] / [PROMPT — time]</code>; the labels are declared metadata, never content.</li>
+  <li>The AI is told explicitly it is being <strong>instructed, not transcribing</strong>, and runs with a long reasoning budget — this lane is the slow, thoughtful one; building may take several seconds and the island shows the dual-colour building state the whole time. Transient failures retry once.</li>
+  <li>If the AI definitively fails, Mumble never dumps the raw material: it notifies "Deck needs Pro AI" and produces nothing.</li>
+</ul>
+
+<!-- ============================================================ 5 -->
+<h2 id="s5"><span class="sec">5</span>The Main Window — screen by screen</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The main window is the full app you open from the tray icon. It's a tall, fairly narrow column with four tabs — Home, History, Stats, Settings — and a first-run wizard the very first time you launch. The whole thing is built in HTML/CSS/JS inside a lightweight desktop shell, so what's drawn here maps directly to the running app.</p></div>
+</div>
+
+<blockquote><strong>Canvas / window size (updated 2026-06-12 — the TALL-COLUMN contract):</strong> the window opens as a <strong>tall, moderately narrow column: 920 wide × (work-area height − 130)</strong>, clamped 600–1400 — generous vertical workspace, with desktop always visible above and below so it never feels fullscreen and the title bar stays grabbable. The window is <strong>freely resizable</strong> (minimum 640×480; the content column re-centres and clamps at 1280 on ultrawide); <strong>every launch returns to the default</strong>, and <strong>Settings → System → "Reset window size"</strong> snaps back instantly via <code>Api.reset_window_size</code>. Design ONE canvas — the fluid behaviour is the implementation's job, not a design variant. Vertical scrolling within a tab is fine.</blockquote>
+
+<p>Golden Black, centred title bar (logo + "Mumble" + tagline; live status dot top-right showing Ready/Recording/Error), pill-style nav: <strong>Home · History · Stats · Settings</strong>. <strong>Platform-neutral chrome:</strong> no macOS traffic-light buttons, no OS-specific window furniture — Mumble ships on Windows (and a macOS port) and must look native to neither.</p>
+
+<h3>5.0 First-run onboarding (the very first screen a new user sees)</h3>
+
+<p>A centred <strong>6-step wizard</strong> — no main nav bar (it's pre-app), a numbered step-progress indicator on top, Back/Next at the bottom, a quiet "Skip for now" on optional steps. Same liquid-glass black &amp; gold; a gold waveform motif on the welcome/finish steps. The through-line is <strong>trust + the free key</strong>: say "audio never leaves your device" early and again at the key step, and funnel everyone toward Cerebras without hard-blocking (the app works locally without a key — just no AI polish).</p>
+
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">WELCOME</div><p>brand lockup + "Speak. It types."; one-liner ("private voice-to-text that turns your voice into polished text anywhere on Windows"); three value pills: <em>Local &amp; private — audio never leaves your device</em>, <em>AI-polished — smart modes shape your words</em>, <em>Fast — about one second</em>; "Get started".</p></div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">HOW IT WORKS</div><p>the mental model in three stages: press <strong>Ctrl+Win</strong> → speak → it types at your cursor; show the decorative status island (bottom-centre) so they recognise it later.</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">CONNECT CEREBRAS (the hero step)</div><p>why (free, extremely fast, unlocks AI polish + the smart modes; only TEXT is sent, audio stays local); a <strong>big gold "Get your free Cerebras API key" button that opens <code>cloud.cerebras.ai</code> in the user's REAL browser</strong> (via <code>webui_shell.Api.open_url</code>, <code>window.open</code> fallback for standalone preview); a 6-step get-the-key guide; a masked key field + <strong>Save &amp; Test</strong> (green "Connected" / red "Invalid key"); privacy line ("stored locally only, never uploaded"); a quiet <strong>"Skip for now — add later in Settings"</strong>.</p></div></div>
+  <div class="flow-step"><div class="flow-node">4</div><div class="flow-body"><div class="ft">MICROPHONE</div><p>input-device dropdown + "Test microphone" with a 5s live level meter; note that transcription runs on-device (faster-whisper).</p></div></div>
+  <div class="flow-step"><div class="flow-node">5</div><div class="flow-body"><div class="ft">SHORTCUTS + THE FIVE MODES</div><p>keycap cheat-sheet (Record <strong>Ctrl+Win</strong>, the Deck <strong>Ctrl+Alt+V</strong>, Web search <strong>Ctrl+Alt+S</strong>, hold <strong>Right Shift</strong> to arm a mode); "Launch at startup" toggle; the five mode cards in their contractual colours, one line each; one line on the Deck.</p></div></div>
+  <div class="flow-step"><div class="flow-node">6</div><div class="flow-body"><div class="ft">YOU'RE SET</div><p>confirmation + "try it now: press Ctrl+Win and say something"; recap chips (Cerebras connected / "AI polish off — add a key in Settings" if skipped, Mic ready, Shortcuts learned); "Open Mumble" → lands on Home.</p></div></div>
+</div>
+
+<blockquote>Backend note: <strong>BUILT (2026-06-11).</strong> The 6-step wizard ships in <code>mumble/webui/</code> — it shows on <code>first_run</code> (and via Settings → Replay welcome tour), the "Get your free Cerebras API key" button calls <code>Api.open_url</code> (→ <code>cloud.cerebras.ai</code> in the real browser), Save &amp; Test runs <code>Api.test_key</code>, and finishing calls <code>Api.finish_onboarding</code> (which clears <code>first_run</code>). The controller no longer clears <code>first_run</code> at launch, so new users actually see it.</blockquote>
+
+<h3>5.1 HOME (the UX Pilot design already in production)</h3>
+
+<p>Top-to-bottom: Hero card (headline "Type less. Speak more. Let AI do the rest.", value copy, animated waveform, Ctrl+Win and Ctrl+Alt+V badges, four value-prop badges incl. "Audio transcribed locally"); two-column row <strong>Global Shortcuts</strong> (live hotkey values from settings) + <strong>Activating Smart Modes</strong> (mode-key explainer with example); the <strong>Smart Modes grid</strong> (FIVE cards in mode colours: Prompt, Email, List, Reply, Foreign — there is NO "Context" mode card); a <strong>Deck feature card</strong> (replaces the old Context card: Ctrl+Alt+V → search your transcripts/clipboard/prompts, ★ favourites, pick a preset and/or mode, Go); an <strong>Instant Web Search</strong> feature card (Ctrl+Alt+S — replaced the Spoken Commands card when spoken commands were removed, §2.3); <strong>Pro Mode</strong> card with <strong>live API-key status</strong> ("API key not configured" / "Connected — cerebras") and an <strong>Add Key →</strong> button that jumps to Settings; Tips card. A decorative island preview sits bottom-centre of the page (the real island is bottom-CENTRE, not a corner).</p>
+
+<h3>5.2 HISTORY</h3>
+
+<p>Three sub-tab pills: <strong>Transcripts · Clipboard · Prompts</strong>, one shared live <strong>filter bar</strong>, action buttons per sub-tab.</p>
+
+<ul>
+  <li><strong>Transcripts:</strong> newest-first cards: mode chip (mode colour), timestamp, word count, text preview, per-row <strong>Copy</strong> and <strong>✕ delete</strong>. Header buttons: "Open file" (full TXT log), "Showing: Post-AI ⇄ Pre-AI" toggle (compare what was said vs what was produced), "Clear all" (confirm). 30 rows rendered; the filter searches everything.</li>
+  <li><strong>Clipboard:</strong> every text/image the user copied (images as thumbnails with copy-back action); Clear all; explainer that capture is automatic and local.</li>
+  <li><strong>Prompts:</strong> every prompt ever generated by Prompt mode, uncapped: timestamp + ~100-char preview + Copy per row; Clear all (confirm).</li>
+</ul>
+
+<h3>5.3 STATS</h3>
+
+<p>One non-scrolling page: lifetime tiles (words, transcripts, time saved vs ~45wpm typing, best WPM), current/best <strong>streak</strong>, <strong>words-per-day bar chart</strong> with 7d/30d toggle, <strong>mode breakdown</strong> (per-mode counts in mode colours). Stats are independent of history — clearing transcripts never resets them.</p>
+
+<div class="tiles">
+  <div class="tile"><div class="n">words</div><div class="l">lifetime tile</div></div>
+  <div class="tile"><div class="n">transcripts</div><div class="l">lifetime tile</div></div>
+  <div class="tile"><div class="n">time saved</div><div class="l">vs ~45wpm typing</div></div>
+  <div class="tile"><div class="n">best WPM</div><div class="l">lifetime tile</div></div>
+</div>
+
+<h3>5.4 SETTINGS (every card, in order)</h3>
+
+<ol>
+  <li><strong>Your name</strong> — used to sign emails.</li>
+  <li><strong>Activation hotkey / Deck hotkey / Search hotkey</strong> — three identical binding cards: text field + <strong>Apply</strong> + a <strong>Press</strong> capture button. Each binding can be a keyboard combo OR a mouse button — click <strong>Press</strong> and tap a key or a mouse side-button, or type a spec (<code>mouse:x2</code> forward, <code>mouse:x</code> back, <code>mouse:middle</code>). Save feedback line.</li>
+  <li value="2"><strong>2a. Search engine</strong> — dropdown: <strong>Google / Perplexity / Brave</strong> — where the Search hotkey sends the query. Perplexity opens with the question pre-filled and the answer already generating.</li>
+  <li value="3"><strong>Mode button</strong> — enable toggle; current key/button as keycap; <strong>Press a key / button</strong> rebind (captures a key OR a mouse side-button — great for arming modes with a thumb button); explainer that it must never overlap the record hotkey; per-mode enable toggles (Prompt/Email/List/Reply/Foreign).</li>
+  <li><strong>Prompt preferences</strong> — standing prompt-shaping combos: Tone, Detail, Structure, Audience, Reasoning; plus <strong>Polishing aggressiveness</strong> (Light/Standard/Thorough) for plain dictation.</li>
+  <li><strong>AI Mode — Prompting API key</strong> — <em>"The fast model (Cerebras) isn't great at prompting — its reasoning has to be extremely fast. If you want better prompts, input your own API key for a stronger model and Prompt mode alone will use it."</em> Provider dropdown (Use main provider / Anthropic / OpenAI / Local), masked key field, model field, Save + feedback.</li>
+  <li><strong>Personal vocabulary</strong> — one text box: plain lines are <strong>terms</strong> (names/brands/jargon — Mumble listens for them and auto-fixes mis-heard variants; the user never predicts misspellings); <code>wrong = right</code> lines are advanced exact corrections. Save + "N terms + M exact pairs" feedback.</li>
+  <li><strong>Preset Adder</strong> — four rows (the custom slots after the built-ins): short <strong>title</strong> field + one-line <strong>description</strong> field + long <strong>instruction</strong> field + clear ✕, under Title/Description/Instruction column captions; "N / 4 custom presets" counter; Save presets (appears in the Deck's preset panel immediately, title + description shown like the built-ins).</li>
+  <li><strong>AI Provider</strong> (replaces "Pro Mode") — Pro on/off switch; explanation that only text (never audio) is sent; Cerebras onboarding steps (free key, 6 steps); provider dropdown <strong>Cerebras (default) / OpenAI / Anthropic Claude / Local LLM</strong>; masked key field (hidden for Local), <strong>Server URL</strong> field shown only for Local (default <code>http://localhost:11434</code>); model field; <strong>Save &amp; test</strong> with persistent green "Connected" / red "Invalid key / Connection failed" status.</li>
+  <li><strong>Microphone</strong> — device dropdown + Save (validated — a bad device is rejected with feedback), "Test microphone" with 5s live level meter.</li>
+  <li><strong>Transcription</strong> — accuracy model picker (tiny/base/small; live "loading…/loaded" feedback; explanation that everything runs on-device), language.</li>
+  <li><strong>History &amp; clipboard</strong> — history size, clipboard capture toggle + size.</li>
+  <li><strong>System</strong> — start with Windows toggle; island visibility; check for updates.</li>
+  <li><strong>Share &amp; About</strong> — share blurb + copy button; version; "Open data folder"; <strong>"Switch to Mumble Lite"</strong> (launches the frozen classic UI; same data) with a one-line explainer.</li>
+</ol>
+
+<!-- ============================================================ 6 -->
+<h2 id="s6"><span class="sec">6</span>Data &amp; Stores <span style="font-weight:400">(what screens read/write)</span></h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Everything Mumble remembers lives in a handful of plain files on the user's own machine. Each file feeds specific screens — for example the history of transcripts feeds the History tab, the Deck list, and the tray menu. API keys live in exactly one place (settings.json) and never in the source code.</p></div>
+</div>
+
+<table>
+  <thead><tr><th>Store</th><th>Feeds</th></tr></thead>
+  <tbody>
+    <tr><td>history.json (≤100) + transcripts.txt (forever)</td><td>History→Transcripts, the Deck list, tray menu</td></tr>
+    <tr><td>clipboard.json (text + image thumbs)</td><td>History→Clipboard, the Deck list</td></tr>
+    <tr><td>prompts.json (uncapped)</td><td>History→Prompts, the Deck list</td></tr>
+    <tr><td>prompt_thread.json (15-min window)</td><td>Prompt mode revision continuity ("make it shorter" revises the last prompt)</td></tr>
+    <tr><td>stats.json (independent)</td><td>Stats tab, Home counters</td></tr>
+    <tr><td>presets.json (custom slots after the built-ins)</td><td>Preset Adder, the Deck's preset panel</td></tr>
+    <tr><td>favorites.json (≤100, written by the Deck's ★ toggles)</td><td>the Deck FAVOURITES section</td></tr>
+    <tr><td>settings.json</td><td>everything; API keys live ONLY here, never in source</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ 7 -->
+<h2 id="s7"><span class="sec">7</span>End-to-End Flows <span style="font-weight:400">(for flow diagrams / prototypes)</span></h2>
+
+<h3>1. Plain dictation <span style="font-weight:400">(~1s)</span></h3>
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">Ctrl+Win</div><p>island Listening</p></div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">Speak → Ctrl+Win</div><p>Transcribing</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">Building (gold)</div><p>paste → Done flash</p></div></div>
+</div>
+
+<h3>2. Mode dictation</h3>
+<p>hold Right Shift, say "email …" → armed ring → same pipeline → Building/flash in blue → a formatted email is pasted.</p>
+
+<h3>3. Deck job flow</h3>
+<p>Ctrl+Alt+V → <strong>the Deck opens</strong> → user searches/filters, picks a preset and/or a MODE chip (the hub enters job mode), clicks items to check them as material → Go (or Enter) → hub closes, building shows Deck-teal/mode dual colours (this lane thinks longer — seconds, not instants) → result pasted + recorded; Esc at any point = nothing happens. (Saying "context" by voice does nothing — it's an ordinary word.)</p>
+
+<h3>4. Suggestion redo</h3>
+<p>armed but keyword missed → AI suggests → violet chip → re-press key + say "prompt" → previous transcript re-runs as a prompt.</p>
+
+<h3>5. Voice search</h3>
+<p>Ctrl+Alt+S with selection → browser opens search; without → record, stop, transcript searched.</p>
+
+<h3>6. Re-paste</h3>
+<p>output couldn't land → hint pill → user clicks the target field → Ctrl+Alt+V → the Deck opens with the result as the top row → Enter.</p>
+
+<!-- ============================================================ 8 -->
+<h2 id="s8"><span class="sec">8</span>Notes &amp; Corrections for UX Pilot</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>This last section is a punch-list for the designer: things earlier drafts got wrong, features that look real but aren't built yet, and the exact corrections to apply. The recurring themes — use only black &amp; gold (plus the fixed mode colours), "context" is the Deck and not a voice mode, the island is pure status with no buttons, and never draw a feature that the real backend can't actually do.</p></div>
+</div>
+
+<ol>
+  <li><strong><s>Spoken Commands card</s></strong> — OBSOLETE: spoken commands were removed entirely (§2.3, v3.1.0); the Home card is now the Instant Web Search feature card.</li>
+  <li>The Home draft's Context card describes "identity/tone/domain injection" — the real material-as-context system is <strong>the Deck</strong> (§4); design its screen from §4.2's layout. This is the highest-priority screen still to design. ("context" is NOT a voice trigger — don't show it as one.)</li>
+  <li>Keep the island overlay <strong>pure status</strong> (no buttons) — the Deck is the interactive surface.</li>
+  <li>Use the exact mode colours (§1.2) — note Prompt is violet <code>#B98AF0</code> in the app (one draft used cherry) and the Deck accent is <code>#7ABFB0</code> (one draft used <code>#8B6914</code>). <strong>The draft's cherry/red brand accents (record button, mode-key keycaps, "Activating Smart Modes" icon) must be re-coloured into the gold family</strong> — red is reserved for errors and the recording status dot (§1.2: black &amp; gold only).</li>
+  <li>The Island Overlay draft's "Armed" state shows mode chips in the pill — nice direction, but the current backend renders a white ring; treat chips as a proposal to validate, not current behaviour. Its "Island Controls" toggles (sound feedback, suggestion chips, mic meter) do not exist in the backend yet — design them only as part of Settings → System, flagged as new.</li>
+  <li><strong>ALL SCREENS NOW BUILT (2026-06-11)</strong> in <code>mumble/webui/</code> as the live main window — Home, History (3 sub-tabs), Stats, full Settings (all 13 cards, §5.4), the Deck (§4.2), first-run onboarding (§5.0), the decorative island, and an update-available modal. This section's design notes were the build brief; the implementation follows them (black &amp; gold, mode-accent colours, optimized liquid-glass, real spoken-command set, Deck-not-Context, depicted-but-not-real features omitted). Remaining UX gaps tracked in STATUS: in-window Deck job execution + the always-on-top island stay on the tkinter overlay; History Pre-AI⇄Post-AI compare is a stub.</li>
+  <li>Every interactive element must map to a backend action named in this document — if a control has no backend verb here, it doesn't exist yet; flag it rather than inventing it.</li>
+  <li><strong>Corrections to the liquid-glass Home draft ("Voice Dictation - Home (2).html"):</strong>
+    <ul>
+      <li><strong>Remove the "Context" Smart-Mode card and the "Context Mode — Voice-activated" feature card</strong> — context is not a mode and not voice-activated; replace with a <strong>Deck feature card</strong> (§4). Five mode cards only.</li>
+      <li><strong><s>Spoken Commands card</s></strong> — OBSOLETE: spoken commands removed (§2.3, v3.1.0); no such card exists any more.</li>
+      <li><strong>Foreign card copy is wrong</strong> — it claims Arabic-script transcription; Foreign <em>preserves and resolves non-English (esp. Islamic) terms</em> within English dictation (§1.2 table).</li>
+      <li><strong>Island preview sits bottom-RIGHT</strong> — the real island is bottom-CENTRE, and the draft's island says "Ctrl+Win to start" with a pulse; fine, but keep it decorative/pure-status.</li>
+      <li><strong>"Re-paste last output" labels</strong> (hero chip + shortcuts card) → "Open the Deck" (Ctrl+Alt+V).</li>
+      <li><strong>The Start/Stop Recording button has no backend verb yet</strong> — the webview Api exposes read-only data today; wiring it needs a new bridge method (flag as new work, fine to design).</li>
+      <li><strong>Draft bug:</strong> the recording waveform never animates — <code>toggleRecording()</code> adds <code>.recording</code> to <code>#record-btn</code>, but the CSS selector <code>.recording .waveform-bar</code> needs the class on <code>#waveform-container</code> (the bars' ancestor).</li>
+      <li>Apply the <strong>liquid-glass performance rules</strong> (§1.2): drop <code>backdrop-filter</code> from the near-opaque cards, keep it only on the nav pill / status chip / waveform container.</li>
+    </ul>
+  </li>
+  <li><strong>Corrections to the Island Overlay draft ("7-Voice Dictation - Island Overl.html"):</strong> its 8 state-cards are beautiful and mostly right (Idle/Listening/Transcribing/Error and the mic-meter card are correct — keep them). <strong>Add the three states it's missing</strong> (all defined in §3): (a) <strong>Re-paste hint</strong> — the pill lingers showing "Ctrl + Alt + V" when the paste couldn't land (calm, gold, not an error — it's the bridge to the Deck); (b) <strong>Building · Deck job</strong> — the signature <strong>dual-colour split</strong>: five pulsing dots, left half Deck-teal <code>#7ABFB0</code>, right half the picked mode's colour (this is the hero animation — currently only the single-violet "AI Polish" Building is drawn); (c) <strong>Offline build</strong> — the Building state with a small <strong>hollow ring</strong> marking a local-only, no-AI build. Also give <strong>Done flash</strong> a Deck-teal/mode-split variant. <strong>Fix three things drawn wrong:</strong> the real <strong>Armed</strong> state is a plain <strong>white ring</strong> at the pill's left edge, NOT three mode chips in the pill (keep the chips only if labelled "proposed — not current behaviour"); the <strong>"Low Confidence"</strong> card is mislabelled — there is no per-word Whisper confidence (one of the invented metrics, item logged in STATUS); rename it <strong>"Mode suggestion / redo"</strong> (trigger = the AI suspects a <em>missed mode</em>; action = re-press the mode key and say the mode word — NOT "tap to re-dictate"); the island sits <strong>bottom-CENTRE</strong>, not bottom-right.</li>
+  <li><strong>First-run onboarding now designed (§5.0).</strong> A 6-step wizard whose spine is the <strong>free Cerebras key</strong> (big button → <code>cloud.cerebras.ai</code> in the real browser, with a "Skip for now" escape). Keep it consistent with the Settings AI-Provider card and the Home Pro-Mode card — same Cerebras onboarding, same "audio stays local, only text is sent" promise, same <code>open_url</code> bridge.</li>
+  <li><strong>Do not re-introduce the "depicted-but-not-real" features</strong> catalogued in STATUS (2026-06-10 audit): invented stats (accuracy %, activity heatmap, top-apps, weekly insight), per-word confidence, OS-keychain/Electron/Tauri/GPU claims, clipboard 7-day expiry, referral program, release/Beta channels, and macOS chrome. Each is either build-or-strip — never ship it in a slide as if it already exists.</li>
+</ol>
+
+<div class="doc-foot"><span>Mumble — Master UX Specification</span><span class="gold">Screen-by-Screen Contract · v3.1.0</span></div>
+
+</div></body></html>

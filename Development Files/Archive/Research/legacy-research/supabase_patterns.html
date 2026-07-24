@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Supabase Patterns</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Research</div>
+  <h1>Supabase Patterns</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Client:</b> supabase-py (PyPI <code>supabase</code>)</div>
+    <div><span class="ico">◆</span><b>Reference:</b> Python Reference v2.0</div>
+    <div><span class="ico">◆</span><b>As of:</b> mid-2026</div>
+    <div><span class="ico">◆</span><b>Sources fetched:</b> 2026-06-23</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Supabase is a hosted database (Postgres) with a friendly Python library wrapped around it. This doc is a field guide for using that library: how to connect, how to sign users in, how to read and write rows, how to lock data down so each user only sees their own, how to get live updates when something changes, and how to keep everything in sync when the app goes offline and comes back.</p>
+    <p>Most of the page is real code and SQL. Each chunk is tucked inside a collapsible "Code" panel so you can skim the plain-English explanation first and only open the technical detail when you need it. Nothing has been removed — every snippet, table, and caveat from the research is here.</p>
+  </div>
+</div>
+
+<blockquote>
+  This is a research summary of the current Supabase Python client (<code>supabase-py</code>, package name <code>supabase</code> on PyPI, "Python Reference v2.0") as of mid-2026.
+  Official Supabase docs were fetched 2026-06-23. Some doc pages scrape tabbed code examples incompletely; where the official Python snippet was not captured, the equivalent JS snippet from the same guide is shown alongside the documented Python method name. The Python API mirrors the JS API (<code>supabase.channel(...).on_postgres_changes(...).subscribe(...)</code>).
+</blockquote>
+
+<details class="dev">
+  <summary><span class="devchip">Detail</span> Source links</summary>
+  <pre><code>https://supabase.com/docs/reference/python/introduction
+https://supabase.com/docs/reference/python/start
+https://supabase.com/docs/reference/python/subscribe
+https://supabase.com/docs/guides/database/postgres/row-level-security
+https://supabase.com/docs/guides/auth/sessions
+https://supabase.com/docs/guides/realtime/subscribing-to-database-changes
+https://github.com/supabase/supabase-py</code></pre>
+</details>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">Install and Initialize</a></li>
+    <li><a href="#s2">Authentication</a></li>
+    <li><a href="#s3">CRUD Operations</a></li>
+    <li><a href="#s4">Row-Level Security (RLS) Patterns</a></li>
+    <li><a href="#s5">Real-time Subscriptions</a></li>
+    <li><a href="#s6">Best Practices for Local-First / Last-Write-Wins Sync</a></li>
+    <li><a href="#s7">Offline Mode and Background Sync</a></li>
+    <li><a href="#s8">Anon Key vs Service Role Key</a></li>
+    <li><a href="#s9">Quick Reference Cheatsheet</a></li>
+  </ol>
+</nav>
+
+<!-- ============ SECTION 1 ============ -->
+<h2 id="s1"><span class="sec">1</span>Install and Initialize</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>First you install one Python package. It quietly pulls in everything Supabase needs — auth, the data layer, realtime, and file storage — so you don't manage those separately. Then you create a "client" object using your project's web address and an access key, and that object is your handle for talking to the database.</p>
+    <p>There are two flavours of client: a plain one for normal reads and writes, and an <em>async</em> one you must use if you want live updates (subscriptions), because those run on an event loop.</p>
+  </div>
+</div>
+
+<h3>Install</h3>
+<p>One <code>pip install</code> gets the whole stack (requires Python &gt; 3.8).</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> pip install</summary>
+  <pre><code>pip install supabase        # Python &gt; 3.8</code></pre>
+</details>
+
+<p>The <code>supabase</code> distribution bundles <code>supabase-py</code>, <code>gotrue</code> (auth), <code>postgrest-py</code>, <code>realtime-py</code>, and <code>storage-py</code>.</p>
+
+<h3>Enable Data API access (one-time per project)</h3>
+<p>supabase-py talks to Postgres through the Data API. Before any table is reachable, you must expose it once: either flip it on in the Dashboard (Data API integrations settings), or grant the right permissions in SQL — but only <strong>after</strong> Row-Level Security and its policies are in place, so you don't briefly expose unprotected rows.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> SQL — grant Data API access (after RLS)</summary>
+  <pre><code>alter table public.your_table enable row level security;
+-- create policy ... on public.your_table ...;
+
+grant select on public.your_table to anon;
+grant select, insert, update, delete on public.your_table to authenticated;
+grant all on public.your_table to service_role;
+
+grant execute on function public.your_function to authenticated, service_role;</code></pre>
+</details>
+
+<h3>Initialize (sync client)</h3>
+<p>For ordinary apps, read the project URL and key from environment variables and create a client. Use the <strong>anon / publishable</strong> key for client-side apps — never the service role key (see <a href="#s8">section 8</a>).</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — sync client</summary>
+  <pre><code>import os
+from supabase import create_client, Client
+
+url: str = os.environ.get("SUPABASE_URL")
+key: str = os.environ.get("SUPABASE_KEY")   # anon/publishable key for client apps
+supabase: Client = create_client(url, key)</code></pre>
+</details>
+
+<h3>Initialize (async client — required for realtime subscriptions)</h3>
+<p>The async client is what you need whenever you call <code>.subscribe()</code> on a channel, because subscription callbacks run in an event loop. Use <code>asyncio.create_task()</code> to schedule coroutines from inside a sync callback.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — async client</summary>
+  <pre><code>import asyncio, os
+from supabase import acreate_client, AsyncClient
+
+async def create_supabase() -&gt; AsyncClient:
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    supabase: AsyncClient = await acreate_client(url, key)
+    return supabase</code></pre>
+</details>
+
+<h3>ClientOptions</h3>
+<p>You can pass an options object — <code>create_client(url, key, options=ClientOptions(...))</code> — to change auth behaviour. The notable knobs:</p>
+<ul>
+  <li><code>auto_refresh_token</code> (default True) — refresh the JWT before it expires.</li>
+  <li><code>persist_session</code> (default True) — store the session (in-memory in the Python client; supply a custom storage object to persist to disk/keyring).</li>
+  <li><code>storage</code> — a custom storage adapter implementing <code>get_item</code> / <code>set_item</code> / <code>remove_item</code> (sync or async). For a desktop app, point this at a local file or OS keyring so the session survives restarts.</li>
+  <li><code>postgrest_client_timeout</code> — request timeout (e.g. <code>ClientOptions(postgrest_client_timeout=30)</code>).</li>
+</ul>
+
+<!-- ============ SECTION 2 ============ -->
+<h2 id="s2"><span class="sec">2</span>Authentication</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Everything about users — signing up, logging in, logging out, and knowing who is currently signed in — lives under <code>supabase.auth</code>. When someone logs in they get a short-lived "access token" (a JWT, the badge that proves who they are) and a longer-lived "refresh token" used to get a fresh badge when the old one expires.</p>
+    <p>Two safety facts to remember: the access token expires (default 1 hour), and the refresh token can only be used <em>once</em>. If you reuse an old refresh token you'll invalidate the whole session, so always store only the newest pair.</p>
+  </div>
+</div>
+
+<p>All auth methods live on <code>supabase.auth</code>. Key behaviours:</p>
+<ul>
+  <li><code>persist_session=True</code> by default; the session is held in memory (or your custom storage).</li>
+  <li>Email links/OTPs expire after 24h by default.</li>
+  <li>Access token (JWT) lifetime is configurable (default 1h) in Dashboard → JWT settings.</li>
+  <li>A refresh token never expires but can only be used once (with a 10s reuse window).</li>
+</ul>
+
+<h3>Sign up (register) with email + password</h3>
+<p>Register a new account. If <strong>Confirm email</strong> is enabled (the default), <code>session</code> is <code>None</code> until the user clicks the email link; if disabled, you get both <code>user</code> and <code>session</code> immediately. You can pass <code>options: {"email_redirect_url": ..., "data": {...user_metadata...}}</code>.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — sign_up</summary>
+  <pre><code>response = supabase.auth.sign_up({
+    "email": "user@example.com",
+    "password": "strong-password",
+})
+# response.user, response.session</code></pre>
+</details>
+
+<h3>Sign in (login) with email + password</h3>
+<p>Log an existing user in; the session is persisted automatically.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — sign_in_with_password</summary>
+  <pre><code>response = supabase.auth.sign_in_with_password({
+    "email": "user@example.com",
+    "password": "strong-password",
+})
+# response.user, response.session  -&gt; session persisted automatically</code></pre>
+</details>
+
+<h3>Get / refresh the session</h3>
+<p>There's an important trust distinction here: <code>get_session()</code> only reads what's in local storage, so you must <strong>not</strong> trust it server-side. For verified user data on a server, call <code>get_user()</code> (which hits the Auth server) or <code>get_user(jwt=...)</code> to verify a specific JWT against the JWKS endpoint. <code>refresh_session()</code> exchanges the refresh token for a new access token.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — get/refresh session</summary>
+  <pre><code>session = supabase.auth.get_session()      # local session from storage/memory (untrusted on server)
+user     = supabase.auth.get_user()        # verified user from Auth server (use on server)
+session  = supabase.auth.refresh_session() # exchange refresh token for a new access token</code></pre>
+</details>
+
+<h3>Restore a session from stored tokens</h3>
+<p>Useful after restarting the app: load tokens from your custom storage and call <code>set_session</code> to hydrate the client.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — set_session</summary>
+  <pre><code>supabase.auth.set_session(access_token, refresh_token)</code></pre>
+</details>
+
+<h3>Sign out</h3>
+<p>By default sign-out uses <code>scope="global"</code>, which revokes <em>all</em> the user's sessions. Pass <code>scope="local"</code> to sign out only the current device.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — sign_out</summary>
+  <pre><code>supabase.auth.sign_out()   # default scope="global" revokes all the user's sessions
+# supabase.auth.sign_out({"scope": "local"})  # only this device</code></pre>
+</details>
+
+<h3>Listen for auth state changes</h3>
+<p>Register a callback that fires on events like <code>"SIGNED_IN"</code>, <code>"SIGNED_OUT"</code>, and <code>"TOKEN_REFRESHED"</code>. Use this to drive UI state and to trigger a sync push/pull when the user signs in.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — on_auth_state_change</summary>
+  <pre><code>def on_auth_event(event, session):
+    print(event, session)   # e.g. "SIGNED_IN", "SIGNED_OUT", "TOKEN_REFRESHED"
+
+supabase.auth.on_auth_state_change(on_auth_event)</code></pre>
+</details>
+
+<h3>Token refresh strategy (for local-first apps)</h3>
+<ul>
+  <li>The client auto-refreshes before the JWT expires when <code>auto_refresh_token=True</code>.</li>
+  <li>For long-running desktop processes, persist the latest <code>access_token</code> + <code>refresh_token</code> to your storage adapter on every <code>TOKEN_REFRESHED</code> event so a restart can call <code>set_session</code>.</li>
+  <li>Refresh tokens are single-use (with a 10s reuse grace window); do not cache an old refresh token and reuse it later — you'll invalidate the whole session.</li>
+</ul>
+
+<!-- ============ SECTION 3 ============ -->
+<h2 id="s3"><span class="sec">3</span>CRUD Operations</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>CRUD is the four basic things you do with data: Create, Read, Update, Delete. With this library you build each request like a sentence: pick a table, choose an operation, add filters that narrow down which rows, then call <code>execute()</code> to actually run it. The result hands you back the rows (<code>.data</code>) and optionally a count.</p>
+    <p>The one rule that prevents accidents: always attach a filter to updates and deletes, otherwise the operation hits <em>every</em> matching row.</p>
+  </div>
+</div>
+
+<p>All data access is builder-style: <code>supabase.table(name).&lt;op&gt;().&lt;filter&gt;().execute()</code>. <code>execute()</code> returns an object with <code>.data</code> and <code>.count</code>.</p>
+
+<h3>Insert</h3>
+<p>Add one row, many rows at once, or insert and return only specific columns.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — insert</summary>
+  <pre><code># single row
+resp = supabase.table("notes").insert({"id": 1, "title": "Hello"}).execute()
+
+# bulk
+resp = supabase.table("notes").insert([
+    {"id": 1, "title": "A"},
+    {"id": 2, "title": "B"},
+]).execute()
+
+# return only specific columns
+resp = supabase.table("notes").insert({"id": 3, "title": "C"}).select("id, title").execute()</code></pre>
+</details>
+
+<p>Options: <code>count="exact"|"planned"|"estimated"</code>, <code>returning="minimal"|"representation"</code>, <code>default_to_null=False</code> (use column defaults instead of NULL for bulk inserts).</p>
+
+<h3>Select (with filters)</h3>
+<p>Read rows, narrowing with filters and shaping the result with modifiers. Order matters: the filter chain must come <strong>after</strong> <code>select()</code> and <strong>before</strong> modifiers (<code>order</code>, <code>range</code>, <code>limit</code>, <code>single</code>, <code>maybe_single</code>, <code>csv</code>).</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — select with filters</summary>
+  <pre><code>resp = (
+    supabase.table("notes")
+    .select("*")
+    .eq("user_id", uid)
+    .order("updated_at", desc=True)
+    .limit(50)
+    .execute()
+)</code></pre>
+</details>
+
+<p>Common filters:</p>
+
+<table>
+  <thead>
+    <tr><th>Method</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>.eq(col, v)</code> / <code>.neq</code></td><td>equal / not equal</td></tr>
+    <tr><td><code>.gt</code> / <code>.gte</code> / <code>.lt</code> / <code>.lte</code></td><td>comparisons</td></tr>
+    <tr><td><code>.like(col, "%pat%")</code> / <code>.ilike</code></td><td>case (in)sensitive LIKE</td></tr>
+    <tr><td><code>.is_(col, "null")</code></td><td>IS NULL / TRUE / FALSE</td></tr>
+    <tr><td><code>.in_(col, [a, b])</code></td><td>IN array</td></tr>
+    <tr><td><code>.contains(col, [...])</code> / <code>.contained_by</code></td><td>array/jsonb/range</td></tr>
+    <tr><td><code>.overlaps(col, [...])</code></td><td>array/range overlap</td></tr>
+    <tr><td><code>.match({"k": v, ...})</code></td><td>shorthand multi <code>.eq</code></td></tr>
+    <tr><td><code>.or_("id.eq.2,name.eq.Mars")</code></td><td>OR (PostgREST raw syntax)</td></tr>
+    <tr><td><code>.not_.is_(col, "null")</code></td><td>negate</td></tr>
+    <tr><td><code>.filter("col", "in", '("a","b")')</code></td><td>raw PostgREST</td></tr>
+    <tr><td><code>.text_search(col, "'eggs' &amp; 'ham'", options={"config":"english"})</code></td><td>FTS</td></tr>
+  </tbody>
+</table>
+
+<p>Modifiers: <code>.order(col, desc=True, nullsfirst=False)</code>, <code>.limit(n)</code>, <code>.range(start, end)</code> (0-based inclusive), <code>.single()</code> (returns one object, errors if 0 or many), <code>.maybe_single()</code> (returns one or None), <code>.csv()</code>.</p>
+<p>Default row cap is 1,000 per request; paginate with <code>.range()</code>.</p>
+
+<h3>Update</h3>
+<p>Always pair <code>update()</code> with a filter (otherwise all matching rows update). For last-write-wins sync, also add <code>.lte("updated_at", incoming_ts)</code> so a stale local write doesn't overwrite a newer server value.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — update</summary>
+  <pre><code>resp = (
+    supabase.table("notes")
+    .update({"title": "edited", "updated_at": "2026-06-23T12:00:00Z"})
+    .eq("id", 1)
+    .execute()
+)</code></pre>
+</details>
+
+<h3>Upsert</h3>
+<p>Upsert = insert if new, update if it already exists. The primary key must be included. You can do it in bulk, ignore duplicates, and tell it which column(s) define a conflict.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — upsert</summary>
+  <pre><code># PK must be included
+resp = supabase.table("notes").upsert({"id": 1, "title": "x"}).execute()
+
+# bulk, ignore duplicates, conflict target
+resp = (
+    supabase.table("notes")
+    .upsert(rows, on_conflict="id", ignore_duplicates=True)
+    .execute()
+)</code></pre>
+</details>
+
+<p>Options: <code>on_conflict</code> (column(s) for the UNIQUE constraint resolution), <code>ignore_duplicates=True</code>, <code>default_to_null</code>.</p>
+
+<h3>Delete</h3>
+<p>Delete by id or by a set of ids. Note: with RLS on, only rows visible through a <code>SELECT</code>/<code>ALL</code> policy are deletable, so you need at least a SELECT policy on the table.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — delete</summary>
+  <pre><code>resp = supabase.table("notes").delete().eq("id", 1).execute()
+resp = supabase.table("notes").delete().in_("id", [1, 2, 3]).execute()</code></pre>
+</details>
+
+<h3>RPC (call a Postgres function)</h3>
+<p>RPC runs a function you've defined inside the database. Use it for server-side logic that must bypass per-row client filters (e.g. a <code>SECURITY DEFINER</code> sync function).</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — rpc</summary>
+  <pre><code>resp = supabase.rpc("hello_world").execute()
+resp = supabase.rpc("get_notes", {"user_id": uid}).execute()</code></pre>
+</details>
+
+<!-- ============ SECTION 4 ============ -->
+<h2 id="s4"><span class="sec">4</span>Row-Level Security (RLS) Patterns</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Row-Level Security is the database's own bouncer. Instead of trusting your app code to filter "show only this user's rows," you write a rule once at the database level, and Postgres silently enforces it on every query as if an invisible <code>WHERE</code> clause were always attached. This is what makes it safe to put a public key in a client app.</p>
+    <p>The classic pattern: give each table a <code>user_id</code> column, then write four policies (select, insert, update, delete) that all say "the signed-in user must own this row." A handful of correctness rules below keep it both safe and fast.</p>
+  </div>
+</div>
+
+<p>RLS is mandatory for any table in an exposed schema (<code>public</code>). Enable it, then write policies that act like implicit <code>WHERE</code> clauses.</p>
+
+<h3>Enable + grant</h3>
+<p>Turn RLS on for the table and grant the appropriate roles.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> SQL — enable + grant</summary>
+  <pre><code>alter table public.notes enable row level security;
+
+grant select, insert, update, delete on public.notes to authenticated;
+grant all on public.notes to service_role;</code></pre>
+</details>
+
+<h3>The canonical "user owns their rows" pattern</h3>
+<p>Add a <code>user_id uuid references auth.users</code> column to every user-scoped table, then write one policy per operation. For UPDATE, <code>using</code> checks the existing row and <code>with check</code> checks the new row.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> SQL — owner policies (select / insert / update / delete)</summary>
+  <pre><code>-- SELECT
+create policy "owner select" on public.notes
+  for select to authenticated
+  using ( (select auth.uid()) = user_id );
+
+-- INSERT
+create policy "owner insert" on public.notes
+  for insert to authenticated
+  with check ( (select auth.uid()) = user_id );
+
+-- UPDATE (using = existing row check; with check = new row check)
+create policy "owner update" on public.notes
+  for update to authenticated
+  using      ( (select auth.uid()) = user_id )
+  with check ( (select auth.uid()) = user_id );
+
+-- DELETE
+create policy "owner delete" on public.notes
+  for delete to authenticated
+  using ( (select auth.uid()) = user_id );</code></pre>
+</details>
+
+<h3>Critical correctness rules</h3>
+<ol>
+  <li><strong>Always wrap <code>auth.uid()</code> in <code>(select ...)</code></strong> so Postgres caches it per statement instead of calling it per row (huge perf win).</li>
+  <li><strong>Guard against null</strong>: <code>auth.uid()</code> returns <code>null</code> when unauthenticated, and <code>null = user_id</code> is always false. Prefer <code>using (auth.uid() IS NOT NULL AND (select auth.uid()) = user_id)</code> for clarity.</li>
+  <li><strong>Specify <code>TO authenticated</code></strong> on every policy so <code>anon</code> requests short-circuit before evaluating the expression.</li>
+  <li><strong>Add a btree index on <code>user_id</code></strong> for every policy-filtered table.</li>
+  <li><strong>Always add an explicit <code>.eq("user_id", uid)</code> filter in the client query</strong> even though the policy enforces it — Postgres builds a better plan with the explicit filter (94% faster in benchmarks).</li>
+  <li><code>UPDATE</code> requires a matching <code>SELECT</code> policy to find the rows.</li>
+  <li>Views bypass RLS by default; use <code>with (security_invoker = true)</code> (PG15+) so a view runs as the caller and respects underlying policies.</li>
+</ol>
+
+<h3>Helper functions</h3>
+<ul>
+  <li><code>auth.uid()</code> — requesting user's id.</li>
+  <li><code>auth.jwt()</code> — the JWT. Use <code>raw_app_meta_data</code> (not user-editable) for authorization data; <code>raw_user_meta_data</code> is user-editable and unsafe for authz. Remember the JWT may be stale until refreshed.</li>
+</ul>
+
+<h3>Service role bypass</h3>
+<blockquote>
+  The <code>service_role</code> key bypasses RLS entirely. <strong>Never ship it in a client app.</strong> Use it only server-side for admin/migration/sync operations.
+</blockquote>
+
+<!-- ============ SECTION 5 ============ -->
+<h2 id="s5"><span class="sec">5</span>Real-time Subscriptions</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Realtime is the part that lets your app react the instant data changes, instead of polling. You open a "channel" and Supabase pushes you a message whenever a row is inserted, updated, or deleted. There are two ways to get those messages, with a trade-off between simplicity and scale.</p>
+    <p>The big-picture advice: treat a realtime event as a <em>doorbell</em>, not as the delivered package. When it rings, go do a normal secure read to fetch the trusted data — don't trust the event's contents as the final word. That keeps your security rules in one place.</p>
+  </div>
+</div>
+
+<p>Realtime is the live-update channel layer (Phoenix Channels under the hood). Two mechanisms:</p>
+
+<div class="branch">
+  <div class="branch-col is-gold">
+    <h4><span class="dot"></span>Broadcast</h4>
+    <p>Recommended for scale/security. A Postgres trigger calls <code>realtime.broadcast_changes('topic:&lt;id&gt;', TG_OP, TG_OP, TG_TABLE_NAME, TG_TABLE_SCHEMA, NEW, OLD)</code> and clients subscribe to a private channel for that topic. Requires a broadcast authorization policy on <code>realtime.messages</code>.</p>
+  </div>
+  <div class="branch-col">
+    <h4><span class="dot"></span>Postgres Changes</h4>
+    <p>Simpler, less scalable. Subscribe directly to WAL (write-ahead log) changes on a table.</p>
+  </div>
+</div>
+
+<h3>Enable Postgres Changes (per project)</h3>
+<p>You publish the table to the realtime publication. To also receive the <em>old</em> row values on UPDATE/DELETE, set the table's replica identity to full.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> SQL — enable Postgres Changes</summary>
+  <pre><code>drop publication if exists supabase_realtime;
+create publication supabase_realtime;
+alter publication supabase_realtime add table notes;
+-- to get old row values on UPDATE/DELETE:
+alter table notes replica identity full;</code></pre>
+</details>
+
+<blockquote>
+  Note: when RLS is on and <code>replica identity full</code>, only the primary key is sent to clients on DELETE (RLS is not applied to delete statements over Realtime).
+</blockquote>
+
+<h3>Python subscribe (async client)</h3>
+<p>Open a channel, register a callback for the event you care about, then subscribe. The payload's <code>payload["new"]</code> holds the changed row.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — subscribe to postgres changes</summary>
+  <pre><code>import asyncio
+from supabase import acreate_client, AsyncClient
+from supabase.types import RealtimeSubscribeStates
+
+def on_subscribe(status, err):
+    if status == RealtimeSubscribeStates.SUBSCRIBED:
+        print("subscribed")
+
+def handle_insert(payload):
+    print("INSERT", payload)   # payload["new"] has the row
+
+async def main():
+    sb = await acreate_client(URL, KEY)
+    channel = sb.channel("notes-changes")
+    channel.on_postgres_changes(
+        {"event": "INSERT", "schema": "public", "table": "notes"},
+        callback=handle_insert,
+    )
+    await channel.subscribe(on_subscribe)
+
+asyncio.run(main())</code></pre>
+</details>
+
+<p><code>event</code> may be <code>"INSERT"</code>, <code>"UPDATE"</code>, <code>"DELETE"</code>, or <code>"*"</code> (all). Add a <code>filter</code> (e.g. <code>{"event":"UPDATE","schema":"public","table":"notes","filter":"user_id=eq.&lt;uid&gt;"}</code>) to limit to a user's rows. Chain multiple <code>.on_postgres_changes(...)</code> calls on one channel for different events.</p>
+
+<h3>Broadcast (client-to-client / low-latency)</h3>
+<p>For low-latency, client-to-client messages (like live cursor positions), send and receive broadcast events on a channel.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — broadcast send/receive</summary>
+  <pre><code>channel = sb.channel("room1")
+
+def on_subscribe(status, err):
+    if status == RealtimeSubscribeStates.SUBSCRIBED:
+        asyncio.create_task(channel.send_broadcast("cursor-pos", {"x": 0.5, "y": 0.5}))
+
+def handle_broadcast(payload):
+    print("got", payload)
+
+channel.on_broadcast(event="cursor-pos", callback=handle_broadcast)
+await channel.subscribe(on_subscribe)</code></pre>
+</details>
+
+<h3>Presence</h3>
+<p>Attach <code>on_presence_sync()</code>, <code>on_presence_join()</code>, <code>on_presence_leave()</code> callbacks; presence auto-enables when callbacks are attached.</p>
+
+<h3>Cleanup</h3>
+<p>Remove a channel to free it (and its server resources), or list the active channels.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — channel cleanup</summary>
+  <pre><code>await sb.remove_channel(channel)   # frees the channel + server resources
+channels = sb.get_channels()        # list active channels</code></pre>
+</details>
+
+<p>Supabase auto-cleans a channel ~30s after the client disconnects.</p>
+
+<h3>Relevance to local-first sync</h3>
+<blockquote>
+  Realtime is best used as a <strong>notification signal</strong> ("something changed, pull now") rather than a transport for the data itself. For correctness, treat a Realtime event as a trigger to run a <code>select</code> pull (which goes through RLS and returns trusted data), not as authoritative state. This keeps conflict resolution server-side and avoids duplicating RLS logic on the client.
+</blockquote>
+
+<!-- ============ SECTION 6 ============ -->
+<h2 id="s6"><span class="sec">6</span>Best Practices for Local-First / Last-Write-Wins Sync</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>"Local-first" means the app works offline against a local copy of the data and syncs with the server when it can. "Last-write-wins" (LWW) is the simplest way to settle conflicts: whichever edit has the newest timestamp wins. To make that reliable you design tables a certain way — give every row a stable ID, a timestamp clock, and a "deleted" flag instead of really deleting things.</p>
+    <p>The flow has three parts: <strong>push</strong> your offline edits up, <strong>pull</strong> the server's newer changes down, and <strong>merge</strong> them locally. The trick that keeps it correct is a database-side guard that refuses any incoming write older than what's already stored — so a stale offline edit can never clobber a newer one.</p>
+  </div>
+</div>
+
+<h3>Table schema for LWW sync</h3>
+<p>Every syncable table should carry a few standard columns: a client-generated UUID key, the owner's <code>user_id</code>, a <code>deleted</code> soft-delete flag, an <code>updated_at</code> LWW clock, a <code>created_at</code>, and optionally a monotonic <code>client_rev</code> counter.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> SQL — syncable table schema</summary>
+  <pre><code>create table notes (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users,
+  content     text,
+  deleted     boolean not null default false,   -- soft delete, never hard-delete on sync
+  updated_at  timestamptz not null default now(), -- LWW clock
+  created_at  timestamptz not null default now(),
+  client_rev  bigint not null default 0          -- optional: monotonic per-client counter
+);
+
+alter table notes enable row level security;
+create index notes_user_updated_idx on notes (user_id, updated_at desc);</code></pre>
+</details>
+
+<p>Rules:</p>
+<ul>
+  <li><strong><code>updated_at</code> is the LWW timestamp.</strong> Always set it client-side (UTC ISO-8601) on every mutation and use it as the conflict arbiter.</li>
+  <li><strong>Soft deletes</strong> via a <code>deleted</code> flag. Hard deletes break sync because a client that was offline can't distinguish "deleted by another device" from "never existed". Tombstones (deleted=true) sync naturally.</li>
+  <li><strong>Stable primary keys</strong> (UUID generated client-side) so an offline insert can be upserted later without collisions.</li>
+  <li><strong>Index <code>(user_id, updated_at desc)</code></strong> for fast incremental pulls.</li>
+</ul>
+
+<h3>Push (client → server)</h3>
+<p>On reconnect, push the local outbox with an upsert plus a server-side guard.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — push via upsert</summary>
+  <pre><code>supabase.table("notes").upsert(
+    {"id": row_id, "user_id": uid, "content": content,
+     "deleted": False, "updated_at": ts},
+    on_conflict="id",
+).execute()</code></pre>
+</details>
+
+<p>For true LWW, enforce the arbiter server-side so a stale push can't clobber a newer row. Two options:</p>
+<ol>
+  <li><strong>Conditional update</strong> (client filter): only push if your local <code>updated_at</code> is newer than the server's — but you can't see the server value from the client atomically.</li>
+  <li><strong>DB-side guard (preferred)</strong>: a <code>BEFORE INSERT OR UPDATE</code> trigger that rejects the write when <code>NEW.updated_at &lt; OLD.updated_at</code>:</li>
+</ol>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> SQL — LWW guard trigger</summary>
+  <pre><code>create or replace function notes_lww_guard()
+returns trigger language plpgsql as $$
+begin
+  if TG_OP = 'UPDATE' and OLD.updated_at &gt; NEW.updated_at then
+    -- stale write; keep the newer server row
+    return null;
+  end if;
+  NEW.updated_at := coalesce(NEW.updated_at, now());
+  return NEW;
+end $$;
+
+create trigger notes_lww before insert or update on notes
+  for each row execute function notes_lww_guard();</code></pre>
+</details>
+
+<p>Or use a single RPC that does the compare-and-swap atomically and returns the winning row so the client can reconcile.</p>
+
+<h3>Pull (server → client, incremental)</h3>
+<p>Pull only the rows that changed since your last sync by filtering on <code>updated_at &gt; last_sync_ts</code>. Track <code>last_sync_ts</code> locally as the max <code>updated_at</code> seen. Page with <code>.range()</code> for large initial pulls. Combine with a Realtime subscription to trigger immediate pulls on change notifications.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — incremental pull</summary>
+  <pre><code>resp = (
+    supabase.table("notes")
+    .select("*")
+    .eq("user_id", uid)
+    .gt("updated_at", last_sync_ts)   # only changed rows
+    .order("updated_at", desc=False)
+    .limit(500)
+    .execute()
+)</code></pre>
+</details>
+
+<h3>Merge locally</h3>
+<blockquote>
+  For each pulled row: if local <code>updated_at</code> &lt; server, overwrite local; if equal, tie-break by <code>client_rev</code> or <code>id</code>. Because the DB guard already prevented stale pushes, the server row is always the winner, simplifying the client merge.
+</blockquote>
+
+<!-- ============ SECTION 7 ============ -->
+<h2 id="s7"><span class="sec">7</span>Offline Mode and Background Sync</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>The Supabase Python library is just a thin client — it has no built-in offline queue or conflict resolver. So for a real offline-capable app, <em>you</em> build the sync layer around it. The shape is always the same: a local database the UI reads and writes instantly, an "outbox" listing changes waiting to go up, and background loops that push, pull, and listen for live notifications whenever the network is available.</p>
+    <p>The numbered architecture below is the recommended blueprint. The key resilience details are about tokens (store only the newest pair, since refresh tokens are single-use) and about backing off gracefully when the network is down.</p>
+  </div>
+</div>
+
+<p>supabase-py itself is a thin HTTP/WebSocket client — it has no built-in offline queue or conflict resolver. For a local-first desktop/mobile app you build the sync layer around it.</p>
+
+<h3>Recommended architecture</h3>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">1</div>
+    <div class="flow-body">
+      <div class="ft">Local store</div>
+      <p>SQLite, DuckDB, or JSON files is the source of truth the UI reads/writes. Every write updates <code>updated_at</code> and appends to a local <strong>outbox</strong> table (<code>pending_changes</code>).</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">2</div>
+    <div class="flow-body">
+      <div class="ft">Auth restore on startup</div>
+      <p>Load stored <code>access_token</code>/<code>refresh_token</code>, call <code>supabase.auth.set_session(...)</code>. Subscribe to <code>on_auth_state_change</code> to persist refreshed tokens.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">3</div>
+    <div class="flow-body">
+      <div class="ft">Connectivity detection</div>
+      <p>A watchdog loop pings or watches Realtime channel status. When offline, writes only hit the local store + outbox.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">4</div>
+    <div class="flow-body">
+      <div class="ft">Push loop (on reconnect)</div>
+      <p>Drain the outbox with <code>upsert(..., on_conflict="id")</code>, gated by the server-side LWW guard. On success, remove the outbox row; on network error, leave it and retry with backoff.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">5</div>
+    <div class="flow-body">
+      <div class="ft">Pull loop</div>
+      <p>Incremental <code>select(...).gt("updated_at", last_sync_ts)</code>, merge into the local store, advance <code>last_sync_ts</code>. Run on (a) app start, (b) Realtime notification, (c) periodic timer.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">6</div>
+    <div class="flow-body">
+      <div class="ft">Realtime as a wake signal</div>
+      <p>Subscribe to <code>postgres_changes</code> for the user's tables; on any event, trigger a pull. Keep the subscription resilient — <code>realtime-py</code> reconnects automatically, but you should re-subscribe after <code>sign_in</code> / token refresh (<code>supabase.realtime.set_auth()</code> equivalent).</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">7</div>
+    <div class="flow-body">
+      <div class="ft">Background sync</div>
+      <p>Run the push/pull loops in a background thread/asyncio task with a short interval (e.g. 30s) plus event-driven runs. Guard against concurrent sync runs with a lock.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">8</div>
+    <div class="flow-body">
+      <div class="ft">Exponential backoff</div>
+      <p>On auth/network errors; surface a "sync pending / synced / offline" indicator to the UI.</p>
+    </div>
+  </div>
+</div>
+
+<h3>Token/session resilience across offline</h3>
+<ul>
+  <li>Persist tokens to disk/keyring via a custom <code>storage</code> adapter.</li>
+  <li><code>refresh_session()</code> will fail while offline; catch the error and retry on reconnect.</li>
+  <li>A refresh token is single-use — only persist the <strong>latest</strong> pair, written on every <code>TOKEN_REFRESHED</code> event, to avoid reuse-detection invalidating the session.</li>
+</ul>
+
+<!-- ============ SECTION 8 ============ -->
+<h2 id="s8"><span class="sec">8</span>Anon Key vs Service Role Key</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Supabase gives you two keys, and the difference between them is a security cliff edge. The <strong>anon key</strong> is meant to be public — it's safe to embed in a client app because Row-Level Security still gates every request. The <strong>service role key</strong> is the master key: it ignores all security rules and can touch every row in every table. It belongs only on servers you control and must never be shipped in an app.</p>
+    <p>Rule of thumb: client apps get the anon key; trusted server scripts get the service role key. If the service role key ever leaks, rotate it immediately.</p>
+  </div>
+</div>
+
+<p>Supabase issues two API keys per project. They map to Postgres roles and determine whether RLS is enforced.</p>
+
+<table>
+  <thead>
+    <tr><th>Key</th><th>Postgres role</th><th>RLS</th><th>Safe to ship in client?</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>anon / publishable key</strong></td>
+      <td><code>anon</code> (unauth) → <code>authenticated</code> (after sign-in)</td>
+      <td><span class="badge b-done">✓ Enforced</span> — policies apply</td>
+      <td><span class="badge b-done">✓ Yes</span> Designed to be public; security comes from RLS policies.</td>
+    </tr>
+    <tr>
+      <td><strong>service role key</strong></td>
+      <td><code>service_role</code></td>
+      <td><span class="badge b-gated">Bypassed</span> — full table access, ignores all policies</td>
+      <td><span class="badge b-gated">No</span> Equivalent to DB admin. Keep server-side only (env var, secrets manager). Never embed in a desktop/mobile/SPA binary.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Rules</h3>
+<ul>
+  <li>Initialize the <strong>client app</strong> with the anon/publishable key. After <code>sign_in_*</code>, the client's requests run as <code>authenticated</code> and RLS policies like <code>(select auth.uid()) = user_id</code> gate access to that user's rows.</li>
+  <li>Use the <strong>service role key only</strong> in trusted server code (CLI tools, migrations, server-side batch jobs, a sync API you control). Anyone with the service role key can read/write every row in every table regardless of policies.</li>
+  <li>Treat the service role key like a database password: load from environment/secrets, never commit it, never log it, never ship it in a client bundle. If it leaks, rotate it immediately in Dashboard → Project Settings → API.</li>
+  <li><code>auth.admin.*</code> methods (<code>list_users</code>, <code>get_user_by_id</code>, <code>delete_user</code>, etc.) require the service role key and bypass RLS — use them only server-side.</li>
+</ul>
+
+<h3>Practical split for a local-first app</h3>
+
+<div class="branch">
+  <div class="branch-col is-gold">
+    <h4><span class="dot"></span>Client process</h4>
+    <p><code>create_client(URL, ANON_KEY)</code>. All user data access goes through RLS; users see only their own rows.</p>
+  </div>
+  <div class="branch-col">
+    <h4><span class="dot"></span>Server/admin script (optional)</h4>
+    <p>For support/migration: <code>create_client(URL, SERVICE_ROLE_KEY)</code> run on infrastructure you control, never on the user's machine.</p>
+  </div>
+</div>
+
+<!-- ============ SECTION 9 ============ -->
+<h2 id="s9"><span class="sec">9</span>Quick Reference Cheatsheet</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>A one-screen recap of the most common calls — init, auth, CRUD, and realtime — for when you just need to remember the exact method name.</p>
+  </div>
+</div>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — full cheatsheet</summary>
+  <pre><code># init
+from supabase import create_client, Client
+sb: Client = create_client(URL, ANON_KEY)
+
+# auth
+sb.auth.sign_up({"email": e, "password": p})
+sb.auth.sign_in_with_password({"email": e, "password": p})
+sb.auth.get_session(); sb.auth.get_user(); sb.auth.refresh_session()
+sb.auth.set_session(access, refresh)   # restore after restart
+sb.auth.sign_out()
+sb.auth.on_auth_state_change(lambda ev, s: ...)
+
+# crud
+sb.table("t").insert({...}).execute()
+sb.table("t").select("*").eq("user_id", uid).order("updated_at", desc=True).limit(50).execute()
+sb.table("t").update({...}).eq("id", 1).execute()
+sb.table("t").upsert({...}, on_conflict="id").execute()
+sb.table("t").delete().eq("id", 1).execute()
+sb.rpc("fn", {"arg": v}).execute()
+
+# realtime (async)
+ch = sb.channel("t-changes")
+ch.on_postgres_changes({"event":"*","schema":"public","table":"t","filter":"user_id=eq."+uid}, cb)
+await ch.subscribe(on_subscribe)
+await sb.remove_channel(ch)</code></pre>
+</details>
+
+<div class="doc-foot">
+  <span>Mumble — Supabase Patterns</span>
+  <span class="gold">Research</span>
+</div>
+
+</div>
+</body>
+</html>

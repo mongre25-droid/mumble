@@ -1,0 +1,28 @@
+MUMBLE — private voice-to-text for Windows
+==========================================
+
+HOW TO START
+------------
+Double-click  "Mumble"  (the launcher right here in this folder).
+
+* The very first run installs everything automatically (a few minutes),
+  shows a short welcome tour, and puts a golden Mumble icon on your
+  Desktop and Start menu — from then on, launch it from anywhere.
+* After that, Mumble lives in your system tray (golden microphone,
+  bottom-right). Press Ctrl + Win anywhere to dictate.
+
+WHAT'S IN THIS FOLDER
+---------------------
+  Mumble               -> the launcher (double-click this)
+  Install Mumble.bat   -> re-run setup manually if you ever need to
+  Internal\            -> Mumble's program files. You never need to
+                          open this folder — but don't delete it.
+
+GOOD TO KNOW
+------------
+* Keep this folder somewhere permanent (Documents is perfect).
+  Don't move it after installing — your shortcuts point here.
+* Your transcripts, settings and history are NOT in this folder;
+  they live safely in %APPDATA%\Mumble and survive reinstalls.
+* To uninstall: run "Uninstall Mumble.bat" inside Internal\app,
+  then delete this folder.

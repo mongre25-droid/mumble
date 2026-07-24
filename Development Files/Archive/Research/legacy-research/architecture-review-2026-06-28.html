@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble Architecture Review — Open-Source Landscape 2026-06-28</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Architecture Review</div>
+  <h1>Open-Source Landscape — 2026-06-28</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Date:</b> 2026-06-28</div>
+    <div><span class="ico">◆</span><b>Scope:</b> every Mumble subsystem weighed against the best available open-source alternative</div>
+    <div><span class="ico">◆</span><b>Bar for replacement:</b> only when the improvement is <strong>substantial</strong> — a 2–10% gain does not justify the dependency cost</div>
+    <div><span class="ico">◆</span><b>Companion research:</b> <a href="LOCAL_POST_PROCESSING_ENGINE.html">LOCAL_POST_PROCESSING_ENGINE</a> · <a href="local_nlp.html">local_nlp</a> · <a href="tts_providers.html">tts_providers</a></div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This is a stock-take: for each part of Mumble (recognising speech, cleaning up the text, the window, updates, and so on) we asked "is there something open-source out there that would make this meaningfully better?" — and only flagged a swap when the answer was a clear <em>yes</em>, not a marginal one.</p>
+    <p>The short version: most of Mumble is already near-optimal and should be left alone. The real opportunities are (1) doing the "make it read well" clean-up <strong>on the user's own machine</strong> with a few small purpose-built models instead of the cloud, and (2) GPU speed-ups for the ~40% of Windows PCs that don't have an NVIDIA card.</p>
+  </div>
+</div>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">Scope</a></li>
+    <li><a href="#s2">Local post-processing — multi-model pipeline replaces the cloud API</a></li>
+    <li><a href="#s3">Cohere Transcribe — new STT contender</a></li>
+    <li><a href="#s4">GPU acceleration beyond CUDA — DirectML + ONNX</a></li>
+    <li><a href="#s5">DeepFilterNet3 — audio pre-processing</a></li>
+    <li><a href="#s6">RealtimeSTT — full-stack alternative?</a></li>
+    <li><a href="#s7">Linux Wayland hotkey blocking</a></li>
+    <li><a href="#s8">Complete subsystem evaluation</a></li>
+    <li><a href="#s9">Licensing</a></li>
+    <li><a href="#s10">Final architecture</a></li>
+  </ol>
+</nav>
+
+<hr>
+
+<h2 id="s1"><span class="sec">1</span>Scope</h2>
+<p>Comprehensive evaluation of every Mumble subsystem against the best available open-source alternatives. Only recommend replacement when the improvement is <strong>substantial</strong> — not marginal. 2–10% gains don't justify the dependency cost.</p>
+
+<hr>
+
+<h2 id="s2"><span class="sec">2</span>Local post-processing: multi-model pipeline replaces cloud API</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>One big general-purpose AI is <em>not</em> the best way to tidy up dictated text. Several tiny, single-job models — one just for punctuation, one just for grammar, one for shaping the result — each beat the big model at their own narrow task, while using a fraction of the memory. Stacked together on the user's own machine, they cover about 90% of everyday use at near-cloud quality.</p></div>
+</div>
+
+<p><strong>Finding:</strong> A single general-purpose LLM is NOT the optimal approach for transcription post-processing. Purpose-built, lightweight models outperform general LLMs for narrow tasks at a fraction of the cost.</p>
+
+<p><strong>Recommended pipeline:</strong></p>
+<table>
+  <thead><tr><th>Stage</th><th>Model</th><th>Size</th><th>RAM</th><th>Task</th><th>Quality vs cloud</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><code>rpunct</code> (BERT)</td><td>~80 MB</td><td>~200 MB</td><td>Punctuation + capitalisation</td><td>Near-perfect</td></tr>
+    <tr><td>2</td><td><code>GRMR-2B-Instruct</code></td><td>2B</td><td>~1.5 GB</td><td>Grammar + filler removal</td><td>Excellent (beats Llama-8B on this task)</td></tr>
+    <tr><td>3</td><td><code>Qwen2.5-1.5B-Instruct</code></td><td>1.5B</td><td>~2 GB</td><td>Mode formatting</td><td>Good (90% of cloud quality)</td></tr>
+    <tr><td>4</td><td><code>formatting.py</code> surface</td><td>0</td><td>0</td><td>Surface cleanup</td><td>Perfect (existing, tested)</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Cloud replacement viability:</strong> This multi-model pipeline handles ~90% of Mumble usage (text / prompt / email / list modes) at near-cloud quality. Heavy presets (multi-document reasoning, contextual replies) still benefit from cloud but degrade gracefully via <code>UPGRADE_NOTICE</code>.</p>
+
+<p><strong>Key insight:</strong> <code>rpunct</code> is a dedicated BERT model (<code>pip install rpunct</code>) that restores punctuation with near-perfect accuracy in ~5ms on CPU. It's both faster AND more accurate than asking an LLM to punctuate. <code>GRMR-2B-Instruct</code> is purpose-built for grammar correction and beats Llama-3.1-8B on this specific task despite being 4× smaller.</p>
+
+<p><strong>Existing code:</strong> <code>local_engine.py</code> already has <code>LlamaCppBackend</code> fully implemented — lazy loading, GBNF grammars, prompt caching. It just needs a GGUF model file to activate (currently defaults to <code>NullBackend</code>).</p>
+
+<hr>
+
+<h2 id="s3"><span class="sec">3</span>Cohere Transcribe — new STT contender (March 2026)</h2>
+<p><span class="badge b-gold">Verdict: MONITOR</span> &nbsp;Could become the single best model for ALL platforms once the inference ecosystem matures (CTranslate2 / ONNX port). NOT recommended for production today.</p>
+<ul>
+  <li><strong>Model:</strong> <code>cohere-transcribe-03-2026</code>, 2B params, Apache 2.0</li>
+  <li><strong>WER:</strong> 5.42% (beats Whisper 7.44%, Parakeet 6.32%) — #1 on the Open ASR Leaderboard</li>
+  <li><strong>Languages:</strong> 14 (English, French, Spanish, German, Italian, Portuguese, Dutch, Polish, Russian, Japanese, Korean, Chinese, Arabic, Hindi)</li>
+  <li><strong>Speed:</strong> ~3× faster than Whisper</li>
+  <li><strong>Caveat:</strong> Very new (3 months old). No CTranslate2 or ONNX port yet. Inference requires PyTorch (heavier). Ecosystem immature.</li>
+</ul>
+
+<hr>
+
+<h2 id="s4"><span class="sec">4</span>GPU acceleration beyond CUDA — DirectML + ONNX Runtime</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Today Mumble can only use a graphics card to go faster if it's an NVIDIA one. That leaves roughly 4 in 10 Windows users (AMD, Intel, laptop chips) stuck on the slower CPU path. Microsoft's DirectML runs on <em>any</em> modern graphics chip, so we can give those users a 2–5× speed-up with a single extra package.</p></div>
+</div>
+
+<p><strong>The gap:</strong> CTranslate2 (under faster-whisper) only accelerates on NVIDIA CUDA. ~40% of Windows users (AMD Radeon, Intel Arc, integrated GPUs) get zero GPU acceleration.</p>
+<p><strong>The solution:</strong> Microsoft DirectML runs on ANY DirectX 12 GPU — NVIDIA, AMD, Intel, and NPUs on Copilot+ PCs. No vendor SDKs needed.</p>
+<p><strong>Implementation:</strong> <code>sherpa-onnx</code> (Apache 2.0, k2-fsa) packages SenseVoice, Paraformer, and Whisper models with DirectML, CUDA, and CoreML support. Single <code>pip install sherpa-onnx</code>.</p>
+<p><strong>Performance:</strong> 2–5× speedup on non-NVIDIA GPUs vs CPU-only. SenseVoice runs at 170× realtime on GPU.</p>
+
+<hr>
+
+<h2 id="s5"><span class="sec">5</span>DeepFilterNet3 — audio pre-processing</h2>
+<p><span class="badge b-gated">Verdict: SPIKE</span> &nbsp;Evaluate whether the accuracy gain in noisy environments justifies the latency cost.</p>
+<ul>
+  <li><code>pip install deepfilternet</code></li>
+  <li>Real-time AI noise suppression outperforming RNNoise</li>
+  <li>Cleans keyboard clicks, fan hum, cafe chatter before STT</li>
+  <li>ONNX version (<code>deepfilter-rt</code>) runs ~5ms per 20ms audio frame</li>
+</ul>
+
+<hr>
+
+<h2 id="s6"><span class="sec">6</span>RealtimeSTT — full-stack alternative?</h2>
+<p><span class="badge b-exist">Verdict: NOT RECOMMENDED as a replacement</span></p>
+<p><code>RealtimeSTT</code> (MIT, KoljaB) provides a complete audio-to-transcription pipeline: VAD, wake-word detection, streaming, and transcription using faster-whisper.</p>
+<p>Mumble's custom streaming worker is already well-tuned. RealtimeSTT adds a dependency for marginal architectural gain. However, it's worth studying for ideas around <strong>wake-word activation</strong>.</p>
+
+<hr>
+
+<h2 id="s7"><span class="sec">7</span>Linux Wayland hotkey blocking issue</h2>
+<p><span class="badge b-gated">Blocker for Linux Wayland — needs a spike</span></p>
+<p>The <code>keyboard</code> library uses X11 APIs and will NOT work on Wayland. Alternatives:</p>
+<ul>
+  <li><code>pynput</code> — partial Wayland support</li>
+  <li><code>libclicker</code> (Codeberg) — full Wayland via <code>uinput</code>, requires root</li>
+  <li>Native helper binary — most reliable, platform-specific</li>
+</ul>
+
+<hr>
+
+<h2 id="s8"><span class="sec">8</span>Complete subsystem evaluation</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The full grid: every subsystem, what it uses now, the best alternative found, and whether it's worth switching. "<strong>P0–P6</strong>" are priority ranks for the things worth doing; most rows are a deliberate <em>NO</em> — already good enough.</p></div>
+</div>
+
+<table>
+  <thead><tr><th>Subsystem</th><th>Current</th><th>Best alternative</th><th>Replace?</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Audio capture</td><td>sounddevice / PortAudio</td><td>miniaudio</td><td><span class="badge b-exist">NO</span></td><td>~5ms latency diff negligible for dictation</td></tr>
+    <tr><td>VAD</td><td>Silero VAD (via faster-whisper)</td><td>WebRTC VAD, Cobra</td><td><span class="badge b-exist">NO</span></td><td>Silero is best open-source VAD</td></tr>
+    <tr><td>STT (macOS)</td><td>faster-whisper CPU</td><td>FluidAudio + Parakeet TDT</td><td><span class="badge b-done">YES — P1</span></td><td>5–10× faster, 90% less RAM, zero hallucinations</td></tr>
+    <tr><td>STT (Windows NVIDIA)</td><td>faster-whisper CUDA</td><td>—</td><td><span class="badge b-exist">NO</span></td><td>Already near-optimal</td></tr>
+    <tr><td>STT (Windows AMD/Intel)</td><td>faster-whisper CPU</td><td>sherpa-onnx DirectML</td><td><span class="badge b-done">YES — P2</span></td><td>2–5× speedup, enables GPU on any GPU</td></tr>
+    <tr><td>STT (Linux ARM)</td><td>Not supported</td><td>whisper.cpp ARM Neon</td><td><span class="badge b-done">YES — P3</span></td><td>Enables Linux ARM</td></tr>
+    <tr><td>STT (all platforms, future)</td><td>—</td><td>Cohere Transcribe (ONNX)</td><td><span class="badge b-gold">MONITOR</span></td><td>5.42% WER but ecosystem immature</td></tr>
+    <tr><td>Streaming</td><td>Custom 5s-chunk worker</td><td>RealtimeSTT</td><td><span class="badge b-exist">NO</span></td><td>Marginal gain vs dependency cost</td></tr>
+    <tr><td>Local post-processing</td><td>formatting.py (rules only)</td><td>Multi-model pipeline</td><td><span class="badge b-done">YES — P0/P4/P5</span></td><td>Unlocks offline smart modes</td></tr>
+    <tr><td>Punctuation</td><td>Part of formatting.py</td><td>rpunct (BERT)</td><td><span class="badge b-done">YES — P4</span></td><td>Dedicated model, faster + more accurate</td></tr>
+    <tr><td>Grammar</td><td>Part of formatting.py</td><td>GRMR-2B-Instruct</td><td><span class="badge b-done">YES — P5 (spike)</span></td><td>Purpose-built, beats general LLMs</td></tr>
+    <tr><td>Cloud post-processing</td><td>Cerebras gpt-oss-120b</td><td>—</td><td><span class="badge b-exist">NO</span></td><td>Already well-implemented</td></tr>
+    <tr><td>Noise suppression</td><td>None</td><td>DeepFilterNet3</td><td><span class="badge b-gated">SPIKE — P6</span></td><td>Evaluate accuracy gain vs latency cost</td></tr>
+    <tr><td>Overlay / Island</td><td>Custom Pillow + Win32</td><td>—</td><td><span class="badge b-exist">NO</span></td><td>Unique to Mumble, no equivalent</td></tr>
+    <tr><td>UI</td><td>tkinter + pywebview</td><td>—</td><td><span class="badge b-exist">NO</span></td><td>Adequate, no clear upgrade path</td></tr>
+    <tr><td>Update system</td><td>Manifest + zip + atomic swap</td><td>Sparkle / WinSparkle</td><td><span class="badge b-exist">NO</span></td><td>Native frameworks add complexity</td></tr>
+    <tr><td>Data layer</td><td>Custom settings.json etc.</td><td>—</td><td><span class="badge b-exist">NO</span></td><td>Well-scoped to Mumble's needs</td></tr>
+    <tr><td>Clipboard history</td><td>Custom Clipboard class</td><td>CopyQ (separate app)</td><td><span class="badge b-exist">NO</span></td><td>CopyQ is an app, not a library</td></tr>
+    <tr><td>Hotkey binding</td><td>keyboard + mouse libraries</td><td>pynput (for Wayland)</td><td><span class="badge b-gold">PARTIAL</span></td><td>Only for Wayland support</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="s9"><span class="sec">9</span>Licensing</h2>
+<p>All recommended projects use commercially-friendly licenses. <strong>No GPL contamination in the critical path.</strong></p>
+<ul>
+  <li>FluidAudio: Apache 2.0</li>
+  <li>Parakeet TDT weights: CC-BY-4.0</li>
+  <li>sherpa-onnx: Apache 2.0</li>
+  <li>SenseVoice: MIT</li>
+  <li>whisper.cpp: MIT</li>
+  <li>rpunct: MIT</li>
+  <li>GRMR-2B: Apache 2.0</li>
+  <li>Qwen2.5: Apache 2.0</li>
+  <li>Cohere Transcribe: Apache 2.0</li>
+  <li>DeepFilterNet3: MIT</li>
+</ul>
+
+<hr>
+
+<h2 id="s10"><span class="sec">10</span>Final architecture</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>One shared Python core (UI, settings, history, clipboard, sync, post-processing, updates, overlay) sits on top of three platform back-ends. Each platform has a <strong>primary</strong> speech engine and a <strong>fallback</strong>: macOS leans on Apple's Neural Engine, Windows on NVIDIA or any-GPU DirectML, Linux on CUDA/CPU with a whisper.cpp fallback for ARM. The raw transcript then runs through the local clean-up stages, falling back to the cloud only for the heavy stuff.</p></div>
+</div>
+
+<details class="dev" open><summary><span class="devchip">Diagram</span> Shared core → three platform back-ends</summary>
+<pre><code>┌─────────────────────────────────────────────────────────┐
+│              SHARED CROSS-PLATFORM CORE (Python)         │
+│  UI · Settings · History · Clipboard · Cloud Sync ·     │
+│  Post-Processing Pipeline · Update System · Overlay      │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         ▼             ▼             ▼
+    ┌─────────┐  ┌──────────┐  ┌─────────┐
+    │  macOS  │  │ Windows  │  │  Linux  │
+    ├─────────┤  ├──────────┤  ├─────────┤
+    │PRIMARY: │  │PRIMARY:  │  │PRIMARY: │
+    │FluidAudio│ │faster-   │  │faster-  │
+    │Parakeet │  │whisper   │  │whisper  │
+    │(ANE)    │  │CUDA/CPU  │  │CUDA/CPU │
+    │         │  │          │  │         │
+    │FALLBACK:│  │SECONDARY:│  │FALLBACK:│
+    │faster-  │  │sherpa-   │  │whisper. │
+    │whisper  │  │onnx      │  │cpp      │
+    │(non-EU) │  │DirectML  │  │Vulkan/  │
+    │         │  │(any GPU) │  │ARM      │
+    └─────────┘  └──────────┘  └─────────┘</code></pre>
+</details>
+
+<h3>Post-processing pipeline (local)</h3>
+<details class="dev" open><summary><span class="devchip">Diagram</span> Raw transcript → staged local clean-up → cloud fallback</summary>
+<pre><code>Raw Transcript
+    │
+    ├─ Stage 1: rpunct (BERT) → Punctuation + Capitalisation
+    ├─ Stage 2: GRMR-2B → Grammar + Filler Removal  [optional]
+    ├─ Stage 3: Qwen2.5-1.5B → Mode Formatting
+    ├─ Stage 4: formatting.py → Surface Cleanup
+    │
+    └─ Fallback: Cloud (Cerebras) when local insufficient for heavy presets</code></pre>
+</details>
+
+<div class="doc-foot">
+  <span>Mumble — Architecture Review</span>
+  <span class="gold">2026-06-28</span>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Advertising Brief</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Brand &amp; Design Language</div>
+  <h1>Advertising Brief</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Document:</b> Complete Product, Feature &amp; UI/Brand Brief</div>
+    <div><span class="ico">◆</span><b>Audience:</b> An external AI that has never seen Mumble or its code</div>
+    <div><span class="ico">◆</span><b>Purpose:</b> Everything needed to produce advertising material — carousels, landing pages, app-store shots, social posts, motion mockups</div>
+    <div><span class="ico">◆</span><b>Status:</b> Ground truth — design tokens, components and behaviour reflect the actual product</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This is the master brand and design brief for <strong>Mumble</strong>, a desktop app that turns your voice into clean, ready-to-paste text. It is written for an AI that will make ads for Mumble but has <em>never</em> seen the app or its code — so it spells out exactly what Mumble is, every feature, and the precise look (colours, fonts, the "liquid glass" surfaces, the shimmer of light that moves across them).</p>
+    <p>Crucially, it ships <strong>real, copy-pasteable HTML + CSS</strong> for every piece of the interface, so an ad-maker can rebuild the look pixel-for-pixel. Those code recipes are tucked into collapsible "Code" panels throughout this page — open one whenever you want the exact values. Everything else stays in plain view.</p>
+    <p><strong>Treat the HTML/CSS blocks as ground truth.</strong> When in doubt, match the tokens in <a href="#s3">Section 3 (Design System)</a> — they are the actual values from the product.</p>
+  </div>
+</div>
+
+<blockquote>
+  <p><strong>Purpose of this document.</strong> You (the reader) are an AI that will produce advertising material — carousels, landing pages, app-store shots, social posts, motion mockups — for a desktop app called <strong>Mumble</strong>. You do <strong>not</strong> have access to its source code, so everything you need is here: what Mumble is, every feature, the exact visual language (colors, fonts, "liquid glass" surfaces, shimmer/sheen motion), and <strong>real, copy-pasteable HTML + CSS</strong> for each UI component so you can reproduce the look pixel-faithfully. Treat the HTML/CSS blocks as ground truth. When in doubt, match the tokens in <strong>§3 (Design System)</strong> — they are the actual values from the product.</p>
+</blockquote>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">What Mumble is (one-liner, elevator pitch, long version)</a></li>
+    <li><a href="#s2">Who it's for &amp; the core promise</a></li>
+    <li><a href="#s3">The Design System — single source of truth</a></li>
+    <li><a href="#s4">The Brand voice &amp; tagline bank</a></li>
+    <li><a href="#s5">The Floating Island (signature visual)</a></li>
+    <li><a href="#s6">The Companion Bar (Prompt toggle + Deck button)</a></li>
+    <li><a href="#s7">The Main Window — frame, title bar, navigation</a></li>
+    <li><a href="#s8">Home page</a></li>
+    <li><a href="#s9">The Deck (History hub) — the pinned palette</a></li>
+    <li><a href="#s10">Stats page</a></li>
+    <li><a href="#s11">Reader page</a></li>
+    <li><a href="#s12">Settings page</a></li>
+    <li><a href="#s13">Onboarding</a></li>
+    <li><a href="#s14">Feature-by-feature catalogue</a></li>
+    <li><a href="#s15">Component HTML/CSS library</a></li>
+    <li><a href="#s16">Motion &amp; animation language</a></li>
+    <li><a href="#s17">How to build the ad carousels</a></li>
+    <li><a href="#s18">Quick-reference cheat sheet</a></li>
+  </ol>
+</nav>
+
+
+<h2 id="s1"><span class="sec">1</span>What Mumble is</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Mumble lets you talk instead of type. Press one shortcut, speak, and Mumble writes out clean text wherever your cursor is — in an email, a chat box, a document, anywhere. The speech-to-text happens on your own machine (private), and an optional AI step can polish or reshape the result if you want it.</p></div>
+</div>
+
+<p><strong>One-liner:</strong> Mumble is a voice-first writing tool for Windows (with macOS and Linux editions) that turns what you say into polished, ready-to-paste text anywhere on your computer.</p>
+
+<p><strong>Elevator pitch:</strong> You press a global shortcut, speak naturally, and Mumble transcribes your voice <strong>locally</strong> (the audio never leaves your machine), then optionally runs it through an AI to clean it up, restructure it, draft an email, write a reply, translate it, summarise it — whatever the moment calls for. The result lands at your cursor in whatever app you're in: your email client, a chat box, a document, a code editor. A small <strong>floating island</strong> shows you what's happening; a permanently available <strong>Deck</strong> keeps every transcript, clipboard item and saved prompt one click away.</p>
+
+<p><strong>The long version.</strong> Mumble lives in your system tray and overlays the rest of your desktop. Its philosophy (internally called "The Big Shift") is <strong>you should think less; Mumble should infer more</strong> — instead of memorising modes and commands, you just talk, and Mumble figures out whether you wanted a tidy paragraph, a bulleted list, an email, or a reply to the thing you have highlighted. It is <strong>offline-first</strong> for transcription (speech-to-text runs on-device), and <strong>bring-your-own-AI</strong> for the optional polish step (you choose the provider/model, or run a local model). Everything you produce is stored locally and is browsable, searchable, favouritable, and re-runnable from the Deck.</p>
+
+<h3>What makes it distinctive (for ads)</h3>
+<ul>
+  <li><strong>Speak anywhere, paste anywhere</strong> — it's not an app you write <em>inside</em>; it injects text into whatever app already has your cursor.</li>
+  <li><strong>Local transcription</strong> — privacy as a first-class feature ("Audio transcribed locally").</li>
+  <li><strong>AI is optional and yours</strong> — connect Cerebras / OpenAI / Anthropic / DeepSeek / Groq, or run local.</li>
+  <li><strong>A gorgeous black-and-gold "liquid glass" interface</strong> with restrained, premium motion (sheen/shimmer on hover, a breathing island).</li>
+  <li><strong>The Deck</strong> — a pinned, always-there palette of everything you've said and copied.</li>
+</ul>
+
+
+<h2 id="s2"><span class="sec">2</span>Who it's for &amp; the core promise</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Mumble is for anyone who can talk faster than they type, and for people who care about privacy and don't want their voice sent to the cloud. The whole pitch fits in three words: <em>talk, get clean text, anywhere</em>.</p></div>
+</div>
+
+<p><strong>Audience:</strong> knowledge workers, writers, founders, developers, students, anyone who can talk faster than they type, and privacy-conscious users who don't want their voice sent to the cloud.</p>
+
+<p><strong>Core promise:</strong> <em>Talk. Get clean text. Anywhere.</em></p>
+
+<h3>Proof points to lean on in ad copy</h3>
+<ul>
+  <li>"Voice-first workflows"</li>
+  <li>"AI-enhanced output"</li>
+  <li>"Audio transcribed locally" (privacy)</li>
+  <li>"Your AI providers" (no lock-in)</li>
+  <li>Real local stats: words dictated, time saved (estimated vs typing), streaks, words-per-minute.</li>
+</ul>
+
+
+<h2 id="s3"><span class="sec">3</span>The Design System — single source of truth</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This section is the heart of copying Mumble's look. The aesthetic is called <strong>"Golden Black"</strong>: a near-black, warm, dark interface with a single brand accent — <strong>gold</strong> — plus a small set of functional accent colours that each have a job. Surfaces look like <strong>liquid glass</strong>. Motion is a quiet, classy <strong>sheen of light</strong> that sits or sweeps across the glass.</p>
+    <p>Below are the exact colour values, fonts, glass recipes, and the shimmer rules. The colour numbers (hex codes like <code>#D4AF37</code>) are the real ones from the product — match them precisely.</p>
+  </div>
+</div>
+
+<p>This is the heart of replicating Mumble. The aesthetic name is <strong>"Golden Black"</strong> — a near-black, warm, dark UI with a single brand accent (<strong>gold</strong>) and a small set of functional accent colors. Surfaces are <strong>liquid glass</strong>. Motion is a quiet <strong>specular sheen/shimmer</strong>.</p>
+
+<h3>3.1 Core principle — Black &amp; Gold only</h3>
+<p>Shades of black and gold are unlimited. <strong>Every other color is a functional highlight with a job:</strong> the per-mode accent colors, and status red/amber/green. No other decorative colors (no burgundy, no random blues except the functional email-mode blue).</p>
+
+<h3>3.2 The design tokens</h3>
+<p>These are the <em>actual</em> CSS custom properties Mumble uses. Use them everywhere. The tables below list every token by group; the collapsible panel holds the exact <code>:root</code> block to paste verbatim.</p>
+
+<h4>Near-black surfaces / elevation</h4>
+<table>
+  <thead><tr><th>Token</th><th>Value</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>--bg</code></td><td><code>#0A0A0B</code></td><td>page background, near-black</td></tr>
+    <tr><td><code>--surface</code></td><td><code>#121110</code></td><td>base surface</td></tr>
+    <tr><td><code>--surface-2</code></td><td><code>#16140F</code></td><td>secondary surface</td></tr>
+    <tr><td><code>--elevated</code></td><td><code>#1A1916</code></td><td>elevated surface</td></tr>
+    <tr><td><code>--elevated-2</code></td><td><code>#241F16</code></td><td>higher elevation</td></tr>
+    <tr><td><code>--border</code></td><td><code>#2A2820</code></td><td>border</td></tr>
+    <tr><td><code>--border-soft</code></td><td><code>#221E16</code></td><td>soft border</td></tr>
+    <tr><td><code>--track</code></td><td><code>#2A2418</code></td><td>switch / slider track</td></tr>
+  </tbody>
+</table>
+
+<h4>Gold family — the only brand accent</h4>
+<table>
+  <thead><tr><th>Token</th><th>Value</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>--gold</code></td><td><code>#D4AF37</code></td><td>brand gold</td></tr>
+    <tr><td><code>--gold-hi</code></td><td><code>#EBCB65</code></td><td>highlight gold</td></tr>
+    <tr><td><code>--gold-dim</code></td><td><code>#8C7320</code></td><td>dim gold</td></tr>
+    <tr><td><code>--gold-deep</code></td><td><code>#B8941F</code></td><td>deep gold</td></tr>
+  </tbody>
+</table>
+
+<h4>Warm text</h4>
+<table>
+  <thead><tr><th>Token</th><th>Value</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>--text</code></td><td><code>#F3EEE1</code></td><td>primary text</td></tr>
+    <tr><td><code>--text-dim</code></td><td><code>#B6AE99</code></td><td>dimmed text</td></tr>
+    <tr><td><code>--text-mute</code></td><td><code>#7C745F</code></td><td>muted text</td></tr>
+  </tbody>
+</table>
+
+<h4>Status (functional only)</h4>
+<table>
+  <thead><tr><th>Token</th><th>Value</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>--red</code></td><td><code>#D9544D</code></td><td>error / danger</td></tr>
+    <tr><td><code>--amber</code></td><td><code>#E0A92E</code></td><td>caution</td></tr>
+    <tr><td><code>--green</code></td><td><code>#5AB85A</code></td><td>success</td></tr>
+    <tr><td><code>--green-deep</code></td><td><code>#3A8A3A</code></td><td>deep success</td></tr>
+  </tbody>
+</table>
+
+<h4>Contractual per-mode accents (used everywhere a mode appears)</h4>
+<table>
+  <thead><tr><th>Token</th><th>Value</th><th>Colour</th><th>Mode meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>--mode-text</code></td><td><code>#D4AF37</code></td><td>gold</td><td>plain dictation</td></tr>
+    <tr><td><code>--mode-prompt</code></td><td><code>#A855F7</code></td><td>purple</td><td>builds an AI prompt</td></tr>
+    <tr><td><code>--mode-email</code></td><td><code>#5AA9E6</code></td><td>blue</td><td>drafts an email</td></tr>
+    <tr><td><code>--mode-list</code></td><td><code>#46C9A8</code></td><td>teal</td><td>bullet points</td></tr>
+    <tr><td><code>--mode-reply</code></td><td><code>#E8825A</code></td><td>coral</td><td>replies to material</td></tr>
+    <tr><td><code>--mode-foreign</code></td><td><code>#C7A36B</code></td><td>sand</td><td>preserves non-English</td></tr>
+    <tr><td><code>--mode-convert</code></td><td><code>#D86E9A</code></td><td>rose</td><td>router into other Smart Modes</td></tr>
+    <tr><td><code>--mode-context</code></td><td><code>#7ABFB0</code></td><td>teal</td><td>clipboard-source accent</td></tr>
+  </tbody>
+</table>
+
+<h4>Glass recipe ingredients, shadows, radii, easing, fonts</h4>
+<p>The glass ingredients are gold-tinted (<strong>not</strong> white-blue). Shadows come in small / medium / large; radii come in four steps; the spring easing curve has a slight overshoot. Exact values:</p>
+<table>
+  <thead><tr><th>Token</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td><code>--glass-grad</code></td><td><code>linear-gradient(145deg, rgba(30,28,23,0.90) 0%, rgba(18,17,16,0.94) 58%, rgba(23,22,18,0.91) 100%)</code></td></tr>
+    <tr><td><code>--glass-hi</code></td><td><code>inset 0 1px 0 rgba(245,238,222,0.085)</code></td></tr>
+    <tr><td><code>--glass-lo</code></td><td><code>inset 0 -1px 0 rgba(0,0,0,0.32)</code></td></tr>
+    <tr><td><code>--glass-edge</code></td><td><code>0 0 0 1px rgba(212,175,55,0.045)</code></td></tr>
+    <tr><td><code>--shadow-sm</code></td><td><code>0 2px 10px rgba(0,0,0,0.35)</code></td></tr>
+    <tr><td><code>--shadow-md</code></td><td><code>0 6px 26px rgba(0,0,0,0.50)</code></td></tr>
+    <tr><td><code>--shadow-lg</code></td><td><code>0 16px 50px rgba(0,0,0,0.60)</code></td></tr>
+    <tr><td><code>--r-sm / --r-md / --r-lg / --r-xl</code></td><td><code>10px / 14px / 18px / 24px</code></td></tr>
+    <tr><td><code>--ease-spring</code></td><td><code>cubic-bezier(0.34, 1.56, 0.64, 1)</code></td></tr>
+    <tr><td><code>--font</code></td><td><code>"Segoe UI", "Inter", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif</code></td></tr>
+    <tr><td><code>--mono</code></td><td><code>"Cascadia Code", "Consolas", ui-monospace, "SF Mono", monospace</code></td></tr>
+  </tbody>
+</table>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> The full <code>:root</code> token block (paste verbatim)</summary>
+  <pre><code>:root {
+  /* near-black surfaces / elevation */
+  --bg:          #0A0A0B;
+  --surface:     #121110;
+  --surface-2:   #16140F;
+  --elevated:    #1A1916;
+  --elevated-2:  #241F16;
+  --border:      #2A2820;
+  --border-soft: #221E16;
+  --track:       #2A2418;
+
+  /* gold family — the only brand accent */
+  --gold:        #D4AF37;
+  --gold-hi:     #EBCB65;
+  --gold-dim:    #8C7320;
+  --gold-deep:   #B8941F;
+
+  /* warm text */
+  --text:        #F3EEE1;
+  --text-dim:    #B6AE99;
+  --text-mute:   #7C745F;
+
+  /* status (functional only) */
+  --red:         #D9544D;
+  --amber:       #E0A92E;
+  --green:       #5AB85A;
+  --green-deep:  #3A8A3A;
+
+  /* contractual per-mode accents (used everywhere a mode appears) */
+  --mode-text:    #D4AF37; /* gold   — plain dictation              */
+  --mode-prompt:  #A855F7; /* purple — builds an AI prompt          */
+  --mode-email:   #5AA9E6; /* blue   — drafts an email              */
+  --mode-list:    #46C9A8; /* teal   — bullet points                */
+  --mode-reply:   #E8825A; /* coral  — replies to material          */
+  --mode-foreign: #C7A36B; /* sand   — preserves non-English        */
+  --mode-convert: #D86E9A; /* rose   — router into other Smart Modes */
+  --mode-context: #7ABFB0; /* teal   — clipboard-source accent      */
+
+  /* glass recipe ingredients (gold-tinted, NOT white-blue) */
+  --glass-grad:   linear-gradient(145deg, rgba(30,28,23,0.90) 0%, rgba(18,17,16,0.94) 58%, rgba(23,22,18,0.91) 100%);
+  --glass-hi:     inset 0 1px 0 rgba(245,238,222,0.085);
+  --glass-lo:     inset 0 -1px 0 rgba(0,0,0,0.32);
+  --glass-edge:   0 0 0 1px rgba(212,175,55,0.045);
+  --shadow-sm:    0 2px 10px rgba(0,0,0,0.35);
+  --shadow-md:    0 6px 26px rgba(0,0,0,0.50);
+  --shadow-lg:    0 16px 50px rgba(0,0,0,0.60);
+
+  --r-sm: 10px;  --r-md: 14px;  --r-lg: 18px;  --r-xl: 24px;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font: "Segoe UI", "Inter", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: "Cascadia Code", "Consolas", ui-monospace, "SF Mono", monospace;
+}</code></pre>
+</details>
+
+<h3>3.3 The page background (warm ambient glow on near-black)</h3>
+<p>The whole app sits on <code>#0A0A0B</code> with two faint, fixed gold radial glows top-left and top-right. They do not move when content scrolls.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Page <code>body</code> background</summary>
+  <pre><code>body {
+  font-family: var(--font);
+  color: var(--text);
+  background:
+    radial-gradient(ellipse 60% 42% at 22% -5%, rgba(212,175,55,0.05) 0%, transparent 68%),
+    radial-gradient(ellipse 50% 36% at 84% -2%, rgba(212,175,55,0.028) 0%, transparent 64%),
+    var(--bg);
+  background-attachment: fixed, fixed, fixed;
+  -webkit-font-smoothing: antialiased;
+}</code></pre>
+</details>
+
+<h3>3.4 Liquid glass — two recipes</h3>
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Mumble fakes the "frosted glass" look two ways. <strong>Real glass</strong> uses an actual blur of whatever is behind it — pretty but expensive for the computer, so it's used sparingly on small floating bits. <strong>Fake glass</strong> is the everyday card: a near-solid gold-tinted gradient with a thin highlight and a shadow, no blur at all — it looks the same on top of dark content but costs the GPU almost nothing.</p></div>
+</div>
+<p>Mumble uses two kinds of "glass" for performance and depth:</p>
+
+<p><strong>A) REAL glass</strong> — actual <code>backdrop-filter</code> blur. Reserved for <em>small chrome over content</em> (nav pill, status chip, the island, the Deck panel). Budget: ≈6–8 blurred elements per screen max.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> <code>.glass</code> — real backdrop-blur glass</summary>
+  <pre><code>.glass {
+  background: linear-gradient(145deg, rgba(40,37,30,0.55), rgba(20,19,16,0.55));
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(245,238,222,0.08);
+  box-shadow: var(--shadow-sm), var(--glass-hi);
+}</code></pre>
+</details>
+
+<p><strong>B) FAKE glass</strong> — the workhorse card. Near-opaque gold-tinted gradient + inset highlight + shadow, <strong>no</strong> blur (invisible behind 90%+ opacity, saves ~80% GPU). This is what most surfaces use.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> <code>.card</code> — fake glass, sheen, and hover lift</summary>
+  <pre><code>.card {
+  position: relative;
+  background: var(--glass-grad);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md), var(--glass-hi), var(--glass-lo), var(--glass-edge);
+}
+/* the layered-glass top sheen — one cheap gradient hairline */
+.card::before {
+  content: ""; position: absolute; top: 0; left: 8%; right: 8%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(245,238,222,0.10), transparent);
+  pointer-events: none;
+}
+.card.pad { padding: 20px; }
+/* hover: lift + gold-edge glow + soft top-light */
+.card.lift { transition: transform .25s var(--ease-spring), box-shadow .25s ease, border-color .25s ease; }
+.card.lift:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg), var(--glass-hi), 0 0 0 1px rgba(212,175,55,0.16), 0 14px 44px rgba(212,175,55,0.05);
+  border-color: rgba(212,175,55,0.26);
+}
+.card.lift::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(420px 130px at 50% 0%, rgba(245,238,222,0.055), transparent 70%);
+  opacity: 0; transition: opacity .25s ease;
+}
+.card.lift:hover::after { opacity: 1; }</code></pre>
+</details>
+
+<h3>3.5 SHIMMER — the signature motion (READ CAREFULLY)</h3>
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>The "shimmer" is the single most important motion detail, and it's easy to get wrong. It is <strong>not</strong> constant glitter. At rest, a faint band of light just <em>sits</em> still on each glass surface — parked, not moving — so nothing ever looks out of sync. Synced stillness reads as "crafted"; random twinkling reads as "broken."</p>
+    <p>The light only <strong>moves on hover</strong>: a single bright band sweeps across once, fast, and exits the edge — it never loops and never gets stuck. Buttons get a quick diagonal glint; the active navigation tab has a slow continuous shine; the big hero headline has its own travelling gold sheen.</p>
+  </div>
+</div>
+
+<p>Mumble's shimmer is <strong>not</strong> a constant glitter. The contract:</p>
+<ul>
+  <li><strong>At rest:</strong> a faint specular sheen <em>sits statically</em> on each glass surface (a diagonal light band parked off-centre). It does <strong>not</strong> animate — so no two widgets are ever out of sync (synced-stillness reads as "crafted," random twinkling reads as "broken").</li>
+  <li><strong>On hover:</strong> a bright light band <strong>sweeps across once, fast, then exits off the element</strong> (it does not loop, does not get "stuck").</li>
+  <li><strong>Buttons/sub-tabs:</strong> a quick diagonal <strong>glint</strong> sweeps across on hover.</li>
+  <li><strong>The active nav tab:</strong> a slow shine travels across it continuously.</li>
+  <li><strong>The hero headline only:</strong> an autonomous travelling gold sheen on the gold text.</li>
+</ul>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Shimmer — resting sheen, hover sweep, button glint, nav shine, hero sheen</summary>
+  <pre><code>/* Resting sheen that SITS on every glass card (parked, not animated) */
+.card::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(112deg, transparent 38%, rgba(245,238,222,0.06) 49%, rgba(212,175,55,0.05) 52%, transparent 61%);
+  background-size: 250% 100%; background-repeat: no-repeat;
+  background-position: 60% 0;          /* parked, static */
+  opacity: 0.85; transition: opacity 0.1s ease;
+}
+/* Hover = one bright sweep that exits off-element and holds (no loop, no stick) */
+@keyframes hoverSweep { from { background-position: 82% 0; } to { background-position: -85% 0; } }
+.card:hover::after {
+  background-image: linear-gradient(112deg, transparent 30%, rgba(245,238,222,0.16) 47%, rgba(255,247,214,0.22) 50%, rgba(212,175,55,0.16) 53%, transparent 70%);
+  opacity: 1; animation: hoverSweep 0.7s ease-out forwards;
+}
+
+/* Button / sub-tab glint on hover */
+.btn, .subtab { position: relative; overflow: hidden; }
+.btn::after, .subtab::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 45%; left: -65%;
+  background: linear-gradient(100deg, transparent, rgba(255,250,235,0.42) 50%, transparent);
+  transform: skewX(-18deg); pointer-events: none; opacity: 0;
+}
+.btn:hover::after, .subtab:hover::after { opacity: 1; animation: btnSheen 0.7s ease forwards; }
+@keyframes btnSheen { from { left: -65%; } to { left: 135%; } }
+
+/* Active nav tab: a slow continuous shine */
+.nav-btn.active { position: relative; overflow: hidden; }
+.nav-btn.active::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 38%; left: -55%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.35) 50%, transparent);
+  transform: skewX(-18deg); pointer-events: none;
+  animation: navShine 5.5s ease-in-out infinite;
+}
+@keyframes navShine { 0%,62% { transform: skewX(-18deg) translateX(0); } 100% { transform: skewX(-18deg) translateX(500%); } }
+
+/* Hero headline gold text — autonomous travelling sheen */
+@keyframes goldSheen { from { background-position: 210% 0; } to { background-position: -30% 0; } }</code></pre>
+</details>
+
+<h3>3.6 Visual tiers</h3>
+<p>Mumble ships three visual tiers the user can pick (so ads can show the richest):</p>
+<ul>
+  <li><strong>Basic / Standard</strong> — fake glass, static sheen, hover sweeps. Crisp, low-GPU.</li>
+  <li><strong>Enhanced</strong> (the showcase — use this for ads) — real glass in more places, ambient gold "dust" particles, a breathing hero glow, drifting blobs, glowing chart bars, the works. Body gets class <code>enhanced</code>.</li>
+  <li><strong>Lite / Resource-Saver</strong> — strips animation, blur, shadows for low-end machines.</li>
+</ul>
+<blockquote><p>For advertising, always depict <strong>Enhanced</strong>: it's the most beautiful and on-brand.</p></blockquote>
+
+<h3>3.7 Typography</h3>
+<ul>
+  <li><strong>UI font:</strong> Segoe UI / Inter / system sans. Tight letter-spacing on headings (<code>-0.01em</code> to <code>-0.02em</code>).</li>
+  <li><strong>Mono font:</strong> Cascadia Code / Consolas — used for keycaps and code.</li>
+  <li><strong>Brand name</strong> "Mumble": gold, weight 700, ~20px, <code>letter-spacing: -0.02em</code>.</li>
+  <li><strong>Page titles:</strong> ~21px, weight 700, <code>--text</code> color.</li>
+  <li><strong>Body:</strong> 12.5–13px, <code>--text-dim</code>, line-height ~1.5.</li>
+</ul>
+
+
+<h2 id="s4"><span class="sec">4</span>Brand voice &amp; tagline bank</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Mumble's voice is confident, warm and a little premium — "calm power," never shouty. Privacy and craft come up again and again. Below is a bank of taglines to use or remix, the vocabulary that fits, and the words to avoid (anything that implies your audio gets uploaded, or that frames Mumble as just another chatbot).</p></div>
+</div>
+
+<p><strong>Tone:</strong> confident, warm, precise, a little premium. Never shouty. Privacy and craft are recurring themes. "Calm power."</p>
+
+<h3>Tagline candidates (use/remix freely)</h3>
+<ul>
+  <li><em>Talk. Get clean text. Anywhere.</em></li>
+  <li><em>Your voice, polished — without leaving your machine.</em></li>
+  <li><em>Speak anywhere. Paste anywhere.</em></li>
+  <li><em>Dictation that thinks.</em></li>
+  <li><em>The voice layer for everything you write.</em></li>
+  <li><em>Say it once. Mumble shapes it.</em></li>
+</ul>
+
+<p><strong>Words that fit the brand:</strong> liquid glass, golden-black, on-device, local-first, effortless, polished, inferred, instant, anywhere, yours.</p>
+
+<p><strong>Words to avoid:</strong> "cloud-dependent," anything implying your audio is uploaded, generic "AI assistant" framing (Mumble is a <em>tool</em>, not a chatbot).</p>
+
+
+<h2 id="s5"><span class="sec">5</span>The Floating Island (signature visual)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The "Island" is Mumble's most recognisable element: a small glass pill that floats on top of everything on your screen while you dictate or while the AI works. It's see-through and click-through (it floats like a heads-up display), it glows gold, and it changes colour and label to show what's happening — Listening, Transcribing, drafting an Email, and so on. For ads, lead with this.</p></div>
+</div>
+
+<p>The <strong>Island</strong> is Mumble's most recognisable element: a small, floating, always-on-top <strong>liquid-glass capsule (pill)</strong> that appears over everything else on the desktop while you dictate or while AI is working. It is click-through and per-pixel transparent (a layered window), so it hovers like a HUD.</p>
+
+<h3>Exact look</h3>
+<ul>
+  <li>A <strong>rounded capsule</strong> (full pill ends), ~34px tall, min ~118px wide, growing with content. Centred in a ~460×64 canvas with room for its glow.</li>
+  <li><strong>Warm glass body:</strong> vertical gradient from <code>#1B1813</code> (top) to <code>#0B0A09</code> (bottom).</li>
+  <li><strong>Rim:</strong> a warm 1px hairline (<code>#3A3320</code>) with an inner top highlight (<code>#6A6047</code>).</li>
+  <li>A <strong>soft drop-shadow</strong> beneath and a <strong>gold glow halo</strong> around it.</li>
+  <li>A <strong>breathing gold rim</strong>, a slow <strong>travelling sheen</strong> across the glass, a <strong>ripple dot</strong>, an <strong>audio-reactive waveform</strong>, <strong>bouncing dots</strong> (thinking), and a <strong>shimmer text label</strong>.</li>
+  <li><strong>Per-state accent color</strong> drives the rim/dot/wave — using the same mode palette as §3.2.</li>
+</ul>
+
+<h3>Island states (each is a great ad beat)</h3>
+<table>
+  <thead><tr><th>State</th><th>Label</th><th>Color cue</th><th>What it means</th></tr></thead>
+  <tbody>
+    <tr><td>Idle/hidden</td><td>(gone)</td><td>—</td><td>nothing happening</td></tr>
+    <tr><td>Listening</td><td>"Listening"</td><td>gold dot pulsing</td><td>recording your voice; live waveform</td></tr>
+    <tr><td>Transcribing</td><td>"Transcribing…"</td><td>gold</td><td>turning audio → text on-device</td></tr>
+    <tr><td>Thinking/AI</td><td>mode name (e.g. "Email", "Reply")</td><td>the mode's color</td><td>AI is shaping the output; bouncing dots</td></tr>
+    <tr><td>Gathering context</td><td>dual-colour split + "Context + &lt;Mode&gt;"</td><td>two colors</td><td>pulling in a Deck/highlight source</td></tr>
+    <tr><td>Done/pasted</td><td>brief confirmation</td><td><span class="badge b-done">green</span></td><td>result pasted at the cursor</td></tr>
+    <tr><td>Error</td><td>short message</td><td><span class="badge" style="">red</span></td><td>something failed (honest, never silent)</td></tr>
+  </tbody>
+</table>
+
+<p><strong>HTML/CSS approximation of the Island for mockups</strong> — the real one is a Pillow-rendered native window, but this reproduces the look in a browser for carousels. To show another state, change the dot/wave color to a mode color (e.g. <code>#5AA9E6</code> for Email) and the label text.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Island — HTML markup + CSS</summary>
+  <pre><code>&lt;div class="island"&gt;
+  &lt;span class="island-dot"&gt;&lt;/span&gt;
+  &lt;div class="island-wave" aria-hidden="true"&gt;
+    &lt;span style="--dur:1.05s; animation-delay:.0s"&gt;&lt;/span&gt;
+    &lt;span style="--dur:1.25s; animation-delay:.12s"&gt;&lt;/span&gt;
+    &lt;span style="--dur:0.95s; animation-delay:.05s"&gt;&lt;/span&gt;
+    &lt;span style="--dur:1.15s; animation-delay:.18s"&gt;&lt;/span&gt;
+    &lt;span style="--dur:1.30s; animation-delay:.09s"&gt;&lt;/span&gt;
+    &lt;span style="--dur:1.00s; animation-delay:.22s"&gt;&lt;/span&gt;
+  &lt;/div&gt;
+  &lt;span class="island-label"&gt;Listening&lt;/span&gt;
+&lt;/div&gt;
+
+&lt;style&gt;
+.island {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 34px; padding: 0 14px; border-radius: 999px;
+  background: linear-gradient(180deg, #1B1813, #0B0A09);
+  border: 1px solid #3A3320;
+  box-shadow:
+    0 8px 30px rgba(0,0,0,0.55),               /* drop shadow */
+    0 0 22px rgba(212,175,55,0.20),            /* gold glow halo */
+    inset 0 1px 0 rgba(245,238,222,0.10);      /* top highlight */
+  color: #B6AE99; font: 600 12px "Segoe UI", system-ui, sans-serif;
+  position: relative; overflow: hidden;
+}
+/* travelling sheen across the glass */
+.island::after {
+  content:""; position:absolute; inset:0; pointer-events:none;
+  background: linear-gradient(100deg, transparent 40%, rgba(245,238,222,0.10) 50%, transparent 60%);
+  background-size: 250% 100%; animation: islandSheen 6s ease-in-out infinite;
+}
+@keyframes islandSheen { from { background-position: 200% 0; } to { background-position: -60% 0; } }
+.island-dot { width: 7px; height: 7px; border-radius: 50%; background: #D4AF37;
+  box-shadow: 0 0 8px rgba(212,175,55,0.8); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+.island-wave { display:flex; align-items:center; gap:3px; height:18px; }
+.island-wave span { width:3px; height:100%; border-radius:999px; background:#D4AF37; transform-origin:center;
+  animation: wave var(--dur,1.1s) ease-in-out infinite; }
+@keyframes wave { 0%{transform:scaleY(.2);opacity:.4} 50%{transform:scaleY(1);opacity:1} 100%{transform:scaleY(.2);opacity:.4} }
+.island-label { letter-spacing:.02em; }
+&lt;/style&gt;</code></pre>
+</details>
+
+
+<h2 id="s6"><span class="sec">6</span>The Companion Bar (Prompt toggle + Deck button)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Docked next to the Island is a tiny control strip with two buttons. <strong>Prompt</strong> turns your dictation into a structured AI prompt (it lights up with a purple ring when armed). <strong>Deck</strong> opens the Deck instantly. Like the Island, it floats on top and never steals focus from whatever you're working in.</p></div>
+</div>
+
+<p>Docked near the island is a tiny <strong>companion control bar</strong> — also a non-activating, always-on-top glass strip with two controls:</p>
+<ul>
+  <li><strong><code>[ ✦ Prompt ]</code></strong> — a toggle for "Prompt mode" (turn your dictation into a structured AI prompt). When on, a <strong>purple ring</strong> (the <code>--mode-prompt</code> color <code>#A855F7</code>) signals it.</li>
+  <li><strong><code>[ ▤ Deck ]</code></strong> — opens the Deck instantly.</li>
+</ul>
+<p>It uses the same warm glass capsule treatment as the island and never steals focus when clicked.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Companion bar — HTML markup + CSS</summary>
+  <pre><code>&lt;div class="companion"&gt;
+  &lt;button class="comp-btn comp-prompt is-on"&gt;✦ Prompt&lt;/button&gt;
+  &lt;button class="comp-btn comp-deck"&gt;▤ Deck&lt;/button&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.companion { display:inline-flex; gap:4px; padding:4px; border-radius:999px;
+  background: linear-gradient(180deg, #1B1813, #0B0A09); border:1px solid #3A3320;
+  box-shadow: 0 8px 30px rgba(0,0,0,.5), inset 0 1px 0 rgba(245,238,222,.10); }
+.comp-btn { padding:6px 12px; border-radius:999px; font:600 12px "Segoe UI",sans-serif; color:#B6AE99; }
+.comp-btn:hover { color:#F3EEE1; background:rgba(245,238,222,.05); }
+.comp-prompt.is-on { color:#1A1407; background:linear-gradient(135deg,#C77DFF,#A855F7);
+  box-shadow:0 0 14px rgba(168,85,247,.5); }   /* purple ring when armed */
+&lt;/style&gt;</code></pre>
+</details>
+
+
+<h2 id="s7"><span class="sec">7</span>The Main Window — frame, title bar, navigation</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The main window is a tall, resizable black-and-gold glass column (~960px wide, full work-area height). Top to bottom it goes: a <strong>title bar</strong> (centred Mumble logo plus a tiny "Listening" indicator), a <strong>navigation pill</strong> with five tabs, then whatever page is active.</p></div>
+</div>
+
+<p>The main app window is a <strong>tall, resizable column</strong> (~960px content width, fills the work-area height) of black-and-gold liquid glass. Structure top-to-bottom: <strong>title bar</strong> (centred brand + a tiny listening indicator) → <strong>nav pill</strong> → the active <strong>page</strong>.</p>
+
+<h3>7.1 Title bar + brand + listening indicator</h3>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Title bar — HTML markup + CSS</summary>
+  <pre><code>&lt;div class="titlebar"&gt;
+  &lt;div class="brand"&gt;
+    &lt;div class="brand-row"&gt;
+      &lt;span class="brand-badge"&gt;&lt;!-- mic/logo icon, gold --&gt;&lt;/span&gt;
+      &lt;span class="brand-name"&gt;Mumble&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class="status-chip is-recording"&gt;
+      &lt;span class="status-dot"&gt;&lt;/span&gt;
+      &lt;span class="status-text"&gt;Listening&lt;/span&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.titlebar { display:flex; align-items:center; justify-content:center; padding:18px 20px 8px; }
+.brand { display:flex; flex-direction:column; align-items:center; gap:3px; }
+.brand-row { display:flex; align-items:center; gap:10px; }
+.brand-badge { width:34px; height:34px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(160deg, rgba(212,175,55,.16), rgba(212,175,55,.05));
+  border:1px solid rgba(212,175,55,.22); box-shadow: inset 0 1px 0 rgba(245,238,222,.085); }
+.brand-name { color:var(--gold); font-weight:700; font-size:20px; letter-spacing:-.02em; }
+.status-chip { display:flex; align-items:center; gap:5px; }
+.status-dot { width:5px; height:5px; border-radius:50%; background:var(--green-deep); }
+.status-chip.is-recording .status-dot { background:var(--gold); animation:pulse 1.4s ease-in-out infinite; }
+.status-text { color:var(--text-mute); font-size:9px; letter-spacing:.05em; text-transform:uppercase; }
+&lt;/style&gt;</code></pre>
+</details>
+
+<h3>7.2 The navigation pill</h3>
+<p>Five destinations: <strong>Home · Deck · Stats · Reader · Settings</strong>. The active tab is a glossy <strong>gold</strong> pill with dark text and a travelling shine.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Navigation pill — HTML markup + CSS</summary>
+  <pre><code>&lt;div class="navbar"&gt;
+  &lt;nav class="nav"&gt;
+    &lt;button class="nav-btn active"&gt;Home&lt;/button&gt;
+    &lt;button class="nav-btn"&gt;Deck&lt;/button&gt;
+    &lt;button class="nav-btn"&gt;Stats&lt;/button&gt;
+    &lt;button class="nav-btn"&gt;Reader&lt;/button&gt;
+    &lt;button class="nav-btn"&gt;Settings&lt;/button&gt;
+  &lt;/nav&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.navbar { display:flex; justify-content:center; padding:10px 20px 14px; border-bottom:1px solid var(--border-soft); }
+.nav { display:inline-flex; gap:4px; padding:5px; border-radius:18px; }
+.nav-btn { padding:7px 18px; border-radius:14px; color:var(--text-dim); font-size:13px; font-weight:500;
+  transition: transform .18s var(--ease-spring), background .18s, color .18s; }
+.nav-btn:hover { color:var(--text); background:rgba(245,238,222,.04); transform:translateY(-1px); }
+.nav-btn.active { color:#1A1407; font-weight:650;
+  background:linear-gradient(135deg, var(--gold-hi) 0%, var(--gold) 100%);
+  box-shadow:0 4px 16px rgba(212,175,55,.30), inset 0 1px 0 rgba(255,255,255,.30), inset 0 -1px 0 rgba(0,0,0,.18); }
+&lt;/style&gt;</code></pre>
+</details>
+
+
+<h2 id="s8"><span class="sec">8</span>Home page</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The Home page is the landing screen inside the app. It centres on a <strong>hero</strong>: a big gold headline, a glowing live waveform, a "Start Recording" button (with its keyboard shortcut shown as a keycap), an "Open Deck" button, and a row of trust badges. Below that, cards explain the Smart Modes and show the default global shortcuts.</p></div>
+</div>
+
+<p>The landing page inside the app. A <strong>hero</strong> with the live waveform + record button, the two global shortcuts shown as keycaps, a row of value badges, and cards explaining the Smart Modes.</p>
+
+<p><strong>Hero anatomy:</strong> big gold headline, a glowing <strong>live waveform</strong> (52px of animated gold bars), a primary <strong>Start Recording</strong> button with its shortcut keycap, an <strong>Open Deck</strong> secondary button, then a row of trust badges.</p>
+
+<h3>Value badge row (real copy)</h3>
+<p>The four trust badges read: <strong>Voice-first workflows</strong> · <strong>AI-enhanced output</strong> · <strong>Audio transcribed locally</strong> (green shield) · <strong>Your AI providers</strong>.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Value badge row — HTML markup</summary>
+  <pre><code>&lt;div class="value-badges"&gt;
+  &lt;span&gt;&lt;span class="t-gold" data-icon="bolt"&gt;&lt;/span&gt; Voice-first workflows&lt;/span&gt;
+  &lt;span class="divider"&gt;&lt;/span&gt;
+  &lt;span&gt;&lt;span class="t-gold" data-icon="sparkle"&gt;&lt;/span&gt; AI-enhanced output&lt;/span&gt;
+  &lt;span class="divider"&gt;&lt;/span&gt;
+  &lt;span&gt;&lt;span class="t-green" data-icon="shield"&gt;&lt;/span&gt; Audio transcribed locally&lt;/span&gt;
+  &lt;span class="divider"&gt;&lt;/span&gt;
+  &lt;span&gt;&lt;span data-icon="plug"&gt;&lt;/span&gt; Your AI providers&lt;/span&gt;
+&lt;/div&gt;</code></pre>
+</details>
+
+<h3>Global shortcuts card (real defaults)</h3>
+<table>
+  <thead><tr><th>Action</th><th>Default shortcut</th></tr></thead>
+  <tbody>
+    <tr><td>Start / Stop Recording</td><td><code>Ctrl + Win</code></td></tr>
+    <tr><td>Paste Latest</td><td><code>Ctrl + Alt + V</code></td></tr>
+    <tr><td>Open Deck</td><td><code>Ctrl + Alt + H</code></td></tr>
+  </tbody>
+</table>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Global shortcuts card — HTML markup</summary>
+  <pre><code>&lt;div class="card pad lift"&gt;
+  &lt;div class="card-head"&gt;&lt;span class="icon-tile"&gt;⌨&lt;/span&gt;&lt;h3&gt;Global Shortcuts&lt;/h3&gt;&lt;/div&gt;
+  &lt;div class="rows"&gt;
+    &lt;div class="kv"&gt;&lt;span class="t-dim"&gt;Start / Stop Recording&lt;/span&gt;&lt;span class="kbd"&gt;Ctrl + Win&lt;/span&gt;&lt;/div&gt;
+    &lt;div class="kv"&gt;&lt;span class="t-dim"&gt;Paste Latest&lt;/span&gt;&lt;span class="kbd dim"&gt;Ctrl + Alt + V&lt;/span&gt;&lt;/div&gt;
+    &lt;div class="kv"&gt;&lt;span class="t-dim"&gt;Open Deck&lt;/span&gt;&lt;span class="kbd dim"&gt;Ctrl + Alt + H&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+</details>
+
+<h3>The live waveform</h3>
+<p>Use this exact CSS for any "it's listening" shot. It is 20 bars; each gets a random height via inline transform in the app.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Live waveform — HTML markup + CSS (20 bars, glow, waveA–E keyframes)</summary>
+  <pre><code>&lt;div id="hero-waveform" class="waveform recording"&gt;
+  &lt;!-- 20 bars; each gets a random height via inline transform in the app --&gt;
+  &lt;span class="wb wv-a"&gt;&lt;/span&gt;&lt;span class="wb wv-b"&gt;&lt;/span&gt;&lt;span class="wb wv-c"&gt;&lt;/span&gt;
+  &lt;span class="wb wv-d"&gt;&lt;/span&gt;&lt;span class="wb wv-e"&gt;&lt;/span&gt;&lt;!-- …repeat to 20 --&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.waveform { display:flex; align-items:center; justify-content:center; gap:3px; height:52px; }
+.waveform .wb { width:3px; border-radius:999px; background:var(--gold); transform-origin:center; }
+#hero-waveform { position:relative; }
+#hero-waveform::after { content:""; position:absolute; inset:-16px -26px; border-radius:32px; pointer-events:none;
+  background: radial-gradient(ellipse 60% 80% at 50% 50%, rgba(212,175,55,.16), transparent 72%);
+  opacity:.3; animation: glowPulse 5s ease-in-out infinite; }
+#hero-waveform.recording::after { animation-duration:1.4s; opacity:.55; }
+@keyframes glowPulse { 0%,100%{opacity:.2} 50%{opacity:.5} }
+.wv-a{animation:waveA var(--dur,1.1s) ease-in-out infinite}
+.wv-b{animation:waveB var(--dur,1.1s) ease-in-out infinite}
+.wv-c{animation:waveC var(--dur,1.1s) ease-in-out infinite}
+.wv-d{animation:waveD var(--dur,1.1s) ease-in-out infinite}
+.wv-e{animation:waveE var(--dur,1.1s) ease-in-out infinite}
+@keyframes waveA{0%{transform:scaleY(.15);opacity:.3}25%{transform:scaleY(.85);opacity:.9}50%{transform:scaleY(.35);opacity:.5}75%{transform:scaleY(1);opacity:1}100%{transform:scaleY(.15);opacity:.3}}
+@keyframes waveB{0%{transform:scaleY(.4);opacity:.5}30%{transform:scaleY(.2)}60%{transform:scaleY(.95);opacity:1}100%{transform:scaleY(.4);opacity:.5}}
+@keyframes waveC{0%{transform:scaleY(.7)}20%{transform:scaleY(.25)}55%{transform:scaleY(.9);opacity:.95}100%{transform:scaleY(.7)}}
+@keyframes waveD{0%{transform:scaleY(.9);opacity:.9}35%{transform:scaleY(.2)}65%{transform:scaleY(.75)}100%{transform:scaleY(.9);opacity:.9}}
+@keyframes waveE{0%{transform:scaleY(.55)}40%{transform:scaleY(1);opacity:1}70%{transform:scaleY(.2)}100%{transform:scaleY(.55)}}
+&lt;/style&gt;</code></pre>
+</details>
+
+
+<h2 id="s9"><span class="sec">9</span>The Deck (History hub) — the pinned palette</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>The Deck is Mumble's command centre: a searchable list of <em>everything</em> you've made or copied — transcripts, clipboard history, saved prompts, and starred favourites — plus a panel of Smart Modes and AI presets you can run on whatever items you tick.</p>
+    <p>Two things make it special for ads: it stays pinned on top of your other apps without ever stealing focus (it never "takes over"), and you can <strong>Capture</strong> highlighted text from any app straight into it. Tick some items, pick a preset, press Go, and the result pastes back where you were typing.</p>
+  </div>
+</div>
+
+<p>The <strong>Deck</strong> is Mumble's command-centre: a searchable list of <strong>everything</strong> you've made and copied — transcripts, clipboard history, saved prompts, and ★ favourites — plus an always-open panel of <strong>Smart Modes</strong> and <strong>AI presets</strong> you can run on selected items.</p>
+
+<h3>Key behaviours (great for ads)</h3>
+<ul>
+  <li><strong>Pinned floating palette:</strong> the Deck stays on top of your other apps and, while pinned, is <em>non-activating</em> — clicking it never steals focus from what you're working in, so it never "takes over."</li>
+  <li><strong>Capture highlighted text:</strong> highlight text in any app, click <strong>Capture</strong>, and it drops into the Deck as a "Captured selection" you can convert, tick, or run a preset on.</li>
+  <li><strong>Run AI on items:</strong> pick a preset (20 total: 17 built-in + 3 custom) and/or a Smart Mode, tick some items, press <strong>Go</strong> — the result pastes where you were typing.</li>
+  <li><strong>★ Favourite</strong> anything to keep it forever; <strong>Pre-AI ⇄ Post-AI</strong> toggle to see raw vs polished; grouped by Today / Yesterday / Older; full search, filters, sort.</li>
+</ul>
+
+<p><strong>Deck header (real structure):</strong> sub-tabs (Transcripts / Clipboard / Prompts / ★ Favourites) on the left; action buttons (Paste latest, Copy latest, <strong>Capture</strong>, <strong>Pin</strong>, Refresh, Pre/Post toggle, Clear all) on the right.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Deck toolbar — HTML markup</summary>
+  <pre><code>&lt;div class="deck-toolbar"&gt;
+  &lt;div class="subtabs"&gt;
+    &lt;button class="subtab active"&gt;Transcripts&lt;/button&gt;
+    &lt;button class="subtab"&gt;Clipboard&lt;/button&gt;
+    &lt;button class="subtab"&gt;Prompts&lt;/button&gt;
+    &lt;button class="subtab"&gt;★ Favourites&lt;/button&gt;
+  &lt;/div&gt;
+  &lt;div class="deck-actions"&gt;
+    &lt;button class="btn btn-sm"&gt;⎘ Paste latest&lt;/button&gt;
+    &lt;button class="btn btn-sm btn-ghost"&gt;⧉ Copy latest&lt;/button&gt;
+    &lt;button class="btn btn-sm btn-ghost"&gt;✦ Capture&lt;/button&gt;
+    &lt;button class="btn btn-sm btn-gold"&gt;📌 Pinned&lt;/button&gt;
+    &lt;button class="btn btn-sm btn-ghost"&gt;⟳ Refresh&lt;/button&gt;
+    &lt;button class="btn btn-sm btn-danger"&gt;🗑 Clear all&lt;/button&gt;
+  &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+</details>
+
+<h3>A Deck row / list item</h3>
+<p>A row can be a transcript, clip, prompt or captured selection. It shows a mode dot, a coloured mode tag, metadata (time · words · duration · wpm), copy/paste/star actions, and the text itself.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Deck row — HTML markup + CSS</summary>
+  <pre><code>&lt;div class="row"&gt;
+  &lt;div class="row-main"&gt;
+    &lt;div class="row-meta"&gt;
+      &lt;span class="mode-dot" style="background:var(--mode-email)"&gt;&lt;/span&gt;
+      &lt;span class="tag" style="color:var(--mode-email); background:color-mix(in srgb, var(--mode-email) 14%, transparent)"&gt;Email&lt;/span&gt;
+      &lt;span class="row-metatext"&gt;Today · 2:14pm · 48 words · 0:21 · 137 wpm&lt;/span&gt;
+      &lt;span class="row-actions"&gt;
+        &lt;button class="btn-icon"&gt;⎘&lt;/button&gt;&lt;button class="btn-icon"&gt;⧉&lt;/button&gt;
+        &lt;button class="star on"&gt;★&lt;/button&gt;
+      &lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class="row-text"&gt;Hi Sarah, thanks for the quick turnaround on the deck — the latest revision looks great, let's ship Friday as planned. Best, Alex&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.row { display:flex; gap:12px; padding:12px 14px; border-radius:14px;
+  background:var(--glass-grad); border:1px solid var(--border); box-shadow:var(--glass-hi);
+  transition: border-color .15s, transform .18s var(--ease-spring); }
+.row:hover { border-color:rgba(212,175,55,.22); transform:translateY(-1px); }
+.row-meta { display:flex; align-items:center; gap:8px; margin-bottom:5px; font-size:10.5px; color:var(--text-mute); }
+.tag { padding:2px 8px; border-radius:7px; font-size:10px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; }
+.row-text { font-size:12.5px; color:var(--text-dim); line-height:1.5; }
+.row-actions { margin-left:auto; display:flex; gap:2px; }
+.star.on { color:var(--gold); filter:drop-shadow(0 0 5px rgba(212,175,55,.65)); }
+.mode-dot { width:8px; height:8px; border-radius:50%; }
+&lt;/style&gt;</code></pre>
+</details>
+
+<h3>Smart Modes &amp; Presets panel (inside the Deck)</h3>
+<ul>
+  <li><strong>Smart Modes</strong> ("the shape of the output"): <code>prompt · email · list · reply · foreign</code> — each is a colored chip using its mode accent.</li>
+  <li><strong>Presets</strong> ("what the AI should do"), 17 built-in examples: Chat context, Focus, Deep Thinking, Summarise, Answer it, Reply, Continue, Improve, Fix errors, Make shorter, Expand, Explain simply, Key points, Action items, Humanise, Merge, Extract facts, Make formal, Critique, Outline (+ 3 user-custom slots).</li>
+</ul>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Mode chips — HTML markup + CSS</summary>
+  <pre><code>&lt;div class="mode-chips"&gt;
+  &lt;button class="mode-chip" style="--c:var(--mode-prompt)"&gt;prompt&lt;/button&gt;
+  &lt;button class="mode-chip on" style="--c:var(--mode-email)"&gt;email&lt;/button&gt;
+  &lt;button class="mode-chip" style="--c:var(--mode-list)"&gt;list&lt;/button&gt;
+  &lt;button class="mode-chip" style="--c:var(--mode-reply)"&gt;reply&lt;/button&gt;
+  &lt;button class="mode-chip" style="--c:var(--mode-foreign)"&gt;foreign&lt;/button&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.mode-chip { padding:6px 14px; border-radius:999px; font-size:12.5px; font-weight:600; color:var(--text-dim);
+  background:var(--elevated); border:1px solid var(--border); }
+.mode-chip.on { color:#1A1407; background:linear-gradient(135deg, color-mix(in srgb,var(--c) 80%,white), var(--c));
+  border-color:transparent; box-shadow:0 0 12px color-mix(in srgb, var(--c) 35%, transparent); }
+&lt;/style&gt;</code></pre>
+</details>
+
+
+<h2 id="s10"><span class="sec">10</span>Stats page</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The Stats page shows real, local-only numbers — <strong>nothing invented</strong>. Six headline tiles plus a set of charts let you see how much you've dictated, how much time you've saved versus typing, your streak, your speed, and when in the day you tend to dictate.</p></div>
+</div>
+
+<p>Real, local-only numbers — <strong>no invented metrics</strong>. Six tiles + charts.</p>
+
+<p><strong>Six stat tiles:</strong> Total words · Dictations · Time saved (≈ estimated vs typing) · Words today · Avg speed (wpm) · Streak (with best). Each tile: a colored icon chip, uppercase label, big gold number, a trend line (green ▲ when growing).</p>
+
+<div class="tiles">
+  <div class="tile"><div class="n">128,440</div><div class="l">Total words · ▲ 12% this week</div></div>
+  <div class="tile"><div class="n">Dictations</div><div class="l">count of recordings</div></div>
+  <div class="tile"><div class="n">Time saved</div><div class="l">≈ estimated vs typing</div></div>
+  <div class="tile"><div class="n">Words today</div><div class="l">today's running total</div></div>
+  <div class="tile"><div class="n">Avg speed</div><div class="l">words per minute</div></div>
+  <div class="tile"><div class="n">Streak</div><div class="l">current (with best)</div></div>
+</div>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Stat tiles — HTML markup + CSS</summary>
+  <pre><code>&lt;div class="tiles"&gt;
+  &lt;div class="tile"&gt;
+    &lt;div class="tile-head"&gt;&lt;span class="tile-ic" style="color:var(--gold)"&gt;✎&lt;/span&gt;&lt;span class="tile-lab"&gt;Total words&lt;/span&gt;&lt;/div&gt;
+    &lt;div class="num"&gt;128,440&lt;/div&gt;
+    &lt;div class="tile-trend"&gt;&lt;span class="delta up"&gt;▲ 12%&lt;/span&gt;&lt;span class="tile-sub"&gt; this week&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+  &lt;!-- repeat for Dictations, Time saved, Words today, Avg speed, Streak --&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+.tile { padding:16px; border-radius:18px; background:var(--glass-grad); border:1px solid var(--border);
+  box-shadow:var(--glass-hi), var(--glass-lo); transition:transform .2s var(--ease-spring), border-color .2s; }
+.tile:hover { transform:translateY(-2px); border-color:rgba(212,175,55,.22); }
+.tile .num { font-size:26px; font-weight:700; color:var(--gold); line-height:1; }
+.tile .lab,.tile-lab { font-size:11px; color:var(--text-mute); margin-top:6px; }
+.delta.up { color:var(--green); } .delta.down { color:var(--amber); }
+&lt;/style&gt;</code></pre>
+</details>
+
+<h3>Charts</h3>
+<p>A <strong>words-per-day bar chart</strong> (today's bar glows and gently pulses), a <strong>13-week activity heatmap</strong> (busier cells glow gold), a <strong>weekday rhythm</strong> chart, and a <strong>time-of-day</strong> chart (Morning/Afternoon/Evening/Night), plus a <strong>Smart-Mode mix</strong> of horizontal meter bars colored per mode.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Chart bars — CSS (today's bar glows)</summary>
+  <pre><code>.chart { display:flex; align-items:flex-end; gap:6px; height:150px; }
+.chart .bar { flex:1; border-radius:5px 5px 2px 2px; background:linear-gradient(180deg, var(--gold-dim), #6B5A1C); }
+.chart .bar.today { background:linear-gradient(180deg, var(--gold-hi), var(--gold-deep)); box-shadow:0 0 12px rgba(212,175,55,.25); }</code></pre>
+</details>
+
+
+<h2 id="s11"><span class="sec">11</span>Reader page</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The Reader is an offline text-to-speech player. Paste or pick some text and Mumble reads it aloud, lighting up each word in gold as it's spoken. It has play/pause controls and a library of saved pieces, in the same glass-and-gold style.</p></div>
+</div>
+
+<p>An offline <strong>text-to-speech</strong> reader: paste or pick text and Mumble reads it aloud with <strong>live word-by-word highlighting</strong> (the currently-spoken word lights up gold). A player with play/pause and a library of saved pieces. Same glass + gold treatment.</p>
+
+
+<h2 id="s12"><span class="sec">12</span>Settings page</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Settings is a stack of centred glass cards where you configure everything: your name, the keyboard shortcuts, Smart Modes, foreign-language options, which AI provider to use (with a key field and a test button), your microphone, the transcription model and language, history limits, the visual tier, your hardware tier, and updates.</p></div>
+</div>
+
+<p>Centered glass cards. Controls include: your <strong>name</strong>, <strong>shortcuts</strong> (rebindable, shown as keycaps), <strong>Smart Modes</strong>, <strong>Foreign-mode languages</strong>, <strong>AI providers</strong> (Cerebras / OpenAI / Anthropic / DeepSeek / Groq / local) with API-key fields + a test button, <strong>microphone</strong> picker + test, <strong>transcription model</strong> (Small by default) + language, <strong>history limits</strong>, <strong>visual effects</strong> (Basic / Standard / Enhanced), <strong>hardware tier</strong>, and <strong>updates</strong>.</p>
+
+<p><strong>A settings row + toggle switch (real component):</strong> a label + sub-label on the left, a gold toggle switch on the right (e.g. "Keep the Deck pinned — Floats on top; never steals focus").</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Settings row + toggle switch — HTML markup + CSS</summary>
+  <pre><code>&lt;div class="set-row"&gt;
+  &lt;div&gt;&lt;div class="set-label"&gt;Keep the Deck pinned&lt;/div&gt;&lt;div class="set-sub"&gt;Floats on top; never steals focus&lt;/div&gt;&lt;/div&gt;
+  &lt;label class="switch"&gt;&lt;input type="checkbox" checked&gt;&lt;span class="track"&gt;&lt;/span&gt;&lt;span class="thumb"&gt;&lt;/span&gt;&lt;/label&gt;
+&lt;/div&gt;
+&lt;style&gt;
+.set-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px 0; }
+.set-row + .set-row { border-top:1px solid var(--border-soft); }
+.set-label { font-size:13px; color:var(--text); font-weight:500; }
+.set-sub { font-size:11px; color:var(--text-mute); margin-top:2px; }
+.switch { position:relative; width:40px; height:22px; }
+.switch input { position:absolute; opacity:0; width:100%; height:100%; }
+.switch .track { position:absolute; inset:0; border-radius:999px; background:var(--track); border:1px solid var(--border); transition:.2s; }
+.switch .thumb { position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:var(--text-mute); transition:transform .22s var(--ease-spring); }
+.switch input:checked + .track { background:linear-gradient(135deg, var(--gold), var(--gold-deep)); border-color:transparent; }
+.switch input:checked + .track + .thumb { transform:translateX(18px); background:#1A1407; }
+&lt;/style&gt;</code></pre>
+</details>
+
+
+<h2 id="s13"><span class="sec">13</span>Onboarding</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>The first time you run Mumble, a short step-by-step wizard greets you, asks your name, lets you pick your hardware tier and language (English-only vs multilingual), choose a visual tier, and set up shortcuts (desktop/Start-menu icons, autostart). Same liquid-glass styling, with gold progress dots that pop when active.</p></div>
+</div>
+
+<p>A first-run wizard (multi-step, with progress dots) that: greets the user, asks their <strong>name</strong>, lets them pick <strong>PC class/hardware tier</strong> and <strong>language</strong> (English-only vs multilingual), choose a <strong>visual tier</strong>, and set up discoverability (desktop/Start-menu shortcuts, autostart). Same liquid-glass styling; gold progress dots that pop when active.</p>
+
+
+<h2 id="s14"><span class="sec">14</span>Feature-by-feature catalogue</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Every item below is its own ad-able feature. Pair each with the matching component or Island state from the earlier sections.</p></div>
+</div>
+
+<p>Each of these is its own ad-able feature. Pair each with the relevant component/state above.</p>
+
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">Push-to-talk dictation</div><p>Global shortcut (default <strong>Ctrl + Win</strong>) starts/stops recording from anywhere. The island appears; you speak; text is transcribed.</p></div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">Local (on-device) transcription</div><p>Speech-to-text runs on your machine. Privacy headline: <em>"Audio transcribed locally."</em> Model is configurable (Small by default; up to a Maximum Accuracy tier).</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">Auto-inferred Smart Modes</div><p>Mumble infers the shape of your output (plain text, email, list, reply, foreign, prompt) instead of you picking. Each mode has a contractual color (see §3.2).</p></div></div>
+  <div class="flow-step"><div class="flow-node">4</div><div class="flow-body"><div class="ft">AI polish (optional, bring-your-own)</div><p>Connect Cerebras / OpenAI / Anthropic / DeepSeek / Groq, or run a <strong>local</strong> model. The AI cleans grammar, restructures, drafts, etc. <em>Your</em> keys, <em>your</em> choice.</p></div></div>
+  <div class="flow-step"><div class="flow-node">5</div><div class="flow-body"><div class="ft">Presets (20)</div><p>One-tap transforms: Summarise, Reply, Improve, Make shorter, Expand, Action items, Make formal, Humanise, Extract facts, Outline, Critique, Explain simply, Key points, Fix errors, Continue, Answer it, Deep Thinking, Focus, Chat context, Merge + 3 custom.</p></div></div>
+  <div class="flow-step"><div class="flow-node">6</div><div class="flow-body"><div class="ft">Paste anywhere</div><p>Output is injected at your cursor in any app (email, chat, doc, IDE). Mumble is the layer, not the destination.</p></div></div>
+  <div class="flow-step"><div class="flow-node">7</div><div class="flow-body"><div class="ft">The Deck</div><p>Pinned, non-activating palette of transcripts + clipboard + prompts + favourites; search/filter/sort; run AI on selected items.</p></div></div>
+  <div class="flow-step"><div class="flow-node">8</div><div class="flow-body"><div class="ft">Capture highlighted text</div><p>Pull a selection from any app into the Deck with one click, then transform it.</p></div></div>
+  <div class="flow-step"><div class="flow-node">9</div><div class="flow-body"><div class="ft">Clipboard history</div><p>Everything you copy is captured (text + images with thumbnails), browsable in the Deck.</p></div></div>
+  <div class="flow-step"><div class="flow-node">10</div><div class="flow-body"><div class="ft">★ Favourites</div><p>Pin any item forever; favourites keep their original mode + color.</p></div></div>
+  <div class="flow-step"><div class="flow-node">11</div><div class="flow-body"><div class="ft">Pre-AI ⇄ Post-AI</div><p>See the raw transcript vs the AI-polished version side-by-side per item.</p></div></div>
+  <div class="flow-step"><div class="flow-node">12</div><div class="flow-body"><div class="ft">Paste-latest hotkey (Ctrl + Alt + V)</div><p>Instantly paste your most recent transcript.</p></div></div>
+  <div class="flow-step"><div class="flow-node">13</div><div class="flow-body"><div class="ft">Search hotkey</div><p>Search your selection (or voice-search) on Google / Perplexity / Brave.</p></div></div>
+  <div class="flow-step"><div class="flow-node">14</div><div class="flow-body"><div class="ft">Reader</div><p>Offline TTS that reads text aloud with live word highlighting.</p></div></div>
+  <div class="flow-step"><div class="flow-node">15</div><div class="flow-body"><div class="ft">Stats</div><p>Local analytics: words, time saved, streaks, wpm, when-you-dictate rhythm, mode mix.</p></div></div>
+  <div class="flow-step"><div class="flow-node">16</div><div class="flow-body"><div class="ft">Formatting is the AI's job</div><p>No spoken formatting commands (they misfired); structure comes from AI polish or List mode.</p></div></div>
+  <div class="flow-step"><div class="flow-node">17</div><div class="flow-body"><div class="ft">Visual tiers</div><p>Basic / Standard / Enhanced / Lite so it's beautiful on flagship machines and smooth on weak ones.</p></div></div>
+  <div class="flow-step"><div class="flow-node">18</div><div class="flow-body"><div class="ft">Cross-platform</div><p>Windows (primary), macOS, and Linux editions.</p></div></div>
+  <div class="flow-step"><div class="flow-node">19</div><div class="flow-body"><div class="ft">100% local data</div><p>Settings, history, transcripts, clipboard, prompts, favourites, stats all stored on the user's machine.</p></div></div>
+  <div class="flow-step"><div class="flow-node">20</div><div class="flow-body"><div class="ft">The Island + Companion bar</div><p>The always-on-top HUD and quick controls.</p></div></div>
+</div>
+
+
+<h2 id="s15"><span class="sec">15</span>Component HTML/CSS library (copy-paste)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>A grab-bag of ready-made building blocks — buttons, keycaps, chips/badges, and inputs — with their exact markup and CSS. Open a panel to copy the code for any one.</p></div>
+</div>
+
+<h3>Buttons</h3>
+<p>Variants: gold (primary), default, ghost, gold-outline, danger, and small.</p>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Buttons — HTML markup + CSS</summary>
+  <pre><code>&lt;button class="btn btn-gold"&gt;Start Recording&lt;/button&gt;
+&lt;button class="btn"&gt;Open Deck&lt;/button&gt;
+&lt;button class="btn btn-ghost"&gt;Refresh&lt;/button&gt;
+&lt;button class="btn btn-outline-gold"&gt;Connect&lt;/button&gt;
+&lt;button class="btn btn-danger"&gt;Clear all&lt;/button&gt;
+&lt;button class="btn btn-sm"&gt;Small&lt;/button&gt;
+&lt;style&gt;
+.btn { display:inline-flex; align-items:center; gap:8px; min-height:38px; padding:9px 16px; border-radius:14px;
+  font-size:13px; font-weight:600; color:var(--text); background:var(--elevated); border:1px solid var(--border);
+  transition: background .15s, color .15s, border-color .15s, transform .15s var(--ease-spring); }
+.btn:hover { background:var(--elevated-2); transform:translateY(-1px); }
+.btn-gold { color:#1A1407; border-color:transparent;
+  background:linear-gradient(135deg, var(--gold-hi) 0%, var(--gold) 100%);
+  box-shadow:0 4px 16px rgba(212,175,55,.22), inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.22); }
+.btn-gold:hover { background:linear-gradient(135deg,#F7DC8A 0%, var(--gold-hi) 55%, var(--gold) 100%); }
+.btn-ghost { background:transparent; }
+.btn-ghost:hover { background:rgba(245,238,222,.04); }
+.btn-outline-gold { color:var(--gold); background:rgba(212,175,55,.08); border-color:rgba(212,175,55,.30); }
+.btn-danger { color:var(--red); border-color:rgba(217,84,77,.30); background:rgba(217,84,77,.06); }
+.btn-sm { padding:6px 11px; font-size:12px; border-radius:10px; min-height:0; }
+&lt;/style&gt;</code></pre>
+</details>
+
+<h3>Keycaps</h3>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Keycaps — HTML markup + CSS</summary>
+  <pre><code>&lt;span class="kbd"&gt;Ctrl + Win&lt;/span&gt; &lt;span class="kbd dim"&gt;Ctrl + Alt + V&lt;/span&gt;
+&lt;style&gt;
+.kbd { display:inline-flex; align-items:center; justify-content:center; min-width:22px; padding:2px 7px; border-radius:7px;
+  font-family:var(--mono); font-size:11px; font-weight:600; color:var(--gold);
+  background:linear-gradient(145deg, rgba(245,238,222,.07), rgba(245,238,222,.02)); border:1px solid rgba(245,238,222,.10);
+  box-shadow:0 2px 6px rgba(0,0,0,.3), inset 0 1px 0 rgba(245,238,222,.10), inset 0 -1px 0 rgba(0,0,0,.22); }
+.kbd.dim { color:var(--text-dim); }
+&lt;/style&gt;</code></pre>
+</details>
+
+<h3>Chips &amp; badges</h3>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Chips &amp; badges — HTML markup + CSS</summary>
+  <pre><code>&lt;span class="chip"&gt;Clipboard&lt;/span&gt;
+&lt;span class="badge"&gt;PRO&lt;/span&gt;
+&lt;style&gt;
+.chip { display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:600;
+  background:var(--elevated); border:1px solid var(--border); color:var(--text-dim); }
+.badge { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:8px; font-size:10.5px; font-weight:600;
+  background:rgba(212,175,55,.12); border:1px solid rgba(212,175,55,.26); color:var(--gold); }
+&lt;/style&gt;</code></pre>
+</details>
+
+<h3>Inputs / select</h3>
+
+<details class="dev">
+  <summary><span class="devchip">Code</span> Inputs / select — HTML markup + CSS</summary>
+  <pre><code>&lt;input class="input" placeholder="Filter everything…"&gt;
+&lt;select class="select"&gt;&lt;option&gt;Newest first&lt;/option&gt;&lt;/select&gt;
+&lt;style&gt;
+.input,.select { width:100%; height:38px; padding:9px 12px; border-radius:14px; background:var(--surface-2);
+  border:1px solid var(--border); color:var(--text); font-size:13px; outline:none; transition:.15s; }
+.input::placeholder { color:var(--text-mute); }
+.input:focus,.select:focus { border-color:rgba(212,175,55,.45); box-shadow:0 0 0 3px rgba(212,175,55,.10); background:var(--surface); }
+&lt;/style&gt;</code></pre>
+</details>
+
+
+<h2 id="s16"><span class="sec">16</span>Motion &amp; animation language</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Mumble's motion is restrained and premium. Almost everything uses a springy easing curve with a tiny overshoot. At rest, very little moves — only the Island's breathing pulse and the live waveform. The interface comes alive on <strong>hover</strong>: cards lift and a light band sweeps across once. Never animate blur (it's slow to paint); animate only position and opacity.</p></div>
+</div>
+
+<ul>
+  <li><strong>Easing:</strong> almost everything uses the spring <code>cubic-bezier(0.34, 1.56, 0.64, 1)</code> — a slight overshoot that feels lively but premium.</li>
+  <li><strong>Idle motion is minimal:</strong> only the island's breathing pulse + the live recording waveform move at rest. Cards' sheen is <em>parked</em> (static). (In Enhanced tier, add: ambient gold dust, a breathing hero glow, drifting blobs, the today-bar pulse, the slow nav-tab shine.)</li>
+  <li><strong>Hover is where it comes alive:</strong> cards lift 3px + gain a gold edge-glow + a one-shot bright sheen sweeps across; buttons glint; rows lift 1px and gold-edge.</li>
+  <li><strong>Entrances:</strong> views fade-up 8px; modals/Deck scale-in from 98.5% with a 10px rise (<code>premIn</code>).</li>
+  <li><strong>Confirmations:</strong> a "saved ring" pulse; selected items "pop" (scale 0.95→1.05→1).</li>
+  <li><strong>Never animate <code>filter</code>/<code>backdrop-filter</code></strong> (paint-bound). Animate <code>transform</code>/<code>opacity</code> only.</li>
+</ul>
+
+<p>Keyframes worth reusing (also in §3.5): <code>pulse</code>, <code>glowPulse</code>, <code>hoverSweep</code>, <code>btnSheen</code>, <code>navShine</code>, <code>goldSheen</code>, <code>premIn</code>, <code>viewIn</code>, the wave set <code>waveA–E</code>.</p>
+
+
+<h2 id="s17"><span class="sec">17</span>How to build the ad carousels</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Rules of thumb for making the ads: keep it dark, lead with the Island or the glowing waveform (the most recognisable bits), let gold be the hero and use mode colours only as labels, depict the richest "Enhanced" tier, and give it lots of calm negative space. Below are a suggested nine-card carousel and a do/don't list.</p></div>
+</div>
+
+<h3>Format &amp; framing</h3>
+<ul>
+  <li>Always <strong>dark</strong> (<code>#0A0A0B</code> base with the two faint gold corner glows). Never put Mumble UI on a light background.</li>
+  <li>Lead with the <strong>island</strong> or the <strong>hero waveform</strong> — they are the most recognisable, most "alive" elements.</li>
+  <li>Gold is the hero accent; use mode colors only to label modes (email = blue, reply = coral, list = teal, prompt = purple, foreign = sand). Don't introduce off-palette colors.</li>
+  <li>Use <strong>Enhanced</strong> tier visuals (richest glass + glow).</li>
+  <li>Generous negative space; the UI is a tall, calm column.</li>
+</ul>
+
+<h3>Suggested carousel beats (1 idea per card)</h3>
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">Hook</div><p>The island over a blurred desktop — "Talk anywhere." (island Listening state)</p></div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">Speak</div><p>Hero waveform glowing — "Speak naturally."</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">Local</div><p>Lock/shield motif — "Transcribed on your device. Always."</p></div></div>
+  <div class="flow-step"><div class="flow-node">4</div><div class="flow-body"><div class="ft">Shape</div><p>The mode chips lighting up — "It knows what you meant" (email/list/reply).</p></div></div>
+  <div class="flow-step"><div class="flow-node">5</div><div class="flow-body"><div class="ft">Polish</div><p>Before/after text (Pre-AI → Post-AI) — "AI cleans it up. Your AI."</p></div></div>
+  <div class="flow-step"><div class="flow-node">6</div><div class="flow-body"><div class="ft">Paste</div><p>Text dropping into an email/chat — "Paste anywhere."</p></div></div>
+  <div class="flow-step"><div class="flow-node">7</div><div class="flow-body"><div class="ft">Deck</div><p>The pinned palette with Capture — "Everything you've said, one click away."</p></div></div>
+  <div class="flow-step"><div class="flow-node">8</div><div class="flow-body"><div class="ft">Proof</div><p>The Stats tiles — "12,000 words. 4 hours saved."</p></div></div>
+  <div class="flow-step"><div class="flow-node">9</div><div class="flow-body"><div class="ft">CTA</div><p>Brand badge + gold button — "Get Mumble."</p></div></div>
+</div>
+
+<h3>Do / Don't</h3>
+<div class="branch">
+  <div class="branch-col is-gold">
+    <h4><span class="dot"></span>Do</h4>
+    <ul>
+      <li>✅ Match the exact tokens; reuse the HTML/CSS blocks; keep motion subtle and synced.</li>
+      <li>✅ Show real copy ("Audio transcribed locally", "Your AI providers").</li>
+    </ul>
+  </div>
+  <div class="branch-col">
+    <h4><span class="dot"></span>Don't</h4>
+    <ul>
+      <li>❌ Don't invent metrics, don't use stock-blue "tech" gradients, don't make it glassy-white (Apple-style) — Mumble's glass is <strong>warm/gold-tinted on black</strong>.</li>
+      <li>❌ Don't depict the audio going to the cloud (transcription is local).</li>
+    </ul>
+  </div>
+</div>
+
+
+<h2 id="s18"><span class="sec">18</span>Quick-reference cheat sheet</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>Everything you need at a glance — the name, aesthetic, the key colours, radii, easing, fonts, the signature elements, default shortcuts, the page list, and the one-liner.</p></div>
+</div>
+
+<ul>
+  <li><strong>Name:</strong> Mumble · <strong>Aesthetic:</strong> "Golden Black" liquid glass · <strong>Base:</strong> <code>#0A0A0B</code></li>
+  <li><strong>Brand gold:</strong> <code>#D4AF37</code> (hi <code>#EBCB65</code>, deep <code>#B8941F</code>) · <strong>Text:</strong> <code>#F3EEE1</code> / dim <code>#B6AE99</code> / mute <code>#7C745F</code></li>
+  <li><strong>Mode colors:</strong> plain gold <code>#D4AF37</code> · prompt purple <code>#A855F7</code> · email blue <code>#5AA9E6</code> · list teal <code>#46C9A8</code> · reply coral <code>#E8825A</code> · foreign sand <code>#C7A36B</code> · convert rose <code>#D86E9A</code></li>
+  <li><strong>Status:</strong> red <code>#D9544D</code> · amber <code>#E0A92E</code> · green <code>#5AB85A</code></li>
+  <li><strong>Radii:</strong> 10 / 14 / 18 / 24px · <strong>Spring:</strong> <code>cubic-bezier(0.34,1.56,0.64,1)</code></li>
+  <li><strong>Font:</strong> Segoe UI / Inter (mono: Cascadia Code / Consolas)</li>
+  <li><strong>Signature elements:</strong> the floating <strong>Island</strong>, the <strong>gold live waveform</strong>, <strong>fake-glass cards</strong> with parked sheen + hover sweep, the <strong>gold nav pill</strong>, the <strong>Deck</strong> palette.</li>
+  <li><strong>Shortcuts (defaults):</strong> Record <strong>Ctrl + Win</strong> · Paste latest <strong>Ctrl + Alt + V</strong> · Open Deck <strong>Ctrl + Alt + H</strong></li>
+  <li><strong>Pages:</strong> Home · Deck · Stats · Reader · Settings</li>
+  <li><strong>One-liner:</strong> <em>Talk. Get clean text. Anywhere — transcribed locally, polished by your AI.</em></li>
+</ul>
+
+<blockquote>
+  <p><em>End of brief. Everything above reflects Mumble's actual design tokens, components, and behaviour. Build the ads to match these values exactly and the result will look like genuine Mumble.</em></p>
+</blockquote>
+
+<div class="doc-foot">
+  <span>Mumble — Advertising Brief</span>
+  <span class="gold">Golden Black · liquid glass</span>
+</div>
+
+</div>
+</body>
+</html>

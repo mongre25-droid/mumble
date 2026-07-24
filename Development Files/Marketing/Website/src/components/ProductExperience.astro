@@ -1,0 +1,208 @@
+---
+import { product } from '../data/release';
+
+const workflows = [
+  {
+    id: 'dictation',
+    label: 'Dictation',
+    index: '01',
+    kicker: 'Every app becomes voice-enabled',
+    title: 'Speak here. Use it there.',
+    body: 'Mumble listens only when you press the global hotkey, transcribes on your device, and pastes clean text exactly where you were working.',
+    points: ['Global Ctrl + Win shortcut', 'Local transcription by default', 'Clean text pasted at your cursor'],
+    image: '/product/home.webp',
+    alt: 'Mumble Home screen with a Start Recording control and the global dictation shortcut',
+  },
+  {
+    id: 'meetings',
+    label: 'Meetings',
+    index: '02',
+    kicker: 'From conversation to clarity',
+    title: 'Leave with the useful parts.',
+    body: 'Record from your selected microphone or import a WAV, MP3, FLAC, or OGG online-call recording, then turn it into a searchable working record.',
+    points: ['Pause, resume, replay, and export', 'Best-effort labels; summaries use your AI or local model', 'Local by default; Cloud follows your setting'],
+    image: '/product/meetings.webp',
+    alt: 'Mumble Meetings screen showing recording controls and a list of transcribed sessions',
+  },
+  {
+    id: 'modes',
+    label: 'Smart Modes',
+    index: '03',
+    kicker: 'Say the job, not just the words',
+    title: 'Your intent travels with your voice.',
+    body: `Switch the Island between Text, Prompt, Email, Reply, and Foreign modes. Add one of ${product.totalPresets} presets when you want AI to shape the result.`,
+    points: ['Text, Prompt, Email, Reply, and Foreign', `${product.builtInPresets} built-in presets plus ${product.customPresets} custom slots`, 'Searchable history inside the Deck'],
+    image: '/product/deck.webp',
+    alt: 'Mumble Deck screen showing searchable voice history and saved transcript items',
+  },
+  {
+    id: 'reader',
+    label: 'Reader',
+    index: '04',
+    kicker: 'Listen without losing your place',
+    title: 'Turn documents into a listening session.',
+    body: 'Open a document, choose a voice, and follow every spoken word in context. Reader uses OpenRouter TTS, so listening requires a network connection, your key, and provider credits.',
+    points: ['PDF, DOCX, EPUB, HTML, Markdown, and text', 'Saved library, collections, and progress', 'OpenRouter voices with spoken-word highlighting'],
+    image: '/product/reader.webp',
+    alt: 'Mumble Reader screen showing voice selection, a saved library, and listening progress',
+  },
+];
+---
+
+<section class="section product-section" id="product">
+  <div class="container">
+    <header class="section-heading split-heading reveal">
+      <div>
+        <p class="eyebrow"><span></span>See it work</p>
+        <h2>From thought to finished text.</h2>
+      </div>
+      <p>
+        Mumble disappears into the way you already work. One shortcut starts the
+        flow; the result arrives where your cursor was waiting.
+      </p>
+    </header>
+
+    <div class="dictation-demo reveal" data-dictation-demo>
+      <div class="demo-script">
+        <p class="demo-label">One shortcut, three steps</p>
+        <ol>
+          <li class="is-active" data-demo-step="0">
+            <span>01</span>
+            <div><strong>Press the hotkey</strong><small>From any app · Ctrl + Win</small></div>
+          </li>
+          <li data-demo-step="1">
+            <span>02</span>
+            <div><strong>Speak naturally</strong><small>No commands or rigid phrasing</small></div>
+          </li>
+          <li data-demo-step="2">
+            <span>03</span>
+            <div><strong>Keep working</strong><small>Clean text lands at your cursor</small></div>
+          </li>
+        </ol>
+        <button class="button button-outline demo-trigger" type="button" data-demo-trigger>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6V6Z" /></svg>
+          <span>Play the flow</span>
+        </button>
+      </div>
+
+      <div class="demo-canvas" data-demo-canvas>
+        <div class="demo-appbar">
+          <span><i></i><i></i><i></i></span>
+          <strong>Notes · Project brief</strong>
+          <small>Saved</small>
+        </div>
+        <div class="demo-document">
+          <span class="document-label">Launch positioning / Draft 02</span>
+          <h3>Why Mumble feels different</h3>
+          <p class="document-muted">Mumble removes the distance between a thought and the place it needs to go.</p>
+          <p class="demo-output" data-demo-output aria-live="polite" aria-atomic="true">
+            <span class="output-placeholder">Your next sentence will appear here.</span><i class="text-cursor"></i>
+          </p>
+        </div>
+        <div class="demo-island" data-demo-island>
+          <span class="island-live"></span>
+          <span class="mini-wave"><i></i><i></i><i></i><i></i><i></i></span>
+          <strong data-demo-status role="status" aria-live="polite">Ready</strong>
+          <kbd>Ctrl + Win</kbd>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section workflows-section" id="workflows">
+  <div class="container">
+    <header class="section-heading split-heading reveal">
+      <div>
+        <p class="eyebrow"><span></span>Four connected workflows</p>
+        <h2>One voice. More ways forward.</h2>
+      </div>
+      <p>Dictate, remember, shape, or listen without stitching together a stack of separate tools.</p>
+    </header>
+
+    <div class="workflow-switcher reveal" data-tabs>
+      <div class="workflow-tabs" role="tablist" aria-label="Mumble workflows">
+        {workflows.map((workflow, index) => (
+          <button
+            id={`tab-${workflow.id}`}
+            type="button"
+            role="tab"
+            aria-selected={index === 0 ? 'true' : 'false'}
+            aria-controls={`panel-${workflow.id}`}
+            tabindex={index === 0 ? '0' : '-1'}
+            data-tab={workflow.id}
+          >
+            <span>{workflow.index}</span>{workflow.label}
+          </button>
+        ))}
+      </div>
+
+      <div class="workflow-panels">
+        {workflows.map((workflow) => (
+          <article
+            class="workflow-panel"
+            id={`panel-${workflow.id}`}
+            role="tabpanel"
+            aria-labelledby={`tab-${workflow.id}`}
+            tabindex="0"
+            data-panel={workflow.id}
+          >
+            <div class="workflow-copy">
+              <p class="workflow-kicker">{workflow.kicker}</p>
+              <h3>{workflow.title}</h3>
+              <p>{workflow.body}</p>
+              <ul>
+                {workflow.points.map((point) => <li><span></span>{point}</li>)}
+              </ul>
+            </div>
+            <figure class="workflow-visual">
+              <div class="frame-bar" aria-hidden="true">
+                <span class="frame-dots"><i></i><i></i><i></i></span>
+                <span>mumble · {workflow.id}</span>
+                <span>{workflow.index} / 04</span>
+              </div>
+              <img src={workflow.image} width="1180" height="820" alt={workflow.alt} loading="lazy" />
+            </figure>
+          </article>
+        ))}
+      </div>
+    </div>
+
+    <div class="signature-grid">
+      <article class="signature-card island-card reveal">
+        <div class="card-index">A / The Island</div>
+        <div class="large-island" aria-hidden="true">
+          <span class="island-live"></span>
+          <span class="mini-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <strong>Text</strong>
+        </div>
+        <h3>Present when you need it. Invisible when you don’t.</h3>
+        <p>The always-on-top Island shows state and mode without stealing focus or blocking your work.</p>
+        <ul class="inline-specs"><li>Click-through</li><li>Always on top</li><li>Five modes</li></ul>
+      </article>
+
+      <article class="signature-card deck-card reveal delay-1">
+        <div class="card-index">B / The Deck</div>
+        <div class="deck-preview" aria-hidden="true">
+          <div><span>TEXT</span><small>Today · 42 words</small><p>Mumble removes the distance between a thought and the place it needs to go.</p></div>
+          <div><span>PROMPT</span><small>Today · 28 words</small><p>Turn these notes into a concise launch brief with clear next steps.</p></div>
+        </div>
+        <h3>Your working memory, ready to reuse.</h3>
+        <p>The Deck keeps dictations, captured clipboard text, favourites, prompts, and presets searchable in one place.</p>
+        <ul class="inline-specs"><li>Ctrl + Alt + D</li><li>Searchable</li><li>Local history</li></ul>
+      </article>
+    </div>
+
+    <div class="feature-inventory reveal">
+      <header><p class="eyebrow"><span></span>Also built in</p><h2>Depth without the clutter.</h2></header>
+      <div class="feature-list">
+        <article><span>01</span><h3>Capture + clipboard</h3><p>Pull highlighted text into the Deck and keep clipboard history close.</p></article>
+        <article><span>02</span><h3>Web search</h3><p>Turn highlighted text into a search with Ctrl + Alt + S.</p></article>
+        <article><span>03</span><h3>{product.totalPresets} AI presets</h3><p>{product.builtInPresets} useful starting points plus {product.customPresets} custom instructions of your own.</p></article>
+        <article><span>04</span><h3>Stats</h3><p>See words, dictations, time saved, streaks, and longer-term trends.</p></article>
+        <article><span>05</span><h3>Foreign Mode</h3><p>Preserve non-English terms using the languages you prioritise.</p></article>
+        <article><span>06</span><h3>Flexible exports</h3><p>Move meeting transcripts and results into the format you need.</p></article>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,695 @@
+/* ============================================================================
+   Mumble — ENHANCED visual mode (SHIPPED + DEFAULT, 2026-06-13)
+   ----------------------------------------------------------------------------
+   The top visual tier (above Basic and Standard), and the default. Gated by
+   body.enhanced (set from settings.ui_effects at boot). Real glass everywhere,
+   deeper light, ambient gold dust, richer motion. Deliberately spends more GPU
+   than Standard — that is the point of the tier; Basic is the low-end choice.
+   The PREMIUM block at the bottom pushes depth/glass/motion further still.
+   ========================================================================== */
+
+/* ---- glass tiers (owner perf, v0.9): TRUE backdrop-filter blur is the single
+   largest steady-state GPU cost — a focused window had a dozen+ live blur
+   regions (every card AND tile). Per the app.css design rule ("real
+   backdrop-filter ONLY on small chrome over content"), Enhanced now keeps real
+   blur on the HERO showpiece + the nav/chrome only; cards & tiles use opaque
+   "fake glass" (a rich gradient, see the PREMIUM block below) that is visually
+   near-identical at 90%+ opacity but costs nothing to composite. ---- */
+body.enhanced .card,
+body.enhanced .tile,
+body.enhanced .hero {
+  border-color: rgba(212,175,55,0.16);
+}
+body.enhanced .hero {
+  background: linear-gradient(145deg, rgba(34,31,24,0.58) 0%, rgba(16,15,13,0.66) 58%, rgba(24,22,17,0.60) 100%);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+}
+body.enhanced .card { box-shadow: 0 10px 38px rgba(0,0,0,0.55), inset 0 1px 0 rgba(245,238,222,0.12), 0 0 0 1px rgba(212,175,55,0.06); }
+body.enhanced .nav { backdrop-filter: blur(26px) saturate(160%); -webkit-backdrop-filter: blur(26px) saturate(160%); }
+
+/* ---- ambient gold dust: ONE drifting particle layer (owner perf: the second
+   full-viewport layer #app::after was collapsed into this one — its particles are
+   merged in below, so the dust stays as dense for half the compositing cost). ---- */
+body.enhanced #app::before {
+  content: ""; position: fixed; inset: -10% -5%; z-index: 0; pointer-events: none;
+  background-image:
+    radial-gradient(2px 2px at 12% 22%, rgba(212,175,55,0.55), transparent 60%),
+    radial-gradient(1.6px 1.6px at 34% 64%, rgba(235,203,101,0.42), transparent 60%),
+    radial-gradient(2.2px 2.2px at 58% 18%, rgba(212,175,55,0.36), transparent 60%),
+    radial-gradient(1.4px 1.4px at 76% 48%, rgba(235,203,101,0.5), transparent 60%),
+    radial-gradient(1.8px 1.8px at 90% 76%, rgba(212,175,55,0.4), transparent 60%),
+    radial-gradient(1.5px 1.5px at 22% 86%, rgba(235,203,101,0.34), transparent 60%),
+    radial-gradient(1.6px 1.6px at 18% 48%, rgba(212,175,55,0.34), transparent 60%),
+    radial-gradient(2px 2px at 44% 30%, rgba(235,203,101,0.3), transparent 60%),
+    radial-gradient(1.4px 1.4px at 66% 72%, rgba(212,175,55,0.42), transparent 60%),
+    radial-gradient(2.2px 2.2px at 84% 26%, rgba(235,203,101,0.32), transparent 60%),
+    radial-gradient(1.6px 1.6px at 8% 70%, rgba(212,175,55,0.3), transparent 60%);
+  animation: dustA 26s ease-in-out infinite alternate;
+  opacity: 0.5;
+}
+@keyframes dustA { from { transform: translate3d(0,0,0); } to { transform: translate3d(2.5%, -4%, 0); } }
+body.enhanced .view, body.enhanced .titlebar, body.enhanced .navbar { position: relative; z-index: 1; }
+
+/* ---- hero: living light ---------------------------------------------------- */
+body.enhanced .hero-glow {
+  opacity: 1;
+  background:
+    radial-gradient(ellipse 44% 64% at 24% 62%, rgba(212,175,55,0.16) 0%, transparent 58%),
+    radial-gradient(ellipse 40% 44% at 78% 20%, rgba(212,175,55,0.10) 0%, transparent 55%);
+  animation: heroBreathe 7s ease-in-out infinite;
+}
+@keyframes heroBreathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+/* a slow light sweep across the hero — the liquid in liquid glass */
+body.enhanced .hero::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 36%; left: -40%;
+  background: linear-gradient(100deg, transparent, rgba(245,238,222,0.045) 45%, rgba(212,175,55,0.06) 50%, transparent 60%);
+  transform: skewX(-12deg);
+  animation: heroSweep 9s ease-in-out infinite;
+  pointer-events: none;
+}
+/* GPU-composited sweep (owner perf): was animating `left` (layout/paint). Now a
+   fixed left:-40% start + translateX. Element width is 36% of the hero, so the
+   original 150%-of-hero travel = 150/0.36 ≈ 416.7% of the element. skewX kept. */
+@keyframes heroSweep {
+  0%   { transform: skewX(-12deg) translateX(0); }
+  55%  { transform: skewX(-12deg) translateX(416.7%); }
+  100% { transform: skewX(-12deg) translateX(416.7%); }
+}
+
+/* ---- waveform: bigger halo, brighter peaks -------------------------------- */
+body.enhanced #hero-waveform::after {
+  inset: -22px -36px;
+  background: radial-gradient(ellipse 62% 86% at 50% 50%, rgba(212,175,55,0.26), transparent 72%);
+  opacity: 0.5;
+}
+body.enhanced .waveform .wb { box-shadow: 0 0 6px rgba(212,175,55,0.35); }
+
+/* ---- record button: a quiet pulse ring invites the first press ------------ */
+body.enhanced #record-btn { position: relative; }
+body.enhanced #record-btn::after {
+  content: ""; position: absolute; inset: -3px; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 0 rgba(212,175,55,0.45);
+  animation: invite 2.6s ease-out infinite;
+}
+@keyframes invite {
+  0% { box-shadow: 0 0 0 0 rgba(212,175,55,0.40); }
+  60% { box-shadow: 0 0 0 9px rgba(212,175,55,0); }
+  100% { box-shadow: 0 0 0 9px rgba(212,175,55,0); }
+}
+
+/* ---- depth on hover: cards tilt toward the light --------------------------- */
+body.enhanced .card.lift:hover {
+  transform: translateY(-4px) scale(1.006);
+  border-color: rgba(212,175,55,0.34);
+  box-shadow: 0 22px 60px rgba(0,0,0,0.65), 0 0 0 1px rgba(212,175,55,0.22), 0 18px 56px rgba(212,175,55,0.08), inset 0 1px 0 rgba(245,238,222,0.14);
+}
+body.enhanced .icon-tile { box-shadow: 0 0 14px rgba(212,175,55,0.12), inset 0 1px 0 rgba(245,238,222,0.1); }
+body.enhanced .brand-name { text-shadow: 0 0 22px rgba(212,175,55,0.35); }
+
+/* ============================================================================
+   EVERYWHERE: the same language on History, Stats, Settings, the Deck,
+   onboarding, modals — one coherent experience (owner directive)
+   ========================================================================== */
+
+/* ambient aurora behind everything — two huge soft gold fields drifting */
+body.enhanced {
+  background:
+    radial-gradient(ellipse 70% 48% at 18% -8%, rgba(212,175,55,0.085) 0%, transparent 64%),
+    radial-gradient(ellipse 56% 40% at 86% -4%, rgba(212,175,55,0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 35% at 50% 110%, rgba(122,191,176,0.035) 0%, transparent 60%),
+    var(--bg);
+  background-attachment: fixed, fixed, fixed, fixed;
+}
+
+/* views breathe in on navigation */
+@keyframes viewIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+body.enhanced .view:not([hidden]) { animation: viewIn 0.32s var(--ease-spring); }
+
+/* nav pill: deeper active glow + springier hops */
+body.enhanced .nav-btn.active { box-shadow: 0 6px 24px rgba(212,175,55,0.45), inset 0 1px 0 rgba(255,255,255,0.34), inset 0 -1px 0 rgba(0,0,0,0.18); }
+body.enhanced .nav-btn:hover { transform: translateY(-2px); }
+
+/* History rows: glass, slide-light on hover, livelier stars.
+   No backdrop-filter here (owner v7 perf): a row's backdrop is the already-dark,
+   uniform list/app surface, so a 14px blur added no visible frosting — but it made
+   EVERY row its own live blur region (hundreds on a full History), one of the
+   heaviest steady-state compositor costs. A marginally more opaque gradient keeps
+   the identical glassy depth for free. Blur stays on the few large showpieces. */
+body.enhanced .row {
+  background: linear-gradient(145deg, rgba(32,29,23,0.72), rgba(17,16,14,0.82));
+}
+body.enhanced .row:hover { transform: translateY(-2px); border-color: rgba(212,175,55,0.30); box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 0 18px rgba(212,175,55,0.06); }
+@keyframes starPop { 40% { transform: scale(1.45) rotate(8deg); } }
+body.enhanced .star.on { animation: starPop 0.4s var(--ease-spring); filter: drop-shadow(0 0 6px rgba(212,175,55,0.6)); }
+body.enhanced .subtab.active { box-shadow: 0 4px 16px rgba(212,175,55,0.35); }
+body.enhanced .hist-group .hg-rule { background: linear-gradient(90deg, rgba(212,175,55,0.25), var(--border-soft)); }
+
+/* Stats: tiles glow by their accent, bars shine, heatmap cells pop on hover */
+body.enhanced .tile:hover { transform: translateY(-3px) scale(1.015); box-shadow: 0 14px 36px rgba(0,0,0,0.5), 0 0 22px rgba(212,175,55,0.08); }
+body.enhanced .tile .tile-ic { box-shadow: 0 0 12px color-mix(in srgb, currentColor 22%, transparent); }
+body.enhanced .chart .bar { background: linear-gradient(180deg, var(--gold), #6B5A1C); }
+body.enhanced .chart .bar.today { box-shadow: 0 0 16px rgba(212,175,55,0.45); }
+body.enhanced .hm-cell { transition: transform 0.12s ease, box-shadow 0.12s ease; }
+body.enhanced .hm-cell:hover { transform: scale(1.35); box-shadow: 0 0 8px rgba(212,175,55,0.5); z-index: 2; }
+body.enhanced .modebar-row .fill { box-shadow: 0 0 8px color-mix(in srgb, currentColor 25%, transparent); }
+
+/* Settings: glass cards, switches spring, selects glow on focus */
+body.enhanced [data-view="settings"] .card:hover { border-color: rgba(212,175,55,0.22); }
+body.enhanced .switch input:checked + .track { box-shadow: 0 0 12px rgba(212,175,55,0.35); }
+body.enhanced .switch .thumb { transition: transform 0.3s var(--ease-spring), background 0.2s ease; }
+body.enhanced .input:focus, body.enhanced .select:focus, body.enhanced .textarea:focus {
+  box-shadow: 0 0 0 3px rgba(212,175,55,0.14), 0 0 22px rgba(212,175,55,0.10);
+}
+body.enhanced .icon-tile { transition: transform 0.2s var(--ease-spring), box-shadow 0.2s ease; }
+body.enhanced .card:hover .icon-tile { transform: scale(1.08); box-shadow: 0 0 16px rgba(212,175,55,0.18); }
+
+/* Deck + modals + Update Center: deeper glass, richer entrance */
+body.enhanced .deck, body.enhanced .modal, body.enhanced .uc {
+  backdrop-filter: blur(28px) saturate(150%); -webkit-backdrop-filter: blur(28px) saturate(150%);
+  background: linear-gradient(145deg, rgba(28,25,20,0.82), rgba(13,12,10,0.9));
+}
+body.enhanced .overlay { backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); }
+body.enhanced .deck-item:hover { transform: translateX(3px); }
+body.enhanced .preset:hover { transform: translateX(3px) scale(1.01); }
+body.enhanced .toast { backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: var(--shadow-md), 0 0 24px rgba(212,175,55,0.10); }
+
+/* Page headers (History/Stats/Settings) — match the Home hero's glass depth in
+   Enhanced mode: real blur, a gold rim, a faint gold title glow and a soft
+   breathing glow. Gives every view the same showpiece quality as Home. */
+body.enhanced .page-header {
+  background: linear-gradient(145deg, rgba(34,31,24,0.58) 0%, rgba(16,15,13,0.66) 58%, rgba(24,22,17,0.60) 100%);
+  backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border-color: rgba(212,175,55,0.16);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(245,238,222,0.12), 0 0 0 1px rgba(212,175,55,0.07);
+}
+body.enhanced .page-header::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(ellipse 62% 130% at 50% 0%, rgba(212,175,55,0.10), transparent 64%);
+  animation: heroBreathe 7s ease-in-out infinite;
+}
+body.enhanced .page-title { text-shadow: 0 0 22px rgba(212,175,55,0.22); }
+
+/* onboarding: ambient blobs behind the wizard (UX-Pilot Followx) */
+@keyframes blobDrift { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(4%, -5%) scale(1.08); } }
+body.enhanced #onboarding::before {
+  content: ""; position: absolute; width: 420px; height: 420px; left: -120px; top: -120px;
+  border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(212,175,55,0.10), transparent 70%);
+  animation: blobDrift 14s ease-in-out infinite;
+}
+body.enhanced #onboarding::after {
+  content: ""; position: absolute; width: 360px; height: 360px; right: -100px; bottom: -100px;
+  border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(122,191,176,0.07), transparent 70%);
+  animation: blobDrift 18s ease-in-out infinite reverse;
+}
+
+/* chips + kbd: a faint shine that wakes on hover */
+body.enhanced .chip:hover, body.enhanced .badge:hover { border-color: rgba(212,175,55,0.4); box-shadow: 0 0 10px rgba(212,175,55,0.12); }
+body.enhanced .kbd { box-shadow: 0 2px 6px rgba(0,0,0,0.3), inset 0 1px 0 rgba(245,238,222,0.16), inset 0 -1px 0 rgba(0,0,0,0.22), 0 0 8px rgba(212,175,55,0.06); }
+
+/* HIDDEN WINDOW = ZERO ambient cost. When the window isn't visible, NOTHING in
+   Enhanced should keep animating — that's pure wasted GPU/CPU (owner). body.paused
+   (set on visibilitychange→hidden AND on the pywebview minimized event) must pause
+   EVERY continuous animation; this list is the complete set of Enhanced's looping
+   effects, so add any new one here too. The wave bars / island dots / status dot
+   are paused by the base rule in app.css. */
+body.enhanced.paused #app::before,        /* ambient gold dust (single layer) */
+body.enhanced.paused .hero::after,        /* hero light sweep (heroSweep) */
+body.enhanced.paused .hero-glow,          /* hero breathing glow (heroBreathe) */
+body.enhanced.paused .hero-glow::after,   /* hero particles A */
+body.enhanced.paused .hero-glow::before,  /* hero particles B */
+body.enhanced.paused #record-btn::after,  /* record-button invite pulse */
+body.enhanced.paused .page-header::after, /* page-header breathing glow */
+body.enhanced.paused #onboarding::before, /* onboarding ambient blobs */
+body.enhanced.paused #onboarding::after { animation-play-state: paused; }
+
+/* ============================================================================
+   PREMIUM (2026-06-13) — push depth, glass and motion further. Every card
+   becomes layered glass with a specular top edge and a gradient gold rim; the
+   hero gets a slow-rotating gold halo; light tracks the cursor.
+   ========================================================================== */
+
+/* Deeper, layered glass on cards/tiles/hero + a crisp specular top edge.
+   ::before draws a 1px bright gradient line along the top inner edge (the light
+   catching the glass) and a faint inner vignette for depth. */
+/* Cards & tiles: opaque "fake glass" — NO backdrop-filter (owner perf). The
+   gradient is bumped to ~0.93–0.96 opacity so it reads as deep glass without a
+   live blur region behind every card. The hero keeps real blur (one element). */
+body.enhanced .card, body.enhanced .tile {
+  position: relative;
+  background:
+    linear-gradient(145deg, rgba(40,36,28,0.94) 0%, rgba(17,16,13,0.96) 56%, rgba(27,25,19,0.94) 100%);
+  box-shadow:
+    0 14px 46px rgba(0,0,0,0.58),
+    inset 0 1px 0 rgba(245,238,222,0.14),
+    inset 0 0 40px rgba(0,0,0,0.22),
+    0 0 0 1px rgba(212,175,55,0.07);
+}
+body.enhanced .hero {
+  position: relative;
+  background:
+    linear-gradient(145deg, rgba(38,34,26,0.60) 0%, rgba(16,15,13,0.70) 56%, rgba(26,24,18,0.62) 100%);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow:
+    0 14px 46px rgba(0,0,0,0.58),
+    inset 0 1px 0 rgba(245,238,222,0.14),
+    inset 0 0 40px rgba(0,0,0,0.22),
+    0 0 0 1px rgba(212,175,55,0.07);
+}
+body.enhanced .card::before, body.enhanced .tile::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(245,238,222,0.10) 0%, transparent 14%);
+  -webkit-mask: linear-gradient(#000, transparent 40%);
+          mask: linear-gradient(#000, transparent 40%);
+}
+
+/* Hero edge: a STATIC soft gold glow at the top (no rotation). The old conic
+   rim travelled around the card border and read as "a rectangle spinning" —
+   removed (owner). This is a calm, fixed light catch. */
+body.enhanced .hero::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(ellipse 85% 55% at 50% -12%, rgba(212,175,55,0.12), transparent 62%);
+}
+
+/* Hero: floating gold PARTICLES (two parallax layers) instead of the rotating
+   halo (owner: "replace that with particle effects"). Gentle drift + twinkle —
+   gold motes suspended in the glass, never a spinning shape. Both layers are
+   clipped to the hero (overflow:hidden) and pause when the window is hidden. */
+body.enhanced .hero-glow::before, body.enhanced .hero-glow::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+}
+body.enhanced .hero-glow::after {
+  background-image:
+    radial-gradient(1.6px 1.6px at 14% 82%, rgba(235,203,101,0.85), transparent 60%),
+    radial-gradient(1.2px 1.2px at 28% 64%, rgba(212,175,55,0.7), transparent 60%),
+    radial-gradient(2px 2px at 44% 88%, rgba(235,203,101,0.6), transparent 60%),
+    radial-gradient(1.4px 1.4px at 60% 72%, rgba(212,175,55,0.75), transparent 60%),
+    radial-gradient(1.6px 1.6px at 78% 84%, rgba(235,203,101,0.65), transparent 60%),
+    radial-gradient(1.2px 1.2px at 90% 66%, rgba(212,175,55,0.6), transparent 60%);
+  animation: heroParticlesA 7s ease-in-out infinite;
+}
+body.enhanced .hero-glow::before {
+  background-image:
+    radial-gradient(1.3px 1.3px at 20% 70%, rgba(235,203,101,0.6), transparent 60%),
+    radial-gradient(1.6px 1.6px at 38% 86%, rgba(212,175,55,0.55), transparent 60%),
+    radial-gradient(1.1px 1.1px at 54% 60%, rgba(235,203,101,0.5), transparent 60%),
+    radial-gradient(1.5px 1.5px at 72% 90%, rgba(212,175,55,0.6), transparent 60%),
+    radial-gradient(1.2px 1.2px at 86% 74%, rgba(235,203,101,0.5), transparent 60%);
+  animation: heroParticlesB 11s ease-in-out infinite;
+}
+@keyframes heroParticlesA {
+  0%, 100% { transform: translateY(0); opacity: 0.45; }
+  50% { transform: translateY(-12px); opacity: 0.95; }
+}
+@keyframes heroParticlesB {
+  0%, 100% { transform: translate(0, 0); opacity: 0.35; }
+  50% { transform: translate(5px, -8px); opacity: 0.8; }
+}
+
+/* Cards lift higher and brighter, with a true specular sweep on hover. */
+/* overflow:hidden CLIPS the hover sheen to the card — without it the sheen
+   element (left:-50%) is visible OUTSIDE the card and slides in from the screen
+   edge instead of the card's own edge (owner report). */
+body.enhanced .card.lift { transition: transform 0.32s var(--ease-spring), box-shadow 0.32s ease, border-color 0.2s ease; overflow: hidden; }
+body.enhanced .card.lift:hover {
+  transform: translateY(-6px) scale(1.008);
+  box-shadow:
+    0 30px 70px rgba(0,0,0,0.7),
+    0 0 0 1px rgba(212,175,55,0.28),
+    0 20px 64px rgba(212,175,55,0.10),
+    inset 0 1px 0 rgba(245,238,222,0.18);
+}
+/* ============================================================================
+   SHIMMER — full overhaul (owner v4). The OLD behaviour ran an autonomous,
+   per-card STAGGERED glimmer (cardGlimmer + nth-child delays) → widgets
+   shimmering at different, unsynced times, which "looks broken". REMOVED.
+   New contract (also see the buttons / rows / tiles rules):
+     • REST  — a faint, low-opacity specular sheen passively SITS on the element.
+               It does NOT animate, so no two widgets are ever out of sync.
+     • HOVER — the PRIMARY shimmer: it snaps to strong + dramatic INSTANTLY
+               (only opacity transitions, ~80ms; the brighter gradient swaps in
+               with no fade), so it feels impactful, never a slow fade-in.
+   (Only the hero headline keeps its own autonomous goldSheen — intended.)
+   ========================================================================== */
+body.enhanced .card::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(112deg, transparent 38%, rgba(245,238,222,0.06) 49%, rgba(212,175,55,0.05) 52%, transparent 61%);
+  background-size: 250% 100%; background-repeat: no-repeat;
+  opacity: 0.85; transition: opacity 0.1s ease;
+  /* STATIC idle sheen (owner perf, v0.9). The old `widgetShimmer … infinite`
+     animated background-position — a PAINT-bound property — on every card
+     forever, repainting a dozen+ glass layers ~60fps while the window was
+     focused (the dominant cause of the "sluggish" feel, alongside per-card
+     blur). The sheen now simply SITS at a fixed position; hover still fires the
+     bright one-shot sweep below, so the interaction feedback is unchanged. */
+  background-position: 60% 0;
+}
+@keyframes widgetShimmer {
+  0%   { background-position: 185% 0; }
+  100% { background-position: -85% 0; }
+}
+/* hover = an INSTANT bright sweep that then EXITS. (owner v5: a separate
+   animation name forces a RESTART from frame 0 on hover, and frame 0 (82%) puts
+   the band already on the element → it appears immediately, no delay.)
+   owner v6 FIX — "stuck shimmer": the sweep now ENDS fully OFF the element
+   (-85% — the same swept-off position the idle keyframe used) and HOLDS there via
+   `forwards`. Before, it stopped one-shot at 4%, which is STILL on the element;
+   and because `:hover::after` keeps the bright gradient + opacity:1 applied for as
+   long as you hover, the band would SNAP back to the element's static rest
+   position (60% cards/tiles, 50% rows) and FREEZE there — a bright sheen stuck
+   under the cursor. Exiting off-element + forwards leaves only the other hover
+   cues (lift/glow), exactly like the button glint (btnSheen → left:135% forwards)
+   already does. */
+@keyframes hoverSweep { from { background-position: 82% 0; } to { background-position: -85% 0; } }
+body.enhanced .card:hover::after {
+  background-image: linear-gradient(112deg, transparent 30%, rgba(245,238,222,0.16) 47%, rgba(255,247,214,0.22) 50%, rgba(212,175,55,0.16) 53%, transparent 70%);
+  opacity: 1; animation: hoverSweep 0.7s ease-out forwards;
+}
+
+/* Reader cards: a subtle continuous shimmer (owner: the static sheen on
+   all cards was a perf win, but the Reader page has only 2-3 cards at any
+   time — the paint cost is negligible, and the sheen should feel alive like
+   it did before the v0.9 perf pass). The hover sweep above still fires on
+   :hover and exits cleanly; when the pointer leaves, the card drops back
+   into the globally phase-locked widgetShimmer cycle. */
+body.enhanced #reader-card::after,
+body.enhanced #reader-continue::after,
+body.enhanced #reader-nokey::after {
+  animation: widgetShimmer 6.5s linear infinite;
+  animation-delay: var(--shim-delay, 0s);
+}
+
+/* Brighter ambient dust (single layer now — owner perf). */
+body.enhanced #app::before { opacity: 0.62; }
+
+/* Nav pill: glossier active state with a moving inner highlight. */
+body.enhanced .nav-btn.active {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.10), transparent 60%);
+  box-shadow: 0 8px 28px rgba(212,175,55,0.5), inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -2px 6px rgba(0,0,0,0.22);
+}
+
+/* Buttons: gold gloss + a soft press depth. */
+body.enhanced .btn-gold {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.22), transparent 55%), linear-gradient(135deg, #F7DC8A, var(--gold-hi) 55%, var(--gold));
+  box-shadow: 0 6px 20px rgba(212,175,55,0.30), inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(0,0,0,0.22);
+}
+body.enhanced .btn-gold:active { transform: translateY(1px); }
+
+/* Modals / Deck: a soft scale-in entrance for a premium feel. */
+@keyframes premIn { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
+body.enhanced .deck, body.enhanced .modal, body.enhanced .uc, body.enhanced .update-center { animation: premIn 0.3s var(--ease-spring); }
+
+/* ============================================================================
+   PREMIUM++ (v3.7.0) — "more beauty, more glass, every page". Layers richer
+   liquid glass + decorative micro-detail across Stats, the chart, the heatmap,
+   the nav, buttons, chips, dots, presets and section headers, so History /
+   Stats / Settings / the Deck feel as crafted as Home. Enhanced-only; every
+   LOOPING (idle) animation is added to the body.paused list + the reduced-motion
+   guard at the bottom, so a hidden window (and an OS reduced-motion request)
+   still cost nothing. Hover/focus-only effects have no idle cost.
+   ========================================================================== */
+
+/* ---- Stat tiles: little glass gems. SAME shimmer contract as cards (owner v4):
+   a faint STATIC sheen at rest (no autonomous tileShine + no per-column stagger
+   — that was the unsynced flashing), snapping strong + instant on hover. */
+body.enhanced .tile { overflow: hidden; }
+body.enhanced .tile::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: linear-gradient(112deg, transparent 38%, rgba(245,238,222,0.06) 49%, rgba(212,175,55,0.05) 52%, transparent 61%);
+  background-size: 250% 100%; background-repeat: no-repeat;
+  opacity: 0.85; transition: opacity 0.1s ease;
+  background-position: 60% 0;   /* STATIC idle sheen — hover drives the sweep (owner perf, v0.9) */
+}
+body.enhanced .tile:hover::after {
+  background-image: linear-gradient(112deg, transparent 30%, rgba(245,238,222,0.16) 47%, rgba(255,247,214,0.22) 50%, rgba(212,175,55,0.16) 53%, transparent 70%);
+  opacity: 1; animation: hoverSweep 0.7s ease-out forwards;
+}
+body.enhanced .tile .num { text-shadow: 0 0 16px rgba(212,175,55,0.28); }
+body.enhanced .tile:hover {
+  box-shadow: 0 18px 44px rgba(0,0,0,0.55), 0 0 28px rgba(212,175,55,0.12),
+              inset 0 1px 0 rgba(245,238,222,0.16);
+}
+
+/* ---- Words-per-day chart: glossed bars, a glowing today bar that breathes. */
+body.enhanced .chart .bar {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.16), 0 0 10px rgba(212,175,55,0.08);
+}
+body.enhanced .chart .bar:hover { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 16px rgba(212,175,55,0.3); }
+body.enhanced .chart .bar.today { animation: barPulse 2.8s ease-in-out infinite; }
+@keyframes barPulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(212,175,55,0.25); }
+  50%      { box-shadow: 0 0 22px rgba(212,175,55,0.55); }
+}
+
+/* ---- Activity heatmap: the busier cells actually glow. */
+body.enhanced .hm-cell.hm3 { box-shadow: 0 0 6px rgba(169,138,40,0.45); }
+body.enhanced .hm-cell.hm4 { box-shadow: 0 0 9px rgba(226,194,90,0.65); }
+/* weekday rhythm bars get the same gloss */
+body.enhanced .wd-bar { box-shadow: inset 0 1px 0 rgba(255,255,255,0.14); }
+
+/* ---- Nav pill: a slow shine travels across the active tab. */
+body.enhanced .nav-btn.active { position: relative; overflow: hidden; }
+body.enhanced .nav-btn.active::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 38%; left: -55%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,0.35) 50%, transparent);
+  transform: skewX(-18deg); pointer-events: none;
+  animation: navShine 5.5s ease-in-out infinite;
+}
+/* GPU-composited (owner perf): was animating `left`. left:-55% start + translateX;
+   element width 38% of the pill, original 190% travel = 190/0.38 = 500% of element. */
+@keyframes navShine {
+  0%, 62% { transform: skewX(-18deg) translateX(0); }
+  100%    { transform: skewX(-18deg) translateX(500%); }
+}
+
+/* ---- Buttons + sub-tabs: a quick light-sweep glint on hover — INSTANT (fires
+   the moment the pointer enters), one-shot, clipped to the control. This is the
+   missing shimmer coverage (owner v4 §1b): the History toolbar (Refresh / Show
+   / Post / Clear all), the sub-tabs (Transcripts / Clipboard / Prompts /
+   Favourites) and every other .btn now glint on hover, same as the gold ones. */
+body.enhanced .btn, body.enhanced .subtab { position: relative; overflow: hidden; }
+body.enhanced .btn::after, body.enhanced .subtab::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 45%; left: -65%;
+  background: linear-gradient(100deg, transparent, rgba(255,250,235,0.42) 50%, transparent);
+  transform: skewX(-18deg); pointer-events: none; opacity: 0;
+}
+body.enhanced .btn:hover::after, body.enhanced .subtab:hover::after { opacity: 1; animation: btnSheen 0.7s ease forwards; }
+@keyframes btnSheen { from { left: -65%; } to { left: 135%; } }
+
+/* ---- Section headers: a gradient gold rule + a faintly lit title. */
+body.enhanced .section-head .rule {
+  background: linear-gradient(90deg, rgba(212,175,55,0.45), rgba(212,175,55,0.08) 38%, var(--border));
+}
+body.enhanced .section-head h2 { text-shadow: 0 0 14px rgba(212,175,55,0.16); }
+
+/* ---- Mode/status dots + chips: a soft glow so colour reads as light. */
+body.enhanced .dot { box-shadow: 0 0 8px rgba(212,175,55,0.40); }
+body.enhanced .status-chip { box-shadow: var(--shadow-sm), 0 0 16px rgba(212,175,55,0.06); }
+body.enhanced .status-chip.is-recording { box-shadow: var(--shadow-sm), 0 0 20px rgba(212,175,55,0.32); }
+body.enhanced .chip:hover, body.enhanced .badge:hover { transform: translateY(-1px); }
+
+/* ---- Settings: icon tiles flare on card hover; switches glow brighter on. */
+body.enhanced .card:hover .icon-tile {
+  transform: scale(1.1); box-shadow: 0 0 18px rgba(212,175,55,0.28), inset 0 1px 0 rgba(245,238,222,0.14);
+}
+body.enhanced .switch input:checked + .track { box-shadow: 0 0 14px rgba(212,175,55,0.45), inset 0 0 6px rgba(255,255,255,0.18); }
+body.enhanced .lang-chip.on { box-shadow: 0 0 0 1px color-mix(in srgb, var(--mode-foreign) 40%, transparent), 0 0 14px color-mix(in srgb, var(--mode-foreign) 30%, transparent); }
+
+/* ---- The Deck: presets + mode chips glow; the picked ones wear a gold rim. */
+body.enhanced .preset:hover {
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4), 0 0 14px rgba(212,175,55,0.12), inset 0 1px 0 rgba(245,238,222,0.07);
+}
+body.enhanced .preset.on { box-shadow: 0 0 0 1px var(--gold), 0 0 16px rgba(212,175,55,0.22); }
+body.enhanced .deck-item:hover { box-shadow: 0 0 14px rgba(212,175,55,0.08); }
+body.enhanced .mode-chip.on { box-shadow: 0 0 12px color-mix(in srgb, currentColor 35%, transparent); }
+body.enhanced .deck-item.checked { box-shadow: 0 0 12px color-mix(in srgb, var(--mode-context) 30%, transparent); }
+
+/* ---- Inputs: a slightly richer focus ring (transition already in app.css). */
+body.enhanced .input:focus, body.enhanced .select:focus, body.enhanced .textarea:focus {
+  box-shadow: 0 0 0 3px rgba(212,175,55,0.16), 0 0 24px rgba(212,175,55,0.12), inset 0 1px 0 rgba(245,238,222,0.06);
+}
+
+/* ---- History rows: a gold left-accent wakes on hover (depth + focus cue). */
+body.enhanced .row { position: relative; }
+body.enhanced .row::before {
+  content: ""; position: absolute; left: 0; top: 18%; bottom: 18%; width: 2px;
+  border-radius: 0 2px 2px 0; background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+  opacity: 0; transition: opacity 0.18s ease; pointer-events: none;
+}
+body.enhanced .row:hover::before { opacity: 0.85; }
+/* History rows: a faint STATIC sheen at rest, strong + instant on hover (owner
+   v4 §1b: every transcript / history row must shimmer, not just cards). Faint
+   enough to keep the text crisp. HOVER-ONLY (owner perf): the idle travelling
+   `animation: widgetShimmer … infinite` was removed here — on a long History list
+   it was repainting hundreds of rows every frame, the biggest steady-state cost.
+   Cards/tiles keep the continuous shimmer; the row sheen now just sits still and
+   only sweeps on :hover. */
+body.enhanced .row::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(112deg, transparent 40%, rgba(245,238,222,0.05) 49%, rgba(212,175,55,0.04) 52%, transparent 61%);
+  background-size: 250% 100%; background-repeat: no-repeat;
+  background-position: 50% 0;   /* park the static sheen mid-row (no animation drives it now) */
+  opacity: 0.8; transition: opacity 0.1s ease;
+}
+body.enhanced .row:hover::after {
+  background-image: linear-gradient(112deg, transparent 30%, rgba(245,238,222,0.13) 47%, rgba(255,247,214,0.17) 50%, rgba(212,175,55,0.12) 53%, transparent 70%);
+  opacity: 1; animation: hoverSweep 0.7s ease-out forwards;
+}
+/* (the "● Current" clipboard row keeps its own gold accent from app.css) */
+
+/* ---- Page headers: a touch more presence to anchor each page. */
+body.enhanced .page-title { letter-spacing: -0.015em; }
+body.enhanced .page-header { box-shadow: 0 14px 44px rgba(0,0,0,0.55), inset 0 1px 0 rgba(245,238,222,0.14), 0 0 0 1px rgba(212,175,55,0.09); }
+/* A slow light-sweep across the History/Stats/Settings header band — gives
+   every page the SAME visible shimmer Home's hero has, and replaces the
+   barely-visible glow on Settings with something you can actually see (owner).
+   Clipped to the header (page-header has overflow:hidden). */
+body.enhanced .page-header-content { position: relative; overflow: hidden; }
+body.enhanced .page-header-content::after {
+  content: ""; position: absolute; top: -50%; bottom: -50%; width: 45%; left: -60%;
+  background: linear-gradient(100deg, transparent, rgba(245,238,222,0.06) 45%, rgba(212,175,55,0.08) 52%, transparent 64%);
+  transform: skewX(-14deg); pointer-events: none;
+  animation: pageHeaderShine 7s ease-in-out infinite;
+}
+/* GPU-composited (owner perf): was animating `left`. left:-60% start + translateX;
+   element width 45% of the header, original 190% travel = 190/0.45 ≈ 422.2% of element. */
+@keyframes pageHeaderShine {
+  0%, 66% { transform: skewX(-14deg) translateX(0); }
+  100%    { transform: skewX(-14deg) translateX(422.2%); }
+}
+body.enhanced.paused .page-header-content::after { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { body.enhanced .page-header-content::after { animation: none; } }
+
+/* §2 (owner v4) — Stats & Settings cards get the FULL enhanced lift on hover
+   (the base lift lives in app.css). Matches the depth of the Home .lift cards
+   so every widget pops identically. Scoped to exclude the Share-preview card. */
+body.enhanced [data-view="stats"] .card:hover,
+body.enhanced [data-view="settings"] > .card:hover {
+  transform: translateY(-6px) scale(1.006);
+  box-shadow: 0 30px 70px rgba(0,0,0,0.7), 0 0 0 1px rgba(212,175,55,0.30),
+              0 20px 64px rgba(212,175,55,0.10), inset 0 1px 0 rgba(245,238,222,0.18);
+}
+
+/* ---- Hidden window = zero cost: pause every idle loop (incl. the continuous
+   widget shimmer on cards/tiles/rows) when the window isn't visible. ---- */
+body.enhanced.paused .card::after,
+body.enhanced.paused .tile::after,
+body.enhanced.paused .chart .bar.today,
+body.enhanced.paused .nav-btn.active::after { animation-play-state: paused; }
+
+/* Toggle to true reduced-motion if the OS asks (no travelling shimmer then). */
+@media (prefers-reduced-motion: reduce) {
+  body.enhanced .hero-glow::after, body.enhanced .hero-glow::before,
+  body.enhanced .card::after, body.enhanced .tile::after,
+  body.enhanced #reader-card::after, body.enhanced #reader-continue::after,
+  body.enhanced #reader-nokey::after,
+  body.enhanced .chart .bar.today,
+  body.enhanced .nav-btn.active::after { animation: none; }
+}
+
+/* ============================================================================
+   PREMIUM+++ (v3.7.1) — "even more beauty + effects", still optimised. A film
+   grain for true frosted-glass texture, a slow drifting bokeh light for depth,
+   a shimmering gold headline, brighter icon/wave glow, and a warm vignette on
+   modal backdrops. The two new IDLE loops (bokehDrift, goldSheen) join the pause
+   list + the reduced-motion guard, so a hidden window still costs nothing; the
+   grain + glows are static (zero runtime cost).
+   ========================================================================== */
+
+/* ---- Filmic grain over everything — makes the glass read as real frosted
+   glass rather than flat fills. Static SVG noise, ~2.5% opacity, click-through. */
+body.enhanced::before {
+  content: ""; position: fixed; inset: 0; z-index: 9000; pointer-events: none;
+  opacity: 0.015;   /* owner perf: lowered from 0.025 — full-viewport blend layer */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
+/* ---- Ambient bokeh: one big, soft gold light drifts slowly behind everything
+   for depth. The radial is soft enough to need no blur filter; transform-only
+   animation is GPU-cheap. ---- */
+body.enhanced::after {
+  content: ""; position: fixed; z-index: 0; pointer-events: none;
+  width: 62vmax; height: 62vmax; left: -14vmax; top: -22vmax; border-radius: 50%;
+  background: radial-gradient(circle, rgba(212,175,55,0.07) 0%, rgba(212,175,55,0.03) 35%, transparent 70%);
+  animation: bokehDrift 44s ease-in-out infinite alternate;
+}
+@keyframes bokehDrift {
+  /* translate only — scaling a 62vmax layer every frame is costly (owner perf). */
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(46vw, 34vh, 0); }
+}
+
+/* ---- Shimmering gold headline: the hero's gold words catch a slow highlight. */
+body.enhanced .hero h1 .t-gold {
+  background: linear-gradient(100deg, var(--gold-deep) 0%, var(--gold-hi) 32%, #FFF4CE 50%, var(--gold-hi) 68%, var(--gold-deep) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: goldSheen 6.5s linear infinite;
+}
+@keyframes goldSheen { from { background-position: 210% 0; } to { background-position: -30% 0; } }
+
+/* ---- Brighter glow on icons, the hero waveform, and the brand badge. ---- */
+body.enhanced .icon-tile svg { filter: drop-shadow(0 0 3px rgba(212,175,55,0.45)); }
+body.enhanced .waveform .wb { box-shadow: 0 0 8px rgba(212,175,55,0.45); }
+body.enhanced .brand-badge { box-shadow: var(--glass-hi), 0 0 16px rgba(212,175,55,0.18); }
+
+/* ---- Modal / Deck backdrop: a warm gold vignette instead of flat black. ---- */
+body.enhanced .overlay {
+  background: radial-gradient(ellipse 70% 60% at 50% 38%, rgba(46,38,18,0.34), rgba(6,6,7,0.66) 70%);
+}
+
+/* ---- A hair more lift + glow on card hover. ---- */
+body.enhanced .card.lift:hover {
+  box-shadow: 0 34px 78px rgba(0,0,0,0.72), 0 0 0 1px rgba(212,175,55,0.32),
+              0 22px 70px rgba(212,175,55,0.12), inset 0 1px 0 rgba(245,238,222,0.2);
+}
+
+/* Hidden window / reduced-motion: pause the v3.7.1 idle loops too. */
+body.enhanced.paused::after, body.enhanced.paused .hero h1 .t-gold { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  body.enhanced::after, body.enhanced .hero h1 .t-gold { animation: none; }
+}
+
+/* ---- Nav tabs: NO black text/icons (owner). The active tab was near-black
+   (#1A1407) text on a bright gold pill. Make it gold text/icon on a dark,
+   gold-rimmed pill instead — clearly "active" via the gold rim + glow + text,
+   never black. Hovering any tab turns it gold too. (Defined last so it wins
+   the cascade; keeps the position:relative/overflow:hidden + navShine sweep
+   from the earlier .nav-btn.active rules.) */
+body.enhanced .navbar .nav .nav-btn.active,
+body.enhanced .navbar .nav .nav-btn.active:hover {
+  color: var(--gold-hi) !important;   /* decisively beat the base near-black */
+  background: linear-gradient(135deg, rgba(212,175,55,0.20), rgba(212,175,55,0.07));
+  background-image: linear-gradient(135deg, rgba(212,175,55,0.20), rgba(212,175,55,0.07));
+  box-shadow: inset 0 0 0 1px rgba(212,175,55,0.5), 0 6px 22px rgba(212,175,55,0.26),
+              inset 0 1px 0 rgba(245,238,222,0.12);
+}
+body.enhanced .navbar .nav .nav-btn.active svg { color: var(--gold-hi) !important; }
+body.enhanced .navbar .nav .nav-btn:hover { color: var(--gold-hi); }
+
+/* Deck + Meetings: the top-level working surfaces use the same warm, layered
+   liquid glass as the rest of Mumble when effects are enabled. */
+body.enhanced [data-view="history"] .deck-toolbar,
+body.enhanced [data-view="meetings"] .meeting-start-panel {
+  backdrop-filter: blur(26px) saturate(145%);
+  -webkit-backdrop-filter: blur(26px) saturate(145%);
+}
+body.enhanced [data-view="history"] .deck-type-tab.active {
+  color: var(--gold-hi);
+  border-color: rgba(212,175,55,.44);
+  background: linear-gradient(135deg, rgba(212,175,55,.20), rgba(212,175,55,.07));
+  box-shadow: inset 0 1px rgba(255,255,255,.08), 0 6px 22px rgba(212,175,55,.16);
+}
+body.enhanced [data-view="history"] .deck-type-tab.active .deck-type-count {
+  color: var(--gold-hi);
+  background: rgba(212,175,55,.12);
+}
+body.enhanced [data-view="history"] .deck-toolbar .input {
+  border-color: rgba(212,175,55,.20);
+  background: rgba(7,7,8,.54);
+  box-shadow: inset 0 1px 8px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.035);
+}

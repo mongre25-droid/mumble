@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LOGS</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body>
+<!-- Core docs refreshed 2026-07-09 by core-doc-refresh session -->
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">The Historical Record</div>
+  <h1>LOGS</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Scope:</b> Mumble development history</div>
+    <div><span class="ico">◆</span><b>Nature:</b> dated, append-only</div>
+    <div><span class="ico">◆</span><b>Newest first:</b> §3</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This file is Mumble's diary of the past. It records, with dates, everything that has
+    actually shipped — work that is finished and done. It does not track open bugs, plans, or
+    to-dos; those live in <a href="STATUS.html">STATUS</a>. When something on that
+    to-do list gets finished, a short dated note about it lands here.</p>
+    <p>Read it like a timeline: the top of the diary (§3) is the most recent day; older days are
+    further down. §2 zooms out to the three big chapters of the project's life, and §4 points to
+    where the long, detailed old reports are kept.</p>
+  </div>
+</div>
+
+<blockquote>
+  <strong>The past tense of the project.</strong> Dated, append-only record of what shipped. The
+  present (open bugs, debt, roadmap, TODO) lives in <a href="STATUS.html">STATUS</a>;
+  when an item there is finished, a one-line dated entry lands here. Detailed historical reports
+  preserved during the v1 reorg live in <code>Development Files/Other/reports/</code> and
+  <code>Development Files/Other/bug-investigations/</code> — this file is the index + the chronology.
+</blockquote>
+
+<blockquote>
+  <strong>How to add an entry:</strong> newest at the top of §3, dated <code>YYYY-MM-DD</code>, one
+  tight paragraph or a short bullet list — what changed + why. Don't paste walls of prose; link the
+  detail.
+</blockquote>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">How to read this file</a></li>
+    <li><a href="#s2">Milestone chronology</a></li>
+    <li><a href="#s3">Session log (newest first)</a></li>
+    <li><a href="#s4">Preserved historical reports</a></li>
+  </ol>
+</nav>
+
+<h2 id="s1"><span class="sec">1</span>How to read this file</h2>
+
+<ul>
+  <li><strong>§2 — Milestone chronology:</strong> the big arcs (v3.x classic era → the v0.9
+  "Big Shift" → the v1 repository reorg).</li>
+  <li><strong>§3 — Session log:</strong> dated entries, newest first.</li>
+  <li><strong>§4 — Preserved historical reports:</strong> where the full, original long-form
+  records now live.</li>
+</ul>
+
+<h2 id="s2"><span class="sec">2</span>Milestone chronology</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble has lived through three big chapters. First the "classic era," where a plain little
+    app grew into a polished, premium product. Then the "Big Shift," where the app stopped asking
+    you to choose a mode and started figuring it out for you. Then the "v1 reorg," a spring-cleaning
+    that moved everything into a tidy new home.</p>
+  </div>
+</div>
+
+<div class="flow">
+  <div class="flow-step">
+    <div class="flow-node">1</div>
+    <div class="flow-body">
+      <div class="ft">The classic era — v2.x → v3.17, through 2026-06</div>
+      <p>Mumble grew from a Tkinter app into a premium product: the black-and-gold liquid-glass
+      window replaced Tkinter (v3.0.0); the unified History/Deck hub, Stats with real insights, the
+      floating in-process island, the Reader (document-to-audio via OpenRouter TTS), instant web
+      search, mouse-button bindings, personal vocabulary, and the multi-provider AI layer
+      (Cerebras/OpenAI/Anthropic/OpenRouter/DeepSeek/Groq with a live model dropdown) all landed in
+      this era. Local LLM (Ollama/LM Studio) support was added and then
+      <strong>removed in v3.17.0</strong> as unfit for non-technical users. The macOS and Linux
+      ports were stood up as one-to-one replicas of the Windows brain.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">2</div>
+    <div class="flow-body">
+      <div class="ft">The Big Shift — v0.9, 2026-06</div>
+      <p>A deliberate version reset and a philosophy change: <em>you no longer pick modes — Mumble
+      infers them.</em> Dictate a list → bullets; a message → email; otherwise clean text. The one
+      explicit mode is <strong>Prompt</strong>, a sticky toggle on the island's
+      <code>[ ✦ Prompt ] [ Deck ]</code> companion bar. <strong>Reply</strong> and
+      <strong>Convert</strong> became <strong>Deck</strong> actions rather than dictation modes; the
+      old "hold Right-Shift and say a keyword" mechanism was retired. Cloud sync (Supabase) and
+      opt-in cloud transcription were added. The two history actions were split —
+      <strong>Ctrl+Alt+V</strong> = paste latest, <strong>Ctrl+Alt+H</strong> = open the Deck.</p>
+    </div>
+  </div>
+  <div class="flow-step">
+    <div class="flow-node">3</div>
+    <div class="flow-body">
+      <div class="ft">The v1 repository reorg — 2026-06-27</div>
+      <p>The accumulated workspace ("The Official Mumble") was audited file-by-file and reorganised
+      into the clean <strong>Mumble v1</strong> repository: runtime to <code>Internal/</code> (with
+      the ports under <code>Internal/Ports/</code>), the four core docs rebuilt, dev material curated
+      into <code>Development Files/Other/</code>, and obsolete one-time artifacts left behind (see
+      the migration audit). See §3.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="s3"><span class="sec">3</span>Session log (newest first)</h2>
+
+<h2>2026-07-24 &mdash; Mumble repository reorganised and moved to its new GitHub home</h2>
+<div class="plain"><div class="tag">Project continuity</div><div>
+  <p>Saved the prepared 134-file reorganisation together with its four related updates, Mumble's GitHub workflow guidance, and the Matt Pocock issue-tracker configuration in commit <code>2971a83</code>. The existing private GitHub repository was renamed to <code>mongre25-droid/mumble-old</code>; this repository is now the private <code>mongre25-droid/mumble</code> project, with <code>main</code> pushed and tracked there.</p>
+  <p>The existing issue forms and automated workflow were preserved. Eighteen labels, including the five standard triage labels, were synchronised. The Core records remain Mumble's sole source of truth for project context. The local suite reached 69 of 70 script files; the first new-repository workflow run started all four jobs but remained red on existing dependency, packaging, offline-model and meeting-audio gates. These failures are recorded in STATUS rather than being represented as a green result.</p>
+</div></div>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Below is the day-by-day diary, newest at the top. Each block is one work session: its date,
+    a headline, and a list of what got done. Green <span class="badge b-done">✓ done</span> badges
+    mark shipped work; the deeper technical bits are tucked into collapsible panels you can open if
+    you want the code-level detail.</p>
+  </div>
+</div>
+
+<h3>2026-07-23 — Privacy-safe end-to-end dictation instrumentation</h3>
+<p>Added the smallest opt-in local trace needed to compare cold and warm dictation without changing
+the transcription engine or storing dictated content.</p>
+<ul>
+  <li><span class="badge b-done">✓ full path</span> Records monotonic timing and process-resource
+  samples from activation, Island and microphone readiness through stable streaming, inference,
+  formatting, persistence, clipboard and visible paste. Queue and lock waits, model/runtime state,
+  outcome, and first-use versus reused inference are explicit.</li>
+  <li><span class="badge b-done">✓ privacy + durability</span> The versioned allow-list schema rejects
+  audio, transcript/partial words, clipboard data, prompts, paths, provider payloads, keys and
+  exception messages. Completed JSONL records are flushed, privately permissioned, size-bounded,
+  rotatable and exportable; tracing is disabled by default and fail-open.</li>
+  <li><span class="badge b-done">✓ truthful architecture</span> The trace declares the present
+  <code>stable_chunks_only</code> contract. It measures the first real four-second stable chunk and
+  does not manufacture an unstable-partial event that the current engine does not expose.</li>
+  <li><span class="badge b-done">✓ verification</span> End-to-end controller tests cover short and
+  completed dictations, real local inference and paste boundaries, content rejection and standalone
+  export. The real stream-worker seam verifies one content-free first-stable-partial event.</li>
+</ul>
+
+<h3>2026-07-20 — Home, Deck, Search and Island polish</h3>
+<p>Completed the owner-directed interaction and visual pass on the canonical Windows runtime, keeping
+Mumble's voice-first flow, local-search authority boundary and golden-black liquid-glass language intact.</p>
+<ul>
+  <li><span class="badge b-done">✓ Home shortcuts</span> Replaced the distant capability-grid shortcut card with an above-the-fold hero hub for Dictate, Paste latest, Deck and Search. The four labels remain live after rebinding, and Customise opens the correct Settings category.</li>
+  <li><span class="badge b-done">✓ responsive Deck</span> Removed the narrow-width horizontal content-filter tray. Filters and Starred now reflow as a compact grid; primary actions stay visible and secondary actions use a keyboard-accessible More/Fewer disclosure. Edge renders at 760, 560 and 390 pixels showed no document or action-grid overflow.</li>
+  <li><span class="badge b-done">✓ Search identity + icons</span> Reworked Search as a Mumble-native golden-black glass surface. Windows now obtains exact shortcut, executable and virtual Start-app icons from Explorer, renders top-down DIBs to prevent flipped artwork, reconstructs legacy alpha, and caches a bounded set. Linux desktop-entry icon theme resolution supports local PNG, SVG, WebP and XPM assets. Generated letter placeholders were removed.</li>
+  <li><span class="badge b-done">✓ Island behaviour</span> Removed the ambient Fix offer after every dictation. Eligible paste data remains passive; only a concrete target edit opens the six-second Review/Dismiss consent surface. Processing and completion states hide unrelated controls, Foreign now sits with dictation modes and uses a drawn globe, Deck is visually separate, and the companion bar shares the island fade.</li>
+  <li><span class="badge b-done">✓ verified</span> Focused UI/Search/correction suites passed 49 tests; the complete isolated offline runner passed 69/69 scripts in 268.79 seconds. JavaScript syntax, Python compilation, fatal flake8, responsive Edge renders and source whitespace checks passed.</li>
+  <li><span class="badge b-done">✓ packaged</span> Rebuilt and self-verified the 120-entry Windows <code>Mumble.zip</code> from the live runtime, then synced the byte-identical website download copy.</li>
+</ul>
+
+<h3>2026-07-15 — Linux source audit, parity repair and release rebuild</h3>
+<p>Read all four core development files, then audited and repaired only
+<code>Internal/app/Ports/Linux</code>. Windows remained the product-contract source while Linux-native
+X11/Wayland hotkeys, GTK/WebKit, paste, XDG storage, autostart, updater and packaging seams were preserved.</p>
+<ul>
+  <li><span class="badge b-done">✓ product contract</span> Removed Prompt Memory/implicit continuity,
+  the separate Prompt Provider, Your PC selection, retired providers and persisted hardware class.
+  Prompt history stores visible Deck artefacts only and is never injected into another request.</li>
+  <li><span class="badge b-done">✓ runtime + UX</span> Added instant local Text, always-accessible Island
+  mode controls with stable recentering, current Search/WebUI assets, Linux wording and a race-free
+  WebKit bridge boot. Explicit smart modes retain AI processing and processing-state feedback.</li>
+  <li><span class="badge b-done">✓ durability + privacy</span> Added atomic vocabulary updates, fail-closed
+  settings keys, retired-setting tombstones, corrupt-live-file recovery, Reader voice migration and
+  opt-in Reader sync. AI request logs now record host and character counts, never prompt content.</li>
+  <li><span class="badge b-done">✓ platform safety</span> Hardened update swaps against symlinks, aliases,
+  invalid PIDs and non-sibling directories; fixed managed-clipboard deletion races; corrected XDG defaults,
+  provider restrictions and Linux API coverage.</li>
+  <li><span class="badge b-done">✓ cleanup</span> Deleted unshipped Windows/Tk snapshots
+  (<code>mumble.py</code>, <code>overlay.py</code>, <code>app_window.py</code>, <code>ui.py</code>), the top-level
+  <code>ai.py</code>, Prompt Memory and their obsolete UI test. The release closure forbids those files.</li>
+  <li><span class="badge b-done">✓ verification</span> Authoritative safe run: <strong>38/38 files passed</strong>
+  in 178.15 seconds. Exhaustive run: <strong>53/53 files passed</strong> in 292.28 seconds. Compileall,
+  fatal flake8, JavaScript and shell syntax, high-severity Bandit, Git whitespace and release-builder
+  security gates passed; two symlink checks skipped on the Windows audit host.</li>
+  <li><span class="badge b-done">✓ release</span> Rebuilt and self-verified
+  <code>Mumble-Linux-0.9.tar.gz</code> (679,691 bytes; SHA-256
+  <code>93a8dd5f85d482cb6f3dd53f35032a0d09064daf32b543126722b65756710fcd</code>) and
+  <code>Mumble-Linux-0.9.zip</code> (724,375 bytes; SHA-256
+  <code>a7a8dddf92b8492c4071c44f2403fdc4eba52f875eb057bd0c0df5729d420a15</code>).</li>
+</ul>
+<p><strong>Remaining honest gate:</strong> this Windows-host audit cannot prove real Linux microphone,
+evdev permissions, X11/Wayland global hotkeys, compositor click-through, paste focus, tray integration or
+native updater behaviour. Those remain owner/hardware checks in STATUS.</p>
+
+<h3>2026-07-15 — macOS source audit and product-parity remediation</h3>
+<p>Read all four core development files, then audited and repaired only
+<code>Internal/app/Ports/macOS</code>. The pass treated Windows as the product-contract source while
+preserving Mac-native hotkeys, paste, overlay, permissions, paths, launchers and clipboard-image handling.</p>
+<ul>
+  <li><span class="badge b-done">✓ product contract</span> Removed the Mac Prompt Memory/implicit-continuity
+  runtime, separate Prompt Provider, Your PC selector, retired Right-Shift mode button and non-product text
+  provider UI. Prompt history now stores visible Deck artefacts only and is never injected into a later request.</li>
+  <li><span class="badge b-done">✓ transcription</span> Ported instant local Text, processing-state reporting,
+  greedy timestamp-free ordinary decoding, physical-core thread sizing, four-second streaming, session/claim
+  guards and a bounded drain. Explicit Island/Deck modes can use cloud STT and streaming because they no longer
+  depend on held-key word timestamps.</li>
+  <li><span class="badge b-done">✓ durability + privacy</span> Hardened settings, clipboard, history,
+  favourites and meetings with cross-process locks, atomic replacement and honest failure returns. Cloud sync
+  no longer moves device hotkeys, never syncs Reader source paths, bounds pulls and keeps Reader sync opt-in.
+  Vocabulary terms and correction pairs now save in one conflict-aware transaction.</li>
+  <li><span class="badge b-done">✓ runtime cleanup</span> Deleted stale duplicate <code>mumble.py</code>,
+  top-level <code>ai.py</code>, <code>mode_select.py</code>, Prompt Memory/guide modules and their obsolete test.
+  Removed dormant prompt-thread injection and added machine-readable prompt-template provenance.</li>
+  <li><span class="badge b-done">✓ correctness</span> Repaired model-specific Reader voices, safe text-provider
+  fallback, the default-disabled local LLM contract, update-archive discovery of <code>mumble_mac.py</code>,
+  atomic settings save return values, the test runner's JSON-directory creation and a dangling WebUI call to a
+  removed renderer.</li>
+  <li><span class="badge b-done">✓ release hygiene</span> The Mac archive now excludes tests, dev requirements,
+  test logs and the dormant Windows overlay snapshot.</li>
+  <li><span class="badge b-done">✓ verification</span> Extended offline run: <strong>47/47 files passed</strong>
+  in 547.88 seconds with network/model downloads explicitly disabled. Compileall, production-code flake8 F checks,
+  JavaScript parsing, launch/build shell syntax and Git whitespace checks passed. Real macOS
+  Microphone/Accessibility, paste focus, LaunchAgent, Gatekeeper, signing and notarisation remain owner/hardware gates.</li>
+</ul>
+<p><strong>Decisions made autonomously:</strong> preserved all Mac-native shortcut defaults; kept OpenAI/Groq
+keys only for opt-in cloud transcription and OpenAI only as a Reader voice fallback; kept Search absent on Mac by
+product decision; defaulted everyday Text to local instant cleanup; kept Reader cloud sync off by default; and did
+not claim real-hardware or release-signing verification from a Windows audit host.</p>
+
+<h3>2026-07-12 — Windows transcription latency optimisation</h3>
+<p>Reworked the production release-to-paste path after the real Windows log showed ordinary
+<code>small.en</code> calls around 1.5–2 seconds but rare decoder retries and overlapping stop-time work
+stretching individual chunks to 15 seconds, minutes, and queued lock timeouts.</p>
+<ul>
+  <li><span class="badge b-done">✓ decoder</span> Ordinary faster-whisper calls now use one deterministic
+  greedy pass (<code>temperature=0</code>, <code>best_of=1</code>) and skip timestamp-token decoding unless a
+  word-aligned mode actually needs it.</li>
+  <li><span class="badge b-done">✓ streaming</span> The live threshold moved from five to four seconds;
+  event-driven polling replaced the 300 ms sleep; key release now harvests an in-flight same-session
+  chunk once instead of discarding it, waiting three seconds, and decoding overlapping audio again.</li>
+  <li><span class="badge b-done">✓ concurrency</span> Recording ids, claim checks and per-session idle events
+  reject stale workers across stop, a newer recording, and sleep/resume. Failed chunks leave the seam
+  untouched so the authoritative tail still covers them.</li>
+  <li><span class="badge b-done">✓ Windows CPU</span> Automatic CTranslate2 sizing now uses a physical-core
+  budget (8 on the Ryzen Z1 Extreme audit machine) instead of assigning 14 logical threads. Explicit
+  <code>cpu_threads</code> still wins.</li>
+  <li><span class="badge b-done">✓ instant text</span> Everyday Text defaults to deterministic local cleanup
+  and paste without a network-polishing round trip. The new Settings switch can restore AI polishing;
+  explicit Prompt and other AI modes are unchanged.</li>
+  <li><span class="badge b-done">✓ evidence</span> Added release-to-visible-paste timing for stream drain,
+  tail STT, shaping and Ctrl+V; removed unconditional per-dictation full garbage collection; expanded
+  regression coverage for timestamp selection, stop/claim races, stale sessions and thread sizing.
+  Focused verification: core regressions green, stream seam 16/16, performance 90/90.</li>
+</ul>
+
+<h3>2026-07-10 — Current-state audit remediation</h3>
+<p>Re-checked and remediated the 33 findings in <code>Other/Mumble Current State Audit - 2026-07-10.html</code> in one continuous source pass.</p>
+<ul>
+  <li><span class="badge b-done">✓ runtime</span> Restored the missing hotword sanitizer and model-free fallback, made settings mutations atomic, added private POSIX permissions, removed duplicate active definitions, and pinned the complete consumer dependency set.</li>
+  <li><span class="badge b-done">✓ durability</span> Meetings now stream to unique private WAV files, create pending metadata before AI processing, recover after interruption/quit, delete audio with metadata, clean orphan files, and report pause/resume/delete/star state truthfully.</li>
+  <li><span class="badge b-done">✓ security</span> The updater now requires publisher signatures and disables the production channel until an HTTPS feed plus Ed25519 public key are configured. Unsigned manifests no longer downgrade to hash-only trust.</li>
+  <li><span class="badge b-done">✓ honesty + UX</span> Local/Cloud STT and Reader TTS disclosures now match actual payloads; Account/Sync and Share are hidden until real services exist; clipboard copy failures, modal focus, startup state, meeting unstar, update availability, contrast, and shortcut/workflow copy were corrected.</li>
+  <li><span class="badge b-done">✓ engineering</span> Added the isolated offline-by-default test runner, credential scrub, per-test timeout, production-call regressions, pinned dev lock, and Windows CI. Shared runtime/WebUI fixes were synchronised to macOS/Linux; hardware smoke tests remain owner-gated.</li>
+  <li><span class="badge b-done">✓ packaging</span> Rebuilt <code>Mumble.zip</code> from the live shipping layout with structural verification and development artefact exclusions.</li>
+</ul>
+
+<h3 id="exp-operator-56">2026-07-10 — Isolated Operator experiment (5.6 sol xtra high)</h3>
+
+<p>Created a self-contained hands-free desktop-assistant experiment under <code>Development Files/Other/experiments/AIs - DO NOT TOUCH/Experimental Feature - 5.6 sol xtra high/</code>, with no production runtime integration.</p>
+
+<ul>
+  <li><span class="badge b-done">✓ built</span> <strong>Golden Black command centre</strong> with Right Shift activation, listen/plan/review/run states, natural-language workflow previews, safety labels, responsive layouts, keyboard focus management, reduced-motion support, and zero CDN assets.</li>
+  <li><span class="badge b-done">✓ built</span> <strong>Pure local planner + optional Windows host</strong> using only Python's standard library. It can launch a reviewed app allow-list, open verified paths and HTTP(S) URLs, and focus visible windows; server-side plans are rebuilt before execution. Unknown apps, paste injection, file edits and existing-tab browser automation fail closed.</li>
+  <li><span class="badge b-done">✓ designed</span> <strong>One-time 20-hours-saved popup</strong> with creator copy for Default Name 101, explicit placeholder X/LinkedIn actions, experiment-scoped persistence, and no normal-flow integration.</li>
+  <li><span class="badge b-done">✓ designed</span> <strong>Premium Archetype Report flow</strong> spanning explanation, newsletter consent/validation and a polished sample report. The interface explicitly states that no email is submitted and no transcript is analysed.</li>
+  <li><span class="badge b-done">✓ verified</span> <strong>12 planner tests</strong>, Python compile, JavaScript syntax, localhost health/plan endpoints, and browser-based visual/interaction review. The AI-specific removal audit records every file, dependency boundary, browser key and exact deletion step.</li>
+</ul>
+
+<h3>2026-07-09 — Core documentation refresh</h3>
+
+<p>Refreshed README, STATUS, HANDBOOK, and LOGS to match the live <code>Internal/app/</code> tree and the 2026-07-08 shipped changes. The goal: remove stale module lists, obsolete test counts, and cross-document Markdown references so the core docs stay a reliable source of truth.</p>
+
+<ul>
+  <li><span class="badge b-done">✓ refreshed</span> <strong>README architecture map</strong> to list the current <code>Internal/app/</code> layout: <code>ai/</code> package, <code>local_engine.py</code>, <code>foreign_boost.py</code>, <code>meeting.py</code>/<code>meeting_diarise.py</code>/<code>meeting_store.py</code>, <code>pipeline/</code>, <code>models/</code>, <code>eval/</code>, <code>perf/</code>, <code>platform/</code>, <code>reader_parser.py</code>, and 55 co-located <code>test_*.py</code> files.</li>
+
+  <li><span class="badge b-done">✓ refreshed</span> <strong>HANDBOOK runtime map, data flow, test catalogue, and port-sync drift note</strong> to reflect the local AI / offline LLM refactor, 55 tests, and current port-package gaps (macOS missing <code>eval/</code>, <code>models/</code>, <code>perf/</code>, <code>pipeline/</code>, <code>platform/</code>; Linux retaining legacy <code>ai.py</code>/<code>model_free.py</code> alongside the new packages).</li>
+
+  <li><span class="badge b-done">✓ refreshed</span> <strong>STATUS health snapshot</strong>: corrected test-suite count, port-sync status, known-bugs verification date, technical-debt T7/T8, and roadmap Phase 1 test baseline.</li>
+
+  <li><span class="badge b-done">✓ fixed</span> <strong>cross-document Markdown references</strong> in HANDBOOK and LOGS that were still pointing to <code>README.md</code>/<code>STATUS.md</code>/<code>HANDBOOK.md</code>/<code>LOGS.md</code> instead of the current <code>.html</code> core files.</li>
+
+  <li><span class="badge b-done">✓ verified</span> <strong>T8 resolved:</strong> <code>mumble.py</code> no longer imports <code>mode_select</code>; the legacy module is still used only by port controllers (STATUS T6).</li>
+
+  <li><span class="badge b-done">✓ verified</span> <strong>Update manifest signing</strong>: <code>update.py</code> now supports Ed25519 signature verification, but the public key is still empty so the feed remains sha256-only until the owner provisions a keypair.</li>
+</ul>
+
+<h3>2026-07-08 — v1.0 Finalisation: UI, UX &amp; Feature Polish</h3>
+
+<p>Comprehensive polish pass across the entire application. Every screen reviewed for alignment, consistency, and premium feel.</p>
+
+<ul>
+  <li><span class="badge b-done">✓ search mode UX</span> <strong>Island now shows distinct "Search" state.</strong>
+    Pressing Ctrl+Alt+S with no text selected starts voice search with a blue-tinted island pill
+    (waveform + "Search" label), clearly distinct from gold "Listening" and amber "Transcribing".
+    The island's <code>_STATE_LABEL</code>, <code>_build_snapshot</code>, and <code>_render</code>
+    all handle the new state; <code>mumble.py</code> sets it on search-initiated recordings.</li>
+
+  <li><span class="badge b-done">✓ added</span> <strong>Search button on the Deck toolbar.</strong>
+    Magnifying-glass button searches selected text in the user's chosen engine
+    (Google/Perplexity/Brave). With nothing selected, prompts to use Ctrl+Alt+S.</li>
+
+  <li><span class="badge b-done">✓ fixed</span> <strong>Meetings header button alignment.</strong>
+    "Record meeting" and "Import audio" buttons now bottom-align with the Processing dropdown
+    (<code>items-center</code> → <code>items-end</code>), eliminating the sagging-button look.</li>
+
+  <li><span class="badge b-done">✓ cleaned</span> <strong>Settings layout de-cluttered.</strong>
+    Removed redundant "Settings" page header (nav already shows the active page). Moved
+    "Your name" card from the top of Settings to below the Account section — profile info
+    no longer dominates the page.</li>
+
+  <li><span class="badge b-done">✓ verified</span> <strong>Cloud transcription resource usage.</strong>
+    Confirmed <code>_unload_local_model()</code> drops the ~0.5–1.5 GB local model when cloud
+    transcription is active; <code>_ensure_local_model()</code> reloads on demand for fallback.
+    At boot, cloud mode defers model load entirely. No unnecessary resource usage.</li>
+
+  <li><span class="badge b-done">✓ redesigned</span> <strong>Deck filter controls.</strong>
+    Replaced the five filter chips (Transcripts/Clipboard/Prompts/Favourites/Emails) with a
+    single content-type dropdown ("All types" / individual types), matching the "Newest first"
+    sort dropdown style. Freed vertical space, reduced visual clutter.</li>
+
+  <li><span class="badge b-done">✓ restored</span> <strong>All 20 built-in presets.</strong>
+    The presets had been curated from 20 down to 10 in a previous session; 11 were missing
+    (Deep Thinking, Answer it, Reply, Continue, Make shorter, Expand, Explain simply, Humanise,
+    Merge, Make formal, Critique). Restored from the macOS port copy. Full 20 + 5 custom = 25.</li>
+
+  <li><span class="badge b-done">✓ redesigned</span> <strong>Homepage rebuilt as premium feature showcase.</strong>
+    Replaced the old three-card grid + "Also inside" chip row with eight dedicated 2-column
+    feature cards: The Deck, Smart Modes, Meetings, Reader Mode, Context Capture, Instant Web
+    Search, Stats &amp; Streaks, and Global Shortcuts. Every section explains what the feature
+    does, why to use it, and includes keyword badges. Pro Mode + Tips retained at the bottom.</li>
+
+  <li><span class="badge b-done">✓ centered</span> <strong>"What's Inside Mumble" section label.</strong>
+    Added <code>justify-content: center; text-align: center</code> to <code>.home-section-label</code>,
+    matching the centered aesthetic of the homepage's other sections.</li>
+
+  <li><span class="badge b-done">✓ confirmed</span> <strong>Foreign toggle on the island bar.</strong>
+    Already present in the overlay + controller wiring. Controlled by Settings → "Foreign toggle
+    on the island" (default off). Shows a sand-coloured Foreign chip on the island's mode bar.</li>
+</ul>
+
+<p>Wired the full local post-processing pipeline into Mumble's runtime. The infrastructure modules that were built on 2026-06-27 but never connected are now fully integrated.</p>
+
+<ul>
+  <li><span class="badge b-done">✓ wired</span> <strong>local_engine.py integrated into mumble.py.</strong>
+    <code>_init_local_backend()</code> activates <code>LlamaCppBackend</code> at boot when
+    <code>local_ai_enabled</code> + model file present. <code>route()</code> called in
+    <code>_builder()</code> to decide cloud vs local vs rules-only per lane. Falls back to
+    <code>NullBackend</code> (no-op) when disabled — no dependency required. Import-guarded:
+    <code>LlamaCppBackend.available()</code> returns False until <code>llama-cpp-python</code>
+    AND a GGUF file are present.</li>
+
+  <li><span class="badge b-done">✓ wired</span> <strong>foreign_boost.py integrated into Foreign Mode.</strong>
+    Cloud path: <code>mark_uncertainty()</code> adds <code>//</code> markers before cloud dispatch.
+    Offline path: <code>boost()</code> + <code>strip_flags()</code> resolves high-confidence terms
+    on-device. Both paths activated in <code>_builder()</code> and <code>_cloud_generate()</code>.</li>
+
+  <li><span class="badge b-done">✓ added</span> <strong>rpunct punctuation restoration integration.</strong>
+    Import-guarded in <code>formatting.py</code> — lazy-loads the ~80 MB BERT model only when the
+    <code>rpunct</code> package is installed. Falls back silently to rule-based punctuation. New
+    <code>restore_punctuation()</code> function called as post-pass in <code>formatting.process()</code>
+    when <code>rpunct_enabled=True</code>. <code>rpunct</code> added to <code>requirements.txt</code>
+    as commented optional dependency (pandas build conflict on Python 3.12 — code is ready, activates
+    automatically when installable).</li>
+
+  <li><span class="badge b-done">✓ added</span> <strong>New settings in DEFAULTS.</strong>
+    <code>local_ai_enabled</code> (Edge AI master toggle, default False),
+    <code>local_ai_model_path</code> (GGUF model path), <code>local_only_mode</code> (force offline
+    even with cloud key), <code>rpunct_enabled</code> (ML punctuation toggle, default True). All
+    import-guarded — app runs without any of the optional dependencies.</li>
+
+  <li><span class="badge b-done">✓ synced</span> <strong>All changes synced to macOS + Linux ports.</strong>
+    <code>formatting.py</code>, <code>mumble.py</code>, <code>settings.py</code>,
+    <code>requirements.txt</code> copied verbatim to both port directories.</li>
+
+  <li><span class="badge b-done">✓ verified</span> <strong>14/14 offline tests green.</strong>
+    Foreign boost 20/20, local engine 20/20, formatting all tests pass. rpunct fallback verified
+    (returns text unchanged when package unavailable). NullBackend active by default.</li>
+</ul>
+
+<h3>2026-06-27/28 — Detailed audit entries archived</h3>
+
+<p>The four detailed 2026-06-27/28 entries (offline-first AI overhaul, full engineering audit, production-stability polish, local post-processing engine, and core-docs verification pass) have been moved to <a href="../Other/reports/LOGS-2026-06-audit-archive.html">LOGS-2026-06-audit-archive.html</a> to keep the diary focused. The archive preserves the original wording and detail.</p>
+
+<h3>2026-06-27 — Mumble v1 repository overhaul</h3>
+
+<p>Created the <strong>Mumble v1</strong> repository as the permanent development home; the original
+"The Official Mumble" folder was left fully intact for manual archival.</p>
+
+<ul>
+  <li><strong>Migrated</strong> the Windows runtime (28 modules + 18 tests + <code>assets/</code>,
+  <code>webui/</code>, <code>release_assets/</code>, installers/launchers) into <code>Internal/</code>;
+  the macOS and Linux ports into <code>Internal/Ports/macOS</code> and
+  <code>Internal/Ports/Linux</code>. Excluded <code>.venv</code>, <code>__pycache__</code>, and old
+  bundled zips. Placed <code>Mumble.exe</code> (the native launcher) at the root and rebuilt
+  <code>Mumble.zip</code> from the current runtime.</li>
+
+  <li><strong>Rebuilt the four core docs</strong> from scratch: <a href="README.html">README</a>
+  (the AI operating manual, now with the mandatory completion-checklist workflow),
+  <a href="STATUS.html">STATUS</a> (present-only: health, known bugs, tech debt, roadmap, TODO),
+  <a href="HANDBOOK.html">HANDBOOK</a> (clean architecture + rules + session ritual + port-sync +
+  deploy, with the obsolete pre-Big-Shift mode-key content removed), and this LOGS file.</li>
+
+  <li><strong>Curated</strong> design docs, research, bug investigations, planning, experiments, the
+  website, and historical reports into <code>Development Files/Other/</code>. Carried every open bug,
+  debt item, and roadmap entry from the old docs forward into STATUS.</li>
+
+  <li><strong>Left behind</strong> (documented in
+  <code>Development Files/Other/MIGRATION_AUDIT.md</code>): the one-time Windows→Mac port scripts
+  (<code>patch_*.py</code>), the diff dumps (<code>diff_*.txt</code>), the byte-identical
+  <code>Mumble V0.9</code> snapshot, the frozen <code>MumbleLite</code> Tkinter UI, and the legacy
+  archive zips — all obsolete or superseded.</li>
+</ul>
+
+<blockquote>
+  Entries before this date were kept in the old <a href="STATUS.html">STATUS</a> /
+  <a href="HANDBOOK.html">HANDBOOK</a> "Recent Changes", "Mission Audit", and "Owner
+  actions" logs and in the standalone reports now preserved under §4. They were intentionally not
+  re-transcribed line-by-line — the originals are the record.
+</blockquote>
+
+<h2 id="s4"><span class="sec">4</span>Preserved historical reports</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble's older, longer write-ups weren't copied into this diary word-for-word — that would
+    make it a wall of text. Instead, the original documents were kept exactly as they were, and this
+    table tells you where each one now lives and what it covers.</p>
+  </div>
+</div>
+
+<p>The full original long-form history was not copied into this file verbatim; the source documents
+are preserved unmodified for reference:</p>
+
+<table>
+  <thead>
+    <tr><th>Report</th><th>Now at</th><th>What it covers</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Mission Completion Report (2026-06-23→25)</td>
+      <td><code>Other/reports/MISSION_COMPLETION_REPORT.md</code></td>
+      <td>The 11-milestone autonomous audit/stabilisation/evolution effort across all platforms;
+      44/44 features, blockers, pending validators.</td>
+    </tr>
+    <tr>
+      <td>Release Report v0.9 (2026-06-15)</td>
+      <td><code>Other/reports/RELEASE_REPORT_0.9.md</code></td>
+      <td>The v0.9 release/packaging audit — presets, AI modes, providers, release-readiness, the
+      <code>Mumble.exe</code> + <code>Internal/</code> package layout.</td>
+    </tr>
+    <tr>
+      <td>Reader / Big Shift bug audit</td>
+      <td><code>Other/bug-investigations/READER_BIGSHIFT_BUG_AUDIT.md</code></td>
+      <td>The Reader-focused bug triage (dead TTS default model, STT fallback, decode-error
+      handling) — open follow-ups carried into STATUS.</td>
+    </tr>
+    <tr>
+      <td>Port fixes playbook</td>
+      <td><code>Other/bug-investigations/PORT_FIXES.md</code></td>
+      <td>Apply-ready, verified per-platform Mac/Linux fixes (find→replace diffs) — open items
+      carried into STATUS.</td>
+    </tr>
+    <tr>
+      <td>Use-case / QA matrix</td>
+      <td><code>Other/testing/mumble_use_cases.md</code></td>
+      <td>The living interaction test matrix (every UI action → how tested → status).</td>
+    </tr>
+    <tr>
+      <td>Research &amp; cross-cut audits</td>
+      <td><code>Other/research/</code></td>
+      <td>Pipeline/AI, island/overlay, formatting, stores/bridge, webui, and ports bug-audit reports
+      + tech research (local NLP, Supabase, TTS providers).</td>
+    </tr>
+    <tr>
+      <td>Migration audit</td>
+      <td><code>Other/MIGRATION_AUDIT.md</code></td>
+      <td>The full file-by-file disposition for the v1 reorg, incl. everything intentionally left
+      behind and why.</td>
+    </tr>
+    <tr>
+      <td>The prior docs in full</td>
+      <td>The original <code>The Official Mumble/</code> folder (left intact)</td>
+      <td>The complete pre-reorg <code>STATUS.md</code>, <code>HANDBOOK.md</code>, and all dated logs,
+      untouched.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>2026-07-15 — Control retired; Mumble Search shipped in source</h2>
+<div class="plain"><div class="tag">Windows + Linux experimental</div><div>
+  <p>Removed the autonomous Computer Control planner, executor, approval UI, wake service and UI-automation dependency. In its place, Mumble now provides an experimental local launcher for Windows and Linux. It discovers applications, files and folders from bounded local roots; ranks exact, prefix, token, acronym and subsequence matches; learns only explicit favourites and use recency; and offers open, reveal, copy-path and favourite actions. macOS deliberately has no Search loader or bridge because the platform already ships Spotlight and Finder.</p>
+  <p>The security boundary is intentionally narrow: queries are never evaluated as commands, result IDs are opaque, and actions are accepted only for entries in the current local index. The index is bounded, stored locally, refreshed in the background and exposes a low-ranked web-search fallback without sending the local index anywhere.</p>
+  <p>Reader gained in-document search with Ctrl/Cmd+F, bounded highlights and Enter/Shift+Enter navigation. Meetings gained cached library filtering plus transcript filtering and highlighting in the detail view. The canonical UI and Linux port carry both improvements.</p>
+</div></div>
+
+<h3>Research and implementation boundary</h3>
+<ul>
+  <li>Flow Launcher, Ueli and Microsoft PowerToys were reviewed as MIT-licensed references for provider-oriented discovery, keyboard-first interaction and explicit result actions.</li>
+  <li>No source, artwork, prompt text or bundled binary from those projects was copied. Mumble Search is an original standard-library implementation using Mumble's existing WebUI bridge.</li>
+  <li>The retired Control notices and dependencies were removed where no longer used; retained comtypes, pywin32 and sherpa-onnx notices cover other live Mumble runtime paths.</li>
+</ul>
+
+<h3>Verification</h3>
+<ul>
+  <li><strong>Authoritative offline suite:</strong> 65/65 scripts passed in 360.84 seconds with a 180-second per-script ceiling.</li>
+  <li><strong>Focused checks:</strong> Search engine/UI/port tests, Reader and Meetings regressions, cloud sync, core regressions, WebUI API, Linux release-builder tests, Python compilation, fatal flake8, Bandit and JavaScript syntax all passed.</li>
+  <li><strong>Live discovery probe:</strong> the Windows index discovered 177 installed applications and de-duplicated equivalent launcher entries by display name.</li>
+</ul>
+
+<h2>2026-07-12 — Voice-to-text ecosystem &amp; licensing audit</h2>
+<div class="plain"><div class="tag">Research</div><div>
+  <p>Replaced the preliminary voice-to-text audit with a self-contained black-and-gold master report. The pass used 12 web discovery searches, 393 raw GitHub candidates, a 66-project/family material census and 16 pinned source checkouts. It mapped FluidAudio/FluidVoice, dictation applications, meeting tools, streaming runtimes, platform insertion and licence-safe adoption routes.</p>
+  <p>No application source was changed. The audit confirmed both local-only egress bypasses and identified a licensing correction: installed metadata reports PyMuPDF 1.27.2.3 as AGPL-3.0 or commercial and EbookLib 0.20 as AGPL-3.0, contradicting the former BSD entry for EbookLib. STATUS now carries both release gates; HANDBOOK and the master system documentation distinguish research-only projects from shipped components.</p>
+  <p><strong>Artifact:</strong> <code>Mumble_Voice_to_Text_Audit.html</code>.</p>
+</div></div>
+
+<h2>2026-07-13 — Product integration, safety and truthfulness pass</h2>
+<div class="plain"><div class="tag">Shipped in Windows source</div><div>
+  <p>Completed the requested design, UX, architecture and implementation audit against the canonical Windows application. The pass removed invented product concepts, repaired misleading UI/backend seams, integrated the real modes and statistics, tightened local-only privacy at the actual network egress points, and replaced optimistic local-AI copy with a guarded technical-preview contract.</p>
+  <p>The visual system now treats Home, the compact Island and Deck as one product: Home exposes ready/listening/transcribing/processing state, dictation is the primary action, pinning remains an action (Pin/Unpin), filtering no longer adds a top row, and redundant Deck/Stats/Meetings/Reader page headings are gone. The Deck exposes Prompt, Email, Reply and Foreign using the same mode language as the Island.</p>
+</div></div>
+
+<h3>Audit disposition</h3>
+<table>
+  <thead><tr><th>Class</th><th>Finding and disposition</th></tr></thead>
+  <tbody>
+    <tr><td>Production, repaired</td><td>Dictation, Deck modes, Stats/Reader data, cloud/local transcription setup, visible prompt artefacts, manual vocabulary and correction learning all had working foundations. Their state, labels, layout and wiring were repaired rather than replaced.</td></tr>
+    <tr><td>Experimental, guarded</td><td>Computer control has genuine planning, policy and desktop-adapter code but unsafe defaults/feedback. Confirmation is now default; auto-run requires conspicuous acknowledgement; Island Review/Cancel actions bind to an immutable one-use plan. Voice activation is a general parser before the opt-in control branch, and spoken confirmation deliberately grants no authority.</td></tr>
+    <tr><td>Invented, removed</td><td>Your PC as a user-facing machine class, Prompt Memory/implicit continuity, and the separate Prompting Provider were removed from UI, settings, state and runtime paths. Migration tombstones stop stale settings from returning; the shared automatic resource detector remains internal.</td></tr>
+    <tr><td>Partial, labelled honestly</td><td>The llama.cpp/GGUF adapter can run an explicitly supplied compatible model, but Mumble ships no approved text model or download manager. It is opt-in and labelled technical preview. The current model-management, hardware qualification and port delivery gates are recorded in STATUS.</td></tr>
+    <tr><td>Misleading/UI-only, corrected</td><td>Claims that local AI was bundled/complete, the former PC-class selector, hidden cloud settings and an approval status that opened away from the Island did not match product behaviour. Those claims/components were removed or connected to real state.</td></tr>
+  </tbody>
+</table>
+
+<h3>Provider, prompt and control architecture</h3>
+<ul>
+  <li>Settings now explain two stages: speech-to-text and optional text processing. Product text-processing choices are Cerebras (recommended low latency; currently a rate-limited free tier) and OpenRouter. OpenRouter always stays on a reviewed five-model shortlist; a live catalogue lookup validates availability instead of exposing hundreds of models.</li>
+  <li>Prompt continuity was deleted. A bounded Deck artefact store remains only for prompts the user can see; it is never injected into another generation. Template id/version/output-contract/licence provenance is now machine-readable. Fabric and Microsoft promptflow (MIT) informed architecture only; no external prompt text or code was copied.</li>
+  <li>Microsoft UFO (MIT), Open Interpreter (MIT), OmniParser (CC-BY code with mixed model terms), sherpa-onnx/GigaSpeech (Apache-2.0 repositories), openWakeWord (Apache code but CC BY-NC-SA pretrained models), and Picovoice Rhino (Apache SDK with service-key/context requirements) were reviewed. HANDBOOK records adoption boundaries and exact artefact-review gates.</li>
+</ul>
+
+<h3>Verification and remaining gates</h3>
+<ul>
+  <li><strong>Authoritative offline suite:</strong> 65/65 scripts passed in 286.34 seconds with a 120-second per-script ceiling. A preceding concurrent run exposed one Reader timeout and one transient UI failure; both passed in isolation, then passed in the clean aggregate.</li>
+  <li><strong>Focused changed-area suite:</strong> 71 pytest tests passed; two third-party SWIG deprecation warnings remain non-failing.</li>
+  <li><strong>Static gates:</strong> fatal flake8 selection, Python compileall, WebUI JavaScript syntax and computer-control JavaScript syntax all passed. A 1440px headless Home render was visually inspected.</li>
+  <li><strong>Not claimed complete:</strong> macOS/Linux still contain older snapshots and need synchronisation plus real-hardware checks; computer control needs live multi-application safety testing; on-device text AI needs an approved/licence-reviewed model, integrity-checked download management and measured CPU/GPU acceptance thresholds.</li>
+</ul>
+
+<h2>2026-07-23 — Repository rules, CI startup repair and Hostinger verification</h2>
+<div class="plain"><div class="tag">Development infrastructure</div><div>
+  <p>Added the repository-level <code>AGENTS.md</code> guidance and simplified the Core working agreement so Undisturbed mode is the only special owner-selected mode. Durable documentation remains targeted: update only the Core record whose role matches a material change.</p>
+  <p>Reproduced GitHub Actions' zero-job startup failure with <code>actionlint</code>. The workflow used <code>runner.temp</code> in job-level environment expressions, where that context is unavailable. Windows, macOS and Linux now export their isolated test-data directory through <code>GITHUB_ENV</code> after the runner starts.</p>
+  <p>Verified the saved <code>hostinger-vps</code> SSH connection and the repository at <code>/root/projects/mumble</code>. The VPS checkout was intentionally left untouched because it contains 71 modified and 5 untracked paths on older commit <code>181e6d8</code>; no Mumble system service was found. The canonical Windows validation passed 69/69 offline scripts, fatal flake8 and compileall.</p>
+  <p>Published local <code>main</code> through <code>82588a0</code> so the Windows source, rebuilt package, repository rules and GitHub branch matched. Replaced the stale Start-menu, uninstall and Startup shortcuts that pointed to deleted <code>C:\Mumble Test</code>; all three now resolve to the live <code>C:\Mumble v1</code> installation. The first functioning GitHub run started all four jobs and exposed follow-up dependency and clean-run test gates, which are retained in STATUS rather than being hidden in CI output.</p>
+</div></div>
+
+<h2>2026-07-23 &mdash; Engineering workflow tracker configured</h2>
+<div class="plain"><div class="tag">Development infrastructure</div><div>
+  <p>Configured the private <code>mongre25-droid/mumble</code> GitHub Issues tracker as the durable coordination point for substantial work. The repository now supplies guided Planning map, Engineering decision, and Implementation work forms, together with a versioned label manifest and a small repeatable label-sync helper.</p>
+  <p>The workflow separates the tracker from the product: no runtime, experimental build, or audit-identified application work changed. HANDBOOK now explains how issues, explicit blockers, and the Core records work together; STATUS names GitHub Issues as the active planning anchor.</p>
+</div></div>
+
+<h2>2026-07-23 &mdash; Windows startup and Flow Launcher paths repaired</h2>
+<div class="plain"><div class="tag">Windows reliability</div><div>
+  <p>Reproduced two exact missing-file failures. Flow Launcher still indexed a Start-menu shortcut
+  whose target, working directory and icon lived under the deleted experimental
+  <code>C:\Mumble Test</code> folder. Separately, Windows login contained a
+  <code>FinalizeMumble.cmd</code> entry whose required
+  <code>%LOCALAPPDATA%\finalize_mumble.ps1</code> payload no longer existed.</p>
+  <p>Recreated the Desktop, Start-menu and Startup shortcuts against the canonical
+  <code>C:\Mumble v1</code> runtime and icon, removed the abandoned finalizer, regenerated Flow's Program
+  index, and added narrow startup-time cleanup for the two exact legacy finalizer paths. Added
+  <code>verify_windows_launch.ps1</code> so future updates detect missing targets, arguments, working
+  directories, icon resources, competing startup items and stale Flow-indexed Mumble paths.</p>
+  <p><strong>Verification:</strong> cold manual, Startup-folder and Flow-indexed Start-menu launches each
+  reached authenticated <code>idle / Ready</code> status; the focused service/platform regression passed
+  55/55 checks; the clean authoritative offline suite passed 69/69 files in 389.75 seconds; fatal
+  flake8, compileall and the Windows launch-path verifier passed.</p>
+</div></div>
+
+<h2>2026-07-23 &mdash; Hostinger development checkout preserved</h2>
+<div class="plain"><div class="tag">Deployment safety</div><div>
+  <p>Preserved the dirty development checkout at <code>/root/projects/mumble</code> in the private,
+  root-only snapshot <code>/root/backups/mumble-wayfinder/20260723T073614Z</code> without changing its
+  <code>main</code> branch, clean base <code>181e6d8</code>, index or 76 unsaved paths. The snapshot contains
+  a complete repository bundle, exact working-tree archive, binary tracked-work patch, inventory,
+  classification and SHA-256 checksum manifest.</p>
+  <p><strong>Verification:</strong> the Git bundle records complete history; the archive contains 1,553
+  entries; every recorded checksum passed; the binary patch reverse-check passed against the live
+  checkout; and the before/after status fingerprint remained
+  <code>e3effa756b79cfa27e9f7e592411cd817f54649561ed3bc1a5fd6561c2fb0d01</code>.</p>
+  <p>The inventory is evenly split between 38 Linux and 38 macOS paths: 43 runtime/storage/model/meeting
+  or platform files, 16 regression tests, eight UI/interaction files, five installer/update/lifecycle
+  files and four runner/dependency files. Their modification times form one 2026-07-21 development
+  window, and none of the 76 working file versions exactly matches current GitHub <code>main</code> or a
+  named VPS branch. The work is therefore preserved evidence requiring deliberate reconciliation,
+  not a deployable release and not disposable server drift.</p>
+</div></div>
+
+<h2>2026-07-23 &mdash; Wayfinder decisions converted into the complete Mumble specification</h2>
+<div class="plain"><div class="tag">Planning and architecture milestone</div><div>
+  <p>Closed the canonical Mumble Wayfinder route and synthesized its release, VPS, Windows lifecycle,
+  dictation-latency, model, privacy, UX and open-source decisions into the authoritative master system
+  documentation. New normative sections N0-N12 define a shared domain language, high-level modules and
+  interfaces, extensive user stories, measurable acceptance criteria, testing seams, traceability,
+  implementation order and explicit exclusions without coupling the design to current file paths.</p>
+  <p>The specification preserves the evidence boundary honestly. GitHub <code>main</code> is accepted source,
+  while only exact green CI-built bytes with owner approval, an immutable tag, checksums and a durable
+  GitHub Release become approved. VPS promotion remains a future protected, health-checked, rollback-capable
+  process. Windows remains the current portable/source workflow with one self-healing launcher identity.
+  faster-whisper remains the local baseline; cloud is explicit; model/licence adoption fails closed.</p>
+  <p>No production code, public release, VPS deployment, paid service or credential was changed. Windows
+  lifecycle issue #12 and hardware/physical-device issue #17 were retained as deferred qualification,
+  not converted into passes. Open gates #7, #8 and #9 remain current work. Closed, unmerged PRs #10,
+  #24 and #25 remain evidence only. Documentation structure, fatal flake8 and compileall passed; the
+  authoritative isolated source suite remained 67/69 on current <code>main</code>, with the exact baseline
+  exceptions recorded in STATUS under issue #7 rather than hidden or repaired outside scope.</p>
+</div></div>
+
+<h2>2026-07-23 &mdash; Clean VPS source worktree added without overwriting preserved work</h2>
+<div class="plain"><div class="tag">Safe synchronisation</div><div>
+  <p>Fetched the current GitHub consolidation branch on Hostinger and created a separate clean worktree at
+  <code>/root/projects/mumble-current</code>. The original <code>/root/projects/mumble</code> checkout remains
+  unchanged at <code>181e6d8</code> with its 71 modified and five untracked paths, backed by the verified private
+  snapshot. This makes the current branch available on the VPS without pretending the unreconciled work is
+  disposable.</p>
+  <p>This is source synchronisation only. No production service exists for Mumble on the VPS, so no running
+  server application was restarted or declared deployed.</p>
+</div></div>
+
+<div class="doc-foot">
+  <span>Mumble — LOGS</span>
+  <span class="gold">the historical record</span>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,77 @@
+---
+import '../styles/global.css';
+
+export interface Props {
+  title?: string;
+  description?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  canonicalURL?: string;
+  noindex?: boolean;
+}
+
+const {
+  title = 'Mumble — Private voice-to-text for Windows',
+  description = 'Mumble turns your voice into clean text in any app. Transcription runs on your Windows PC by default, with meetings, Smart Modes, Reader, and optional bring-your-own AI.',
+  ogTitle = 'Mumble — The voice layer for everything you write',
+  ogDescription = 'Press one hotkey, speak, and get clean text in any app. Private, local-first voice-to-text for Windows.',
+  ogImage = 'https://getmumble.com/product/home.webp',
+  canonicalURL = 'https://getmumble.com',
+  noindex = false,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    <meta name="theme-color" content="#080806" />
+    <meta name="color-scheme" content="dark" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={ogTitle} />
+    <meta property="og:description" content={ogDescription} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1180" />
+    <meta property="og:image:height" content="820" />
+    <meta property="og:image:alt" content="Mumble voice-first workspace" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={ogTitle} />
+    <meta name="twitter:description" content={ogDescription} />
+    <meta name="twitter:image" content={ogImage} />
+    <link rel="canonical" href={canonicalURL} />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="/mumble.png" />
+    <link rel="apple-touch-icon" href="/mumble.png" />
+    <script type="application/ld+json" is:inline>
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Mumble",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Windows 10 or later (64-bit)",
+        "description": "Private, local-first dictation, meeting transcription, Smart Modes, and text-to-speech for Windows.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://opensource.org/licenses/MIT"
+      }
+    </script>
+    <slot name="head" />
+    <script is:inline>document.documentElement.classList.add('js');</script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <slot name="header" />
+    <main id="main-content">
+      <slot />
+    </main>
+    <slot name="footer" />
+    <script>
+      import '../scripts/site.js';
+    </script>
+  </body>
+</html>

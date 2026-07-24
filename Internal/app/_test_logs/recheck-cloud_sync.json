@@ -1,0 +1,15 @@
+{
+  "mode": "offline",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "seconds": 3.8,
+  "results": [
+    {
+      "test": "test_cloud_sync.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 3.8
+    }
+  ]
+}

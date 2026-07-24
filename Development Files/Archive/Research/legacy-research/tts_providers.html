@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TTS Providers</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Research</div>
+  <h1>TTS Providers</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Research date:</b> 2026-06-23</div>
+    <div><span class="ico">◆</span><b>Purpose:</b> Inform a multi-provider TTS architecture for the Mumble desktop app</div>
+    <div><span class="ico">◆</span><b>Current path:</b> OpenRouter TTS</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This document is a shopping guide for <strong>text-to-speech (TTS)</strong> services — the cloud APIs that turn written text into spoken audio. Mumble currently speaks through one provider (OpenRouter), and the goal is to support several so we can pick the best male voices, keep quality high, keep it fast, and show progress while audio is generated.</p>
+    <p>Below, each provider gets its own section: what voices it has (especially male ones), how you connect to it, what audio it returns, how fast it is, what it costs, and any free allowance. A big side-by-side comparison table and concrete architecture recommendations are at the end. Nothing in the original research has been left out — the dense developer bits (code, exact voice-id lists) are tucked into collapsible panels so the overview stays readable.</p>
+  </div>
+</div>
+
+<blockquote>
+  <p><strong>Goals driving this research:</strong> provider expansion, male-voice priority, expose only high-quality voices, cross-provider consistency, low latency, and progress feedback.</p>
+  <p>This report covers the major TTS APIs available in 2026, with per-provider notes on male voices, API/auth, response formats, latency, pricing, free tiers, and Python/HTTP integration. A consolidated comparison table and architecture recommendations are at the end.</p>
+</blockquote>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">OpenRouter TTS (current provider)</a></li>
+    <li><a href="#s2">Google Cloud TTS / Google AI TTS</a></li>
+    <li><a href="#s3">ElevenLabs</a></li>
+    <li><a href="#s4">Azure Cognitive Services / AI Speech TTS</a></li>
+    <li><a href="#s5">OpenAI TTS</a></li>
+    <li><a href="#s6">Other notable TTS providers</a></li>
+    <li><a href="#s7">Consolidated comparison</a></li>
+    <li><a href="#s8">Recommendations for Mumble's multi-provider architecture</a></li>
+    <li><a href="#s9">Sources</a></li>
+  </ol>
+</nav>
+
+<!-- ============================ SECTION 1 ============================ -->
+<h2 id="s1"><span class="sec">1</span>OpenRouter TTS (current provider)</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>OpenRouter is a <strong>middleman</strong>. Instead of signing up with ten different voice companies, you talk to OpenRouter's single endpoint and it forwards your request to whichever underlying model you name (Google, OpenAI, xAI, Mistral, and more). One key, one API shape, many voices behind it. This is what Mumble uses today.</p>
+  </div>
+</div>
+
+<p>OpenRouter is an aggregator that exposes a single OpenAI-compatible TTS endpoint and routes to many underlying providers. This is the app's current path.</p>
+
+<h3>Endpoint &amp; auth</h3>
+<ul>
+  <li><code>POST https://openrouter.ai/api/v1/audio/speech</code></li>
+  <li>OpenAI Audio Speech API-compatible (same request/response shape).</li>
+  <li>Auth: Bearer token, header <code>Authorization: Bearer $OPENROUTER_API_KEY</code>.</li>
+  <li>Discover TTS models via <code>GET https://openrouter.ai/api/v1/models?output_modalities=speech</code>.</li>
+</ul>
+
+<h3>Request parameters</h3>
+<table>
+  <thead>
+    <tr><th>Parameter</th><th>Required</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>model</code></td><td><span class="badge b-gold">Yes</span></td><td>Provider-prefixed slug, e.g. <code>openai/gpt-4o-mini-tts-2025-12-15</code></td></tr>
+    <tr><td><code>input</code></td><td><span class="badge b-gold">Yes</span></td><td>Text to synthesize</td></tr>
+    <tr><td><code>voice</code></td><td><span class="badge b-gold">Yes</span></td><td>Voice id; varies per model</td></tr>
+    <tr><td><code>response_format</code></td><td><span class="badge b-exist">No</span></td><td><code>mp3</code> or <code>pcm</code> (default <code>pcm</code>)</td></tr>
+    <tr><td><code>speed</code></td><td><span class="badge b-exist">No</span></td><td>Multiplier; only honored by some providers (e.g. OpenAI). Default 1.0</td></tr>
+    <tr><td><code>provider</code></td><td><span class="badge b-exist">No</span></td><td>Provider-specific passthrough options (e.g. Azure <code>style</code>/<code>styledegree</code>, OpenAI <code>instructions</code>)</td></tr>
+  </tbody>
+</table>
+
+<h3>Response</h3>
+<ul>
+  <li>Raw audio byte stream (NOT JSON). Non-200 returns JSON error body.</li>
+  <li><code>Content-Type: audio/mpeg</code> (mp3) or <code>audio/pcm</code> (pcm).</li>
+  <li>Header <code>X-Generation-Id</code> for tracking.</li>
+</ul>
+
+<h3>Available TTS models on OpenRouter (June 2026)</h3>
+<table>
+  <thead>
+    <tr><th>Model slug</th><th>Provider</th><th>Context</th><th>Pricing (per 1M tokens)</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>google/gemini-3.1-flash-tts-preview</code></td><td>Google</td><td>8K</td><td>$1 in / $20 out</td><td>70+ langs, 200+ audio tags, 2 speakers, PCM 24kHz/16-bit, SynthID watermark</td></tr>
+    <tr><td><code>openai/gpt-4o-mini-tts-2025-12-15</code></td><td>OpenAI</td><td>4K</td><td>~$0.60/1M chars</td><td>13 voices, <code>instructions</code> for style, streaming</td></tr>
+    <tr><td><code>microsoft/mai-voice-2</code></td><td>Microsoft/Azure</td><td>-</td><td>$22/M input tokens</td><td>Azure AI Speech backend; SSML abstracted; <code>style</code>/<code>styledegree</code>; MP3+PCM 24kHz</td></tr>
+    <tr><td><code>x-ai/grok-voice-tts-1.0</code></td><td>xAI</td><td>15K chars</td><td>$15/M in / $0 out</td><td>5 voices (Eve, Ara, Rex, Sal, Leo); MP3/WAV/PCM/μ-law/A-law, 8-48kHz</td></tr>
+    <tr><td><code>mistralai/voxtral-mini-tts-2603</code></td><td>Mistral</td><td>4K</td><td>$16/M in / $0 out</td><td>Zero-shot voice cloning, multilingual</td></tr>
+    <tr><td><code>hexgrad/kokoro-82m</code></td><td>hexgrad</td><td>4K</td><td>$0.62/M in / $0 out</td><td>8 langs, 54 preset voices by language+gender</td></tr>
+    <tr><td><code>canopylabs/orpheus-3b-0.1-ft</code></td><td>Canopy Labs</td><td>4K</td><td>$7/M in / $0 out</td><td>English, 7 preset voices</td></tr>
+    <tr><td><code>sesame/csm-1b</code></td><td>Sesame</td><td>4K</td><td>$7/M in / $0 out</td><td>Conversational English</td></tr>
+    <tr><td><code>zyphra/zonos-v0.1-hybrid</code></td><td>Zyphra</td><td>4K</td><td>$7/M in / $0 out</td><td>US/UK English, male+female</td></tr>
+    <tr><td><code>zyphra/zonos-v0.1-transformer</code></td><td>Zyphra</td><td>4K</td><td>$7/M in / $0 out</td><td>Same voices as Hybrid</td></tr>
+  </tbody>
+</table>
+
+<h3>Pricing model</h3>
+<ul>
+  <li>Per-character of input text (for character-billed models) or per token (token-billed models). Check each model page on OpenRouter for exact per-character cost.</li>
+</ul>
+
+<h3>Python integration</h3>
+<p>Fully OpenAI-SDK compatible. Point the OpenAI client at OpenRouter's base URL.</p>
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — OpenRouter via OpenAI SDK</summary>
+  <pre><code>from openai import OpenAI
+client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key="&lt;OR_KEY&gt;")
+with client.audio.speech.with_streaming_response.create(
+    model="openai/gpt-4o-mini-tts-2025-12-15",
+    input="Hello world.", voice="onyx", response_format="mp3",
+) as r:
+    r.stream_to_file("out.mp3")</code></pre>
+</details>
+
+<h3>Male-voice notes</h3>
+<ul>
+  <li><code>openai/gpt-4o-mini-tts-*</code> voices: male-leaning = <code>onyx</code>, <code>ash</code>, <code>echo</code>, <code>sage</code>, <code>ballad</code>, <code>cedar</code>, <code>marin</code>.</li>
+  <li><code>microsoft/mai-voice-2</code> exposes Azure voice names, e.g. <code>en-US-Guy:MAI-Voice-2</code>, <code>en-US-Davis:MAI-Voice-2</code>, <code>en-US-Andrew:MAI-Voice-2</code>.</li>
+  <li><code>x-ai/grok-voice-tts-1.0</code> male voices: <code>Rex</code>, <code>Leo</code> (Eve/Ara/Sal are female-coded).</li>
+</ul>
+
+<h3>Free tier</h3>
+<p>None directly from OpenRouter (you pay the underlying provider cost + OpenRouter margin). A small credit may be available on signup depending on account/promos.</p>
+
+<h3>Latency</h3>
+<p>Aggregator overhead on top of the underlying provider. PCM streaming recommended for real-time pipelines. Token-billed models like Gemini Flash TTS and Grok Voice TTS are fast; MAI-Voice-2 and Voxtral are heavier.</p>
+
+<!-- ============================ SECTION 2 ============================ -->
+<h2 id="s2"><span class="sec">2</span>Google Cloud TTS / Google AI TTS</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Google offers <strong>two</strong> related voice products. The older <em>Cloud Text-to-Speech</em> charges by the character and has many quality tiers (from cheap-and-robotic to premium "Journey" voices). The newer <em>Gemini-TTS</em> charges by token, streams audio, and is faster. Google's standout perk is a generous <strong>ongoing free allowance</strong> — more sustained free usage than most rivals.</p>
+  </div>
+</div>
+
+<p>Two related products: classic <strong>Cloud Text-to-Speech</strong> (per-character) and newer <strong>Gemini-TTS</strong> (per-token, via Vertex AI / Gemini API).</p>
+
+<h3>Endpoint &amp; auth</h3>
+<ul>
+  <li>Cloud TTS: <code>POST https://texttospeech.googleapis.com/v1/text:synthesize</code> (REST); also <code>speech.googleapis.com</code> for streaming.</li>
+  <li>Gemini TTS: Gemini API <code>generateContent</code> with audio output modality, or Vertex AI.</li>
+  <li>Auth: Google service-account JSON or API key (Cloud TTS accepts API key for many operations); OAuth2 access token for Vertex.</li>
+</ul>
+
+<h3>Voices &amp; tiers (Cloud TTS, per 1M chars)</h3>
+<table>
+  <thead>
+    <tr><th>Tier</th><th>Price</th><th>Free/mo</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Standard</td><td>$4</td><td>4M chars</td><td>Older concatenative; low quality</td></tr>
+    <tr><td>WaveNet</td><td>$4</td><td>4M chars</td><td>DeepMind WaveNet</td></tr>
+    <tr><td>Neural2</td><td>$16</td><td>1M chars</td><td>Better prosody than WaveNet</td></tr>
+    <tr><td>Polyglot (Preview)</td><td>$16</td><td>1M chars</td><td>Multi-language switching</td></tr>
+    <tr><td>Studio (Journey)</td><td>$160</td><td>1M chars</td><td>Highest classic quality; "Journey" voices</td></tr>
+    <tr><td>Chirp 3: HD</td><td>$30</td><td>1M chars</td><td>Latest LLM-based premium; 35+ langs</td></tr>
+    <tr><td>Instant custom voice</td><td>$60</td><td>none</td><td>Clone from short sample</td></tr>
+  </tbody>
+</table>
+
+<h3>Gemini-TTS (token-billed)</h3>
+<table>
+  <thead>
+    <tr><th>Model</th><th>In / 1M text tokens</th><th>Out / 1M audio tokens</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Gemini 2.5 Flash TTS / Flash-Lite Preview</td><td>$0.50</td><td>$10.00</td></tr>
+    <tr><td>Gemini 3.1 Flash TTS (Preview)</td><td>$1.00</td><td>$20.00</td></tr>
+    <tr><td>Gemini 2.5 Pro TTS</td><td>$1.00</td><td>$20.00</td></tr>
+  </tbody>
+</table>
+<p><em>(25 audio tokens = 1 second of audio)</em></p>
+
+<h3>Response formats</h3>
+<ul>
+  <li>Cloud TTS: returns base64-encoded audio in <code>audioContent</code>. Supported encodings: <code>MP3</code>, <code>LINEAR16</code> (WAV PCM), <code>OGG_OPUS</code>, <code>MULAW</code>, <code>ALAW</code>. Sample rates up to 24000 Hz for most voices.</li>
+  <li>Gemini TTS: PCM 24kHz/16-bit mono, watermarked with SynthID.</li>
+</ul>
+
+<h3>Notable male voices (en-US)</h3>
+<ul>
+  <li>Neural2: <code>en-US-Neural2-D</code> (male), also <code>-I</code>, <code>-J</code> variants.</li>
+  <li>WaveNet: <code>en-US-Wavenet-D</code>, <code>-I</code>, <code>-J</code>.</li>
+  <li>Studio/Journey: <code>en-US-Journey-D</code> (male, premium).</li>
+  <li>Chirp 3 HD: named voices; check the voice list endpoint for current male options.</li>
+  <li>Standard (avoid for quality): <code>en-US-Standard-B</code>, <code>-D</code>.</li>
+</ul>
+
+<h3>Latency</h3>
+<ul>
+  <li>Cloud TTS (Neural2/Chirp3): request-response only, ~400-600ms TTFAB, no streaming.</li>
+  <li>Gemini TTS: streams; lower latency, suitable for real-time.</li>
+</ul>
+
+<h3>Python integration</h3>
+<ul>
+  <li>Official client library: <code>pip install google-cloud-texttospeech</code>.</li>
+  <li>Gemini TTS via <code>google-genai</code> SDK (<code>pip install google-genai</code>).</li>
+</ul>
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — Google Cloud TTS</summary>
+  <pre><code>from google.cloud import texttospeech
+client = texttospeech.TextToSpeechClient()
+resp = client.synthesize_speech(
+    input=texttospeech.SynthesisInputText(text="Hello."),
+    voice=texttospeech.VoiceSelectionParams(language_code="en-US", name="en-US-Neural2-D"),
+    audio_config=texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3),
+)
+open("out.mp3","wb").write(resp.audio_content)</code></pre>
+</details>
+
+<h3>Free tier</h3>
+<p>Strong ongoing free tiers (see table above). Best sustained free allowance among cloud providers for WaveNet/Neural2 (1M chars/mo) and Standard (4M chars/mo).</p>
+
+<!-- ============================ SECTION 3 ============================ -->
+<h2 id="s3"><span class="sec">3</span>ElevenLabs</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>ElevenLabs is the <strong>quality benchmark</strong> everyone compares against. The voices sound the most human, it has a deep catalog of named male voices plus a huge community library, and it can clone a voice. The trade-off is price: it sells subscription "credit" plans rather than simple per-character billing, and at scale it is one of the pricier options.</p>
+  </div>
+</div>
+
+<p>Widely regarded as the quality reference for managed TTS in 2026. Premium price, premium output, strong male-voice catalog and voice cloning.</p>
+
+<h3>Endpoint &amp; auth</h3>
+<ul>
+  <li>REST: <code>POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}</code> (with <code>?output_format=mp3_44100_128</code> etc.).</li>
+  <li>Streaming variant: <code>/v1/text-to-speech/{voice_id}/stream</code>.</li>
+  <li>WebSocket streaming endpoint also available for real-time.</li>
+  <li>Auth: <code>xi-api-key</code> header (or <code>Authorization: Bearer</code>).</li>
+</ul>
+
+<h3>Models</h3>
+<ul>
+  <li><code>eleven_v3</code> (alpha/premium) - highest expressiveness, multilingual.</li>
+  <li><code>eleven_multilingual_v2</code> - 32 languages.</li>
+  <li><code>eleven_turbo_v2.5</code> - fast, multilingual, good quality/latency balance.</li>
+  <li><code>eleven_flash_v2.5</code> - lowest latency.</li>
+  <li>Legacy <code>eleven_mono_v1</code> (deprecated path).</li>
+</ul>
+
+<h3>Pricing (subscription, credits)</h3>
+<table>
+  <thead>
+    <tr><th>Plan</th><th>$/mo</th><th>Credits/mo</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Free</td><td>$0</td><td>10K chars</td><td>No commercial license</td></tr>
+    <tr><td>Starter</td><td>$6</td><td>30K</td><td>Commercial, instant cloning</td></tr>
+    <tr><td>Creator</td><td>$22 ($11 first mo)</td><td>121K</td><td>Professional cloning</td></tr>
+    <tr><td>Pro</td><td>$99</td><td>600K</td><td>44.1kHz PCM + 192kbps via API</td></tr>
+    <tr><td>Scale</td><td>$299</td><td>1.8M</td><td>Team seats</td></tr>
+    <tr><td>Business</td><td>$990</td><td>6M</td><td>Low-latency TTS from ~5c/min</td></tr>
+    <tr><td>Enterprise</td><td>custom</td><td>custom</td><td></td></tr>
+  </tbody>
+</table>
+<p>Effective per-1M-char rate at quota ~$66/1M; overage ~$0.30/1K chars ($300/1M). Turbo/Flash models cost 0.5-1 credit/char.</p>
+
+<h3>Response formats</h3>
+<p><code>mp3_44100_128</code> (default), <code>mp3_44100_192</code>, <code>pcm_44100</code> (Pro+), <code>pcm_24000</code>, <code>ulaw_8000</code> (telephony), <code>opus_48000_32</code>, <code>opus_48000_64</code>.</p>
+
+<h3>Latency</h3>
+<p>Turbo v2.5 streaming ~200-300ms TTFAB. Flash lower. Business plan advertises low-latency TTS as low as 5c/minute.</p>
+
+<h3>Notable male premade voices (voice IDs)</h3>
+<p>ElevenLabs ships a set of "default" premade voices plus a large community Voice Library. Key default male voices (verify IDs against the live <code>/v1/voices</code> endpoint as they rotate):</p>
+<ul>
+  <li><code>Adam</code> - deep, narration</li>
+  <li><code>Antoni</code> - smooth, conversational</li>
+  <li><code>Arnold</code> - deep, gravelly</li>
+  <li><code>Daniel</code> - warm, mature</li>
+  <li><code>Josh</code> - young, energetic</li>
+  <li><code>Sam</code> - raspy, conversational</li>
+  <li><code>Michael</code> - news/announcer</li>
+  <li><code>George</code> - calm storyteller</li>
+  <li><code>Giovanni</code> - Italian-accented male</li>
+</ul>
+<p>Use <code>GET /v1/voices</code> to enumerate; filter by <code>labels.gender == "male"</code>. The community library exposes thousands of additional male voices (each with a <code>voice_id</code>).</p>
+
+<h3>Python SDK</h3>
+<p><code>pip install elevenlabs</code></p>
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — ElevenLabs convert</summary>
+  <pre><code>from elevenlabs import ElevenLabs
+client = ElevenLabs(api_key="...")
+audio = client.text_to_speech.convert(
+    text="Hello.", voice_id="onwK4e9ZLuTAKqWW03F9",  # Daniel
+    model_id="eleven_turbo_v2_5",
+    output_format="mp3_44100_128",
+)
+# audio is a generator of bytes -&gt; stream/concatenate</code></pre>
+</details>
+
+<h3>Free tier</h3>
+<p>10K chars/month ongoing (no expiration). Enough for testing, not production.</p>
+
+<!-- ============================ SECTION 4 ============================ -->
+<h2 id="s4"><span class="sec">4</span>Azure Cognitive Services / AI Speech TTS</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Azure has the <strong>biggest voice catalog</strong> of anyone — 500+ voices across 140+ locales — with lots of male options, plus the most generous <strong>ongoing free tier</strong> (500K characters every month, forever). It is also the engine behind OpenRouter's MAI-Voice-2. Requests are written as SSML (a markup format for controlling speech), and its SDK can emit progress events while audio is being made — handy for showing a progress bar.</p>
+  </div>
+</div>
+
+<p>Broadest voice catalog of any provider (500+ voices, 140+ locales) with strong male coverage and excellent ongoing free tier. Also the backend for OpenRouter's <code>microsoft/mai-voice-2</code>.</p>
+
+<h3>Endpoint &amp; auth</h3>
+<ul>
+  <li>REST: <code>POST https://{region}.tts.speech.microsoft.com/cognitiveservices/v1</code> (body = SSML document).</li>
+  <li>Streaming/low-latency: WebSocket and the Speech SDK.</li>
+  <li>Auth: <code>Authorization: Bearer &lt;token&gt;</code> (token from Speech resource key) or <code>Ocp-Apim-Subscription-Key: &lt;key&gt;</code> header.</li>
+  <li>LiteLLM and Azure AI Foundry also expose a chat-style interface.</li>
+</ul>
+
+<h3>Voice tiers &amp; pricing (per 1M chars)</h3>
+<table>
+  <thead>
+    <tr><th>Tier</th><th>Price</th><th>Free/mo</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Neural Standard</td><td>$14.11 ($16/hr equivalent)</td><td><span class="badge b-done">500K chars ongoing</span></td><td>500+ voices, 140+ langs</td></tr>
+    <tr><td>Neural HD (Dragon HD)</td><td>$91.75</td><td>none</td><td>Premium long-form narration, English-heavy</td></tr>
+    <tr><td>Custom Neural Voice (trained)</td><td>$24</td><td>none</td><td>Requires consent docs + training</td></tr>
+    <tr><td>MAI-Voice-2 (via OpenRouter)</td><td>$22/M input tokens</td><td>-</td><td>Expressive SSML styles</td></tr>
+  </tbody>
+</table>
+<p>Free tier is the best sustained free TTS allowance available (500K chars/mo, no expiration).</p>
+
+<h3>Response formats</h3>
+<p>SSML-driven; <code>audio-output-encoding</code> supports: <code>riff-24khz-16bit-mono-pcm</code> (WAV), <code>audio-24khz-160kbitrate-mono-mp3</code>, <code>audio-48khz-192kbitrate-mono-mp3</code>, <code>ogg-24khz-16bit-mono-opus</code>, <code>raw-24khz-16bit-mono-pcm</code>, plus <code>mulaw</code>/<code>alaw</code> telephony.</p>
+
+<h3>Latency</h3>
+<p>Neural Standard streaming ~200-400ms TTFAB (region-dependent). HD voices slower. The Speech SDK supports Viseme/bookmark events for progress feedback and lip-sync.</p>
+
+<h3>Notable male voices (en-US)</h3>
+<ul>
+  <li><code>en-US-GuyNeural</code> - classic deep male</li>
+  <li><code>en-US-DavisNeural</code> - warm conversational male</li>
+  <li><code>en-US-JasonNeural</code> - casual male</li>
+  <li><code>en-US-BrianNeural</code> / <code>en-US-BrianMultilingualNeural</code></li>
+  <li><code>en-US-AndrewNeural</code> / <code>en-US-AndrewMultilingualNeural</code></li>
+  <li><code>en-US-TonyNeural</code></li>
+  <li><code>en-US-EricNeural</code></li>
+  <li><code>en-US-RogerNeural</code></li>
+  <li><code>en-US-SteffanNeural</code></li>
+  <li><code>en-US-ChristopherNeural</code> / Multilingual</li>
+  <li><code>en-US-BrandonNeural</code> / Multilingual</li>
+  <li><code>en-US-AdamMultilingualNeural</code></li>
+  <li><code>en-US-DerekMultilingualNeural</code>, <code>en-US-DustinMultilingualNeural</code>, <code>en-US-LewisMultilingualNeural</code>, <code>en-US-SamuelMultilingualNeural</code></li>
+  <li>Dragon HD (premium): <code>en-US-Andrew:DragonHDLatestNeural</code>, <code>en-US-Davis:DragonHDLatestNeural</code>, <code>en-US-Brian:DragonHDLatestNeural</code>, <code>en-US-Steffan:DragonHDLatestNeural</code>, <code>en-US-Andrew2:DragonHDLatestNeural</code></li>
+  <li>Turbo (OpenAI-compatible aliases on Azure): <code>en-US-OnyxTurboMultilingualNeural</code> (male), <code>en-US-AlloyTurboMultilingualNeural</code>, <code>en-US-EchoTurboMultilingualNeural</code>.</li>
+</ul>
+<p>Other locales have male voices too (e.g. <code>en-GB-RyanNeural</code>, <code>en-GB-AlfieNeural</code>, <code>en-GB-ThomasNeural</code>, <code>en-GB-EthanNeural</code>, <code>en-GB-ElliotNeural</code>, <code>en-AU-WilliamNeural</code>, <code>en-AU-DarrenNeural</code>, <code>en-AU-DuncanNeural</code>, <code>en-AU-NeilNeural</code>, <code>en-CA-LiamNeural</code>, <code>en-IN-AaravNeural</code>, <code>en-IN-KunalNeural</code>, <code>en-IN-PrabhatNeural</code>, <code>en-IN-RehaanNeural</code>, <code>en-IN-ArjunNeural</code>, <code>en-PH-JamesNeural</code>, <code>en-SG-WayneNeural</code>, <code>en-ZA-LukeNeural</code>, <code>en-IE-ConnorNeural</code>, <code>en-NZ-MitchellNeural</code>, <code>en-NG-AbeoNeural</code>, <code>en-TZ-ElimuNeural</code>, <code>en-KE-ChilembaNeural</code>, <code>en-HK-SamNeural</code>).</p>
+
+<h3>Python integration</h3>
+<ul>
+  <li><code>pip install azure-cognitiveservices-speech</code> (Speech SDK, supports streaming + events).</li>
+  <li>REST fallback via <code>requests</code> with SSML body.</li>
+</ul>
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — Azure Speech SDK</summary>
+  <pre><code>import azure.cognitiveservices.speech as speechsdk
+cfg = speechsdk.SpeechConfig(subscription="&lt;key&gt;", region="&lt;region&gt;")
+cfg.speech_synthesis_voice_name = "en-US-DavisNeural"
+cfg.set_speech_synthesis_output_format(
+    speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3)
+synth = speechsdk.SpeechSynthesizer(cfg, None)
+result = synth.speak_text("Hello world.")
+open("out.mp3","wb").write(result.audio_data)</code></pre>
+</details>
+<p>The Speech SDK emits <code>synthesizing</code> events with audio chunks (good for progress feedback) and <code>viseme_received</code>/<code>bookmark_reached</code> events.</p>
+
+<!-- ============================ SECTION 5 ============================ -->
+<h2 id="s5"><span class="sec">5</span>OpenAI TTS</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>OpenAI has the <strong>simplest API</strong> of the bunch. Its newest model, <code>gpt-4o-mini-tts</code>, lets you give plain-English <em>instructions</em> ("speak in a calm, deep baritone") to control accent, emotion, and speed, and it streams. Good voices, fast, cheap — but only a small trial credit, no ongoing free tier.</p>
+  </div>
+</div>
+
+<p>Simplest API. Newer <code>gpt-4o-mini-tts</code> supports style <code>instructions</code> and streaming.</p>
+
+<h3>Endpoint &amp; auth</h3>
+<ul>
+  <li><code>POST https://api.openai.com/v1/audio/speech</code></li>
+  <li>Auth: <code>Authorization: Bearer $OPENAI_API_KEY</code>.</li>
+</ul>
+
+<h3>Models</h3>
+<table>
+  <thead>
+    <tr><th>Model</th><th>Price/1M chars</th><th>Streaming</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>gpt-4o-mini-tts</code></td><td>$15</td><td><span class="badge b-done">Yes</span></td><td>Newest; supports <code>instructions</code> for accent/emotion/speed</td></tr>
+    <tr><td><code>tts-1</code></td><td>$15</td><td><span class="badge b-done">Yes</span></td><td>Older architecture, slightly more robotic</td></tr>
+    <tr><td><code>tts-1-hd</code></td><td>$30</td><td><span class="badge b-gated">No</span></td><td>Higher quality, batch use</td></tr>
+    <tr><td><code>gpt-4o-voice</code></td><td>contact sales</td><td><span class="badge b-done">Yes</span></td><td>Realtime API product (separate scope)</td></tr>
+  </tbody>
+</table>
+<p>Max input ~2000 tokens for gpt-4o-mini-tts.</p>
+
+<h3>Voices (13, gpt-4o-mini-tts)</h3>
+<p><code>alloy</code>, <code>ash</code>, <code>ballad</code>, <code>coral</code>, <code>echo</code>, <code>fable</code>, <code>nova</code>, <code>onyx</code>, <code>sage</code>, <code>shimmer</code>, <code>verse</code>, <code>marin</code>, <code>cedar</code>.</p>
+<ul>
+  <li>Recommended for quality: <code>marin</code>, <code>cedar</code>.</li>
+  <li>Male-coded: <code>onyx</code> (deep), <code>ash</code>, <code>echo</code>, <code>sage</code>, <code>ballad</code>, <code>cedar</code>, <code>marin</code>.</li>
+  <li>Female-coded: <code>coral</code>, <code>nova</code>, <code>shimmer</code>, <code>fable</code>, <code>alloy</code>, <code>verse</code>.</li>
+  <li><code>tts-1</code>/<code>tts-1-hd</code> support a smaller set: <code>alloy, ash, coral, echo, fable, onyx, nova, sage, shimmer</code>.</li>
+</ul>
+
+<h3>Response formats</h3>
+<p><code>mp3</code> (default), <code>opus</code>, <code>aac</code>, <code>flac</code>, <code>wav</code>, <code>pcm</code> (24kHz 16-bit signed LE, no header). For lowest latency use <code>wav</code> or <code>pcm</code>.</p>
+
+<h3>Latency</h3>
+<p>~250-350ms TTFAB for gpt-4o-mini-tts streaming. tts-1 ~300-500ms.</p>
+
+<h3>Custom voices</h3>
+<p>Available to eligible orgs (contact sales): create a voice from a consented sample, then pass <code>voice: {id: "voice_..."}</code>. Up to 20 voices/org.</p>
+
+<h3>Python SDK</h3>
+<p><code>pip install openai</code></p>
+<details class="dev">
+  <summary><span class="devchip">Code</span> Python — OpenAI TTS with instructions</summary>
+  <pre><code>from openai import OpenAI
+client = OpenAI()
+with client.audio.speech.with_streaming_response.create(
+    model="gpt-4o-mini-tts", voice="onyx",
+    input="Hello.", instructions="Speak in a calm, deep baritone.",
+    response_format="mp3",
+) as r:
+    r.stream_to_file("out.mp3")</code></pre>
+</details>
+
+<h3>Free tier</h3>
+<p>~$5 trial credit (shared across all OpenAI APIs, 3 months). No ongoing free tier.</p>
+
+<!-- ============================ SECTION 6 ============================ -->
+<h2 id="s6"><span class="sec">6</span>Other notable TTS providers</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Beyond the big five, there's a long tail of specialists: <strong>Cartesia</strong> (the fastest), <strong>Deepgram</strong> (cheap, generous credit, many male voices), <strong>PlayHT</strong> (huge catalog), <strong>Hume</strong> (emotional acting), <strong>Amazon Polly</strong> (steady AWS option), and a few cloning/enterprise/open-source choices. Each fills a niche — pick by what matters most for a given use.</p>
+  </div>
+</div>
+
+<h3>6a. Cartesia (Sonic)</h3>
+<ul>
+  <li><strong>Product</strong>: Sonic-3.5 (latest), purpose-built for low-latency realtime TTS.</li>
+  <li><strong>Endpoint</strong>: <code>POST https://api.cartesia.ai/tts/bytes</code> (REST) and WebSocket <code>wss://api.cartesia.ai/tts/websocket</code> for streaming.</li>
+  <li><strong>Auth</strong>: <code>Authorization: Bearer</code> + <code>Cartesia-Version</code> header; API key from dashboard.</li>
+  <li><strong>Voices</strong>: built-in palette + instant voice cloning from short audio; 40+ languages.</li>
+  <li><strong>Latency</strong>: ~80-90ms TTFAB (streaming) - <span class="badge b-gold">the latency leader</span>.</li>
+  <li><strong>Pricing</strong>: pay-as-you-go ~$50/1M chars. Free: $5 credit (~100K chars). Subscriptions: Free (20K credits), Pro $5, Startup $49, Scale $299.</li>
+  <li><strong>Formats</strong>: PCM, MP3, raw 24kHz/16-bit. Streams chunked.</li>
+  <li><strong>Python</strong>: official <code>cartesia</code> SDK (<code>pip install cartesia</code>).</li>
+</ul>
+
+<h3>6b. Deepgram (Aura-2)</h3>
+<ul>
+  <li><strong>Product</strong>: Aura-2 enterprise streaming TTS; pairs with Nova-3 STT.</li>
+  <li><strong>Endpoint</strong>: <code>POST https://api.deepgram.com/v1/speak?model=aura-2-&lt;voice&gt;-&lt;lang&gt;</code> and WebSocket streaming.</li>
+  <li><strong>Auth</strong>: <code>Authorization: Token &lt;DEEPGRAM_API_KEY&gt;</code>.</li>
+  <li><strong>Voices (en, masculine)</strong>: <code>aura-2-apollo-en</code>, <code>aura-2-arcas-en</code>, <code>aura-2-aries-en</code>, <code>aura-2-atlas-en</code>, <code>aura-2-draco-en</code> (British), <code>aura-2-hermes-en</code>, <code>aura-2-hyperion-en</code> (Australian), <code>aura-2-jupiter-en</code>, <code>aura-2-mars-en</code>, <code>aura-2-neptune-en</code>, <code>aura-2-odysseus-en</code>, <code>aura-2-orion-en</code>, <code>aura-2-orpheus-en</code>, <code>aura-2-pluto-en</code>, <code>aura-2-saturn-en</code>, <code>aura-2-zeus-en</code>. Also Aura-1: <code>aura-orion-en</code>, <code>aura-arcas-en</code>, <code>aura-perseus-en</code>, <code>aura-angus-en</code> (Irish), <code>aura-orpheus-en</code>, <code>aura-helios-en</code> (British), <code>aura-zeus-en</code>.</li>
+  <li><strong>Latency</strong>: ~120-150ms TTFAB.</li>
+  <li><strong>Pricing</strong>: ~$15/1M chars. Free: $200 signup credit (~13M chars).</li>
+  <li><strong>Languages</strong>: English (US/GB/AU/IE/PH), Spanish, German, French, Dutch, Italian, Japanese.</li>
+  <li><strong>Formats</strong>: WAV/PCM/MP3 via output params; streaming chunked.</li>
+  <li><strong>Python</strong>: <code>pip install deepgram-sdk</code>.</li>
+</ul>
+
+<h3>6c. PlayHT</h3>
+<ul>
+  <li><strong>Product</strong>: PlayHT 2.0 Turbo; large voice catalog (900+ voices, 142 languages).</li>
+  <li><strong>Endpoint</strong>: REST <code>https://api.play.ht/api/v2/tts/stream</code> + WebSocket.</li>
+  <li><strong>Auth</strong>: <code>X-USER-ID</code> + <code>Authorization: Bearer &lt;SECRET_KEY&gt;</code> (or API key header).</li>
+  <li><strong>Voices</strong>: extensive library with many male voices; instant cloning from 3-10s clip (Creator+), "Ultra" high-fidelity cloning (Pro+).</li>
+  <li><strong>Latency</strong>: ~300-500ms TTFAB (Turbo).</li>
+  <li><strong>Pricing</strong>: Free 12,500 chars/mo; Creator ~$33/1M at quota; Pro ~$22/1M at quota.</li>
+  <li><strong>Python</strong>: <code>pip install pyht</code> (official SDK, streaming-first).</li>
+</ul>
+
+<h3>6d. Hume AI (Octave)</h3>
+<ul>
+  <li><strong>Product</strong>: Octave TTS - emotionally expressive; prompted with natural-language emotional direction instead of SSML.</li>
+  <li><strong>Endpoint</strong>: <code>https://api.hume.ai/v0/tts</code> (REST + streaming).</li>
+  <li><strong>Auth</strong>: Bearer API key.</li>
+  <li><strong>Pricing</strong>: ~$30/1M chars; $5 signup credit.</li>
+  <li><strong>Voices</strong>: built-in palette, no cloning; English only.</li>
+  <li><strong>Best for</strong>: character/dialogue where emotional authenticity matters.</li>
+</ul>
+
+<h3>6e. Amazon Polly</h3>
+<ul>
+  <li><strong>Voices</strong>: fixed catalog, no cloning. Male en-US: <code>Matthew</code>, <code>Brian</code>, <code>Justin</code>, <code>Kevin</code>, <code>Stephen</code> (Neural); <code>Joey</code>, <code>Matthew</code> (Generative).</li>
+  <li><strong>Endpoint</strong>: <code>https://polly.&lt;region&gt;.amazonaws.com/v1/speech</code>.</li>
+  <li><strong>Auth</strong>: AWS SigV4 (IAM).</li>
+  <li><strong>Pricing</strong>: Standard $4, Neural $16, Generative $30, Long-form $100 per 1M chars. Free: 5M Standard + 1M Neural for first 12 months only.</li>
+  <li><strong>Formats</strong>: mp3, ogg_vorbis, pcm, json (speech marks).</li>
+</ul>
+
+<h3>6f. Resemble.ai</h3>
+<ul>
+  <li>Per-second pricing (~$0.006/s ~ $21.60/hr ~ $7.94/1M chars). Voice cloning self-serve. Good for narration. Endpoint <code>https://app.resemble.ai/api/v2/tts</code>.</li>
+</ul>
+
+<h3>6g. WellSaid Labs</h3>
+<ul>
+  <li>Enterprise narration (L&amp;D, marketing). Maker $49/mo. Legally vetted voice avatars. Contact sales for API at scale. No self-serve cloning.</li>
+</ul>
+
+<h3>6h. Self-hosted / open source</h3>
+<ul>
+  <li><strong>Coqui xTTS v2</strong> (company shut down, code archived): 17 languages, clone from 3-6s clip, MPL-2.0 weights (review commercial licensing). Effectively $0 API cost, pay for GPU compute (~$0.25-0.50/hr audio on A10G).</li>
+  <li><strong>Kokoro 82M</strong> (open-weight, also on OpenRouter): 8 languages, 54 preset voices.</li>
+  <li><strong>Orpheus 3B</strong> (Canopy Labs, open-weight): English, 7 preset voices; on OpenRouter.</li>
+  <li><strong>Sesame CSM 1B</strong> (open-weight): conversational English; on OpenRouter.</li>
+  <li><strong>Zyphra Zonos v0.1</strong> (open-weight): US/UK English, male+female; on OpenRouter.</li>
+</ul>
+
+<!-- ============================ SECTION 7 ============================ -->
+<h2 id="s7"><span class="sec">7</span>Consolidated comparison</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This is the at-a-glance scorecard. Every provider, rated on what we care about: how strong its male voices are, what it costs per million characters, what's free, how fast the first audio arrives (TTFAB = "time to first audio byte"), whether it streams, whether it can clone, what audio formats it returns, and its Python package.</p>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr><th>Provider</th><th>Male voice strength</th><th>Price/1M chars</th><th>Free tier</th><th>Latency (TTFAB)</th><th>Streaming</th><th>Cloning</th><th>Formats</th><th>SDK</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>OpenRouter (aggregator)</td><td>Varies by model</td><td>varies</td><td>none (provider cost)</td><td>varies</td><td>yes (pcm)</td><td>depends on model</td><td>mp3, pcm</td><td>OpenAI SDK</td></tr>
+    <tr><td>Google Cloud TTS</td><td>Good (D/Journey-D)</td><td>$4-$160; Gemini token-billed</td><td>1M Neural2 + 4M WaveNet/Std</td><td>400-600ms (Neural2); faster Gemini</td><td>Gemini yes, Cloud TTS no</td><td>Instant custom ($60)</td><td>mp3, wav, opus, mulaw, alaw</td><td>google-cloud-texttospeech</td></tr>
+    <tr><td>ElevenLabs</td><td><span class="badge b-gold">Excellent</span> (Adam, Daniel, Arnold, Sam, Josh + library)</td><td>~$66 quota / ~$300 overage</td><td>10K chars/mo</td><td>200-300ms Turbo</td><td>yes</td><td>Instant (Creator+)</td><td>mp3, pcm, opus, ulaw</td><td>elevenlabs</td></tr>
+    <tr><td>Azure AI Speech</td><td><span class="badge b-gold">Excellent</span> (Guy, Davis, Andrew, Brian, Dragon HD...)</td><td>$14.11 Std / $91.75 HD</td><td><span class="badge b-done">500K chars/mo ongoing</span></td><td>200-400ms</td><td>yes (SDK + WS)</td><td>Custom Neural Voice (consent)</td><td>mp3, wav, opus, pcm, mulaw, alaw</td><td>azure-cognitiveservices-speech</td></tr>
+    <tr><td>OpenAI</td><td>Good (onyx, ash, echo, sage, cedar, marin)</td><td>$15 (mini-tts) / $30 hd</td><td>~$5 trial</td><td>250-350ms</td><td>yes</td><td>Custom voices (eligibility)</td><td>mp3, opus, aac, flac, wav, pcm</td><td>openai</td></tr>
+    <tr><td>Cartesia Sonic</td><td>Moderate (palette + cloning)</td><td>~$50</td><td>$5 credit</td><td><span class="badge b-gold">80-90ms (best)</span></td><td>yes</td><td>Instant</td><td>pcm, mp3</td><td>cartesia</td></tr>
+    <tr><td>Deepgram Aura-2</td><td>Good (apollo, arcas, draco, hermes, jupiter, zeus...)</td><td>~$15</td><td>$200 credit</td><td>120-150ms</td><td>yes</td><td>no</td><td>wav, pcm, mp3</td><td>deepgram-sdk</td></tr>
+    <tr><td>PlayHT</td><td><span class="badge b-gold">Excellent</span> (large catalog + cloning)</td><td>~$22-33 at quota</td><td>12,500 chars/mo</td><td>300-500ms</td><td>yes (WS)</td><td>Instant + Ultra</td><td>mp3, wav, pcm, ogg</td><td>pyht</td></tr>
+    <tr><td>Hume Octave</td><td>Moderate (palette)</td><td>~$30</td><td>$5 credit</td><td>streaming</td><td>yes</td><td>no</td><td>pcm, mp3</td><td>humeanai</td></tr>
+    <tr><td>Amazon Polly</td><td>Moderate (Matthew, Brian, Justin, Kevin, Stephen)</td><td>$4-$100</td><td>12-mo only</td><td>300-500ms</td><td>yes (marks)</td><td>no</td><td>mp3, ogg, pcm</td><td>boto3</td></tr>
+    <tr><td>Resemble.ai</td><td>Good (clone-based)</td><td>~$8</td><td>$0.05 credit</td><td>streaming</td><td>yes</td><td>yes (self-serve)</td><td>mp3, wav</td><td>resemble-api</td></tr>
+    <tr><td>xTTS v2 (self-host)</td><td>depends on sample</td><td>~$0 (GPU)</td><td>n/a</td><td>depends</td><td>yes</td><td>yes (3-6s)</td><td>wav</td><td>coqui-ai/TTS</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================ SECTION 8 ============================ -->
+<h2 id="s8"><span class="sec">8</span>Recommendations for Mumble's multi-provider architecture</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This section is the actionable plan. The core idea: build <strong>one common interface</strong> for "speak this text" and write a small adapter per provider behind it, so the rest of the app never cares which company made the audio. Then the recommendations cover which providers to add first, how to put male voices front-and-center, how to hide low-quality voices, how to keep everything consistent across providers, how to stay fast and show progress, where to keep the secret keys, and what open questions still need an answer.</p>
+  </div>
+</div>
+
+<h3 id="s8-1">8.1 Provider expansion (abstraction layer)</h3>
+<p>Define a single <code>TTSProvider</code> interface and one adapter per backend. OpenRouter is itself an aggregator, so treat it as one provider that fans out to model slugs. Native adapters (OpenAI, ElevenLabs, Azure, Google, Cartesia, Deepgram) give better control of provider-specific features (Azure SSML styles, OpenAI <code>instructions</code>, ElevenLabs voice settings) than going through OpenRouter for everything.</p>
+
+<p>Suggested core providers to support first (best quality + male-voice coverage + latency):</p>
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">OpenAI (<code>gpt-4o-mini-tts</code>)</div><p>Keep as a default; cheap, fast, <code>instructions</code>.</p></div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">Azure AI Speech</div><p>Best free tier, huge male catalog, SSML, streaming events.</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">ElevenLabs</div><p>Premium quality + cloning for power users; male voice priority.</p></div></div>
+  <div class="flow-step"><div class="flow-node">4</div><div class="flow-body"><div class="ft">Cartesia Sonic</div><p>Lowest latency for real-time; cloning.</p></div></div>
+  <div class="flow-step"><div class="flow-node">5</div><div class="flow-body"><div class="ft">Google Cloud TTS / Gemini TTS</div><p>Broad language coverage, generous free tier.</p></div></div>
+  <div class="flow-step"><div class="flow-node">6</div><div class="flow-body"><div class="ft">OpenRouter (existing)</div><p>Keep as fallback/aggregator for niche models (Grok Voice, Voxtral, Kokoro, etc.).</p></div></div>
+</div>
+
+<h3 id="s8-2">8.2 Male-voice priority</h3>
+<p>Each adapter should ship a curated <code>MALE_VOICES</code> allowlist with stable aliases mapped to provider-specific ids, e.g.:</p>
+<details class="dev">
+  <summary><span class="devchip">Map</span> Persona alias → provider voice ids</summary>
+  <pre><code>male_deep      -&gt; openai:onyx | azure:en-US-GuyNeural | eleven:Daniel | cartesia:&lt;id&gt;
+male_narrator  -&gt; openai:cedar | azure:en-US-Davis:DragonHDLatestNeural | eleven:Adam
+male_warm      -&gt; openai:echo | azure:en-US-DavisNeural | eleven:Antoni
+male_young     -&gt; openai:ash | azure:en-US-JasonNeural | eleven:Josh</code></pre>
+</details>
+<p>Surface male voices first in the UI; filter the provider's voice list by gender where the API exposes labels (ElevenLabs <code>labels.gender</code>, Deepgram <code>expressed_gender</code>, Azure voice metadata). For providers without gender metadata (OpenAI, Google), hardcode the known male ids.</p>
+
+<h3 id="s8-3">8.3 Expose only high-quality voices</h3>
+<ul>
+  <li>Per provider, maintain an allowlist of vetted high-quality voices; hide Standard/legacy.
+    <ul>
+      <li>Google: only Neural2 / Chirp3-HD / Journey / Gemini-TTS (skip Standard).</li>
+      <li>Azure: prefer Dragon HD and MultilingualNeural voices; skip older non-neural.</li>
+      <li>OpenAI: only <code>gpt-4o-mini-tts</code> voices (skip tts-1 where possible).</li>
+      <li>ElevenLabs: only Turbo v2.5 / v3 models with curated default voices + a small set of verified library voices.</li>
+    </ul>
+  </li>
+  <li>A quality gate (e.g. minimum sample-rate 24kHz, neural-only) in the adapter base class.</li>
+</ul>
+
+<h3 id="s8-4">8.4 Cross-provider consistency</h3>
+<ul>
+  <li>Normalize output to a single delivery format internally (recommend 24kHz 16-bit PCM or 44.1kHz MP3) so the player layer is provider-agnostic.</li>
+  <li>Map a small set of abstract voice personas (deep, narrator, warm, young, calm) across providers (as above) so a user's chosen persona survives provider switches.</li>
+  <li>Normalize <code>speed</code> (0.5-2.0 where supported; ignore where not).</li>
+  <li>Normalize error reporting (provider-specific -&gt; common error codes for retry/fallback).</li>
+</ul>
+
+<h3 id="s8-5">8.5 Low latency + progress feedback</h3>
+<ul>
+  <li>Prefer streaming endpoints (chunked transfer) for all providers that support it.</li>
+  <li>Emit incremental progress (bytes received / approx. duration) to the UI.</li>
+  <li>For Azure, use the Speech SDK's <code>synthesizing</code>/<code>bookmark_reached</code> events for fine-grained progress; for OpenAI/ElevenLabs use the streaming generators and forward chunk counts.</li>
+  <li>PCM output for the lowest decode latency; transcode to MP3 only if persistence needed.</li>
+  <li>Provider fallback chain: if primary provider errors or times out (&gt;N ms TTFAB), fall back to next provider with the same persona mapping.</li>
+</ul>
+
+<h3 id="s8-6">8.6 Auth &amp; secrets</h3>
+<ul>
+  <li>Store provider API keys in the app's existing secrets mechanism (do not hardcode).</li>
+  <li>One key per provider; OpenRouter key covers its sub-models.</li>
+  <li>For Google/Azure, support both API-key (where available) and service-account/resource key flows.</li>
+</ul>
+
+<h3 id="s8-7">8.7 Open questions / follow-ups</h3>
+<ul>
+  <li>Confirm which provider(s) the owner wants as paid defaults vs. BYO-key.</li>
+  <li>Decide whether to expose voice cloning (ElevenLabs/Cartesia/PlayHT/Resemble) or preset-only for v1.</li>
+  <li>Confirm target languages (English-only vs. multi-language) - affects whether Google/Azure/Polyglot/Gemini-TTS multilingual wins matter.</li>
+  <li>Verify ElevenLabs default voice IDs at integration time (they rotate); cache the <code>/v1/voices</code> response.</li>
+</ul>
+
+<!-- ============================ SECTION 9 ============================ -->
+<h2 id="s9"><span class="sec">9</span>Sources</h2>
+<ul>
+  <li>OpenRouter TTS docs: <a href="https://openrouter.ai/docs/guides/overview/multimodal/tts">https://openrouter.ai/docs/guides/overview/multimodal/tts</a></li>
+  <li>OpenRouter TTS model collection: <a href="https://openrouter.ai/collections/text-to-speech-models">https://openrouter.ai/collections/text-to-speech-models</a></li>
+  <li>OpenAI TTS guide: <a href="https://developers.openai.com/api/docs/guides/text-to-speech">https://developers.openai.com/api/docs/guides/text-to-speech</a></li>
+  <li>Google Cloud TTS pricing: <a href="https://cloud.google.com/text-to-speech/pricing">https://cloud.google.com/text-to-speech/pricing</a></li>
+  <li>Google Cloud TTS voices: <a href="https://docs.cloud.google.com/text-to-speech/docs/list-voices-and-types">https://docs.cloud.google.com/text-to-speech/docs/list-voices-and-types</a></li>
+  <li>ElevenLabs pricing: <a href="https://elevenlabs.io/pricing">https://elevenlabs.io/pricing</a></li>
+  <li>ElevenLabs API intro: <a href="https://elevenlabs.io/docs/api-reference/introduction">https://elevenlabs.io/docs/api-reference/introduction</a></li>
+  <li>Azure AI Speech TTS overview: <a href="https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech">https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech</a></li>
+  <li>Azure voices (English): <a href="https://json2video.com/ai-voices/azure/languages/english/">https://json2video.com/ai-voices/azure/languages/english/</a></li>
+  <li>Azure Neural HD voices: <a href="https://learn.microsoft.com/en-us/azure/ai-services/speech-service/high-definition">https://learn.microsoft.com/en-us/azure/ai-services/speech-service/high-definition</a></li>
+  <li>Cartesia pricing: <a href="https://www.cartesia.ai/pricing">https://www.cartesia.ai/pricing</a></li>
+  <li>Deepgram Aura voices: <a href="https://developers.deepgram.com/docs/tts-models">https://developers.deepgram.com/docs/tts-models</a></li>
+  <li>PlayHT SDK: <a href="https://github.com/playht/pyht">https://github.com/playht/pyht</a></li>
+  <li>Hume AI: <a href="https://www.hume.ai/">https://www.hume.ai/</a></li>
+  <li>Cross-provider pricing comparison (April 2026): <a href="https://awesomeagents.ai/pricing/voice-tts-pricing/">https://awesomeagents.ai/pricing/voice-tts-pricing/</a></li>
+</ul>
+
+<div class="doc-foot">
+  <span>Mumble — TTS Providers</span>
+  <span class="gold">Research</span>
+</div>
+
+</div>
+</body>
+</html>

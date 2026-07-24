@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble 0.95 — README</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+<header class="doc-head">
+  <div class="kicker">Mumble 0.95 · Current development record</div>
+  <h1>README</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Read first:</b> the current product, project rules, and development layout.</div>
+    <div><span class="ico">◆</span><b>Companions:</b> <a href="STATUS.html">STATUS</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div>
+    <div><span class="ico">◆</span><b>Source version:</b> <code>0.95</code> from <code>Internal/app/branding.py</code></div>
+  </div>
+</header>
+
+<div class="plain"><div class="tag">In plain terms</div><div><p>Mumble is a local-first voice workspace. Press a hotkey, speak, and Mumble turns your speech into useful text at the cursor. The current product also includes the Deck, meetings, Reader, statistics, and local search on supported platforms.</p></div></div>
+
+<nav class="toc"><div class="tt">Contents</div><ol>
+  <li><a href="#product">What Mumble is</a></li>
+  <li><a href="#flow">The current user flow</a></li>
+  <li><a href="#promises">Non-negotiable promises</a></li>
+  <li><a href="#architecture">Architecture at a glance</a></li>
+  <li><a href="#working">How development works</a></li>
+  <li><a href="#layout">Where things live</a></li>
+</ol></nav>
+
+<h2 id="product"><span class="sec">1</span>What Mumble is</h2>
+<p>Mumble is a desktop dictation and voice-workspace application. Windows is the product-contract source; macOS and Linux reuse the shared engine and provide platform-specific seams.</p>
+<div class="tiles">
+  <div class="tile"><div class="n">Local</div><div class="l">Speech-to-text is local by default with faster-whisper.</div></div>
+  <div class="tile"><div class="n">Deck</div><div class="l">Searchable history, clipboard capture, favourites, and AI jobs.</div></div>
+  <div class="tile"><div class="n">Meetings</div><div class="l">Recording, transcription, search, and export workflows.</div></div>
+  <div class="tile"><div class="n">Reader</div><div class="l">Documents, reading progress, statistics, and optional voice.</div></div>
+</div>
+<p>The current interface is the golden-black liquid-glass Web UI in <code>Internal/app/webui/</code>, supported by the floating Island overlay. The app is not defined by older mockups or plans; the running source is the authority.</p>
+
+<h2 id="flow"><span class="sec">2</span>The current user flow</h2>
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">Activate</div><p>A global hotkey starts a recording through the controller in <code>Internal/app/mumble.py</code>.</p></div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">Transcribe</div><p>Audio is processed locally by default. Cloud transcription is a visible, opt-in setting and sends the recorded clip to the selected provider.</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">Shape</div><p>Offline cleanup and mode inference run first. Optional local or cloud processing can shape text for Prompt, Email, Reply, Convert, or other Deck workflows.</p></div></div>
+  <div class="flow-step"><div class="flow-node">4</div><div class="flow-body"><div class="ft">Paste and remember</div><p>The result is pasted at the cursor, stored in local history, reflected in statistics, and made available in the Deck.</p></div></div>
+</div>
+
+<h2 id="promises"><span class="sec">3</span>Non-negotiable promises</h2>
+<ul>
+  <li><strong>Privacy is visible.</strong> Audio stays on the device unless the user explicitly chooses Cloud transcription. Text leaves the device only through a clearly selected cloud feature and the user's own provider key.</li>
+  <li><strong>Claims match reality.</strong> Never document, market, or display a feature that the current runtime does not implement.</li>
+  <li><strong>The product remains focused.</strong> Voice-to-text is the centre; the Deck, meetings, Reader, and search support that workflow rather than replace it.</li>
+  <li><strong>One shared product contract.</strong> Platform-specific code belongs in the platform seam. The Windows runtime is the reference implementation.</li>
+  <li><strong>The four Core records stay current.</strong> Current truth belongs in README, STATUS, HANDBOOK, and LOGS rather than scattered dated project files.</li>
+</ul>
+
+<h2 id="architecture"><span class="sec">4</span>Architecture at a glance</h2>
+<table><thead><tr><th>Part</th><th>Current responsibility</th></tr></thead><tbody>
+  <tr><td><code>mumble.py</code></td><td>Audio capture, transcription orchestration, paste, hotkeys, tray, Island state, meetings, and the authenticated local command channel.</td></tr>
+  <tr><td><code>webui_shell.py</code> + <code>webui/</code></td><td>Pywebview window, Python-to-JavaScript API bridge, Deck, settings, history, Reader, meetings, stats, and search surfaces.</td></tr>
+  <tr><td><code>overlay.py</code> + <code>island_render.py</code></td><td>Floating status Island and its consent-aware interaction states.</td></tr>
+  <tr><td><code>ai/</code>, <code>formatting.py</code>, <code>transcription.py</code></td><td>Provider adapters, offline cleanup, mode inference, and optional cloud speech-to-text.</td></tr>
+  <tr><td><code>local_engine.py</code>, <code>models/</code>, <code>pipeline/</code></td><td>Optional local language-model processing and model management.</td></tr>
+  <tr><td>Stores</td><td>Settings, history, clipboard, favourites, statistics, Reader, meetings, prompt history, and optional cloud sync.</td></tr>
+  <tr><td><code>Ports/</code></td><td>macOS and Linux application seams that reuse the shared product contract.</td></tr>
+</tbody></table>
+
+<h2 id="working"><span class="sec">5</span>How development works</h2>
+<ol>
+  <li>Read this README and <a href="STATUS.html">STATUS</a>; read the relevant code and tests before editing.</li>
+  <li>Make the smallest coherent change and keep runtime, UI, tests, and platform seams aligned.</li>
+  <li>Verify the changed path, then run the isolated application suite when runtime code changes.</li>
+  <li>Update the relevant Core record before sign-off. Unresolved work goes in STATUS; completed work goes in LOGS.</li>
+  <li>Do not treat a local green test run as proof of clean installation, physical microphone/paste behaviour, signing, or public release readiness.</li>
+</ol>
+<blockquote><strong>Owner boundary:</strong> secrets, spending, account changes, public releases, and destructive irreversible actions require the owner's explicit decision.</blockquote>
+
+<h2 id="layout"><span class="sec">6</span>Where things live</h2>
+<pre><code>Mumble/
+├── Mumble.exe                         native launcher
+├── Internal/                          runtime, launchers, and packaged releases
+│   ├── app/                            Windows source plus ports and tests
+│   └── Releases/Mumble.zip             current packaged distributable
+├── Development Files/                 development-only material
+│   ├── Core/                           README · STATUS · HANDBOOK · LOGS
+│   ├── Docs/                           development guidance
+│   ├── GitHub/                         issue forms, labels, helper scripts
+│   ├── Marketing/                      website and campaign material
+│   ├── Research/                       evidence and working research
+│   └── Tooling/                        build and verification helpers
+└── .github/workflows/                  GitHub-required automation entry point</code></pre>
+<p>The root <code>AGENTS.md</code>, <code>.gitignore</code>, and <code>LICENSE</code> remain in their conventional locations so tools and hosting services continue to recognize them. Their maintained development context is kept with the development files.</p>
+
+<div class="doc-foot"><span>Mumble 0.95 · current development record</span><span class="gold">README</span></div>
+</div></body></html>

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mumble Operator Experiment — 5.6 sol xtra high</title>
+  <style>
+    :root{--bg:#0a0a0b;--surface:#121110;--border:#2a2820;--gold:#d4af37;--gold-hi:#ebcb65;--text:#f3eee1;--dim:#b6ae99;--mute:#8b826d;--green:#5ab85a;--amber:#e0a92e;--red:#d9544d;font-family:"Segoe UI",system-ui,sans-serif;color-scheme:dark}*{box-sizing:border-box}body{margin:0;color:var(--text);background:radial-gradient(70% 35% at 20% -10%,rgba(212,175,55,.09),transparent),var(--bg);font-size:14px;line-height:1.65}.wrap{width:min(920px,calc(100% - 36px));margin:0 auto;padding:58px 0 80px}header{padding-bottom:27px;border-bottom:1px solid var(--border)}.kicker{color:var(--gold);font-size:11px;font-weight:700;letter-spacing:.13em;text-transform:uppercase}h1{margin:7px 0 8px;font-size:clamp(34px,6vw,55px);line-height:1.05;letter-spacing:-.045em}h2{margin:38px 0 10px;font-size:23px;letter-spacing:-.025em}h3{margin:24px 0 5px;font-size:16px}.lead{max-width:730px;color:var(--dim);font-size:16px}.badge{display:inline-block;margin-top:13px;padding:5px 9px;border:1px solid rgba(212,175,55,.25);border-radius:999px;color:var(--gold);background:rgba(212,175,55,.06);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.plain,.callout{margin:18px 0;padding:16px 18px;border:1px solid var(--border);border-radius:16px;background:linear-gradient(145deg,rgba(30,28,23,.9),rgba(18,17,16,.95));box-shadow:inset 0 1px rgba(245,238,222,.08)}.plain strong{color:var(--gold-hi)}code{padding:2px 5px;border-radius:6px;color:var(--gold);background:rgba(212,175,55,.07);font-family:"Cascadia Code",Consolas,monospace;font-size:.88em}pre{overflow:auto;padding:15px;border:1px solid var(--border);border-radius:14px;background:#080809;color:var(--dim)}pre code{padding:0;background:none}table{width:100%;border-collapse:collapse;margin:14px 0}th,td{padding:11px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}th{color:var(--gold);font-size:11px;text-transform:uppercase;letter-spacing:.05em}td{color:var(--dim)}li{margin:6px 0;color:var(--dim)}a{color:var(--gold-hi)}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:16px 0}.flow div{padding:12px;border:1px solid var(--border);border-radius:13px;background:var(--surface)}.flow span{display:block;color:var(--gold);font:700 10px Consolas}.flow strong{display:block;margin-top:5px;font-size:12px}.state{font-weight:700}.done{color:var(--green)}.gated{color:var(--amber)}.blocked{color:var(--red)}footer{margin-top:42px;padding-top:17px;border-top:1px solid var(--border);color:var(--mute);font-size:11px}@media(max-width:680px){.flow{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body><main class="wrap">
+  <header>
+    <div class="kicker">Mumble experimental feature · AI identity</div>
+    <h1>Operator</h1>
+    <p class="lead">A self-contained, hands-free desktop-assistant experiment by <strong>5.6 sol xtra high</strong>. It explores how spoken PC automation could feel inside Mumble without joining Mumble’s runtime or normal application flow.</p>
+    <span class="badge">Isolated prototype · Windows-first</span>
+  </header>
+
+  <div class="plain"><strong>In plain terms:</strong> open <code>Launch Experiment.bat</code>, press Right Shift, and describe what you want. Operator presents an inspectable action plan before running the narrow set of actions that are genuinely connected. The full interface also opens directly from <code>index.html</code> in preview mode.</div>
+
+  <h2>What is implemented</h2>
+  <table>
+    <thead><tr><th>Experience</th><th>Status</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Natural command planning</td><td class="state done">Working</td><td>Local deterministic parser for apps, windows, paths, site search, navigation and multi-step “then” workflows.</td></tr>
+      <tr><td>Right Shift shortcut</td><td class="state done">Working in experiment</td><td>The optional host detects the physical Windows Right Shift key while it is running. The standalone page also handles Right Shift while focused.</td></tr>
+      <tr><td>Desktop execution</td><td class="state done">Narrow allow-list</td><td>Calculator, Notepad, Paint, File Explorer, Settings, existing paths, HTTP(S) URLs and visible-window focus.</td></tr>
+      <tr><td>Paste / edit / existing Brave tab</td><td class="state gated">Designed and gated</td><td>Shown in plans but never claimed as working. Clipboard-safe injection and reversible file edits need production adapters.</td></tr>
+      <tr><td>Microphone transcription</td><td class="state gated">Not connected</td><td>The voice state and Right Shift interaction are complete; this sandbox does not capture audio or import Mumble’s controller.</td></tr>
+      <tr><td>20-hour popup</td><td class="state done">Working prototype</td><td>A one-time, experiment-scoped milestone trigger with tasteful thank-you copy and placeholder social links.</td></tr>
+      <tr><td>Archetype Report</td><td class="state done">Complete UX concept</td><td>Intro, consent-aware newsletter unlock, validation and premium sample report. No email is sent and no transcript is analysed.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Run it</h2>
+  <h3>Full local-host experience</h3>
+  <ol>
+    <li>Double-click <code>Launch Experiment.bat</code>.</li>
+    <li>Your default browser opens <code>http://127.0.0.1:8765/</code>.</li>
+    <li>Press Right Shift or tap the gold microphone orb.</li>
+    <li>Type the command that the unconnected audio adapter would have transcribed.</li>
+    <li>Review the plan. Only an entirely executable plan enables <strong>Run plan</strong>.</li>
+    <li>Close the terminal or press Ctrl+C to stop the host and its temporary shortcut watcher.</li>
+  </ol>
+  <h3>Interface-only preview</h3>
+  <p>Open <code>index.html</code> directly. All screens, planning presentation, the milestone popup and the Archetype flow remain interactive; desktop action buttons stay disabled and say why.</p>
+
+  <h2>Architecture</h2>
+  <div class="flow">
+    <div><span>01</span><strong>Right Shift / command</strong></div>
+    <div><span>02</span><strong>Pure action planner</strong></div>
+    <div><span>03</span><strong>Visible review gate</strong></div>
+    <div><span>04</span><strong>Allow-listed adapter</strong></div>
+  </div>
+  <ul>
+    <li><code>assistant_core.py</code> is a pure, dependency-free intent-to-plan layer. Its output is serialisable and always rebuilt server-side before execution.</li>
+    <li><code>desktop_host.py</code> is an optional localhost server and experimental Windows adapter. It binds only to <code>127.0.0.1</code>, has no persistent service, and exits cleanly.</li>
+    <li><code>index.html</code>, <code>styles.css</code> and <code>app.js</code> form the zero-CDN Golden Black UI. The interface is responsive, keyboard navigable, reduced-motion aware and pauses animation/polling when unfocused.</li>
+    <li>The milestone and report store only four namespaced preview values in browser local storage. They never read Mumble settings, stats or history.</li>
+  </ul>
+
+  <h2>Safety and honesty</h2>
+  <p>Every planned step carries one of three states: <span class="state done">reviewed</span>, <span class="state gated">confirmation</span>, or <span class="state blocked">blocked</span>. The host refuses partial workflows when any step is unimplemented. Unknown applications are not passed to a shell, URLs are restricted to HTTP(S), paths must exist, and action plans received from the page are discarded and rebuilt from their original command before execution.</p>
+  <p>The experiment deliberately does <strong>not</strong> use browser speech recognition because implementations may send audio to a cloud service, conflicting with Mumble’s local-first promise. A production spike should connect Mumble’s existing local transcript output through an authenticated, explicit experiment seam.</p>
+
+  <h2>Milestone and Archetype flow</h2>
+  <p>The popup is not part of the app boot flow. Press <strong>Simulate 20 hours</strong> to set the experiment-only hours value to <code>20.4</code>; the thank-you appears once and records its own seen flag. The X and LinkedIn controls are intentionally placeholders and announce that fact.</p>
+  <p>The optional report moves through three screens: premium explanation → newsletter consent → sample report. Email syntax and opt-in are validated locally, but the address is never stored or sent. Every screen says that transcript analysis is absent and every report claim is sample copy.</p>
+  <h3>Experiment-only browser keys</h3>
+  <pre><code>mumble-exp-56-saved-hours
+mumble-exp-56-milestone-seen
+mumble-exp-56-newsletter-preview</code></pre>
+
+  <h2>Tests</h2>
+  <pre><code>python -m unittest -v test_assistant_core.py
+python -m py_compile assistant_core.py desktop_host.py
+python desktop_host.py --no-browser</code></pre>
+  <p>The planner test suite covers allow-listed apps, unknown-app refusal, folders, window focus, Brave and site-specific search, existing-tab gating, workflow order, file-edit blocking, paste gating, URL normalisation and empty input.</p>
+
+  <h2>Production integration boundary</h2>
+  <p>No production integration was made. If this concept later proceeds, the recommended seam is a single experiment adapter registered through Mumble’s existing <code>bindings.py</code> funnel, receiving completed local transcripts from the controller and returning explicit action results. Do not copy the experimental Right Shift poller into production.</p>
+
+  <footer>5.6 sol xtra high · Mumble Operator experiment · entirely contained under Development Files/Other/experiments</footer>
+</main></body></html>

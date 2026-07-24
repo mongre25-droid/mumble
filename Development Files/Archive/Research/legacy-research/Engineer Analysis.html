@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engineer Analysis — How I Engineer vs. the Mumble workflow</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Workflow Engineering Analysis</div>
+  <h1>Engineer Analysis</h1>
+  <div class="meta">
+    <div><span class="ico">◆</span><b>Question:</b> would adopting the <em>How&nbsp;I&nbsp;Engineer</em> workflow meaningfully improve how Mumble is built?</div>
+    <div><span class="ico">◆</span><b>Source studied:</b> <code>github.com/AnasInno/how-i-engineer</code> (cloned &amp; read in full)</div>
+    <div><span class="ico">◆</span><b>Compared against:</b> Mumble's own doctrine (the four core docs) + the live toolchain — Claude&nbsp;Code, Factory, Mission&nbsp;Control</div>
+    <div><span class="ico">◆</span><b>Date:</b> 2026-06-28 · <b>Verdict:</b> adopt selectively (see §8)</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Someone published a public "kit" that shows how they ship AI-built software with discipline — turn a conversation into a tight brief, build the smallest useful slice, prove it with real evidence, and only then call it done. This document studies that kit, lines it up against how <strong>we already build Mumble</strong> and the tools we already use (Claude&nbsp;Code, Factory, and Factory's Mission&nbsp;Control), and answers a practical question: <strong>is any of it worth adopting, and if so, exactly which parts and how?</strong></p>
+    <p>Short answer: <strong>yes — but only the parts we're actually missing.</strong> Mumble is already strong on <em>discipline</em> (the four core docs, the completion checklist, the honesty bar) and on <em>mechanical</em> testing. The two real gaps are (1) we never measure whether the <em>AI</em> output is actually good — only that the code runs — and (2) we have no separate "did we overbuild / did our claims match the evidence?" review. How&nbsp;I&nbsp;Engineer targets exactly those two gaps, cheaply. The orchestration it describes, Mission&nbsp;Control already does better. So we adopt the <em>proof discipline</em>, feed it to Mission&nbsp;Control, and skip the rest.</p>
+  </div>
+</div>
+
+<blockquote>
+  <strong>Provenance note (honest sourcing).</strong> The brief that produced this document referred to "two research folders added to the project" and an <code>Engineer Analysis.md</code> to delete. Neither was present anywhere in the repository or the workspace at the time of writing — the only research material on disk is Mumble's own (<code>local_nlp</code>, <code>tts_providers</code>, <code>supabase_patterns</code>, <code>architecture-review-2026-06-28</code>). This analysis is therefore sourced <strong>directly from the public repo</strong> (cloned and read end-to-end) and from Mumble's four core docs, with Factory / Mission&nbsp;Control behaviour confirmed against Factory's own documentation. "Our own Engineer Analysis process" is read as <strong>the engineering doctrine encoded in Mumble's four core docs</strong> — the most faithful available reading. This file is the single correct (HTML) version; there was no <code>.md</code> duplicate to remove.
+</blockquote>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">How the workflow operates</a></li>
+    <li><a href="#s2">Comparison against our current workflow</a></li>
+    <li><a href="#s3">Integration with Mission Control</a></li>
+    <li><a href="#s4">Integration into chat-based development</a></li>
+    <li><a href="#s5">Recommended architecture for Mumble</a></li>
+    <li><a href="#s6">Phased implementation plan</a></li>
+    <li><a href="#s7">Practical engineering evaluation</a></li>
+    <li><a href="#s8">Final recommendation</a></li>
+  </ol>
+</nav>
+
+<hr>
+
+<!-- ===================== 1 ===================== -->
+<h2 id="s1"><span class="sec">1</span>How the workflow operates</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>How&nbsp;I&nbsp;Engineer isn't an app or a bot — it's a <strong>repository of operating procedures</strong> that any AI coding agent can load and follow. It encodes one belief: <em>an AI demo that "said something plausible" is worthless; the work only counts when there's less human work left afterwards and the result is proven.</em> Everything in it exists to push a change from a vague idea to a merge you can trust, without lying to yourself along the way.</p>
+  </div>
+</div>
+
+<p>The whole thing is one pipeline, and it is deliberately conversation-first:</p>
+
+<pre><code>conversation → tight brief → smallest slice → orchestrator (if needed)
+            → build → eval → autoreview → proof → PR → CI/CD → merge</code></pre>
+
+<h3>1.1 The shape of the loop</h3>
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body">
+    <div class="ft">Problem conversation</div>
+    <p>Before any agent is launched, pin down the real job: who is stuck, what they do by hand today, what input they already have, what output changes their next action, what the system must <em>never</em> do automatically, and what proof would make the result trustworthy. The useful slice appears here, not in the code.</p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body">
+    <div class="ft">Tight brief</div>
+    <p>The conversation is written into a one-page brief (<code>templates/automation-brief.md</code>): mission, user, input, output, <strong>deterministic core</strong>, optional AI layer, safety boundaries, smoke test, worker plan, proof ladder, limits. A brief that's still vague is rejected <em>before</em> code exists.</p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body">
+    <div class="ft">Smallest slice, deterministic first</div>
+    <p>Build the smallest coherent thing that produces useful output and can be proved — one persona, one input shape, one output format, one smoke command, one proof standard. Plain code does the parsing/scoring/transforming; <strong>AI is added only where judgement, extraction, ranking, rewriting, or critique genuinely improves the result.</strong></p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">4</div><div class="flow-body">
+    <div class="ft">Eval — only where quality matters</div>
+    <p>If the change touches output quality, model routing, confidence, or fallback, run a <strong>scenario-pack eval</strong> with a weighted rubric and fatal safety gates. This is where "the output exists" becomes "useful enough / needs repair / needs human judgement." A green smoke test is explicitly <em>not</em> quality proof.</p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">5</div><div class="flow-body">
+    <div class="ft">Autoreview — a separate skeptic</div>
+    <p>A distinct review pass challenges the artifact against the brief: scope creep, unused abstractions, broad integrations, AI where deterministic logic was enough, and <strong>proof claims that outrun the evidence</strong>. The reviewer is allowed to recommend <em>deleting</em> work. Smaller-that-fits beats larger-that-impresses.</p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">6</div><div class="flow-body">
+    <div class="ft">Proof, then PR / CI/CD / merge</div>
+    <p>Each claim names the surface it was proved on (the evidence ladder, below). Work can be messy locally; the PR cannot. Merge only when claims match recorded evidence.</p>
+  </div></div>
+</div>
+
+<h3>1.2 The doctrine that drives it (the kernel)</h3>
+<p>One always-loaded file, <code>codex/how-i-engineer/KERNEL.md</code>, is the compact operating doctrine every agent reads. Five ideas do the work:</p>
+<ul>
+  <li><strong>The promise.</strong> "The work only counts if less useful human work exists afterwards." Process narration, agent theatre, and one nice output don't qualify.</li>
+  <li><strong>Truth model.</strong> <em>Current files beat old docs.</em> History/routing docs are for navigation; the live checkout, git status, tests, generated outputs, and recorded proof are what's <em>true now</em>. Don't write stale "current state" docs — inspect the repo directly.</li>
+  <li><strong>Autonomy boundary.</strong> Local autonomy is high (code, docs, tests, fixtures, local proof); external autonomy is low (sending email, writing CRMs, posting publicly, mutating live systems, touching real customer data, publishing secrets all <em>stop for approval</em>).</li>
+  <li><strong>Slice rule + autoreview rule.</strong> Build the smallest provable thing; review non-trivial work separately before calling it ready.</li>
+  <li><strong>Evidence ladder + closeout labels.</strong> Never let one layer of proof stand in for another, and end every job with an honest verdict.</li>
+</ul>
+
+<details class="dev"><summary><span class="devchip">Detail</span> The evidence ladder (11 rungs) and the four closeout labels</summary>
+<div class="body">
+<p>Proof is ranked so a weak layer can't masquerade as a strong one:</p>
+<pre><code> 1  Code shape ......... files exist, commands documented
+ 2  CLI smoke .......... sample input → sample output
+ 3  Tests .............. behaviour + failure paths checked
+ 4  Eval scorecard ..... scenario pack + rubric + quality verdict
+ 5  Output quality ..... a human inspected usefulness
+ 6  Browser proof ...... the visible web path was actually run + recorded
+ 7  Computer proof ..... the desktop/OS path was actually run + recorded
+ 8  Tool readiness ..... required tools verified before trusting the run
+ 9  Crabbox proof ...... isolated remote run evidence collected
+10  Autoreview ......... brief-fit / minimality / claims / safety reviewed
+11  PR/ship safety ..... no secrets, private paths, junk, unsafe live actions</code></pre>
+<p><strong>Weak proof</strong> ("it builds", "the model answered", "file exists", "browser opened" without a completed path) is named and rejected. <strong>Closeout labels</strong>, exactly one per job: <code>fail</code> · <code>needs repair</code> · <code>needs judgement</code> · <code>merge candidate</code>. "Exited zero" is never "ready"; ready = <em>the proof matches the risk.</em></p>
+</div>
+</details>
+
+<h3>1.3 How an agent actually loads it (routing)</h3>
+<p>This is the technically interesting part, and the part that makes it portable. The repo is an <strong>agent-operable kit</strong>, not a prompt dump:</p>
+<pre><code>AGENTS.md  (root router)
+   └─ codex/how-i-engineer/LOAD-FIRST.md   "keep startup light"
+        └─ KERNEL.md                       always-loaded doctrine
+        └─ pick ONE skill from .agents/skills/
+        └─ load a topic doc only when the skill routes you there</code></pre>
+<p>"Do not load the whole repo as startup context" is an explicit instruction. An agent reads the router, the kernel, and <em>one</em> small skill — then inspects only the live files that matter. Eight skills cover the lanes:</p>
+
+<table>
+  <thead><tr><th>Skill (<code>.agents/skills/…</code>)</th><th>When it fires</th></tr></thead>
+  <tbody>
+    <tr><td><code>conversation-brief</code></td><td>the ask is still fuzzy → turn talk into a buildable brief</td></tr>
+    <tr><td><code>workflow-ship</code></td><td>build/customise one small automation from a clear brief</td></tr>
+    <tr><td><code>orchestrator</code></td><td>the work genuinely splits into independent worker lanes</td></tr>
+    <tr><td><code>eval-framework</code></td><td>output quality / routing / confidence is part of the claim</td></tr>
+    <tr><td><code>autoreview</code></td><td>independent review of a build or merge candidate</td></tr>
+    <tr><td><code>real-user-qa</code></td><td>a visible browser / desktop path a real user would touch</td></tr>
+    <tr><td><code>crabbox-proof</code></td><td>proof needs an isolated remote box, not the laptop</td></tr>
+    <tr><td><code>pr-ship-safety</code></td><td>before submitting / merging / presenting anything public</td></tr>
+  </tbody>
+</table>
+<p>Each skill is a Markdown file with YAML front-matter (<code>name</code> + <code>description</code>) — the same shape Claude&nbsp;Code skills and Factory skills use. That is why the kit drops into either tool almost verbatim (§3, §5).</p>
+
+<h3>1.4 The orchestrator / worker model</h3>
+<p>When work splits, an <strong>orchestrator</strong> owns the judgement (smallest slice, which lanes, allowed data, forbidden actions, what proof is required) and hands each <strong>worker</strong> exactly one objective, one allowed scope, one proof expectation, via a worker-brief contract. Lanes: research, builder, eval, autoreview, QA, browser, computer, Crabbox, PR/ship. The orchestrator reads worker output <em>critically</em> — "looks good" without proof is rejected — and integrates in an intentional order. Crucially, the repo warns against <strong>"pretending internal subagents are real independent worker owners"</strong>: the model is only worth it when the work truly crosses lanes, never for tiny edits where coordination costs more than the work.</p>
+
+<h3>1.5 The eval spine (the most transferable idea)</h3>
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This is the piece most teams don't have and the piece worth stealing. Instead of trusting that an AI feature "seems fine," you write a small pack of realistic scenarios (including the ones that <em>should</em> fail), score each candidate against a weighted rubric where some failures are <strong>fatal no matter how high the average</strong>, and get a scorecard that tells you which strategy to ship — or that the honest answer is "needs a human."</p>
+  </div>
+</div>
+<p>The public shape is deterministic and runnable: <code>scenario pack → candidate outputs → rubric → deterministic scorer → scorecard → merge judgement</code>. The reference harness (<code>examples/teachclaw-scrubbed-eval-harness</code>) is real working Python, not pseudocode — it validates that rubric weights sum to 1.0, that every scenario×strategy pair is scored, applies <strong>fatal gates</strong>, and emits both JSON (for machines) and Markdown (for humans).</p>
+
+<details class="dev"><summary><span class="devchip">Detail</span> What the reference scorecard actually proves</summary>
+<div class="body">
+<p>Two strategies over three scenarios. The numbers make the judgement <em>visible</em>:</p>
+<table>
+  <thead><tr><th>Strategy</th><th>Avg</th><th>Fatal fails</th><th>Verdict</th></tr></thead>
+  <tbody>
+    <tr><td>Single-pass draft</td><td>3.11</td><td>1 (forced confidence on thin evidence)</td><td><span class="badge b-gated">not_ready</span></td></tr>
+    <tr><td>Draft + checker + targeted repair</td><td>4.54</td><td>0</td><td><span class="badge b-done">recommended_with_review_gate</span></td></tr>
+  </tbody>
+</table>
+<p>The <code>thin-evidence-marking-feedback</code> scenario <em>fails the single-pass strategy outright</em> on a <code>safety_boundary</code> gate — "confidence forced despite thin evidence; missing uncertainty flag" — even though its average looked passable. That is the whole point: a high average must not hide a safety failure, and "mechanically sound but still needs judgement" is a legitimate, honestly-labelled outcome (<code>needs_judgement</code>), not a forced green.</p>
+</div>
+</details>
+
+<h3>1.6 Deterministic enforcement — what stops it being just nice prose</h3>
+<p>Three small Python scripts and a <code>Makefile</code> turn the doctrine into gates that actually run:</p>
+<ul>
+  <li><code>scripts/repo_doctor.py</code> — asserts the kit's own structure: every required file exists, <code>AGENTS.md</code> routes to <code>LOAD-FIRST.md</code>, every skill has front-matter and is routed. Self-checking docs.</li>
+  <li><code>scripts/public_safety_check.py</code> — a real regex scanner for secrets (<code>sk-…</code>, <code>AIza…</code>, <code>ghp_…</code>), local absolute paths, private-workspace markers, and accidental binary/zip/log artifacts, with code-plumbing allow-lists so <code>os.environ.get(...)</code> doesn't false-positive.</li>
+  <li><code>make check</code> = <code>doctor + smoke + test + safety</code>, run identically by the developer and by GitHub Actions on every push/PR. The CLI is the source of truth; CI just re-runs it.</li>
+</ul>
+<p><strong>Practical character.</strong> Running it feels less like "an agent did magic" and more like a calm release checklist: the conversation forces clarity, the slice rule keeps it small, the eval refuses false confidence, the autoreview deletes the cruft, and every claim has to point at a named proof surface. It is slower per change than "just vibe it" — and far less likely to ship something that only looked done.</p>
+
+<!-- ===================== 2 ===================== -->
+<h2 id="s2"><span class="sec">2</span>Comparison against our current workflow</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Two comparisons matter. First, against <strong>our own engineering doctrine</strong> — the rules already written into Mumble's four core docs (this is "our Engineer Analysis process"). Second, against the <strong>tools we actually run</strong> — Claude&nbsp;Code, Factory, and Mission&nbsp;Control. The headline: we already do a surprising amount of what How&nbsp;I&nbsp;Engineer preaches, but we do it as <em>prose habits</em>, not as <em>enforced gates</em> — and we're missing its two sharpest tools entirely.</p>
+  </div>
+</div>
+
+<h3>2.1 Versus Mumble's own doctrine (the four core docs)</h3>
+<p>Mapping each How&nbsp;I&nbsp;Engineer primitive onto what Mumble's README / HANDBOOK / STATUS / LOGS already require:</p>
+<table>
+  <thead><tr><th>How I Engineer</th><th>Mumble equivalent (today)</th><th>Gap</th></tr></thead>
+  <tbody>
+    <tr><td>Conversation → tight brief</td><td>"Read first"; restate the request as a <code>□</code> checklist (README §8); session-start ritual (HANDBOOK §1)</td><td><span class="badge b-done">parity</span> we already brief before building</td></tr>
+    <tr><td>Slice rule (smallest provable unit)</td><td>"Smallest change that works"; "wire it end-to-end before calling it done" (HANDBOOK §6)</td><td><span class="badge b-done">parity</span> same instinct, same words</td></tr>
+    <tr><td>Deterministic core before AI</td><td>The whole offline engine (<code>formatting.py</code>, <code>local_engine.py</code>) is rule-first; cloud AI is opt-in</td><td><span class="badge b-done">parity</span> arguably ahead of the kit here</td></tr>
+    <tr><td>Autonomy boundary (owner-only actions)</td><td>Owner-only list: secrets, money, destructive/irreversible, account changes (README §4)</td><td><span class="badge b-done">parity</span> essentially identical</td></tr>
+    <tr><td>Closeout labels + honest "not done"</td><td>Completion checklist: every item ✓/□ with a reason, unfinished → STATUS (README §8)</td><td><span class="badge b-exist">close</span> ours is richer on docs-currency; theirs adds a single crisp label</td></tr>
+    <tr><td>Mechanical proof (tests/lint/compile)</td><td><code>pytest</code> + <code>flake8</code> + <code>compileall</code>; 15 offline + 3 live suites (HANDBOOK §4)</td><td><span class="badge b-done">parity</span> mature and real</td></tr>
+    <tr><td>Honesty bar / no overclaiming</td><td>"Never report fixed for a path you couldn't verify"; the "depicted-but-not-real" guardrail (STATUS §7)</td><td><span class="badge b-exist">close</span> we have the <em>principle</em>; they have the <em>ladder</em> that operationalises it</td></tr>
+    <tr><td><strong>Output-quality evals</strong> (scenario packs, rubrics, fatal gates, scorecards)</td><td>— nothing. Our tests prove the code <em>runs</em>, never that the Big&nbsp;Shift inferred the right shape or the constitution produced a good prompt</td><td><span class="badge b-gated">MISSING — high value</span></td></tr>
+    <tr><td><strong>Autoreview</strong> as a separate anti-overengineering / claims-vs-evidence pass</td><td>— folded implicitly into "do it well"; never a distinct, recorded review with authority to delete</td><td><span class="badge b-gated">MISSING — high value</span></td></tr>
+    <tr><td><strong>Named proof surfaces</strong> (evidence ladder)</td><td>— we say "verified" / "live-only verification backlog" but don't tag <em>which</em> surface proved <em>which</em> claim</td><td><span class="badge b-gated">MISSING — low cost</span></td></tr>
+    <tr><td>Deterministic structure/secret CI</td><td>— no doctor, no secret-scanner gate (rule "keys never in source/git" is enforced by discipline only)</td><td><span class="badge b-exist">MISSING — light value</span></td></tr>
+  </tbody>
+</table>
+<blockquote>
+  <strong>The pattern is clear.</strong> Mumble is <em>ahead</em> on doctrine, docs-currency, and deterministic-first design, and <em>level</em> on mechanical testing. It is <em>behind</em> on exactly three things: measuring AI output quality, a separate skeptical review, and naming proof surfaces. That is a precise, small shopping list — not a rebuild.
+</blockquote>
+
+<h3>2.2 Versus the live toolchain</h3>
+<p>These are different <em>kinds</em> of thing and it's important not to compare them as rivals:</p>
+<table>
+  <thead><tr><th>Thing</th><th>What it is</th><th>Layer</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Claude&nbsp;Code</strong></td><td>An interactive agent CLI: reads/edits files, runs commands, drives one focused session with you in the loop.</td><td>Execution (interactive)</td></tr>
+    <tr><td><strong>Factory&nbsp;/ Droid</strong></td><td>An agent-native CLI/IDE with custom droids (subagents), skills, hooks, MCP, and <code>AGENTS.md</code> support.</td><td>Execution (agent platform)</td></tr>
+    <tr><td><strong>Mission&nbsp;Control</strong></td><td>Factory's long-running orchestration engine: plans → milestones → fresh worker sessions → git handoffs → validation → QA → auto-recovery.</td><td>Execution (autonomous orchestration)</td></tr>
+    <tr><td><strong>How&nbsp;I&nbsp;Engineer</strong></td><td>A portable <em>doctrine + skills + proof gates</em>. Not an engine — a set of rules and runnable checks the engines obey.</td><td>Discipline (cross-cutting)</td></tr>
+  </tbody>
+</table>
+<p>So How&nbsp;I&nbsp;Engineer does not compete with any of the three. It sits <em>above</em> them as the operating constitution they all follow — the same way Mumble's README already governs whatever agent is editing the code. The interesting overlap is specifically with Mission&nbsp;Control, because Mission&nbsp;Control <em>also</em> talks in orchestrators, workers, and validation — which is §3.</p>
+
+<!-- ===================== 3 ===================== -->
+<h2 id="s3"><span class="sec">3</span>Integration with Mission Control</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mission&nbsp;Control already <em>is</em> an orchestrator-with-workers. So the How&nbsp;I&nbsp;Engineer orchestration chapter is, for us, mostly redundant — Factory does that part for real (actual parallel agent sessions, git handoffs, automatic recovery) where the kit only describes the pattern in prose. The win is the other direction: <strong>Mission&nbsp;Control runs the machine; How&nbsp;I&nbsp;Engineer makes the machine's agents disciplined and honest.</strong> We don't reimplement orchestration — we feed Mission&nbsp;Control the doctrine and the proof gates it doesn't ship with.</p>
+  </div>
+</div>
+
+<h3>3.1 What Mission Control already provides</h3>
+<p>Confirmed against Factory's documentation and launch material:</p>
+<ul>
+  <li>An <strong>orchestrator</strong> that decomposes a goal into features/milestones and steers execution to completion through validation gates.</li>
+  <li><strong>Fresh worker sessions</strong> per feature with clean context (no single session holds the whole project), coordinated through <strong>git handoffs</strong>.</li>
+  <li><strong>Milestone validation</strong> — workers review accumulated work, run tests, check regressions, verify integration.</li>
+  <li><strong>User-facing QA</strong> run against the app to validate each feature and self-correct; <strong>automatic failure recovery</strong>.</li>
+  <li>Runs are long and real: median ≈ 2 hours, a third run &gt; 4 hours.</li>
+  <li>It loads project steering from <strong><code>AGENTS.md</code></strong>, plus <strong>custom droids</strong> (<code>.factory/droids/</code>), <strong>skills</strong> (<code>.factory/skills/</code>), hooks, and MCP.</li>
+</ul>
+
+<h3>3.2 The overlap matrix — who owns what</h3>
+<table>
+  <thead><tr><th>Capability</th><th>Mission Control</th><th>How I Engineer</th><th>Verdict</th></tr></thead>
+  <tbody>
+    <tr><td>Orchestrator / worker decomposition</td><td>✅ real engine</td><td>📝 prose pattern</td><td>use MC; don't reimplement</td></tr>
+    <tr><td>Fresh-context workers, git handoffs, crash recovery</td><td>✅ native</td><td>❌</td><td>MC only</td></tr>
+    <tr><td>Milestone validation (tests / regressions / integration)</td><td>✅ executes it</td><td>📝 names the standard (ladder rungs 1–3)</td><td>MC runs; HIE labels</td></tr>
+    <tr><td>User-facing QA + self-correction</td><td>✅ native</td><td>📝 <code>real-user-qa</code> checklist</td><td>MC runs; HIE structures the proof</td></tr>
+    <tr><td>Conversation-first brief discipline</td><td>◐ you plan up front, but not this discipline</td><td>✅ skill + template</td><td><strong>HIE adds</strong></td></tr>
+    <tr><td>Slice rule / minimality / anti-overengineering review</td><td>❌</td><td>✅ <code>autoreview</code> gate</td><td><strong>HIE adds (high value)</strong></td></tr>
+    <tr><td>Output-quality evals (scenario packs, rubrics, fatal gates)</td><td>❌ (QA&nbsp;≠&nbsp;eval)</td><td>✅ runnable harness</td><td><strong>HIE adds (highest value)</strong></td></tr>
+    <tr><td>Evidence ladder / named proof surfaces / closeout labels</td><td>❌</td><td>✅</td><td><strong>HIE adds</strong></td></tr>
+    <tr><td>Deterministic-core-before-AI rule</td><td>❌</td><td>✅</td><td><strong>HIE adds</strong></td></tr>
+    <tr><td>Secret / leak scan as a gate</td><td>❌</td><td>✅ scanner</td><td>HIE adds (light value)</td></tr>
+  </tbody>
+</table>
+<blockquote>
+  Mission&nbsp;Control wins every <em>execution</em> row; How&nbsp;I&nbsp;Engineer wins every <em>quality / proof / minimality</em> row. They are complements, not substitutes. Replacing either with the other would be a mistake.
+</blockquote>
+
+<h3>3.3 How to actually wire them together</h3>
+<p>Because Mission&nbsp;Control reads <code>AGENTS.md</code>, <code>.factory/skills/</code>, and <code>.factory/droids/</code>, integration is configuration, not engineering:</p>
+<ol>
+  <li><strong>Doctrine into <code>AGENTS.md</code>.</strong> Put the kernel essentials (slice rule, autonomy boundary, truth model, evidence ladder, closeout labels) where every Mission worker loads them. For Mumble this largely means pointing <code>AGENTS.md</code> at the existing core docs and adding the few missing primitives (§5).</li>
+  <li><strong>Lanes into custom droids.</strong> Author an <em>eval droid</em> and an <em>autoreview droid</em> (and optionally a <em>safety droid</em>) in <code>.factory/droids/</code>. These are precisely the milestone-validation steps Mission&nbsp;Control doesn't ship by default — they slot in as extra validation lanes.</li>
+  <li><strong>Skills into <code>.factory/skills/</code>.</strong> Drop the adapted <code>conversation-brief</code>, <code>eval-framework</code>, and <code>autoreview</code> skills so any droid can invoke them.</li>
+  <li><strong>Evals as a milestone gate.</strong> Make "AI-lane eval scorecard is green (no fatal gate)" a defined exit criterion for any milestone that changes the Big&nbsp;Shift, the prompt constitution, or routing — alongside the tests Mission&nbsp;Control already runs.</li>
+</ol>
+<p>Net effect: Mission&nbsp;Control keeps doing the heavy autonomous lifting (the 2-hour, multi-feature, port-spanning jobs), but now its workers brief before building, refuse to overbuild, prove AI quality with a scorecard, and label their claims by proof surface.</p>
+
+<!-- ===================== 4 ===================== -->
+<h2 id="s4"><span class="sec">4</span>Integration into chat-based development</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Most Mumble work isn't a dedicated multi-hour engineering mission — it's an ordinary chat: "fix this island artifact," "tune the mode inference," "add PDF import to the Reader." The full ceremony would be overkill there. The trick is a <strong>lightweight version</strong> that costs almost nothing per turn and folds straight into the completion checklist we already write.</p>
+  </div>
+</div>
+
+<p>The kit itself says use one skill by default and don't orchestrate tiny edits — so the chat-scale adoption is just four habits, three of which we already half-do:</p>
+<ol>
+  <li><strong>A 30-second brief, in your head or one line.</strong> Before editing: who's this for, what's the input, what's the output, what must it never do. For Mumble that's usually one sentence; it stops "fixed the wrong thing" before it starts.</li>
+  <li><strong>Deterministic before AI.</strong> Already our default — keep choosing a rule in <code>formatting.py</code> over a model call when a rule suffices.</li>
+  <li><strong>Name the proof surface when you claim done.</strong> Extend the §8 completion line from "✓ Feature A" to "✓ Feature A <em>— proof: offline test + manual island render</em>." This is the single cheapest, highest-trust change: it makes the existing honesty bar <em>visible</em> and kills accidental overclaiming.</li>
+  <li><strong>One autoreview question before sign-off.</strong> "Did this stay in the smallest slice, and do my claims match the evidence?" Thirty seconds; catches scope creep and the "live-verified" claims that were really only compiled.</li>
+</ol>
+<p><strong>Concrete proposal:</strong> add two optional lines to the README&nbsp;§8 completion checklist — a <em>Proof surface</em> line (which evidence ladder rung backs each ✓) and a <em>Minimality/autoreview</em> line (one sentence: what was deliberately <em>not</em> built). Scale them to the work: a one-line fix gets a one-line proof; a Big&nbsp;Shift change gets a scorecard reference. Nothing else about how we chat needs to change.</p>
+
+<!-- ===================== 5 ===================== -->
+<h2 id="s5"><span class="sec">5</span>Recommended architecture for Mumble</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Don't copy the repo's folder layout, and don't adopt the parts built for publishing a public teaching repo. Instead, take four layers — <strong>doctrine, skills, execution, proof</strong> — express them in Mumble's existing idiom (HTML core docs, the completion checklist, the offline test loop), and wire the deterministic ones into the verify step we already run.</p>
+  </div>
+</div>
+
+<h3>5.1 The four layers, mapped to this repo</h3>
+<div class="branch">
+  <div class="branch-col is-gold">
+    <h4><span class="dot"></span>Doctrine layer</h4>
+    <p><strong>Lives in:</strong> the four core docs (already our constitution) + a thin <code>AGENTS.md</code> at the repo root that points agents at them.</p>
+    <p><strong>Add:</strong> the evidence ladder vocabulary, closeout labels, and an explicit autoreview/minimality rule — grafted into README&nbsp;§8 and HANDBOOK&nbsp;§5/§7, not a new doc.</p>
+  </div>
+  <div class="branch-col">
+    <h4><span class="dot"></span>Skills layer</h4>
+    <p><strong>Lives in:</strong> <code>.claude/skills/</code> (Claude&nbsp;Code) and/or <code>.factory/skills/</code> (Factory) — same front-matter shape.</p>
+    <p><strong>Adopt 5:</strong> conversation-brief, workflow-ship, orchestrator, autoreview, eval-framework. Plus a Mumble-tuned <code>real-user-qa</code> for the island/mic/port live checks.</p>
+  </div>
+  <div class="branch-col">
+    <h4><span class="dot"></span>Execution layer</h4>
+    <p><strong>Mission&nbsp;Control</strong> for big autonomous multi-surface jobs (local-LLM lane end-to-end; port parity; the stale-zip rebuild). <strong>Claude&nbsp;Code</strong> for surgical/interactive work. Both obey the doctrine + skills above.</p>
+  </div>
+  <div class="branch-col is-gold">
+    <h4><span class="dot"></span>Proof layer</h4>
+    <p><strong>Lives in:</strong> the existing verify loop + a new <code>Internal/app/evals/</code>. Mechanical rungs stay (<code>pytest</code>/<code>flake8</code>/<code>compileall</code>); add an <strong>AI-lane eval harness</strong> and a light <strong>secret scanner</strong>, runnable as one command and (optionally) in CI.</p>
+  </div>
+</div>
+
+<h3>5.2 Adopt / adapt / skip — with reasons</h3>
+<table>
+  <thead><tr><th>Piece</th><th>Call</th><th>Why (Mumble-specific)</th></tr></thead>
+  <tbody>
+    <tr><td><strong>AI-lane eval harness</strong> (scenario packs, weighted rubric, fatal privacy/honesty gate, deterministic scorer, scorecard)</td><td><span class="badge b-done">ADOPT — #1</span></td><td>The Big&nbsp;Shift (list/email/clean inference), the prompt constitution, foreign-boost decisions, and mode routing are all quality-sensitive and currently proven only by "the code ran." This is the exact gap. Offline/fixture-first → no key, no network, near-zero token cost.</td></tr>
+    <tr><td><strong>Autoreview pass</strong> (minimality, claims-vs-evidence, no depicted-but-not-real)</td><td><span class="badge b-done">ADOPT</span></td><td>Codifies instincts we already hold (smallest change; honesty bar; the §7 guardrail) into a recorded verdict with authority to delete. One extra pass; catches overbuild and overclaim.</td></tr>
+    <tr><td><strong>Evidence ladder + closeout labels</strong> in the completion checklist</td><td><span class="badge b-done">ADOPT</span></td><td>Turns our prose honesty bar into named, enforceable proof. Trivial cost (two checklist lines), large trust gain — and directly tightens the "live-only verification backlog" language in STATUS.</td></tr>
+    <tr><td><strong>Worker-lane orchestration</strong></td><td><span class="badge b-exist">ADAPT</span></td><td>Use the <em>discipline</em> (one objective, one scope, one proof per lane) but run it on <strong>Mission&nbsp;Control</strong>, which already does real workers. Don't simulate workers in one Claude&nbsp;Code session and call them independent — the kit warns against exactly that.</td></tr>
+    <tr><td><strong>Secret / leak scanner</strong></td><td><span class="badge b-exist">ADAPT</span></td><td>Hardens existing invariant #2 ("keys never in source/git/logs"). Adopt the scanner's secret/path regexes; drop the public-repo-specific markers. Small, cheap insurance.</td></tr>
+    <tr><td><strong>Structure "doctor"</strong></td><td><span class="badge b-exist">ADAPT</span></td><td>A cheap check that the four core docs exist, link-resolve, and reference <code>docs.css</code> — reinforces the docs-currency rule. Optional.</td></tr>
+    <tr><td><strong>Crabbox remote proof</strong></td><td><span class="badge b-gated">SKIP</span></td><td>Mumble already runs locally on the dev's Windows box; the real live gaps (island render, mic, macOS/Linux) need <em>specific hardware</em>, which a remote Linux box doesn't provide. Revisit only if a clean-room CI need appears.</td></tr>
+    <tr><td><strong>Public-repo scrub ceremony</strong> (scrubbed runnable examples, <code>what-not-to-publish</code>, PR-publish safety)</td><td><span class="badge b-gated">SKIP</span></td><td>Mumble ships a <em>closed product</em>, not a public teaching repo. Keep only the secret-scan kernel; the rest solves a problem we don't have.</td></tr>
+    <tr><td><strong>Reinventing orchestration in prose</strong></td><td><span class="badge b-gated">SKIP</span></td><td>Mission&nbsp;Control does it better and for real.</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 6 ===================== -->
+<h2 id="s6"><span class="sec">6</span>Phased implementation plan</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>If we adopt, do it in small reversible steps, cheapest-and-highest-trust first. Each phase ships something usable on its own — nothing here is a big-bang rewrite, and you can stop after any phase and still be better off.</p>
+  </div>
+</div>
+
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">0</div><div class="flow-body">
+    <div class="ft">Doctrine graft · ~½ day</div>
+    <p>Edit README&nbsp;§8 + HANDBOOK&nbsp;§5/§7 (HTML, in place): add the evidence ladder, closeout labels, the minimality/autoreview rule, and two new completion-checklist lines (<em>Proof surface</em>, <em>Minimality</em>). Add a thin root <code>AGENTS.md</code> that routes agents to the four core docs. <strong>Output:</strong> the honesty bar becomes named and enforceable. Zero code risk.</p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body">
+    <div class="ft">AI-lane eval harness · ~1–2 days <span class="badge b-done">highest value</span></div>
+    <p>Create <code>Internal/app/evals/</code>: a fixture scenario pack (dictation→shape; mode routing; foreign-boost decisions; prompt-constitution structure; list lead-in preservation), a weighted rubric with a <strong>fatal privacy/honesty gate</strong> (e.g. any audio-egress or depicted-but-not-real implication = fatal), a deterministic scorer, and a Markdown+JSON scorecard. Offline-first (no key). Wire <code>eval</code> into the verify loop. <strong>Output:</strong> first real measurement of Big&nbsp;Shift quality.</p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body">
+    <div class="ft">Deterministic gates · ~½ day</div>
+    <p>Add a secret/leak scanner (adapted regexes, Mumble-tuned) and an optional core-docs doctor to the verify step; optionally a GitHub Action mirroring it. <strong>Output:</strong> invariant&nbsp;#2 enforced by a machine, not just discipline.</p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body">
+    <div class="ft">Skills + droids pack · ~½–1 day</div>
+    <p>Adapt 5–6 skills into <code>.claude/skills/</code> and <code>.factory/skills/</code>; author matching <em>eval</em> / <em>autoreview</em> / <em>orchestrator</em> custom droids in <code>.factory/droids/</code>. <strong>Output:</strong> Claude&nbsp;Code and Mission&nbsp;Control load the same operating procedures.</p>
+  </div></div>
+  <div class="flow-step"><div class="flow-node">4</div><div class="flow-body">
+    <div class="ft">Run a real mission through it · ongoing</div>
+    <p>Drive one genuine multi-surface job (e.g. wire the local-LLM lane end-to-end across Windows + both ports, or the stale-<code>Mumble.zip</code> rebuild) through Mission&nbsp;Control with the eval + autoreview lanes as milestone gates. <strong>Output:</strong> the workflow proves itself on real Mumble work, or we learn precisely where it doesn't fit.</p>
+  </div></div>
+</div>
+<p><strong>Total to full adoption: ~3–4 focused days</strong>, front-loaded so the highest-trust wins (Phases 0–1) land first and the rest is optional polish.</p>
+
+<!-- ===================== 7 ===================== -->
+<h2 id="s7"><span class="sec">7</span>Practical engineering evaluation</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>A blunt scorecard across the dimensions that decide whether a workflow is worth its overhead — judged for <em>this</em> project, not in the abstract.</p>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>Dimension</th><th>Assessment for Mumble</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Implementation complexity</strong></td><td>Low for the parts we'd adopt. The eval harness is ~1 deterministic Python file + JSON fixtures; the doctrine graft is doc edits; skills are Markdown. No new runtime dependency, no architecture change.</td></tr>
+    <tr><td><strong>Setup effort</strong></td><td>~½ day to value (Phase 0); ~3–4 days to full adoption. Front-loaded so trust arrives early.</td></tr>
+    <tr><td><strong>Maintenance burden</strong></td><td>Mostly the eval scenario packs — they need updating as the AI lanes evolve. That cost is proportional to how much you trust those lanes (for the Big&nbsp;Shift: worth it). Everything else is near-zero maintenance.</td></tr>
+    <tr><td><strong>Scalability</strong></td><td>Scales <em>down</em> gracefully (one-line proof for a one-line fix) and <em>up</em> cleanly (scenario packs grow; Mission&nbsp;Control handles parallel lanes). The "one skill by default, orchestrate only when work crosses lanes" rule prevents ceremony creep.</td></tr>
+    <tr><td><strong>Workflow improvement</strong></td><td>Meaningful: closes the two real gaps (quality proof, anti-overengineering review) without disrupting what already works.</td></tr>
+    <tr><td><strong>Productivity</strong></td><td>Slightly slower per change; faster across a release, because less time is lost to rework from shipping something that only looked done, and to debating "is this good?" with no measurement.</td></tr>
+    <tr><td><strong>Code-quality improvement</strong></td><td>Indirect but real: the minimality gate fights the overbuild that bloats a codebase, and deterministic-first keeps logic testable rather than hidden in prompts.</td></tr>
+    <tr><td><strong>Debugging advantages</strong></td><td>Strong. A scorecard that says <em>which scenario regressed on which rubric dimension</em> turns "the AI feels worse" into a located, reproducible failure — far better than today's "tests pass but mode inference seems off."</td></tr>
+    <tr><td><strong>Architectural benefits</strong></td><td>Reinforces Mumble's existing local-first / deterministic-core design and gives the AI lanes a measurable contract, which makes the planned local-LLM swap (STATUS §5) safe to evaluate.</td></tr>
+    <tr><td><strong>Collaboration benefits</strong></td><td>For a solo-owner + AI project the main win is <em>agent-to-agent</em> handoff: a Mission&nbsp;Control worker and a Claude&nbsp;Code session reading the same skills behave consistently. Lower value than for a human team, but not zero.</td></tr>
+    <tr><td><strong>Context management</strong></td><td>Excellent fit. "Keep startup light — load the router, the kernel, one skill" mirrors how these agents already work and avoids dumping the whole repo into context. Fresh-context workers (Mission&nbsp;Control) prevent one session holding everything.</td></tr>
+    <tr><td><strong>Token usage</strong></td><td>The <em>doctrine</em> is token-saving (don't build the wrong thing, don't overbuild, don't pay model tokens where a rule suffices). The <em>deterministic eval</em> is ~free (no model calls). A <em>live</em> eval costs provider tokens bounded by scenario count. Orchestration spends more tokens but only when work genuinely splits.</td></tr>
+    <tr><td><strong>Model efficiency</strong></td><td>The eval's "where is a cheaper model good enough vs. where does premium judgement matter?" question maps directly onto Mumble's multi-provider routing — it could justify routing more lanes to the free Cerebras tier with evidence instead of guesswork.</td></tr>
+    <tr><td><strong>Cost implications</strong></td><td>Adoption cost is engineering time, not licences (the kit is MIT-style public; the gates are stdlib Python). Ongoing cost is negligible unless live evals are run often. Net likely cost-<em>negative</em> via avoided rework and better model routing.</td></tr>
+    <tr><td><strong>Accuracy</strong></td><td>Directly improved: scenario packs with fatal gates catch quality and safety regressions that mechanical tests miss; the evidence ladder stops "it builds" passing as "it works."</td></tr>
+    <tr><td><strong>Reliability</strong></td><td>Improved: autoreview + named proof surfaces attack the two most common <em>operating</em> failures (overengineering, overclaimed proof) before they ship.</td></tr>
+    <tr><td><strong>Potential drawbacks</strong></td><td>Ceremony overhead on trivial edits (mitigated by scaling down); eval-pack authoring + upkeep cost; risk of cargo-culting the public-repo scrub machinery we don't need; orchestration can <em>raise</em> cost/latency if applied to work that doesn't split cleanly.</td></tr>
+    <tr><td><strong>Where it excels</strong></td><td>Exactly Mumble's risky surfaces: the Big&nbsp;Shift inference, the prompt constitution, foreign-mode decisions, provider routing/fallback, and any future local-LLM swap — all quality-sensitive, all currently unmeasured.</td></tr>
+    <tr><td><strong>Where it offers little</strong></td><td>Pure mechanical fixes (a clipboard-restore retry, a geometry tweak) where existing tests already prove the change; the public-publishing parts; remote/Crabbox proof for a locally-running app.</td></tr>
+    <tr><td><strong>Worth adopting?</strong></td><td><strong>Yes — selectively.</strong> The three high-value pieces are cheap and target real gaps; the rest is skippable. See §8.</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 8 ===================== -->
+<h2 id="s8"><span class="sec">8</span>Final recommendation</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p><strong>Adopt the discipline, not the repository.</strong> Take three things — the AI-lane eval harness, the autoreview pass, and the evidence-ladder vocabulary in the completion checklist — express them in Mumble's existing HTML-docs idiom, and feed that same doctrine to Mission&nbsp;Control's workers. Skip the orchestration prose (Mission&nbsp;Control wins it), the remote-proof box (we run locally), and the public-repo scrub ceremony (we ship a closed product).</p>
+  </div>
+</div>
+
+<h3>The reasoning, in one breath</h3>
+<p>Mumble is an unusual case: it is <em>already</em> strong where most AI-built projects are weak — a real doctrine (four core docs), a strict completion checklist, an explicit honesty bar, deterministic-first design, and a mature offline test suite. So the question isn't "do we need discipline?" (we have it) but "what discipline are we missing?" The answer is precise and small:</p>
+<ol>
+  <li><strong>We never measure AI output quality.</strong> Our tests prove the code runs; nothing proves the Big&nbsp;Shift inferred the right shape, the constitution wrote a good prompt, or foreign-boost made the right call. How&nbsp;I&nbsp;Engineer's eval spine is the missing instrument, and it's cheap because the scorer is deterministic and offline-first.</li>
+  <li><strong>We have no separate skeptic.</strong> "Smallest change" and "no depicted-but-not-real" are principles we hold but never independently <em>check</em>. An autoreview pass with authority to delete makes overbuild and overclaim visible before sign-off.</li>
+  <li><strong>Our proof is unnamed.</strong> "Verified" doesn't say <em>how</em>. The evidence ladder + closeout labels make every claim point at a surface — turning the honesty bar from a value into a gate, at the cost of two checklist lines.</li>
+</ol>
+<p>Everything else in the kit is either already ours (briefs, slice rule, autonomy boundary, deterministic-first), better served by a tool we already run (orchestration → Mission&nbsp;Control), or solving a problem we don't have (publishing scrubbed public examples; remote proof for a local app). Adopting it wholesale would import ceremony for no gain; adopting these three pieces closes the exact gaps at ~3–4 days of work, front-loaded so the trust arrives on day one.</p>
+
+<blockquote>
+  <strong>Closeout label: <span class="badge b-done">merge candidate</span></strong> — for the selective adoption in §5.2 / §6. Proof surface for <em>this analysis</em>: the source repo was cloned and read in full; Mumble's four core docs were read in full; Factory / Mission&nbsp;Control behaviour was confirmed against Factory's documentation. What this analysis did <em>not</em> do: run an actual Mumble eval (none exists yet — that is Phase&nbsp;1), or execute a Mission&nbsp;Control mission. Recommendation is design-validated, not yet runtime-proven on Mumble.
+</blockquote>
+
+<div class="doc-foot">
+  <span>Mumble — Engineer Analysis</span>
+  <span class="gold">How I Engineer · evaluated 2026-06-28</span>
+</div>
+
+</div>
+</body>
+</html>

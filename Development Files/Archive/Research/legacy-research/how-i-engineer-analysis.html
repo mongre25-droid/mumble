@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How I Engineer — Analysis &amp; Integration Blueprint for Mumble</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --amber: #d2991d;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --code-bg: #1c2128;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    padding: 2rem 1.5rem;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+
+  header.doc-head {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 2rem;
+    margin-bottom: 2rem;
+  }
+  .kicker { color: var(--accent); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.25rem; }
+  header h1 { font-size: 2.2rem; font-weight: 700; color: #f0f6fc; }
+  .meta { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.35rem; color: var(--muted); font-size: 0.9rem; }
+  .meta a { color: var(--accent); }
+
+  .plain { background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 1.25rem 1.5rem; margin: 1.5rem 0; }
+  .plain .tag { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 0.5rem; }
+
+  h2 { font-size: 1.5rem; color: #f0f6fc; margin: 2.5rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h2 .sec { color: var(--muted); font-size: 0.85rem; margin-right: 0.6rem; }
+  h3 { font-size: 1.15rem; color: #e6edf3; margin: 1.5rem 0 0.75rem; }
+  h4 { font-size: 1rem; color: var(--accent); margin: 1.25rem 0 0.5rem; }
+
+  p { margin: 0.75rem 0; }
+  p + p { margin-top: 0.75rem; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  blockquote {
+    border-left: 4px solid var(--amber);
+    background: rgba(210,153,29,0.06);
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 0.95rem;
+    color: #e6edf3;
+  }
+  blockquote strong { color: var(--amber); }
+
+  code {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    margin: 1rem 0;
+  }
+  pre code { background: none; padding: 0; white-space: pre; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.25rem 0;
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th { color: #f0f6fc; font-weight: 600; background: var(--surface); }
+  td { color: var(--text); }
+
+  .badge {
+    display: inline-block;
+    font-size: 0.78rem;
+    padding: 0.15em 0.55em;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .b-done { background: rgba(63,185,80,0.15); color: var(--green); }
+  .b-gated { background: rgba(210,153,29,0.15); color: var(--amber); }
+  .b-miss { background: rgba(248,81,73,0.15); color: var(--red); }
+  .b-info { background: rgba(88,166,255,0.12); color: var(--accent); }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; }
+  .flow-step {
+    display: flex; align-items: flex-start; gap: 0.5rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.75rem; flex: 1 1 180px; min-width: 150px;
+  }
+  .flow-node {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.8rem; flex-shrink: 0;
+  }
+  .flow-body .ft { font-weight: 600; color: #f0f6fc; font-size: 0.9rem; margin-bottom: 0.25rem; }
+  .flow-body p { font-size: 0.82rem; color: var(--muted); margin: 0; }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .card h4 { margin-top: 0; }
+
+  ul, ol { padding-left: 1.5rem; margin: 0.75rem 0; }
+  li { margin: 0.35rem 0; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; margin: 1.5rem 0; }
+  .toc .tt { font-weight: 700; color: #f0f6fc; margin-bottom: 0.75rem; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .toc ol { padding-left: 1.25rem; }
+  .toc li { margin: 0.3rem 0; }
+
+  .highlight-box {
+    border: 1px solid var(--green);
+    border-radius: 8px;
+    background: rgba(63,185,80,0.06);
+    padding: 1.25rem;
+    margin: 1.5rem 0;
+  }
+  .highlight-box h4 { color: var(--green); margin-top: 0; }
+
+  .warn-box {
+    border: 1px solid var(--amber);
+    border-radius: 8px;
+    background: rgba(210,153,29,0.06);
+    padding: 1.25rem;
+    margin: 1.5rem 0;
+  }
+  .warn-box h4 { color: var(--amber); margin-top: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Research · 2026-06-28</div>
+  <h1>How I Engineer — Analysis &amp; Integration Blueprint</h1>
+  <div class="meta">
+    <div><span class="ico">&#9830;</span><b>Source:</b> <a href="https://github.com/AnasInno/how-i-engineer">github.com/AnasInno/how-i-engineer</a></div>
+    <div><span class="ico">&#9830;</span><b>Target:</b> Mumble v0.9 ("The Big Shift")</div>
+    <div><span class="ico">&#9830;</span><b>Scope:</b> What the repo teaches, how Mumble compares, how Factory Mission Control fits, and a concrete integration path</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>This document takes a close look at <strong>AnasInno/how-i-engineer</strong> — a public operating
+    manual for building software with AI agents in a disciplined, safety-conscious way. We compare it
+    point by point with how Mumble is already built, identify where the two philosophies overlap and
+    diverge, and lay out the <strong>pragmatic steps Mumble could take</strong> to absorb the strongest
+    ideas without over-engineering. We also contrast both with Factory.ai's Mission Control — the
+    orchestrated, mission-based agentic system this analysis itself runs inside — to give a complete
+    picture of the agentic-development landscape.</p>
+  </div>
+</div>
+
+<nav class="toc">
+  <div class="tt">Contents</div>
+  <ol>
+    <li><a href="#s1">What "How I Engineer" actually is</a></li>
+    <li><a href="#s2">The kernel: six operating principles</a></li>
+    <li><a href="#s3">The agent roles unpacked</a></li>
+    <li><a href="#s4">The proof ladder — why "it builds" is not enough</a></li>
+    <li><a href="#s5">Mumble's existing development process</a></li>
+    <li><a href="#s6">Side-by-side comparison: HIE vs Mumble vs Factory Mission Control</a></li>
+    <li><a href="#s7">Where Mumble already aligns</a></li>
+    <li><a href="#s8">Where Mumble could absorb HIE patterns</a></li>
+    <li><a href="#s9">A concrete integration roadmap</a></li>
+    <li><a href="#s10">Risks and anti-patterns to avoid</a></li>
+  </ol>
+</nav>
+
+<!-- ==================== SECTION 1 ==================== -->
+<h2 id="s1"><span class="sec">1</span>What "How I Engineer" actually is</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>"How I Engineer" is not a framework, not a library, not a product. It is a <strong>published
+    operating pattern</strong> — a set of habits, file structures, contract templates, and runnable
+    examples that encode <em>one person's</em> method for shipping AI-assisted software without the
+    usual chaos. It was extracted from real product work (a teacher-facing tool called TeachClaw)
+    and scrubbed of private data so others can study, fork, and adapt the pattern.</p>
+    <p>The central insight is simple but powerful: <strong>most failed AI-augmented projects fail not
+    because the model is weak, but because the operating model is weak.</strong> Vague briefs,
+    orchestration before understanding, no deterministic baseline, hidden local state, no proof
+    chain, accidental leaks — these are engineering failures, not intelligence failures.</p>
+  </div>
+</div>
+
+<h3>The pipeline in one line</h3>
+
+<pre><code>problem conversation → tight brief → smallest slice → orchestrator (if needed) → build → eval → autoreview → proof → PR → CI/CD → merge</code></pre>
+
+<h3>The repo shape</h3>
+
+<table>
+  <thead><tr><th>Directory</th><th>What it holds</th></tr></thead>
+  <tbody>
+    <tr><td><code>.agents/skills/</code></td><td>Task-specific operating procedures — conversation briefs, workflow shipping, orchestration, autoreview, real-user QA, evals, Crabbox proof, PR/ship safety</td></tr>
+    <tr><td><code>codex/how-i-engineer/</code></td><td>The agent router (<code>LOAD-FIRST.md</code>) and the compact operating doctrine (<code>KERNEL.md</code>)</td></tr>
+    <tr><td><code>AGENTS.md</code></td><td>Root router — what any agent should read first when working in this repo</td></tr>
+    <tr><td><code>docs/</code></td><td>Topic docs: build loop, orchestrator/worker system, eval framework, Crabbox runs, QA/browser E2E, PR/ship safety, scrub boundaries</td></tr>
+    <tr><td><code>ops/contracts/</code></td><td>Validation gate rules and worker-brief templates</td></tr>
+    <tr><td><code>ops/evals/</code></td><td>Eval contract — scenario packs, rubrics, scorecards</td></tr>
+    <tr><td><code>templates/</code></td><td>The automation brief template — a reusable shape for turning conversation into scope</td></tr>
+    <tr><td><code>examples/</code></td><td>Two runnable, scrubbed TeachClaw examples: a proof loop and an eval harness</td></tr>
+    <tr><td><code>scripts/</code></td><td>Public safety scanner, example verifier, repo doctor</td></tr>
+  </tbody>
+</table>
+
+<p>The whole public proof chain runs with a single command: <code>make check</code> (smoke tests, unit tests, eval-harness tests, safety scan).</p>
+
+<!-- ==================== SECTION 2 ==================== -->
+<h2 id="s2"><span class="sec">2</span>The kernel: six operating principles</h2>
+
+<p>The file <code>codex/how-i-engineer/KERNEL.md</code> distills the entire philosophy into six
+principles. They read like a constitution for agent-assisted engineering:</p>
+
+<div class="cols">
+  <div class="card">
+    <h4>1. The Promise</h4>
+    <p>"The work only counts if less useful human work exists afterwards."</p>
+    <p>Every automation must answer: <em>What repeated human workflow gets easier after this ships?</em> Prefer real user pain over impressive agent theatre, useful output over process narration, deterministic baseline over model dependency.</p>
+  </div>
+  <div class="card">
+    <h4>2. The Truth Model</h4>
+    <p>"Current files beat old docs."</p>
+    <p>Use <code>WORK-DONE.md</code> for history, but inspect the actual checkout, git status, tests, generated outputs, CI/CD checks, and safety scans for what is <em>true now</em>. Never create stale "current state" docs.</p>
+  </div>
+  <div class="card">
+    <h4>3. The Autonomy Boundary</h4>
+    <p>"Local autonomy is high. External autonomy is low."</p>
+    <p>Agents may act freely on code, docs, tests, fake data, and local proof. They <em>must stop</em> before sending email, writing to CRMs, posting publicly, mutating live systems, scraping private systems, or publishing secrets.</p>
+  </div>
+  <div class="card">
+    <h4>4. The Slice Rule</h4>
+    <p>"Build the smallest coherent version that produces useful output and can be proved."</p>
+    <p>Smallest coherent = one persona, one input shape, one output format, one smoke command, one clear proof standard. Avoid platform building, broad integrations, and AI as the only source of correctness.</p>
+  </div>
+  <div class="card">
+    <h4>5. The Autoreview Rule</h4>
+    <p>"Non-trivial work gets a separate review pass before it is called ready."</p>
+    <p>Autoreview checks: brief fit, minimality (did every file earn its place?), proof claims (did the closeout only claim what was actually run?), and safety (no private data leaked). The reviewer may recommend deleting work.</p>
+  </div>
+  <div class="card">
+    <h4>6. The Evidence Ladder</h4>
+    <p>"Do not let one layer stand in for another."</p>
+    <p>11 distinct proof levels — from "file exists" up to "PR/ship safety scan." Each level must be independently satisfied; a green smoke test does not prove output quality.</p>
+  </div>
+</div>
+
+<blockquote>
+  <strong>Key takeaway:</strong> This kernel is not a checklist to be skimmed. It is an <strong>operating
+  doctrine</strong> — if you violate it, the output may look right but the process will fail at scale.
+  The kernel answers "how do we keep agentic development from becoming a sprawling mess?"
+</blockquote>
+
+<!-- ==================== SECTION 3 ==================== -->
+<h2 id="s3"><span class="sec">3</span>The agent roles unpacked</h2>
+
+<p>The HIE repo models work as a set of <strong>bounded worker lanes</strong>, each with a narrow job.
+No worker does everything. This matters because most naive agentic setups collapse all of these into
+a single giant prompt — which cannot hold itself accountable.</p>
+
+<table>
+  <thead><tr><th>Role</th><th>What it does</th><th>Real-world analogue</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Problem Conversation</strong></td>
+      <td>Turns a vague request into a grounded slice: user, pain, input, output, risk, limits, proof</td>
+      <td>Product manager doing discovery</td>
+    </tr>
+    <tr>
+      <td><strong>Orchestrator</strong></td>
+      <td>Defines worker lanes, acceptance tests, non-goals, allowed data, and what evidence counts</td>
+      <td>Tech lead / engineering manager</td>
+    </tr>
+    <tr>
+      <td><strong>Research Worker</strong></td>
+      <td>Checks workflow reality: what the user currently does, data shape, what a useful output looks like</td>
+      <td>UX researcher / domain expert</td>
+    </tr>
+    <tr>
+      <td><strong>Builder Worker</strong></td>
+      <td>Implements the smallest useful CLI or local app — deterministic first, AI only where it improves results</td>
+      <td>Senior engineer</td>
+    </tr>
+    <tr>
+      <td><strong>Eval Worker</strong></td>
+      <td>Runs scenario packs, rubrics, pairwise comparisons, scorecards — answers "is the output useful enough?"</td>
+      <td>QA engineer / data scientist</td>
+    </tr>
+    <tr>
+      <td><strong>Autoreview Worker</strong></td>
+      <td>Reviews the artifact against the brief: scope creep, overengineering, proof claims, safety</td>
+      <td>Code reviewer / architect</td>
+    </tr>
+    <tr>
+      <td><strong>QA Worker</strong></td>
+      <td>Tries to break the artifact: tests, failure modes, docs, .env boundaries, leak-prone files</td>
+      <td>QA / penetration tester</td>
+    </tr>
+    <tr>
+      <td><strong>Browser E2E Worker</strong></td>
+      <td>Tests the owner-facing path with real browser tooling: open app, enter input, run, inspect output</td>
+      <td>E2E test engineer</td>
+    </tr>
+    <tr>
+      <td><strong>Computer Use Worker</strong></td>
+      <td>Tests OS-level flows: file pickers, PDFs, native dialogs, drag/drop</td>
+      <td>Manual QA / desktop tester</td>
+    </tr>
+    <tr>
+      <td><strong>Crabbox Runner</strong></td>
+      <td>Runs isolated proof on a short-lived remote box: hydrate tools, sync tree, run, collect evidence, release</td>
+      <td>CI runner / ephemeral test environment</td>
+    </tr>
+    <tr>
+      <td><strong>PR / Ship Worker</strong></td>
+      <td>Creates merge-ready shape: clean git, safety scan, no generated junk, no private history</td>
+      <td>Release engineer</td>
+    </tr>
+  </tbody>
+</table>
+
+<blockquote>
+  <strong>Why this matters:</strong> Each lane produces <em>one kind of evidence</em>. The orchestrator
+  is accountable for integrating them. No single agent can credibly claim to have built, tested,
+  reviewed, and safety-checked its own work — the lanes must be <strong>separable</strong> so the
+  system can challenge itself.
+</blockquote>
+
+<!-- ==================== SECTION 4 ==================== -->
+<h2 id="s4"><span class="sec">4</span>The proof ladder — why "it builds" is not enough</h2>
+
+<p>HIE defines an 11-rung <strong>evidence ladder</strong>. Each rung is a distinct kind of proof, and
+<em>no rung can substitute for another</em>. This is perhaps the most transferable concept in the
+entire repo.</p>
+
+<table>
+  <thead><tr><th>Rung</th><th>Proof Type</th><th>What it actually means</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Code shape</td><td>Files exist and commands are documented</td></tr>
+    <tr><td>2</td><td>CLI smoke</td><td>Sample input produces sample output (e.g. <code>make smoke</code>)</td></tr>
+    <tr><td>3</td><td>Tests</td><td>Important behavior and failure paths are checked</td></tr>
+    <tr><td>4</td><td>Eval scorecard</td><td>Scenario pack, rubric, and quality verdict are explicit</td></tr>
+    <tr><td>5</td><td>Output quality</td><td>A human can inspect whether the output is useful</td></tr>
+    <tr><td>6</td><td>Browser proof</td><td>The visible local app path was actually run and recorded</td></tr>
+    <tr><td>7</td><td>Computer proof</td><td>The desktop or OS-level visible path was actually run and recorded</td></tr>
+    <tr><td>8</td><td>Tool readiness</td><td>Required tools (browser, MCP, CLI, packages) were checked before the run</td></tr>
+    <tr><td>9</td><td>Crabbox proof</td><td>Isolated run evidence was actually collected</td></tr>
+    <tr><td>10</td><td>Autoreview</td><td>Brief fit, minimality, proof claims, and safety independently checked</td></tr>
+    <tr><td>11</td><td>PR/ship safety</td><td>No secrets, private paths, generated junk, or unsafe live actions</td></tr>
+  </tbody>
+</table>
+
+<p>The repo is explicit about <strong>weak proof</strong> — things that sound like evidence but
+are not: "it builds," "the model answered," "file exists," "browser opened" (without completing the
+user path), "tool installed" (without the proof command actually using it).</p>
+
+<div class="warn-box">
+  <h4>Closeout labels</h4>
+  <p>Every piece of work gets exactly one verdict: <code>fail</code>, <code>needs repair</code>,
+  <code>needs judgement</code>, or <code>merge candidate</code>. <em>Never call a workflow ready just
+  because a command exited zero.</em> Call it ready when the proof matches the risk.</p>
+</div>
+
+<!-- ==================== SECTION 5 ==================== -->
+<h2 id="s5"><span class="sec">5</span>Mumble's existing development process</h2>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div>
+    <p>Mumble already has a disciplined engineering process — arguably more disciplined than most
+    solo or small-team projects. It has a session ritual, four core living documents, a substantial
+    test suite, a port-sync procedure, and a deploy pipeline. Understanding what Mumble <em>already</em>
+    does is essential before we can talk about what to add.</p>
+  </div>
+</div>
+
+<h3>The session ritual</h3>
+
+<p>Every Mumble development session follows a fixed start and end ritual, documented in
+<strong>HANDBOOK §1</strong>:</p>
+
+<div class="cols">
+  <div class="card">
+    <h4>Session start</h4>
+    <ol>
+      <li>Read the four core docs (HANDBOOK, README, STATUS, LOGS)</li>
+      <li>Restate the request as a <code>&#9744;</code> checklist before touching code</li>
+      <li>Read the code you will actually change — the module + its tests + its callers</li>
+      <li>Confirm the operating mode (default: Autonomous)</li>
+    </ol>
+  </div>
+  <div class="card">
+    <h4>Session end</h4>
+    <ol>
+      <li>Verify — run the offline test suite + lint + compile check</li>
+      <li>Resolve the checklist — every line &#10003; or &#9744;; every &#9744; gets a reason AND goes into STATUS</li>
+      <li>Update the docs to match reality (STATUS, HANDBOOK, README, LOGS)</li>
+      <li>Commit with a clear message; deploy/sync; confirm</li>
+      <li>Sign off with the completion report and <code>&middot; docs updated</code> if any core doc changed</li>
+    </ol>
+  </div>
+</div>
+
+<h3>The four core docs</h3>
+
+<table>
+  <thead><tr><th>Doc</th><th>Purpose</th><th>HIE equivalent</th></tr></thead>
+  <tbody>
+    <tr><td><strong>README</strong></td><td>Philosophy, standards, and user-facing overview. The "what and why."</td><td><code>README.md</code> + <code>KERNEL.md</code> (the promise)</td></tr>
+    <tr><td><strong>HANDBOOK</strong></td><td>Architecture, data flow, rules, session ritual, port-sync, deploy. The "how."</td><td><code>LOAD-FIRST.md</code> + <code>docs/agentic-build-loop.md</code> + <code>docs/orchestrator-worker-system.md</code></td></tr>
+    <tr><td><strong>STATUS</strong></td><td>Current health, active priorities, known bugs, tech debt, roadmap, live TODO. The "now."</td><td>The "current truth" concept from <code>KERNEL.md</code> — inspect the checkout, not old docs</td></tr>
+    <tr><td><strong>LOGS</strong></td><td>Dated history of what shipped and when. The "then."</td><td><code>WORK-DONE.md</code> pattern for scrubbed history</td></tr>
+  </tbody>
+</table>
+
+<h3>Testing</h3>
+
+<p>Mumble has <strong>15 offline + 3 live</strong> test files (<code>test_*.py</code>) covering formatting,
+mode selection, bindings, presets, favorites, stream seams, WebUI API, UI, cloud sync, foreign boost,
+local engine, reader, and more. Tests are run via <code>.venv\Scripts\python.exe test_*.py</code>.
+
+<h3>Bug-fixing protocol (HANDBOOK §7)</h3>
+<ol>
+  <li>Reproduce first — never fix a bug you cannot trigger</li>
+  <li>Write a failing test that proves the bug</li>
+  <li>Fix the code; the test goes green</li>
+  <li>Check all callers for the same pattern</li>
+  <li>Add a regression note to STATUS</li>
+</ol>
+
+<h3>Port-sync procedure (HANDBOOK §8)</h3>
+<p>When Windows code changes, the macOS and Linux ports must be kept in sync. The procedure
+involves copying platform-agnostic modules, running port tests, and recording the sync in STATUS.</p>
+
+<h3>Commit expectations (HANDBOOK §9)</h3>
+<p>Commits must be atomic, must pass the full test suite, must update the core docs if reality
+changed, and must never contain secrets, private paths, or generated junk.</p>
+
+<!-- ==================== SECTION 6 ==================== -->
+<h2 id="s6"><span class="sec">6</span>Side-by-side comparison</h2>
+
+<table>
+  <thead>
+    <tr><th>Dimension</th><th>How I Engineer</th><th>Mumble (current)</th><th>Factory Mission Control</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Entry point</strong></td>
+      <td>Problem conversation → tight brief</td>
+      <td>User request → read four docs → checklist</td>
+      <td>User prompt → Mission Control UI → assign mission</td>
+    </tr>
+    <tr>
+      <td><strong>Work decomposition</strong></td>
+      <td>Orchestrator splits into bounded worker lanes (research, build, eval, QA, etc.)</td>
+      <td>Single agent (with Droid) does everything, guided by the session ritual and docs</td>
+      <td>Mission Control splits into phases, can dispatch to sub-droids, skills, and tools</td>
+    </tr>
+    <tr>
+      <td><strong>Agent roles</strong></td>
+      <td>11 distinct worker types, each with narrow scope</td>
+      <td>One Droid agent that reads docs and follows the session ritual</td>
+      <td>Custom droids, skills, MCP servers — modular but not as strictly lane-separated as HIE</td>
+    </tr>
+    <tr>
+      <td><strong>Deterministic baseline</strong></td>
+      <td>Core rule: deterministic first, AI only for judgement/ranking/summarization</td>
+      <td>Strongly aligned — local engine (<code>formatting.py</code>) is deterministic; cloud AI is opt-in</td>
+      <td>Not a first-order concern; agents use whatever tools are needed</td>
+    </tr>
+    <tr>
+      <td><strong>Proof ladder</strong></td>
+      <td>11 explicit rungs; weak proof called out; closeout labels required</td>
+      <td>Implicit proof: tests pass, docs match reality, checklist resolved, deploy confirmed</td>
+      <td>Mission verification phase; deliverables checked against acceptance criteria</td>
+    </tr>
+    <tr>
+      <td><strong>Evals</strong></td>
+      <td>Scenario packs, weighted rubrics, pairwise strategy comparison, scorecards — central to the loop</td>
+      <td>No formal eval framework. Quality is judged by tests passing and human inspection</td>
+      <td>Not a built-in concept; missions are verified but not scored against scenario packs</td>
+    </tr>
+    <tr>
+      <td><strong>Autoreview</strong></td>
+      <td>Independent review pass for brief fit, minimality, proof claims, safety — <em>before</em> release</td>
+      <td>The session-end review (checklist resolution, doc updates) serves a similar gate</td>
+      <td>No explicit autoreview phase; review happens through mission validation</td>
+    </tr>
+    <tr>
+      <td><strong>Safety scan</strong></td>
+      <td>Mandatory before PR/ship: secrets, local paths, generated junk, private markers</td>
+      <td>Gitignore covers some; <code>.gitignore</code> excludes <code>.venv/</code>, <code>settings.json</code>, <code>.session</code>, logs</td>
+      <td>Not an explicit phase; relies on gitignore and developer diligence</td>
+    </tr>
+    <tr>
+      <td><strong>Remote isolated proof</strong></td>
+      <td>Crabbox: lease box → hydrate tools → sync tree → run → collect evidence → release</td>
+      <td>None — everything runs on the developer machine; no remote proof environment</td>
+      <td>Cloud automations can run on remote droid computers (scheduled, not per-mission)</td>
+    </tr>
+    <tr>
+      <td><strong>Browser/Computer proof</strong></td>
+      <td>Explicit worker lanes for browser E2E and OS-level visible-path testing with recorded evidence</td>
+      <td>Not formalized; the app has a test_ui.py but no automated browser/desktop proof</td>
+      <td>Skills exist: <code>agent-browser</code> for browser automation, <code>tuistory</code> for TUI testing, <code>desktop-control</code> for GUI</td>
+    </tr>
+    <tr>
+      <td><strong>Docs as truth</strong></td>
+      <td>"Current files beat old docs" — inspect the checkout, not stale summaries</td>
+      <td>Strongly aligned — HANDBOOK §1 mandates reading the actual code, and STATUS is verified against code</td>
+      <td>Wiki generation (<code>wiki</code> skill) and CI wiki refresh keep docs current automatically</td>
+    </tr>
+    <tr>
+      <td><strong>Slice rule</strong></td>
+      <td>Smallest coherent slice: one persona, one input, one output, one smoke command</td>
+      <td>Not formalized, but Mumble ships in releases and the checklist system naturally bounds work</td>
+      <td>Mission scope is defined by the user prompt — no enforced minimal-slice discipline</td>
+    </tr>
+    <tr>
+      <td><strong>CI/CD</strong></td>
+      <td>GitHub Actions on push/PR: repo doctor, smoke, unit tests, eval tests, safety scan</td>
+      <td>No CI/CD pipeline; manual test runs and manual deploys</td>
+      <td>GitHub Actions workflow can be installed via <code>install-qa</code> skill; cloud automations for scheduled tasks</td>
+    </tr>
+    <tr>
+      <td><strong>Agent routing</strong></td>
+      <td><code>AGENTS.md</code> + <code>LOAD-FIRST.md</code> + <code>KERNEL.md</code> — lightweight startup, skill router</td>
+      <td>Four core docs serve as the agent's context; HANDBOOK is the de facto router</td>
+      <td>System prompt + skills loaded on demand; no explicit agent-router file pattern</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ==================== SECTION 7 ==================== -->
+<h2 id="s7"><span class="sec">7</span>Where Mumble already aligns</h2>
+
+<p>Mumble's existing process is <strong>remarkably close</strong> to the HIE philosophy. It was not
+modeled on HIE — it evolved independently — but the convergence is striking:</p>
+
+<div class="highlight-box">
+  <h4>Strong alignments (require no change)</h4>
+  <ul>
+    <li><strong>Deterministic core before AI:</strong> <code>formatting.py</code> is the offline text engine; cloud AI in <code>ai.py</code> is opt-in and user-key-gated. This is exactly the HIE rule: "deterministic logic first, AI only where it improves the result."</li>
+    <li><strong>Current files beat old docs:</strong> The session-start ritual mandates reading the actual code before editing. STATUS is versioned and verified against the codebase. This mirrors HIE's truth model.</li>
+    <li><strong>Session ritual as operating loop:</strong> The start/end ritual in HANDBOOK §1 is essentially the HIE build loop in microcosm — read, scope, build, verify, document, ship.</li>
+    <li><strong>Checklist-driven work:</strong> The <code>&#9744;</code> checklist requirement at session start maps to HIE's "tight brief" phase. Every incomplete item gets a reason and goes into STATUS — similar to HIE closeout labels.</li>
+    <li><strong>Privacy boundaries:</strong> Mumble's "audio never leaves the device" invariant is a stronger privacy guarantee than HIE's "don't publish secrets" rule, but they share the same spirit.</li>
+    <li><strong>Test suite:</strong> 15+ test files covering core behavior and failure modes — this covers HIE proof rungs 1-3 (code shape, smoke, tests).</li>
+  </ul>
+</div>
+
+<div class="warn-box">
+  <h4>Partial alignments (could be strengthened)</h4>
+  <ul>
+    <li><strong>Proof ladder:</strong> Mumble has tests and manual verification, but does not explicitly label proof levels (CLI proof, browser proof, eval proof). The concept is implicit.</li>
+    <li><strong>Doc system:</strong> HANDBOOK/README/STATUS/LOGS map well to HIE's doc structure, but Mumble lacks a formal agent-routing entry point like <code>AGENTS.md</code>.</li>
+    <li><strong>Safety scan:</strong> The <code>.gitignore</code> prevents most leaks, but there's no automated pre-commit or pre-PR safety scan.</li>
+    <li><strong>Slice rule:</strong> The checklist naturally bounds work, but there's no explicit "smallest coherent slice" discipline enforced by the process.</li>
+  </ul>
+</div>
+
+<!-- ==================== SECTION 8 ==================== -->
+<h2 id="s8"><span class="sec">8</span>Where Mumble could absorb HIE patterns</h2>
+
+<p>Not everything in HIE is worth adopting. Some patterns are specific to multi-agent orchestration
+(Mumble uses a single Droid agent) or to the TeachClaw domain. But several ideas would genuinely
+strengthen Mumble's process without adding bureaucracy:</p>
+
+<h3>8.1 An explicit proof ladder</h3>
+
+<p>Right now, Mumble's verification is binary: tests pass or they don't. HIE's ladder adds
+granularity. For Mumble, a tailored proof ladder might look like:</p>
+
+<table>
+  <thead><tr><th>Level</th><th>Mumble proof</th><th>Command / check</th></tr></thead>
+  <tbody>
+    <tr><td>L1</td><td>Code shape</td><td>All modules import cleanly; no syntax errors</td></tr>
+    <tr><td>L2</td><td>CLI smoke</td><td>App starts in console mode; hotkey registered</td></tr>
+    <tr><td>L3</td><td>Unit tests</td><td><code>.venv\Scripts\python.exe test_*.py</code> — all pass</td></tr>
+    <tr><td>L4</td><td>Lint / safety</td><td>No secrets, private paths, or generated junk; <code>.env.example</code> only</td></tr>
+    <tr><td>L5</td><td>Port sync</td><td>macOS/Linux cores are byte-identical to Windows (verified)</td></tr>
+    <tr><td>L6</td><td>Live smoke</td><td>App runs on real hardware; dictation produces output</td></tr>
+    <tr><td>L7</td><td>Docs match</td><td>HANDBOOK/README/STATUS/LOGS match the current checkout</td></tr>
+  </tbody>
+</table>
+
+<p>Each session-end sign-off could name the highest rung reached. Instead of "verified," the sign-off
+becomes "L4 proved (tests + safety scan)."</p>
+
+<h3>8.2 A pre-commit safety scanner</h3>
+
+<p>HIE's <code>scripts/public_safety_check.py</code> is a simple scanner that detects secrets, local
+paths, private-workspace markers, generated release junk, and accidental binary artifacts. Mumble
+could adopt this pattern with a lightweight Python script that checks:</p>
+
+<ul>
+  <li>No <code>.env</code> files with real keys (only <code>.env.example</code>)</li>
+  <li>No absolute paths pointing to <code>C:\Users\...</code> or <code>/home/...</code></li>
+  <li>No <code>settings.json</code> committed (already gitignored, but a double-check is cheap)</li>
+  <li>No generated zip files or build artifacts accidentally tracked</li>
+  <li>No private session files (<code>*.session</code>) in the tree</li>
+</ul>
+
+<p>This could run as part of the session-end ritual or as a pre-commit hook.</p>
+
+<h3>8.3 A formal automation brief template</h3>
+
+<p>HIE's <code>templates/automation-brief.md</code> is a structured questionnaire that forces clarity
+before any code is written. Mumble could adopt a lightweight version for non-trivial feature work:</p>
+
+<pre><code># Feature brief
+- Who uses it:
+- What they do manually today:
+- What input they already have:
+- What output should they get back:
+- What the feature must never do:
+- What proof would make this trustworthy:
+- Smallest shippable slice:
+- Affected modules:
+- Test plan:</code></pre>
+
+<p>This would live alongside the existing checklist system — it does not replace it, but adds
+upstream clarity for complex changes.</p>
+
+<h3>8.4 An agent router (<code>AGENTS.md</code>)</h3>
+
+<p>Mumble already has a de facto agent router: the HANDBOOK's session-start ritual tells the agent
+what to read. But an explicit <code>AGENTS.md</code> file — short, always-loaded, pointing to the
+right docs — would make Mumble more agent-friendly without changing any existing habit:</p>
+
+<pre><code># AGENTS.md — Mumble
+
+## Load first
+1. Read DEVELOPMENT/Core/README.html (philosophy + standards)
+2. Read DEVELOPMENT/Core/HANDBOOK.html (architecture + rules + session ritual)
+3. Read DEVELOPMENT/Core/STATUS.html (current state, bugs, roadmap)
+4. Read the code you will actually change + its tests + its callers
+
+## Scope
+- Mumble is a local-first Windows voice-to-text app
+- Audio stays on-device; only transcribed text may touch cloud AI
+- Never commit secrets, settings.json, .venv/, or private paths</code></pre>
+
+<h3>8.5 Eval harness for Smart Mode quality</h3>
+
+<p>This is the most ambitious idea — and the one most directly inspired by HIE. Mumble's Smart Modes
+(Text, Prompt, Email, List, Reply, Foreign, Convert) could benefit from an eval harness.</p>
+
+<p>Currently, mode quality is judged by "does the output look right when I test it manually."
+An eval harness would add:</p>
+
+<ul>
+  <li><strong>Scenario packs:</strong> 10-20 test dictations per mode, each with an expected quality label</li>
+  <li><strong>Rubric dimensions:</strong> task completion, tone appropriateness, structure compliance, safety boundary</li>
+  <li><strong>Strategy comparison:</strong> single-pass vs draft+checker+repair, cheap model vs premium model</li>
+  <li><strong>Scorecard:</strong> a machine-readable verdict per mode per strategy</li>
+</ul>
+
+<p>This would be especially valuable when switching AI providers or models — instead of
+"it seems fine," Mumble would have <em>data</em> about whether the new model's formatting quality
+matches the old one's.</p>
+
+<blockquote>
+  <strong>Note:</strong> Mumble already has the infrastructure for this. The offline <code>formatting.py</code>
+  engine is deterministic and testable; the cloud <code>ai.py</code> lanes produce structured output.
+  An eval harness would be a <em>consumer</em> of the existing pipeline, not a rewrite.
+</blockquote>
+
+<h3>8.6 CI/CD for the test suite</h3>
+
+<p>HIE runs <code>make check</code> on every push and PR via GitHub Actions. Mumble has no CI/CD
+pipeline. Adding even a minimal GitHub Actions workflow that runs the offline test suite on push
+would catch regressions before they reach the owner's machine. The workflow would need to:</p>
+
+<ol>
+  <li>Set up Python 3.12</li>
+  <li>Create a venv and install from <code>requirements.txt</code></li>
+  <li>Run the offline test files (excluding live tests that need real hardware)</li>
+  <li>Run a safety scan</li>
+</ol>
+
+<!-- ==================== SECTION 9 ==================== -->
+<h2 id="s9"><span class="sec">9</span>A concrete integration roadmap</h2>
+
+<p>Rather than adopting HIE wholesale — which would be overkill for a single-agent project — here is
+a phased, low-risk integration path that adds the highest-value pieces first.</p>
+
+<div class="cols">
+  <div class="card">
+    <h4>Phase 1 — This week (zero disruption)</h4>
+    <ul>
+      <li>Add <code>AGENTS.md</code> to the repo root — a 15-line router that points agents at the four core docs</li>
+      <li>Add a lightweight safety scanner script (<code>scripts/safety_check.py</code>) that checks for secrets, paths, and junk</li>
+      <li>Run the safety scanner as part of the session-end ritual</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Phase 2 — This sprint (minor additions)</h4>
+    <ul>
+      <li>Adopt the proof-ladder language in session sign-offs ("L4 proved: tests + safety scan")</li>
+      <li>Create a feature-brief template for non-trivial changes</li>
+      <li>Set up GitHub Actions CI to run the offline test suite on push</li>
+    </ul>
+  </div>
+</div>
+
+<div class="cols" style="margin-top: 1.5rem;">
+  <div class="card">
+    <h4>Phase 3 — When a mode changes (targeted)</h4>
+    <ul>
+      <li>Build an eval harness for the Smart Mode whose behavior is changing</li>
+      <li>Create scenario packs with 10-20 test dictations</li>
+      <li>Define a rubric and produce a scorecard</li>
+      <li>Use the scorecard to gate the mode change</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>Phase 4 — When Mumble outgrows single-agent (future)</h4>
+    <ul>
+      <li>Split work into orchestrator + worker lanes</li>
+      <li>Add Crabbox-style isolated proof for port testing</li>
+      <li>Add browser E2E proof for the web UI</li>
+      <li>Formalize the autoreview pass before merge</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ==================== SECTION 10 ==================== -->
+<h2 id="s10"><span class="sec">10</span>Risks and anti-patterns to avoid</h2>
+
+<div class="warn-box">
+  <h4>Over-engineering the process</h4>
+  <p>HIE describes a system used by someone shipping AI-assisted products professionally across
+  multiple worker lanes. Mumble is a single-agent project. Adopting the full 11-role worker model
+  would be <strong>counterproductive noise</strong> — it would add ceremony without adding value.
+  The right approach is to absorb the <em>principles</em> (proof ladder, deterministic baseline, safety
+  scan, brief template) without the <em>machinery</em> (multi-agent orchestration, Crabbox, browser
+  workers).</p>
+</div>
+
+<div class="warn-box">
+  <h4>Eval harness scope creep</h4>
+  <p>An eval harness is valuable for Smart Mode quality — but building one for every mode at once
+  would be a multi-week project that delivers zero user-facing value. Phase 3 should start with
+  <strong>one mode</strong> (likely Text mode, since it's the default and most-used) and prove the
+  harness works before expanding.</p>
+</div>
+
+<div class="warn-box">
+  <h4>Process as substitute for judgement</h4>
+  <p>HIE itself warns about this: "never call a workflow ready just because a command exited zero."
+  Adding proof labels and safety scanners must not become a checkbox exercise. The point is to make
+  <strong>better decisions</strong>, not to generate more paperwork. Every piece of process added must
+  answer: "what decision does this enable that we could not make before?"</p>
+</div>
+
+<div class="warn-box">
+  <h4>Factory Mission Control vs HIE — they solve different problems</h4>
+  <p>Factory's Mission Control is a <strong>runtime environment</strong> for agentic work — it provides
+  the shell, the tools, the skills, and the session management. HIE is a <strong>design pattern</strong>
+  for structuring that work — the lanes, the proof ladder, the eval harness. They are complementary,
+  not competing. Mission Control gives you the room; HIE tells you how to arrange the furniture.
+  Mumble already operates inside Droid (which is Factory's agent runtime), so the comparison is
+  not "which one should we use" but "how much of HIE's furniture should we bring into the room."</p>
+</div>
+
+<hr>
+
+<h2>Summary</h2>
+
+<div class="plain">
+  <div class="tag">The bottom line</div>
+  <div>
+    <p><strong>How I Engineer</strong> is not a product to install — it is a pattern to study. Its core
+    contributions are (1) the proof ladder (11 distinct evidence levels, no substitution allowed),
+    (2) the eval harness (scenario packs + rubrics + scorecards for quality-sensitive changes),
+    (3) the autoreview gate (independent review for scope creep and safety before merge), and
+    (4) the worker-lane decomposition (bounded jobs with narrow accountability).</p>
+    <p><strong>Mumble already does much of this implicitly.</strong> Its session ritual, four-doc system,
+    deterministic-first architecture, and privacy boundaries are strongly aligned with HIE's kernel.
+    The gaps are in <em>explicitness</em>: Mumble lacks named proof levels, an automated safety scanner,
+    a feature-brief template, and CI/CD.</p>
+    <p><strong>The recommended path</strong> is to adopt the lightest, highest-value pieces first
+    (AGENTS.md, safety scanner, proof labels) and reserve the heavier machinery (eval harness, worker
+    lanes, Crabbox) for when Mumble's complexity genuinely demands them. The goal is not to become
+    HIE — it is to make Mumble's already-strong process <em>legible</em> and <em>verifiable</em> in
+    the way HIE demonstrates.</p>
+  </div>
+</div>
+
+<p style="text-align:center; color: var(--muted); font-size: 0.85rem; margin-top: 3rem;">
+  Generated 2026-06-28 &middot; Source: <a href="https://github.com/AnasInno/how-i-engineer">AnasInno/how-i-engineer</a> &middot; MIT License
+</p>
+
+</div>
+</body>
+</html>

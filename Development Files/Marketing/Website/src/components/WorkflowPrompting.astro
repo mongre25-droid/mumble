@@ -1,0 +1,125 @@
+---
+// WorkflowPrompting.astro — Smart Modes interactive demo with all 5 armable modes.
+// User clicks mode tabs to see example input/output for each mode.
+// Mode selection is island-based: toggle a mode on the Island Mode Deck
+// before dictating. Prompt is a sticky toggle.
+// Mode accent colors match design spec: Prompt=purple, Email=blue,
+// Reply=coral, Foreign=sand, Text=gold.
+
+// Import demos.js for the tab-switching logic (client:visible)
+---
+
+<section class="section" id="shift">
+  <div class="container shift-grid">
+    <!-- ===== Left copy ===== -->
+    <div class="reveal">
+      <span class="h-kicker">Smart Modes &middot; The Big Shift</span>
+      <h2 class="section-title">Five modes, one toggle.</h2>
+      <p class="section-lead">
+        <strong>Tap the mode toggle on the Island Deck</strong> before you
+        dictate and Mumble shapes your words into the right format &mdash; an
+        email, a prompt, a reply, and more. The Island shows the
+        currently armed mode so you always know what's active.
+        <strong>Prompt</strong> is a sticky toggle &mdash; turn it on and
+        every dictation becomes a structured AI prompt until you switch back.
+      </p>
+
+      <div class="mode-legend">
+        <span class="ml"><i style="background:var(--mode-text)"></i> Text</span>
+        <span class="ml"><i style="background:var(--mode-prompt)"></i> Prompt</span>
+        <span class="ml"><i style="background:var(--mode-email)"></i> Email</span>
+        <span class="ml"><i style="background:var(--mode-reply)"></i> Reply</span>
+        <span class="ml"><i style="background:var(--mode-foreign)"></i> Foreign</span>
+      </div>
+
+      <div class="shift-points" style="margin-top:26px">
+        <div class="shift-point">
+          <div class="sp-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l6 4v6l-6 4-6-4V7l6-4z"/><path d="M12 13v3m0-7v.01"/></svg>
+          </div>
+          <div>
+            <h4>Island-based, toggle-armed</h4>
+            <p>
+              Modes are selected from the <strong>Island Mode Deck</strong>.
+              Tap a mode to arm it before you speak &mdash; the Island shows
+              which mode is active. Nothing is inferred or guessed.
+            </p>
+          </div>
+        </div>
+        <div class="shift-point">
+          <div class="sp-ic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/></svg>
+          </div>
+          <div>
+            <h4>AI polish handles bullets &amp; routing natively</h4>
+            <p>
+              <strong>Bullet lists</strong> are handled by the AI polish
+              automatically &mdash; no separate mode needed.
+              <strong>Convert</strong> is a per-row utility in the
+              Deck/History, not an armable mode. Select any item and route
+              it into another mode with one click.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Right: interactive demo ===== -->
+    <div class="card sheen shift-demo reveal d1">
+      <!-- 5 mode tabs -->
+      <div class="shift-tabs" role="tablist" aria-label="Smart Mode examples">
+        <button class="shift-tab" data-shift="text" style="--c:var(--mode-text)" role="tab" aria-selected="false">
+          <span class="dot"></span>Text
+        </button>
+        <button class="shift-tab" data-shift="prompt" style="--c:var(--mode-prompt)" role="tab" aria-selected="false">
+          <span class="dot"></span>Prompt
+        </button>
+        <button class="shift-tab" data-shift="email" style="--c:var(--mode-email)" role="tab" aria-selected="false">
+          <span class="dot"></span>Email
+        </button>
+        <button class="shift-tab" data-shift="reply" style="--c:var(--mode-reply)" role="tab" aria-selected="false">
+          <span class="dot"></span>Reply
+        </button>
+        <button class="shift-tab" data-shift="foreign" style="--c:var(--mode-foreign)" role="tab" aria-selected="false">
+          <span class="dot"></span>Foreign
+        </button>
+      </div>
+
+      <!-- Input / Output -->
+      <div class="shift-io">
+        <div class="shift-io-block">
+          <div class="io-label">
+            <svg class="mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3"/>
+              <path d="M5 11a7 7 0 0014 0M12 18v3"/>
+            </svg>
+            You say
+          </div>
+          <div class="shift-said" id="shiftSaid">"quick note from the call..."</div>
+        </div>
+
+        <div class="shift-io-block">
+          <div class="io-label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14m0 0l-5-5m5 5l-5 5"/>
+            </svg>
+            Mumble pastes
+          </div>
+          <div class="shift-out" id="shiftOut" style="--oc:var(--mode-text)">
+            <span class="out-tag" id="shiftTag">Text</span>
+            <div class="out-body" id="shiftBody"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode description -->
+      <p class="shift-note" id="shiftDesc">
+        Default mode. Clean dictation with fillers removed, capitalisation and punctuation fixed.
+      </p>
+    </div>
+  </div>
+</section>
+
+<script>
+  import '../scripts/demos.js';
+</script>

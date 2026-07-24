@@ -1,0 +1,15 @@
+{
+  "mode": "offline",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "seconds": 0.39,
+  "results": [
+    {
+      "test": "test_bindings.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.39
+    }
+  ]
+}

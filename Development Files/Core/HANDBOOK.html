@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mumble 0.95 — HANDBOOK</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body><div class="wrap">
+<header class="doc-head">
+  <div class="kicker">Mumble 0.95 · How the project is built</div>
+  <h1>HANDBOOK</h1>
+  <div class="meta"><div><span class="ico">◆</span><b>Scope:</b> architecture, testing, packaging, ports, and release preparation</div><div><span class="ico">◆</span><b>Runtime:</b> <code>Internal/app/</code></div><div><span class="ico">◆</span><b>Read alongside:</b> <a href="README.html">README</a> · <a href="STATUS.html">STATUS</a> · <a href="LOGS.html">LOGS</a></div></div>
+</header>
+
+<div class="plain"><div class="tag">Builder's guide</div><div><p>Mumble's runtime is in <code>Internal/app/</code>. The development material is separate so the shipped application remains easy to identify. Windows is the reference platform; macOS and Linux provide focused platform seams.</p></div></div>
+
+<h2><span class="sec">1</span>Session routine</h2>
+<div class="flow">
+  <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">Orient</div><p>Read the current Core records and inspect the exact source and tests involved.</p></div></div>
+  <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">Change</div><p>Make one bounded change. Keep runtime code, UI, tests, ports, and product claims consistent.</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">Verify</div><p>Run the narrow checks first, then the isolated suite and packaging checks that match the risk.</p></div></div>
+  <div class="flow-step"><div class="flow-node">4</div><div class="flow-body"><div class="ft">Record</div><p>Update STATUS for open work, HANDBOOK for procedure changes, README for product/layout changes, and LOGS for completed milestones.</p></div></div>
+</div>
+
+<h2><span class="sec">2</span>Runtime architecture</h2>
+<table><thead><tr><th>Layer</th><th>Files</th><th>Role</th></tr></thead><tbody>
+  <tr><td>Controller</td><td><code>mumble.py</code></td><td>Owns hotkeys, recording, transcription orchestration, paste, tray, Island state, meetings, and authenticated local commands.</td></tr>
+  <tr><td>Main window</td><td><code>webui_shell.py</code>, <code>webui/</code></td><td>Hosts the current Web UI and bridges JavaScript actions to the Python runtime.</td></tr>
+  <tr><td>Island</td><td><code>overlay.py</code>, <code>island_render.py</code></td><td>Shows recording, processing, completion, and consent states without taking focus from the user's work.</td></tr>
+  <tr><td>Speech and shaping</td><td><code>ai/</code>, <code>formatting.py</code>, <code>transcription.py</code>, <code>local_engine.py</code></td><td>Local transcription is the default; optional cloud or local processing follows explicit settings.</td></tr>
+  <tr><td>Stores</td><td><code>settings.py</code>, <code>history.py</code>, <code>meeting_store.py</code>, <code>reader_store.py</code>, and related modules</td><td>Persist user data in the operating-system application-data location.</td></tr>
+</tbody></table>
+
+<h2><span class="sec">3</span>Privacy and safety boundaries</h2>
+<ul><li>Local transcription keeps recorded audio on the device unless Cloud transcription is selected.</li><li>Cloud processing receives text, not raw audio, unless the explicitly selected Cloud transcription path is being used.</li><li>Provider keys belong only in local settings and must never be committed or logged.</li><li>The local command channel is authenticated per session; do not replace it with unauthenticated control.</li><li>Paste must preserve the user's clipboard and modifier state when the operation completes or fails.</li></ul>
+
+<h2><span class="sec">4</span>Verification commands</h2>
+<p>Run these from <code>C:\Mumble</code>. They do not publish anything.</p>
+<pre><code># Full isolated application suite
+Internal\app\.venv\Scripts\python.exe Internal\app\run_tests.py --timeout 180
+
+# Compile Python without running the application
+Internal\app\.venv\Scripts\python.exe -m compileall -q Internal\app
+
+# Rebuild and verify the Windows distributable
+Internal\app\.venv\Scripts\python.exe "Development Files\Tooling\_rebuild_zip.py" C:\Mumble
+
+# Verify Windows launcher paths and startup contract
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Development Files\Tooling\verify_windows_launch.ps1"
+
+# Website checks
+Set-Location "Development Files\Marketing\Website"
+npm ci
+npm run build
+npx astro check</code></pre>
+<p>The test runner's result is evidence for the checked environment only. It does not prove physical hardware behaviour or a public release.</p>
+
+<h2><span class="sec">5</span>Packaging and ports</h2>
+<p><code>Development Files/Tooling/_rebuild_zip.py</code> builds <code>Internal/Releases/Mumble.zip</code> from the live runtime. It includes the launcher, project licence, Internal launchers, and runtime while excluding tests, ports, caches, virtual environments, and development-only files.</p>
+<p>macOS and Linux source lives under <code>Internal/app/Ports/</code>. Each port owns its input, paste, overlay, storage, installer, and release seams. Shared behaviour should be changed in the Windows source first, then ported deliberately and tested in that platform.</p>
+
+<h2><span class="sec">6</span>Release discipline</h2>
+<ol><li>Verify the source tree and package from a clean, reviewable state.</li><li>Run clean extraction, install, launch, update, and uninstall checks.</li><li>Test microphone, hotkeys, focus, paste, clipboard restoration, and shutdown on physical hardware.</li><li>Complete signing, publisher, release-note, and rollback checks.</li><li>Only then describe the build as a public release.</li></ol>
+
+<div class="doc-foot"><span>Mumble 0.95 · build and verification guide</span><span class="gold">HANDBOOK</span></div>
+</div></body></html>

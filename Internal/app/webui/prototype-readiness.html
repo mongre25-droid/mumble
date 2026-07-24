@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mumble readiness prototype</title>
+  <!-- PROTOTYPE ONLY: three readiness/partial-text variants, switchable by ?variant=A|B|C. -->
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080808;
+      --panel: rgba(22, 21, 18, .78);
+      --panel-2: rgba(33, 30, 22, .66);
+      --line: rgba(232, 184, 75, .18);
+      --gold: #e8b84b;
+      --gold-soft: #a37d2c;
+      --text: #f5f1e8;
+      --dim: #a39d91;
+      --mute: #716c63;
+      --green: #61b88b;
+      --amber: #d9a441;
+      --red: #df6a64;
+      --blue: #7ba6d8;
+      font-family: Inter, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% -10%, #2a2110 0, #0c0b09 34%, var(--bg) 70%); color: var(--text); }
+    button { font: inherit; }
+    .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 22px 0 118px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid var(--line); border-radius: 18px; background: rgba(12,12,11,.8); backdrop-filter: blur(22px); }
+    .brand { display:flex; align-items:center; gap: 10px; font-weight: 700; letter-spacing: .02em; }
+    .logo { width: 28px; height: 28px; border-radius: 9px; display:grid; place-items:center; background: linear-gradient(145deg,#f2cb72,#8b641b); color:#120e05; box-shadow: 0 0 24px rgba(232,184,75,.18); }
+    .route { display:flex; align-items:center; gap:8px; color:var(--dim); font-size:12px; }
+    .dot { width:7px; height:7px; border-radius:99px; background:var(--green); box-shadow:0 0 12px currentColor; }
+    .stagebar { display:flex; gap:7px; overflow:auto; margin:14px 0 20px; padding-bottom:3px; scrollbar-width:thin; }
+    .stagebar button { flex:none; border:1px solid rgba(255,255,255,.07); background:#11110f; color:var(--mute); border-radius:999px; padding:8px 11px; cursor:pointer; font-size:11px; }
+    .stagebar button.active { color:#171105; border-color:var(--gold); background:var(--gold); }
+    .view { min-height: 610px; }
+    .glass { border:1px solid var(--line); background:linear-gradient(180deg,rgba(31,29,23,.82),rgba(15,15,13,.84)); box-shadow: inset 0 1px rgba(255,255,255,.035), 0 18px 80px rgba(0,0,0,.25); backdrop-filter:blur(24px); }
+    .eyebrow { color:var(--gold); font-size:11px; text-transform:uppercase; letter-spacing:.15em; font-weight:700; }
+    h1,h2,h3,p { margin-top:0; }
+    h1 { font-size:clamp(30px,4vw,52px); line-height:1.04; letter-spacing:-.04em; margin-bottom:14px; }
+    h2 { font-size:24px; letter-spacing:-.025em; }
+    .muted { color:var(--dim); line-height:1.6; }
+    .small { font-size:12px; }
+    .status-pill { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:999px; padding:8px 12px; color:var(--dim); background:rgba(8,8,8,.42); }
+    .primary { border:0; border-radius:16px; padding:14px 21px; color:#161005; background:linear-gradient(180deg,#f0c968,#d29e2e); font-weight:750; box-shadow:0 10px 30px rgba(232,184,75,.14); }
+    .secondary { border:1px solid var(--line); border-radius:14px; padding:11px 16px; color:var(--text); background:rgba(255,255,255,.025); }
+    .wave { height:58px; display:flex; justify-content:center; align-items:center; gap:5px; margin:20px 0; }
+    .wave i { width:4px; border-radius:9px; background:linear-gradient(var(--gold),#6f4e13); opacity:.75; }
+    .wave i:nth-child(1),.wave i:nth-child(9){height:12px}.wave i:nth-child(2),.wave i:nth-child(8){height:23px}.wave i:nth-child(3),.wave i:nth-child(7){height:38px}.wave i:nth-child(4),.wave i:nth-child(6){height:50px}.wave i:nth-child(5){height:58px}
+    .island { position:fixed; left:50%; transform:translateX(-50%); bottom:68px; width:min(640px,calc(100% - 34px)); border:1px solid rgba(232,184,75,.24); border-radius:24px; padding:13px 16px; background:rgba(12,12,11,.93); box-shadow:0 18px 60px rgba(0,0,0,.56),0 0 36px rgba(232,184,75,.09); z-index:8; }
+    .island-row { display:flex; align-items:center; gap:11px; }
+    .island-state { flex:none; color:var(--gold); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; }
+    .partial { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .partial .unstable { color:var(--mute); font-style:italic; }
+    .partial .stable { color:var(--text); }
+    .switcher { position:fixed; z-index:20; bottom:14px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:12px; padding:8px 10px; border:1px solid rgba(255,255,255,.16); border-radius:999px; background:#eee9de; color:#16140f; box-shadow:0 10px 40px rgba(0,0,0,.55); }
+    .switcher button { width:30px; height:30px; border:0; border-radius:99px; background:#15130f; color:#fff; cursor:pointer; }
+    .switcher strong { min-width:210px; text-align:center; font-size:12px; }
+    .error { color:var(--red)!important; }
+    .warning { color:var(--amber)!important; }
+    .hidden { display:none!important; }
+
+    /* Variant A: guided vertical rail */
+    .variant-a { display:grid; grid-template-columns:300px 1fr; gap:18px; }
+    .a-rail { border-radius:24px; padding:24px; }
+    .a-step { display:grid; grid-template-columns:28px 1fr; gap:10px; padding:12px 0; color:var(--mute); border-bottom:1px solid rgba(255,255,255,.045); }
+    .a-step:last-child { border:0; }
+    .a-step b { display:block; color:var(--dim); font-size:13px; }
+    .a-step em { font-size:11px; font-style:normal; }
+    .a-step.current b { color:var(--gold); }
+    .a-step.done b { color:var(--green); }
+    .num { width:25px;height:25px;border:1px solid var(--line);border-radius:99px;display:grid;place-items:center;font-size:10px; }
+    .a-main { border-radius:28px; padding:clamp(30px,6vw,72px); display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
+    .readiness { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; width:100%; margin-top:30px; }
+    .readiness div { padding:13px; border-radius:14px; background:rgba(255,255,255,.025); color:var(--dim); font-size:11px; }
+    .readiness b { display:block; color:var(--text); margin-top:4px; font-size:13px; }
+
+    /* Variant B: quiet centre with progressive disclosure */
+    .variant-b { display:grid; grid-template-columns:minmax(0,1fr) 290px; gap:18px; }
+    .b-main { min-height:610px; border-radius:30px; padding:50px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+    .b-main .muted { max-width:520px; }
+    .b-side { border-radius:24px; padding:20px; align-self:end; }
+    .b-side h3 { font-size:13px; color:var(--dim); margin-bottom:14px; }
+    .fact { display:flex; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:11px; color:var(--mute); }
+    .fact:last-child{border:0}.fact b{color:var(--text);font-weight:650;text-align:right}
+    .orb { width:126px;height:126px;border-radius:50%;display:grid;place-items:center;margin:22px 0;background:radial-gradient(circle,#f0c768 0 7%,#6b4c17 8% 13%,rgba(232,184,75,.12) 14% 45%,transparent 46%);border:1px solid rgba(232,184,75,.18);box-shadow:0 0 90px rgba(232,184,75,.12); }
+    .orb span { width:14px;height:14px;border-radius:99px;background:var(--gold);box-shadow:0 0 20px var(--gold); }
+
+    /* Variant C: explicit operational strip */
+    .variant-c { display:grid; gap:14px; }
+    .c-strip { border-radius:20px; padding:14px; display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+    .c-metric { padding:12px; border-right:1px solid rgba(255,255,255,.05); }
+    .c-metric:last-child{border:0}.c-metric span{display:block;color:var(--mute);font-size:10px;text-transform:uppercase;letter-spacing:.1em}.c-metric b{display:block;margin-top:7px;font-size:13px}
+    .c-grid { display:grid; grid-template-columns:1.15fr .85fr; gap:14px; min-height:515px; }
+    .c-transcript,.c-diagnostics { border-radius:24px; padding:28px; }
+    .transcript-box { min-height:230px; padding:22px; border:1px solid rgba(255,255,255,.06); border-radius:18px; background:rgba(0,0,0,.22); font-size:22px; line-height:1.55; }
+    .transcript-box .unstable { color:var(--mute); }
+    .timeline { margin-top:22px; display:grid; gap:8px; }
+    .timeline div { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid rgba(255,255,255,.05); color:var(--dim); font-size:11px; }
+    .timeline b{color:var(--green)}
+    @media (max-width:850px){.variant-a,.variant-b,.c-grid{grid-template-columns:1fr}.a-rail{order:2}.b-side{align-self:stretch}.c-strip{grid-template-columns:repeat(2,1fr)}.readiness{grid-template-columns:1fr}.shell{width:min(100% - 18px,1180px)}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="logo">M</span><span>Mumble</span></div>
+      <div class="route"><span class="dot" id="top-dot"></span><span id="top-route">On-device · Ready</span></div>
+    </header>
+    <nav class="stagebar" aria-label="Prototype state"><!-- populated by JS --></nav>
+    <main class="view" id="view"></main>
+  </div>
+  <aside class="island" id="island">
+    <div class="island-row"><span class="island-state" id="island-state">Ready</span><div class="partial" id="island-copy">Press your shortcut and speak.</div></div>
+  </aside>
+  <div class="switcher" aria-label="Prototype variants">
+    <button id="prev" aria-label="Previous variant">←</button>
+    <strong id="variant-label">A — Guided rail</strong>
+    <button id="next" aria-label="Next variant">→</button>
+  </div>
+  <script>
+    const variants = { A: 'Guided rail', B: 'Quiet centre', C: 'Operational strip' };
+    const states = [
+      {id:'launch',label:'Launch',title:'Starting Mumble',sub:'Checking the installed app and restoring your private workspace.',island:'Starting',partial:'Opening Mumble…',tone:'warning'},
+      {id:'model',label:'Model loading',title:'Preparing local dictation',sub:'Loading and warming the selected speech model. Your microphone is still off.',island:'Preparing',partial:'Local model · loading 68%',tone:'warning'},
+      {id:'mic',label:'Mic ready',title:'Microphone ready',sub:'Your selected microphone is available. Audio is not being recorded.',island:'Ready',partial:'Microphone ready · audio stays on this PC',tone:'ok'},
+      {id:'ready',label:'Ready',title:'Ready when you are',sub:'Press your dictation shortcut, speak naturally, then press it again.',island:'Ready',partial:'On-device · Small English · Microphone ready',tone:'ok'},
+      {id:'unstable',label:'Unstable partial',title:'Listening',sub:'Mumble is forming a tentative local transcript while you speak.',island:'Listening',partial:'<span class="stable">Send the revised plan</span> <span class="unstable">to the team tomor…</span>',tone:'live'},
+      {id:'stable',label:'Stable partial',title:'Still listening',sub:'Confirmed words stay bright; the faint ending may still change.',island:'Listening',partial:'<span class="stable">Send the revised plan to the team tomorrow morning</span>',tone:'live'},
+      {id:'final',label:'Finalizing',title:'Finishing your dictation',sub:'Checking the last words, saving safely, and preparing to paste.',island:'Finalizing',partial:'Send the revised plan to the team tomorrow morning.',tone:'warning'},
+      {id:'inserted',label:'Inserted',title:'Text inserted',sub:'Your dictation was pasted successfully and saved to your private Deck.',island:'Done',partial:'Inserted · 10 words · On-device',tone:'ok'},
+      {id:'cooled',label:'Idle-cooled',title:'Ready · power saving',sub:'The model remains available, while the microphone is closed and idle work has stopped.',island:'Ready',partial:'Power saving · microphone off',tone:'ok'},
+      {id:'error',label:'Recoverable error',title:'Microphone unavailable',sub:'Mumble could not open the selected microphone. Nothing was recorded or sent anywhere.',island:'Needs attention',partial:'Choose another microphone or retry',tone:'error'}
+    ];
+    let stage = new URLSearchParams(location.search).get('stage') || 'ready';
+    let variant = (new URLSearchParams(location.search).get('variant') || 'B').toUpperCase();
+    if (!variants[variant]) variant = 'B';
+    const current = () => states.find(s => s.id === stage) || states[3];
+    function wave(){return '<div class="wave">'+Array.from({length:9},()=>'<i></i>').join('')+'</div>'}
+    function action(s){return s.id==='error'?'<button class="primary">Choose microphone</button> <button class="secondary">Retry</button>':'<button class="primary">'+(s.id.includes('stable')?'Stop and insert':'Start dictating')+'</button>'}
+    function steps(s){const active=Math.max(0,states.findIndex(x=>x.id===s.id));return states.slice(0,6).map((x,i)=>`<div class="a-step ${i<active?'done':i===active?'current':''}"><span class="num">${i<active?'✓':i+1}</span><div><b>${x.label}</b><em>${i<active?'Complete':i===active?'Current':'Waiting'}</em></div></div>`).join('')}
+    function facts(s){return `<div class="fact"><span>Speech route</span><b>On-device</b></div><div class="fact"><span>Model</span><b>${s.id==='model'?'Loading…':'Small English · warm'}</b></div><div class="fact"><span>Microphone</span><b>${['unstable','stable','final'].includes(s.id)?'Active':s.id==='error'?'Unavailable':'Off · ready'}</b></div><div class="fact"><span>Network audio</span><b>Never sent</b></div>`}
+    function render(){
+      const s=current();
+      document.querySelector('.stagebar').innerHTML=states.map(x=>`<button class="${x.id===s.id?'active':''}" data-stage="${x.id}">${x.label}</button>`).join('');
+      const detail=`<span class="status-pill ${s.tone==='error'?'error':s.tone==='warning'?'warning':''}"><span class="dot"></span>${s.label}</span>`;
+      if(variant==='A') document.querySelector('#view').innerHTML=`<section class="variant-a"><aside class="a-rail glass"><div class="eyebrow">Readiness path</div><h2>Know what is ready</h2>${steps(s)}</aside><article class="a-main glass">${detail}<div class="eyebrow" style="margin-top:26px">Local dictation</div><h1>${s.title}</h1><p class="muted">${s.sub}</p>${wave()}<div>${action(s)}</div><div class="readiness"><div>Model<b>${s.id==='model'?'Loading':'Ready'}</b></div><div>Microphone<b>${s.id==='error'?'Needs attention':'Available'}</b></div><div>Privacy<b>On-device</b></div></div></article></section>`;
+      if(variant==='B') document.querySelector('#view').innerHTML=`<section class="variant-b"><article class="b-main glass">${detail}<div class="orb"><span></span></div><div class="eyebrow">Mumble</div><h1>${s.title}</h1><p class="muted">${s.sub}</p>${action(s)}</article><aside class="b-side glass"><h3>Current route</h3>${facts(s)}<p class="small muted" style="margin:15px 0 0">Details stay quiet while everything works. They become prominent only when you need to act.</p></aside></section>`;
+      if(variant==='C') document.querySelector('#view').innerHTML=`<section class="variant-c"><div class="c-strip glass"><div class="c-metric"><span>App</span><b>${s.id==='launch'?'Starting':'Ready'}</b></div><div class="c-metric"><span>Model</span><b>${s.id==='model'?'Loading 68%':'Warm'}</b></div><div class="c-metric"><span>Mic</span><b>${s.id==='error'?'Unavailable':['unstable','stable','final'].includes(s.id)?'Live':'Standby'}</b></div><div class="c-metric"><span>Route</span><b>Local</b></div><div class="c-metric"><span>Power</span><b>${s.id==='cooled'?'Saving':'Normal'}</b></div></div><div class="c-grid"><article class="c-transcript glass"><div class="eyebrow">Live transcript</div><h2>${s.title}</h2><div class="transcript-box">${s.partial}</div><p class="muted small">Bright words are stable. Faint words are tentative and may change. Text enters your app only after final confirmation.</p>${action(s)}</article><aside class="c-diagnostics glass"><div class="eyebrow">Session trace</div><h2>What Mumble is doing</h2><p class="muted">${s.sub}</p><div class="timeline"><div>Activation <b>12 ms</b></div><div>First audio <b>74 ms</b></div><div>First partial <b>${['unstable','stable','final','inserted'].includes(s.id)?'460 ms':'Waiting'}</b></div><div>Final insert <b>${s.id==='inserted'?'1.2 s':'Waiting'}</b></div></div></aside></div></section>`;
+      document.querySelector('#variant-label').textContent=`${variant} — ${variants[variant]}`;
+      document.querySelector('#island-state').textContent=s.island;
+      document.querySelector('#island-copy').innerHTML=s.partial;
+      document.querySelector('#island').classList.toggle('hidden',s.id==='launch');
+      document.querySelector('#top-route').textContent=s.id==='error'?'Needs attention':'On-device · '+(s.id==='model'?'Preparing':'Ready');
+      document.querySelector('#top-dot').style.background=s.tone==='error'?'var(--red)':s.tone==='warning'?'var(--amber)':'var(--green)';
+      document.querySelectorAll('[data-stage]').forEach(b=>b.onclick=()=>setStage(b.dataset.stage));
+    }
+    function setUrl(){const q=new URLSearchParams(location.search);q.set('variant',variant);q.set('stage',stage);history.replaceState({},'',location.pathname+'?'+q.toString())}
+    function setStage(id){stage=id;setUrl();render()}
+    function cycle(d){const keys=Object.keys(variants);variant=keys[(keys.indexOf(variant)+d+keys.length)%keys.length];setUrl();render()}
+    document.querySelector('#prev').onclick=()=>cycle(-1);document.querySelector('#next').onclick=()=>cycle(1);
+    addEventListener('keydown',e=>{if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName)||document.activeElement.isContentEditable)return;if(e.key==='ArrowLeft')cycle(-1);if(e.key==='ArrowRight')cycle(1)});
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+---
+// 404.astro — Fallback page for non-existent routes.
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<BaseLayout
+  title="Page Not Found — Mumble"
+  description="The page you were looking for doesn't exist. Return to the Mumble homepage to learn about private, on-device voice-to-text."
+  ogTitle="Mumble — Page Not Found"
+  canonicalURL="https://getmumble.com/404.html"
+  noindex={true}
+>
+  <Header slot="header" />
+
+  <section class="section">
+    <div class="container" style="text-align:center;min-height:60vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding-top:120px;">
+      <h1 style="font-size:clamp(2rem,5vw,3.5rem);">404</h1>
+      <p style="font-size:1.2rem;color:var(--text-dim);max-width:40ch;">
+        This page doesn't exist. But Mumble does — and it's ready to help you talk instead of type.
+      </p>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:10px;">
+        <a class="btn btn-gold btn-lg" href="/">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Back to Mumble
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <Footer slot="footer" />
+</BaseLayout>

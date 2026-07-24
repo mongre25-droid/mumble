@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en" data-theme="horizon">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Mumble Horizon — isolated clean-sheet UI experiment">
+  <title>Mumble Horizon — UI Experiment</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="shell" id="app-shell">
+    <aside class="rail" aria-label="Primary navigation">
+      <div class="brand" title="Mumble Horizon">
+        <span class="brand-glyph" aria-hidden="true"><b></b><b></b><b></b><b></b></span>
+        <span class="brand-word">mumble</span>
+        <span class="lab-badge">LAB</span>
+      </div>
+      <nav id="primary-nav"></nav>
+      <div class="rail-foot">
+        <button class="rail-button" id="command-trigger" data-tooltip="Quick actions (Ctrl K)" aria-label="Open quick actions"></button>
+        <button class="avatar" data-nav-target="settings" aria-label="Open settings">KH</button>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="view-eyebrow">FRIDAY, 10 JULY</p>
+          <h1 id="view-title">Good evening, Khaled</h1>
+        </div>
+        <div class="top-actions">
+          <button class="privacy-chip" data-action="privacy"><span class="privacy-dot"></span><span>Private · Local</span></button>
+          <button class="icon-button" data-action="notifications" aria-label="Notifications"></button>
+          <button class="primary-small" data-action="new-dictation"></button>
+        </div>
+      </header>
+      <section class="view" id="view" aria-live="polite"></section>
+    </main>
+
+    <aside class="context-panel" id="context-panel" aria-label="Context panel" hidden></aside>
+  </div>
+
+  <section class="voice-dock" id="voice-dock" aria-label="Mumble voice controls">
+    <button class="dock-mini" data-action="dock-library" aria-label="Open library"></button>
+    <div class="dock-state">
+      <span class="live-mark"><i></i></span>
+      <span><b id="dock-title">Mumble is ready</b><small id="dock-subtitle">Ctrl + Win to speak</small></span>
+    </div>
+    <div class="wave" id="dock-wave" aria-hidden="true"></div>
+    <button class="record-button" id="record-button" aria-label="Start dictation"><span></span></button>
+    <button class="prompt-switch" id="prompt-switch" aria-pressed="false"><span></span><b>Prompt</b></button>
+    <button class="dock-mini" data-action="dock-more" aria-label="More voice controls"></button>
+  </section>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <section class="command-palette" id="command-palette" role="dialog" aria-modal="true" aria-label="Quick actions" hidden>
+    <div class="command-input-wrap"><span id="command-search-icon"></span><input id="command-input" autocomplete="off" placeholder="Search Mumble or run an action…"><kbd>ESC</kbd></div>
+    <div class="command-results" id="command-results"></div>
+  </section>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

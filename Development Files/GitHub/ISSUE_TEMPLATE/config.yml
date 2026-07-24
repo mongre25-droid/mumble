@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Mumble engineering handbook
+    url: https://github.com/mongre25-droid/mumble/blob/main/Development%20Files/Core/HANDBOOK.html
+    about: Read the project workflow, architecture context, release safeguards, and verification expectations.
+  - name: Current Mumble status
+    url: https://github.com/mongre25-droid/mumble/blob/main/Development%20Files/Core/STATUS.html
+    about: Check current priorities, known risks, release gates, and owner actions before opening work.

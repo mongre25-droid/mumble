@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mumble social campaign</title>
+  <link rel="stylesheet" href="campaign.css">
+</head>
+<body>
+  <div id="mount" aria-live="polite"></div>
+  <script src="campaign-data.js"></script>
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search);
+      const requested = Number(params.get('id') || 1);
+      const post = (window.MUMBLE_POSTS || []).find((item) => item.id === requested);
+      if (!post) {
+        document.getElementById('mount').textContent = `Post ${requested} was not found.`;
+        return;
+      }
+
+      const accentMap = {
+        gold: '#D4AF37', purple: '#A855F7', blue: '#5AA9E6', teal: '#46C9A8',
+        coral: '#E8825A', sand: '#C7A36B', rose: '#D86E9A', green: '#5AB85A'
+      };
+      const accent = accentMap[post.accent] || accentMap.gold;
+      const sizes = { instagram: '1080 × 1350', x: '1920 × 1080', tiktok: '1080 × 1920' };
+      const carouselLengths = { 1: 6, 2: 6, 3: 6, 4: 6, 5: 6, 6: 5, 7: 5, 8: 5, 9: 5 };
+      const stageLabels = { awareness: 'Discover', consideration: 'Explore', conversion: 'Try Mumble' };
+      const composition = `comp-${((post.id - 1) % 4) + 1}`;
+
+      const escapeHTML = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+      }[char]));
+
+      const highlightById = {
+        1: 'where you work.', 2: 'follows your cursor.', 3: 'Done.', 4: 'local.', 5: 'offline.',
+        6: 'text—not the audio.', 7: 'Deck.', 8: 'memory.', 9: '25', 10: 'Transform it.',
+        11: 'structured prompt.', 12: 'more than audio.', 13: 'next steps.', 14: '11 file formats',
+        15: 'see—or say.', 16: 'in numbers.', 17: 'Free to download.', 18: 'cursor',
+        19: 'data path', 20: 'Cloud by choice.', 21: 'Your provider.', 22: 'MIT', 23: 'Four defaults',
+        24: 'layer', 25: 'paste.', 26: '5 of your own.', 27: 'Press Go.', 28: 'both versions.',
+        29: 'Five export routes.', 30: 'remembers the page.', 31: 'stays useful.', 32: 'sized to the machine.',
+        33: 'No telemetry.', 34: 'labels estimates.', 35: 'Free to download.', 36: 'blank page.',
+        37: 'Speak.', 38: 'Four workspaces.', 39: 'Clean paragraph out.', 40: 'leaves your PC?',
+        41: 'working memory.', 42: 'Find it today.', 43: 'four-step reuse loop.', 44: 'transcript.',
+        45: 'PPTX tomorrow.', 46: 'without retyping', 47: 'preset', 48: 'Three reasons',
+        49: 'the facts.', 50: 'voice → text.'
+      };
+
+      const styliseHeadline = (headline) => {
+        const safe = escapeHTML(headline);
+        const target = highlightById[post.id];
+        if (!target) return safe;
+        const safeTarget = escapeHTML(target);
+        const at = safe.toLowerCase().indexOf(safeTarget.toLowerCase());
+        if (at < 0) return safe;
+        return `${safe.slice(0, at)}<span>${safe.slice(at, at + safeTarget.length)}</span>${safe.slice(at + safeTarget.length)}`;
+      };
+
+      const glyph = (name, cls = '') => {
+        const paths = {
+          mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/>',
+          lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/>',
+          chip: '<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4"/>',
+          cloud: '<path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 8.5 4.5 4.5 0 0 0 7 18Z"/>',
+          file: '<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5M9 12h6M9 16h6"/>',
+          search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
+          star: '<path d="m12 2 3 6 7 .9-5 4.8 1.2 7-6.2-3.3-6.2 3.3 1.2-7-5-4.8L9 8z"/>',
+          check: '<path d="m4 12 5 5L20 6"/>',
+          arrow: '<path d="M4 12h16M14 6l6 6-6 6"/>',
+          copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
+          folder: '<path d="M3 6h7l2 2h9v11H3z"/>',
+          bars: '<path d="M4 20V10M9 20V4M14 20v-7M19 20V7"/>',
+          pause: '<path d="M8 5v14M16 5v14"/>',
+          play: '<path d="m8 5 11 7-11 7z"/>',
+          shield: '<path d="M12 2 20 5v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="m8.5 12 2.2 2.2 4.8-5"/>',
+          settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/>'
+        };
+        return `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || paths.file}</svg>`;
+      };
+
+      const wave = (count = 19, className = '') => {
+        const bars = Array.from({ length: count }, (_, index) => {
+          const middle = (count - 1) / 2;
+          const distance = Math.abs(index - middle) / Math.max(1, middle);
+          const height = Math.round(24 + (1 - distance) * 66 + ((index * 17) % 23));
+          return `<i style="--h:${height}%"></i>`;
+        }).join('');
+        return `<div class="waveform ${className}" aria-hidden="true">${bars}</div>`;
+      };
+
+      const keycap = (label, small = false) => `<span class="keycap${small ? ' small' : ''}">${escapeHTML(label)}</span>`;
+      const island = (label = 'Listening', pasted = false) => `
+        <div class="island-ui ${pasted ? 'pasted' : ''}">
+          <span class="island-dot"></span>${wave(11, 'mini')}
+          <strong>${escapeHTML(label)}</strong><span class="timer">0:04</span>
+        </div>`;
+      const arrow = () => `<div class="flow-arrow">${glyph('arrow')}</div>`;
+      const tag = (text, tone = '') => `<span class="tag ${tone}">${escapeHTML(text)}</span>`;
+      const documentLines = (rows = 5) => `<div class="doc-lines">${Array.from({ length: rows }, (_, i) => `<i style="width:${88 - i * 7 + (i % 2) * 10}%"></i>`).join('')}</div>`;
+
+      const visuals = {
+        wave: () => `
+          <div class="hero-orbit"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div>
+            <div class="logo-aura">${wave(post.platform === 'tiktok' ? 21 : 25, 'hero-wave')}</div>
+          </div>
+          ${island(post.id === 50 ? 'Pasted' : 'Listening', post.id === 50)}
+          <div class="cursor-output"><span></span><span></span><b></b></div>`,
+
+        apps: () => `
+          <div class="apps-grid">
+            ${['EMAIL', 'CHAT', 'DOCUMENT', 'CODE'].map((name, i) => `<div class="app-card app-${i + 1}"><div class="window-top"><i></i><i></i><i></i><b>${name}</b></div>${documentLines(4)}</div>`).join('')}
+            <div class="apps-island">${island('Listening')}</div>
+          </div>`,
+
+        hotkey: () => post.id === 23 ? `
+          <div class="shortcut-grid">
+            <div><small>RECORD</small>${keycap('Ctrl + Win')}</div>
+            <div><small>PASTE LATEST</small>${keycap('Ctrl + Alt + V')}</div>
+            <div><small>OPEN DECK</small>${keycap('Ctrl + Alt + D')}</div>
+            <div><small>SEARCH</small>${keycap('Ctrl + Alt + S')}</div>
+          </div>` : `
+          <div class="step-rail">
+            <div class="step-box hotkey-box"><small>01 · PRESS</small><div>${keycap('Ctrl')}<em>+</em>${keycap('Win')}</div></div>
+            <div class="rail-line"></div>
+            <div class="step-box"><small>02 · SPEAK</small>${wave(17, 'step-wave')}</div>
+            <div class="rail-line"></div>
+            <div class="step-box pasted-box"><small>03 · PASTE</small><div class="pasted-mark">${glyph('check')}<b>Pasted</b></div></div>
+          </div>`,
+
+        privacy: () => `
+          <div class="device-boundary">
+            <div class="boundary-label">YOUR WINDOWS PC</div>
+            <div class="privacy-flow">${wave(13, 'compact')}${arrow()}<div class="secure-chip">${glyph('chip')}${glyph('lock', 'lock-overlay')}<b>LOCAL STT</b><small>DEFAULT</small></div></div>
+            <div class="status-strip">${glyph('shield')}<span>Audio processed on-device in Local mode</span></div>
+          </div>`,
+
+        offline: () => `
+          <div class="offline-card">
+            <div class="offline-head">${glyph('cloud')}<span class="slash"></span><b>NETWORK NOT REQUIRED</b></div>
+            <div class="toggle-row"><span>Transcription</span><b>Local</b><i class="toggle on"></i></div>
+            <div class="toggle-row"><span>Pro Mode</span><b>Off</b><i class="toggle"></i></div>
+            <div class="offline-result">${wave(11, 'compact')}${arrow()}<div class="text-chip">Clean text<b></b></div></div>
+          </div>`,
+
+        textpath: () => `
+          <div class="text-path">
+            <div class="path-node audio-node">${wave(11, 'compact')}<span>${glyph('lock')}</span><b>AUDIO</b><small>stays out of AI polish</small></div>
+            ${arrow()}
+            <div class="path-node text-node">${glyph('file')}<b>TRANSCRIPT TEXT</b><small>optional polish input</small></div>
+            ${arrow()}
+            <div class="path-node provider-node"><div class="spark">✦</div><b>YOUR PROVIDER</b><small>when enabled</small></div>
+          </div>`,
+
+        deck: () => `
+          <div class="screenshot-frame deck-shot"><div class="frame-top"><i></i><i></i><i></i><span>THE DECK · CTRL + ALT + D</span></div><img src="assets/_baseline-history.png" alt=""></div>`,
+
+        clipboard: () => `
+          <div class="clipboard-stack">
+            <div class="search-field">${glyph('search')}<span>Search clipboard history…</span>${tag('12 items')}</div>
+            <div class="clip-card active">${glyph('copy')}<div><b>Project notes</b><p>Copied text stays ready to find and reuse.</p></div><small>Today</small></div>
+            <div class="clip-card"><div class="abstract-thumb"><i></i><i></i><i></i></div><div><b>Image capture</b><p>Thumbnail preview · PNG</p></div><small>Yesterday</small></div>
+            <div class="clip-card">${glyph('file')}<div><b>Reference paragraph</b><p>Searchable in the same Deck.</p></div><small>Earlier</small></div>
+          </div>`,
+
+        presets: () => {
+          const names = ['Summarise','Focus','Deep Thinking','Reply','Improve','Action items','Humanise','Merge','Key points','Make shorter','Expand','Extract facts','Outline','Critique','Make formal','Continue','Answer it','Fix errors','Explain simply','Chat context','Custom 1','Custom 2','Custom 3','Custom 4','Custom 5'];
+          return `<div class="preset-panel"><div class="preset-title"><b>PRESETS</b><span>20 BUILT-IN + 5 CUSTOM</span></div><div class="preset-grid">${names.map((name, i) => `<div class="preset ${i >= 20 ? 'custom' : ''} ${[0,3,5,8].includes(i) ? 'lit' : ''}">${i >= 20 ? '+' : '✦'} <span>${name}</span></div>`).join('')}</div><button class="go-button">Go ${glyph('arrow')}</button></div>`;
+        },
+
+        capture: () => `
+          <div class="capture-flow">
+            <div class="capture-pane"><small>IN ANOTHER APP</small><p>Turn <mark>this selected passage</mark> into something clearer and more useful.</p></div>
+            ${arrow()}<div class="capture-button">${glyph('copy')}<b>Capture</b></div>${arrow()}
+            <div class="capture-pane result"><small>IN THE DECK</small>${tag('Improve', 'gold')}<p>This selected passage is now clear, concise, and ready to reuse.</p></div>
+          </div>`,
+
+        prompt: () => `
+          <div class="prompt-builder">
+            <div class="raw-idea">${tag('Prompt', 'purple')}<small>ROUGH IDEA</small><p>“Help me plan a launch for a private Windows dictation app…”</p>${wave(13, 'compact purple')}</div>
+            ${arrow()}
+            <div class="structured-prompt"><small>STRUCTURED PROMPT</small><div><b>ROLE</b><span>Product launch strategist</span></div><div><b>TASK</b><span>Create a focused launch plan</span></div><div><b>CONSTRAINTS</b><span>Privacy-first · Windows · clear claims</span></div></div>
+          </div>`,
+
+        meetingflow: () => {
+          const steps = [['mic','RECORD','Microphone'],['file','IMPORT','Audio file'],['bars','TRANSCRIBE','Local or Cloud'],['copy','LABEL','Speaker segments'],['play','REPLAY','Review'],['spark','PROCESS','When configured']];
+          return `<div class="meeting-flow">${steps.map((s, i) => `<div class="meeting-step"><span>${String(i + 1).padStart(2,'0')}</span>${s[0] === 'spark' ? '<div class="spark">✦</div>' : glyph(s[0])}<b>${s[1]}</b><small>${s[2]}</small></div>`).join('')}</div>`;
+        },
+
+        extract: () => `
+          <div class="extract-layout">
+            <div class="transcript-panel"><div class="panel-title">SPEAKER-LABELLED TRANSCRIPT</div><p><b>A</b><span>Let’s confirm the next milestone and owner.</span></p><p><b>B</b><span>I’ll prepare the draft and share it Friday.</span></p><p><b>A</b><span>Great. Keep the open question on scope.</span></p></div>
+            ${arrow()}
+            <div class="outputs-grid">${[['SUMMARY','3-line overview'],['ACTIONS','Owner · Friday'],['DECISIONS','Milestone set'],['QUESTIONS','Scope remains']].map((x,i)=>`<div class="output-card o-${i}"><small>${x[0]}</small><b>${x[1]}</b></div>`).join('')}</div>
+          </div>`,
+
+        formats: () => `
+          <div class="formats-stage">
+            <div class="format-cloud">${['PDF','DOCX','EPUB','HTML','RTF','MD','TXT','CSV','ODT','PPTX','XLSX'].map((name,i)=>`<span class="format-badge f-${i}">${name}</span>`).join('')}</div>
+            <div class="reader-page"><div class="reader-top">${glyph('play')}<b>READER</b><span>1×</span></div><p>Turn documents into a reading session and <mark>follow each word</mark> as it plays.</p><div class="progress"><i></i></div><small>Library · bookmarks · resume</small></div>
+          </div>`,
+
+        search: () => `
+          <div class="search-stage">
+            <div class="search-source"><small>HIGHLIGHT OR SPEAK</small><p>Find the clearest explanation of <mark>local speech recognition</mark></p>${wave(13, 'compact')}</div>
+            ${arrow()}
+            <div class="search-box">${glyph('search')}<span>local speech recognition</span><b></b></div>
+            <div class="engine-row">${['Perplexity','Google','Brave'].map((n,i)=>tag(n,i===0?'gold':'')).join('')}</div>
+          </div>`,
+
+        stats: () => `
+          <div class="stats-board">
+            <div class="stat-row">${['WORDS','PACE','STREAK','DICTATIONS'].map((name,i)=>`<div class="stat-tile"><small>${name}</small><b>${i===0?'Your data':'—'}</b><span>${i===1?'WPM':i===2?'days':'local history'}</span></div>`).join('')}</div>
+            <div class="chart-card"><div><b>ACTIVITY</b><span>${tag('LOCAL DATA')}</span></div><div class="chart-bars">${[58,35,72,48,88,64,95].map((h,i)=>`<i style="--h:${h}%" class="${i===6?'today':''}"></i>`).join('')}</div></div>
+            <div class="estimate-chip">TIME SAVED <b>ESTIMATED</b></div>
+          </div>`,
+
+        download: () => `
+          <div class="download-stage">
+            <div class="download-logo"><img src="assets/mumble.png" alt=""><div><b>Mumble</b><span>Voice-to-text for Windows</span></div></div>
+            <div class="proof-row">${tag('WINDOWS 10+','gold')}${tag('FREE DOWNLOAD')}${tag('NO ACCOUNT')}${tag('MIT LICENSED')}</div>
+            <div class="download-button">${glyph('arrow')}<span>${escapeHTML(post.cta)}</span></div>
+            <div class="shortcut-line">${keycap('Ctrl + Win', true)}<span>Place cursor · press · speak</span></div>
+          </div>`,
+
+        datapath: () => `
+          <div class="data-path-wide">
+            <div class="lane-title">DEFAULT PATH</div>
+            ${[['mic','VOICE','on your PC'],['chip','LOCAL STT','default'],['file','TEXT','transcript'],['spark','OPTIONAL POLISH','text only'],['check','CURSOR','ready to paste']].map((node,i)=>`${i?arrow():''}<div class="data-node">${node[0]==='spark'?'<div class="spark">✦</div>':glyph(node[0])}<b>${node[1]}</b><small>${node[2]}</small></div>`).join('')}
+            <div class="cloud-branch">${glyph('cloud')}<b>CLOUD STT</b><span>separate opt-in · sends audio</span></div>
+          </div>`,
+
+        lanes: () => post.id === 40 ? `
+          <div class="lane-cards triple">
+            <div class="lane-card selected"><div class="radio on"></div>${glyph('chip')}<small>DEFAULT</small><h3>Local transcription</h3><p>Audio stays on your Windows PC.</p><div class="lane-status">${glyph('check')} On-device audio</div></div>
+            <div class="lane-card"><div class="radio"></div>${glyph('cloud')}<small>OPTIONAL</small><h3>Cloud transcription</h3><p>Audio is sent only when you select this lane.</p><div class="lane-status muted">Audio path</div></div>
+            <div class="lane-card"><div class="radio"></div>${glyph('file')}<small>OPTIONAL</small><h3>Cloud Pro Mode</h3><p>Transcript text goes to your chosen AI provider.</p><div class="lane-status muted">Text path</div></div>
+          </div>` : `
+          <div class="lane-cards">
+            <div class="lane-card selected"><div class="radio on"></div>${glyph('chip')}<small>DEFAULT</small><h3>Local transcription</h3><p>Audio processed on your Windows PC.</p><div class="lane-status">${glyph('check')} Selected</div></div>
+            <div class="lane-card"><div class="radio"></div>${glyph('cloud')}<small>OPTIONAL</small><h3>Cloud transcription</h3><p>Audio sent to the provider you select.</p><div class="lane-status muted">Choose explicitly</div></div>
+          </div>`,
+
+        providers: () => `
+          <div class="providers-map">
+            <div class="provider-source">${glyph('file')}<b>TRANSCRIPT TEXT</b><small>not the recording</small></div>
+            <div class="branch-lines"></div>
+            <div class="provider-grid">${['Cerebras','OpenAI','Anthropic','DeepSeek','Groq','OpenRouter','Local model'].map((name,i)=>`<div class="provider ${i===6?'local':''}"><span>${i===6?'⌁':'✦'}</span><b>${name}</b></div>`).join('')}</div>
+            <div class="provider-foot">YOUR KEY · YOUR CHOICE · OPTIONAL</div>
+          </div>`,
+
+        license: () => `
+          <div class="license-card"><div class="license-mark">MIT</div><div class="code-lines"><span>Permission is hereby granted, free of charge…</span><i></i><i></i><i></i><i></i></div><div class="license-stamp">${glyph('check')} MIT LICENSED</div></div>`,
+
+        cleanup: () => `
+          <div class="cleanup-split">
+            <div class="copy-panel before"><small>EXAMPLE · FIRST PASS</small><p>so i need to send the update friday and ask if the new scope is okay</p>${wave(13, 'compact')}</div>
+            <div class="transform-mark">✦</div>
+            <div class="copy-panel after"><small>EXAMPLE · CLEAN TEXT</small><p>I'll send the update on Friday and confirm whether the revised scope works.</p><div class="ready-chip">${glyph('check')} READY</div></div>
+          </div>`,
+
+        combine: () => `
+          <div class="combine-stage">
+            <div class="selected-items">${[['Text','Launch notes'],['Clipboard','Customer questions'],['Prompt','Release brief']].map((x,i)=>`<div><i>${glyph('check')}</i>${tag(x[0],i===1?'teal':i===2?'purple':'gold')}<b>${x[1]}</b></div>`).join('')}</div>
+            <button class="go-orb">GO ${glyph('arrow')}</button>
+            <div class="combined-output">${glyph('file')}<small>ONE POLISHED RESULT</small>${documentLines(5)}</div>
+          </div>`,
+
+        compare: () => `
+          <div class="compare-stage"><div class="compare-tabs">${tag('PRE-AI')}${tag('POST-AI','gold')}<span>⇄</span></div><div class="compare-panels"><div><small>RAW TRANSCRIPT</small><p>okay so the next thing is probably to update the brief and send it friday</p></div><div><small>POLISHED OUTPUT</small><p>Next, update the brief and send the revised version on Friday.</p></div></div></div>`,
+
+        export: () => `
+          <div class="export-stage"><div class="export-source">${glyph('file')}<b>MEETING TRANSCRIPT</b><small>speaker-labelled segments</small></div>${arrow()}<div class="export-grid">${['TXT','MARKDOWN','JSON','HTML','CLIPBOARD'].map((name,i)=>`<div class="export-tile">${i===4?glyph('copy'):glyph('file')}<b>${name}</b></div>`).join('')}</div></div>`,
+
+        reader: () => `
+          <div class="reader-library"><div class="library-head">${glyph('folder')}<b>YOUR LIBRARY</b><span>Resume where you stopped</span></div><div class="book-card active">${glyph('play')}<div><b>Quarterly product notes</b><span>22% read · DOCX</span><div class="progress"><i style="width:22%"></i></div></div><button>Resume</button></div><div class="book-card">${glyph('star')}<div><b>Research reference</b><span>48% read · PDF</span><div class="progress"><i style="width:48%"></i></div></div><button>Resume</button></div><div class="book-card">${glyph('file')}<div><b>Planning workbook</b><span>New · XLSX</span><div class="progress"><i style="width:2%"></i></div></div><button>Read</button></div></div>`,
+
+        history: () => `
+          <div class="history-panel"><div class="history-tools"><div>${glyph('search')} Search history…</div>${tag('All types')}${tag('Newest first')}</div>${[['Email','Today · 64 words · 0:33 · 116 WPM'],['Text','Today · 38 words · 0:20 · 114 WPM'],['Prompt','Yesterday · 92 words · 0:47 · 117 WPM']].map((x,i)=>`<div class="history-row"><span class="mode-dot m-${i}"></span><div><b>${x[0]}</b><small>${x[1]}</small><p>${i===0?'Project update ready to send…':i===1?'Clean transcript ready at the cursor…':'Structured launch prompt saved…'}</p></div>${glyph('star')}</div>`).join('')}</div>`,
+
+        hardware: () => `
+          <div class="hardware-stage">${[['LIGHTER','Lower resource use','small model'],['BALANCED','Everyday fit','default model'],['ACCURACY','Higher-accuracy option','larger model']].map((x,i)=>`<div class="hardware-card ${i===1?'recommended':''}">${glyph('chip')}<small>${i===1?'RECOMMENDED':''}</small><h3>${x[0]}</h3><p>${x[1]}</p><div class="model-block"><i style="--n:${i+1}"></i><b>${x[2]}</b></div></div>`).join('')}</div>`,
+
+        localvault: () => `
+          <div class="vault-stage"><div class="vault-ring"><div class="vault-core">${glyph('lock')}<b>ON YOUR DEVICE</b><small>core data</small></div></div><div class="vault-files">${[['settings','SETTINGS'],['file','HISTORY'],['bars','STATS']].map((x)=>`<div>${glyph(x[0])}<b>${x[1]}</b></div>`).join('')}</div><div class="no-telemetry">${glyph('shield')} NO TELEMETRY</div></div>`,
+
+        checklist: () => `
+          <div class="checklist-stage">${(post.id===48 ? ['Free Windows download','No account required','Local transcription by default'] : ['Windows available now','MIT licensed','Cloud transcription is optional','AI polish is optional']).map((item,i)=>`<div class="check-item"><span>${String(i+1).padStart(2,'0')}</span><i>${glyph('check')}</i><b>${item}</b></div>`).join('')}<div class="check-cta">${escapeHTML(post.cta)} ${glyph('arrow')}</div></div>`
+      };
+
+      const fallbackVisual = visuals.wave;
+      const qualifier = post.qualifier || ({
+        6: 'Requires a configured provider; provider charges may apply.',
+        11: 'AI shaping requires a configured provider or compatible local model.',
+        13: 'AI summary and extraction require a configured provider.',
+        14: 'Voice playback requires a configured TTS provider.',
+        21: 'Cloud AI use requires your provider key; charges may apply.',
+        25: 'Further AI shaping is optional and provider-dependent.',
+        30: 'Voice playback requires a configured TTS provider.',
+        44: 'AI summary and extraction require a configured provider.',
+        45: 'Voice playback requires a configured TTS provider.'
+      }[post.id] || '');
+
+      const poster = document.createElement('article');
+      poster.id = 'poster';
+      poster.className = `poster ${post.platform} visual-${post.visual} ${composition}`;
+      poster.dataset.id = post.id;
+      poster.style.setProperty('--accent', accent);
+      poster.setAttribute('aria-label', post.alt);
+      poster.innerHTML = `
+        <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="grid-glow"></div><div class="grain"></div>
+        <header class="brandbar">
+          <div class="brand"><img src="assets/mumble.png" alt=""><div><b>Mumble</b><span>Speak. It types.</span></div></div>
+          <div class="series"><span>${post.platform === 'x' ? 'X' : post.platform.toUpperCase()}</span><b>CAROUSEL ${String(post.carousel).padStart(2,'0')}</b><i>${post.slide}/${carouselLengths[post.carousel]}</i></div>
+        </header>
+        <main class="content">
+          <section class="copy-block">
+            <div class="kicker"><i></i>${escapeHTML(post.kicker)}</div>
+            <h1>${styliseHeadline(post.headline)}</h1>
+            <p class="support">${escapeHTML(post.body)}</p>
+            <div class="cta-row"><div class="cta-pill"><span>${escapeHTML(post.cta)}</span>${glyph('arrow')}</div><span class="stage-chip">${stageLabels[post.stage] || post.stage}</span></div>
+            ${qualifier ? `<p class="qualifier">${glyph('shield')}<span>${escapeHTML(qualifier)}</span></p>` : ''}
+          </section>
+          <section class="visual-stage" aria-hidden="true">${(visuals[post.visual] || fallbackVisual)()}</section>
+        </main>
+        <footer class="poster-footer"><div><span>MUMBLE</span><b>WINDOWS VOICE-TO-TEXT</b></div><div class="footer-rule"></div><div><b>${sizes[post.platform]}</b><span>${String(post.id).padStart(2,'0')} / 50</span></div></footer>`;
+      document.getElementById('mount').appendChild(poster);
+      document.title = `${String(post.id).padStart(2,'0')} · ${post.headline}`;
+      document.documentElement.dataset.ready = 'true';
+    })();
+  </script>
+</body>
+</html>

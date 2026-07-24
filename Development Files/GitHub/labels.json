@@ -1,0 +1,20 @@
+[
+  {"name":"kind: planning","color":"1D76DB","description":"Multi-session outcome map"},
+  {"name":"kind: decision","color":"5319E7","description":"Costly-to-reverse choice and rationale"},
+  {"name":"kind: implementation","color":"0E8A16","description":"Bounded engineering work"},
+  {"name":"area: ci","color":"B60205","description":"Continuous integration and verification"},
+  {"name":"area: startup","color":"FBCA04","description":"Startup and first-run behaviour"},
+  {"name":"area: packaging","color":"006B75","description":"Build artefacts, installers, and release archives"},
+  {"name":"area: deployment","color":"0052CC","description":"Release delivery, update feeds, and hosting"},
+  {"name":"area: local-models","color":"D93F0B","description":"On-device models, downloads, and licensing"},
+  {"name":"area: dictation-latency","color":"C2E0C6","description":"Voice-to-visible-text performance"},
+  {"name":"priority: critical","color":"B60205","description":"Blocks safety, release, or core use"},
+  {"name":"priority: high","color":"D93F0B","description":"Important next engineering outcome"},
+  {"name":"state: blocked","color":"E4E669","description":"Cannot progress until a stated dependency is resolved"},
+  {"name":"state: needs-owner","color":"F9D0C4","description":"Needs an owner-only choice, credential, or purchase"},
+  {"name":"needs-triage","color":"FBCA04","description":"Maintainer needs to evaluate this issue"},
+  {"name":"needs-info","color":"D4C5F9","description":"Waiting on reporter for more information"},
+  {"name":"ready-for-agent","color":"0E8A16","description":"Fully specified and ready for an agent"},
+  {"name":"ready-for-human","color":"1D76DB","description":"Requires human implementation"},
+  {"name":"wontfix","color":"FFFFFF","description":"Will not be actioned"}
+]

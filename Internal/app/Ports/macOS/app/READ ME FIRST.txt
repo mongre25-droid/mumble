@@ -1,0 +1,60 @@
+============================================================
+  MUMBLE  -  private voice-to-text for macOS
+  Talk, and it types - in any app. Your audio stays on your Mac.
+============================================================
+
+INSTALL  (one time)
+
+  1) Move this "MacMumble" folder somewhere permanent first
+     (e.g. your Documents or Applications folder). Don't run it
+     from inside the .zip, and don't move it after installing.
+
+  2) Open  "Install Mumble.command".
+     macOS protects files from the internet, so the FIRST time:
+        -> Right-click (or Control-click) "Install Mumble.command"
+           -> choose "Open" -> click "Open" again.
+     (If it says "permission denied" or won't run, see "If it won't
+      open" at the bottom.)
+
+  3) Let it finish (a few minutes the first time - it needs the
+     internet to download what it needs).
+
+  4) Grant the two permissions macOS asks for - this is required:
+        -> Microphone     (so it can hear you)
+        -> Accessibility  (so the hotkey works and it can type for you)
+     You can also set these in
+        System Settings -> Privacy & Security -> Microphone / Accessibility
+     (turn the switch ON for "python" / "Terminal").
+
+  Mumble then lives in your MENU BAR (top-right of the screen) and
+  starts automatically every time you log in. A guide opens in your
+  browser the first time.
+
+
+HOW TO USE IT
+
+  - Click into any text box (browser, Notes, Mail, chat...).
+  - Press   Control + Option + D .   Speak.   Press it again.
+  - Your words are typed where the cursor is.
+
+  Click the menu-bar icon any time for the Prompt toggle, Deck, and settings.
+     Prompt toggle -> shapes your next dictation into a detailed AI prompt
+     Deck           -> runs Email, List, Search, Reply, and other actions
+  Re-paste your last dictation anywhere with  Control + Option + V .
+
+  Local transcription keeps audio on your Mac. Optional Cloud transcription
+  sends each audio clip to the provider you select. Pro Mode sends transcript
+  text to your AI provider for polishing. Turn cloud features off to stay offline.
+
+
+REQUIREMENTS
+  - macOS 12 or newer, and internet for the one-time setup.
+
+TO REMOVE IT
+  - Open "Uninstall Mumble.command" the same way.
+
+
+IF IT WON'T OPEN (permission denied / unidentified developer)
+  Open the Terminal app (press Cmd+Space, type Terminal, press Enter),
+  then type  bash  followed by a space, DRAG the "Install Mumble.command"
+  file into the Terminal window, and press Enter. That runs it directly.

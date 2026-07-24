@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>INDEX — Mumble Documentation Map</title>
+<link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Mumble v1.0 Documentation</div>
+  <h1>INDEX</h1>
+  <div class="meta">
+    <div><span class="ico">&#9670;</span>The single entry-point to every Mumble documentation file — what it is, who it's for, and whether it's current.</div>
+    <div><span class="ico">&#9670;</span><b>Generated:</b> 2026-07-05 &middot; <b>Policy:</b> <a href="README.html#s7-2">README.html &sect;7.2</a> (HTML by default, one source per document)</div>
+  </div>
+</header>
+
+<div class="plain">
+  <div class="tag">In plain terms</div>
+  <div><p>This page is a map of every document in the Mumble project. If you're new and want to understand the project, start with <a href="README.html">README.html</a> (the operating manual). If you're looking for something specific, use this index. Documents are grouped by where they live and what they're for, with a one-line summary and a freshness indicator so you know what's current and what's historical.</p></div>
+</div>
+
+<hr>
+
+<h2 id="core"><span class="sec">1</span>Core Documentation <span class="badge b-gold" style="font-size:.65em">Authoritative</span></h2>
+<p>These are the four (plus three) living documents in <code>Development Files/Core/</code>. They are the curated, authoritative knowledge store for the project. When a fact about Mumble appears in more than one place, the Core version is the truth.</p>
+
+<table>
+  <thead>
+    <tr><th>Document</th><th>What it is</th><th>Audience</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="README.html">README.html</a></td>
+      <td>The Mumble Operating Manual — philosophy, architecture overview, how we work, coding standards, design language, documentation rules, and the completion checklist. The first file every session reads.</td>
+      <td>AI developers, contributors</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="HANDBOOK.html">HANDBOOK.html</a></td>
+      <td>Builder's guide — architecture deep-dive, data flow, AI payload reference, session ritual, testing, port-sync procedure, and deploy steps.</td>
+      <td>AI developers, contributors</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="STATUS.html">STATUS.html</a></td>
+      <td>Present-tense health snapshot — active priorities, known bugs, technical debt, roadmap, open TODO items, and guardrails. No history (that's LOGS).</td>
+      <td>AI developers, contributors</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="LOGS.html">LOGS.html</a></td>
+      <td>Historical record — completed sessions, shipped changes, release/mission reports, milestone chronology. Append-only. Newest first.</td>
+      <td>AI developers, contributors</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="MUMBLE_MASTER_SYSTEM_DOCUMENTATION.md">MUMBLE_MASTER_SYSTEM_DOCUMENTATION.md</a></td>
+      <td>Single authoritative system specification — full feature set, UI/UX, architecture, data model, AI pipeline, and licensing attributions. The only Core doc in Markdown (kept as <code>.md</code> for programmatic consumption and tooling — see <a href="README.html#s7-2">policy &sect;7.2 rule&nbsp;3</a>).</td>
+      <td>Developers, AI, tooling</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="LINUX_AUDIT.html">LINUX_AUDIT.html</a></td>
+      <td>Comprehensive Linux port audit — 88 issues across controller, overlay, shared modules, and platform integration. Code-level comparison vs Windows canonical source.</td>
+      <td>Developers, port maintainers</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="MACOS_AUDIT.html">MACOS_AUDIT.html</a></td>
+      <td>Comprehensive macOS platform audit — 53 issues covering controller, overlay, platform integration, shared modules, and code quality. Code-level comparison vs Windows canonical source.</td>
+      <td>Developers, port maintainers</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="other"><span class="sec">2</span>Design &amp; Planning <span class="badge b-slate" style="font-size:.65em">Reference</span></h2>
+<p>These live in <code>Development Files/Other/</code> and cover design, marketing, research, and release planning. They are reference material — not part of the four-core-doc system, but still actively maintained.</p>
+
+<h3>2.1 Design</h3>
+<table>
+  <thead><tr><th>Document</th><th>What it is</th><th>Audience</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><a href="../Other/design/MUMBLE_UX_SPEC.html">MUMBLE_UX_SPEC.html</a></td>
+      <td>UX specification — screen-by-screen contract for the Mumble interface, mode behaviour, island design, and interaction patterns.</td>
+      <td>Designers, developers</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/design/MUMBLE_ADVERTISING_BRIEF.html">MUMBLE_ADVERTISING_BRIEF.html</a></td>
+      <td>Advertising brief with design tokens — colour palette, typography, copy-pasteable component recipes, and brand guidelines.</td>
+      <td>Designers, marketing</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>2.2 Marketing</h3>
+<table>
+  <thead><tr><th>Document</th><th>What it is</th><th>Audience</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><a href="../Other/marketing/MASTER_MARKETING_GAME_PLAN.html">MASTER_MARKETING_GAME_PLAN.html</a></td>
+      <td>Comprehensive marketing strategy for Mumble v1.0 launch — positioning, channels, timeline, and campaign assets.</td>
+      <td>Marketing, project leads</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>2.3 Research</h3>
+<table>
+  <thead><tr><th>Document</th><th>What it is</th><th>Audience</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><a href="../Other/research/architecture-review-2026-06-28.html">architecture-review-2026-06-28.html</a></td>
+      <td>Open-source architecture review findings — third-party assessment of Mumble's architecture.</td>
+      <td>Developers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/research/Engineer Analysis.html">Engineer Analysis.html</a></td>
+      <td>External engineering workflow analysis — how engineers use dictation in practice and what they need.</td>
+      <td>Product, developers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/research/local_nlp.html">local_nlp.html</a></td>
+      <td>Local NLP research — on-device natural language processing approaches and benchmarks.</td>
+      <td>Developers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/research/LOCAL_POST_PROCESSING_ENGINE.html">LOCAL_POST_PROCESSING_ENGINE.html</a></td>
+      <td>Blueprint for the local post-processing engine — architecture and implementation plan.</td>
+      <td>Developers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/research/supabase_patterns.html">supabase_patterns.html</a></td>
+      <td>Supabase integration patterns — authentication, sync, and data modelling for optional cloud features.</td>
+      <td>Developers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/research/tts_providers.html">tts_providers.html</a></td>
+      <td>TTS provider comparison — evaluation of text-to-speech providers for the Reader feature.</td>
+      <td>Developers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>2.4 Bug Investigations</h3>
+<table>
+  <thead><tr><th>Document</th><th>What it is</th><th>Audience</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><a href="../Other/bug-investigations/PORT_FIXES.html">PORT_FIXES.html</a></td>
+      <td>Port fix documentation from the cross-platform sync pass — what was fixed, how, and why.</td>
+      <td>Port maintainers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>2.5 Release Audit</h3>
+<table>
+  <thead><tr><th>Document</th><th>What it is</th><th>Audience</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><a href="../Other/Mumble v1.0 Release Audit.html">Mumble v1.0 Release Audit.html</a></td>
+      <td>Comprehensive v0.9&rarr;v1.0 release readiness audit — ~188 items across 10 categories: Infrastructure, Platform, Architecture, Stability, Security, Testing, Website, UX, Features, Documentation.</td>
+      <td>Project leads, developers</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/audits/_controller-audit.md">_controller-audit.md</a></td>
+      <td>Original controller code audit — line-level comparison of Windows vs port controllers.</td>
+      <td>Developers, port maintainers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/audits/_overlay-audit.md">_overlay-audit.md</a></td>
+      <td>Original overlay code audit — line-level comparison of Windows vs port overlays.</td>
+      <td>Developers, port maintainers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/audits/_platform-integration-audit.md">_platform-integration-audit.md</a></td>
+      <td>Original platform integration audit — analysis of OS-specific seams and integration points.</td>
+      <td>Developers, port maintainers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/audits/_shared-modules-audit.md">_shared-modules-audit.md</a></td>
+      <td>Original shared modules audit — analysis of shared engine/store code drift across ports.</td>
+      <td>Developers, port maintainers</td>
+      <td><span class="badge b-slate">Reference</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="user"><span class="sec">3</span>User-Facing Documentation</h2>
+<p>These files in <code>Internal/</code> are what end users see — the product README, install quick-start, and launchers.</p>
+
+<table>
+  <thead><tr><th>Document</th><th>What it is</th><th>Audience</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><a href="../../Internal/README.md">Internal/README.md</a></td>
+      <td>User-facing product guide — what Mumble is, how to install and use it, Smart Modes table, keyboard shortcuts, troubleshooting. For development documentation, see Core docs above.</td>
+      <td>End users</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+    <tr>
+      <td><a href="../../Internal/READ ME FIRST.txt">Internal/READ ME FIRST.txt</a></td>
+      <td>Installation quick-start guide — the first file a new user sees when they open the release zip.</td>
+      <td>End users (new)</td>
+      <td><span class="badge b-green">Current</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="mission"><span class="sec">4</span>Mission Audit Summaries <span class="badge b-slate" style="font-size:.65em">Working</span></h2>
+<p>These structured summaries in <code>mission/audit-fixes/</code> were produced during the Mumble v1.0 Finalisation mission. They are working documents — structured extractions of the full audit reports for quick reference during the mission.</p>
+
+<table>
+  <thead><tr><th>Document</th><th>What it is</th><th>Source</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/macos-audit-summary.md">macos-audit-summary.md</a></td>
+      <td>Structured summary of the macOS audit — 53 issues organised by severity.</td>
+      <td>Derived from <a href="MACOS_AUDIT.html">MACOS_AUDIT.html</a></td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/linux-audit-summary.md">linux-audit-summary.md</a></td>
+      <td>Structured summary of the Linux audit — 88 issues organised by severity.</td>
+      <td>Derived from <a href="LINUX_AUDIT.html">LINUX_AUDIT.html</a></td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/release-audit-summary.md">release-audit-summary.md</a></td>
+      <td>Structured summary of the Release Audit — ~188 items organised by category.</td>
+      <td>Derived from <a href="../Other/Mumble v1.0 Release Audit.html">Release Audit</a></td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/platform-report.md">platform-report.md</a></td>
+      <td>Platform integration analysis — cross-platform seam comparison.</td>
+      <td>Original mission analysis</td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/branch-analysis.md">branch-analysis.md</a></td>
+      <td>Branch analysis for the Mumble repository — branch history, drift, and merge strategy.</td>
+      <td>Original mission analysis</td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/convert-references.md">convert-references.md</a></td>
+      <td>Analysis of every "convert" reference across the codebase and documentation — what's accurate and what needs updating.</td>
+      <td>Original mission analysis</td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/documentation-map.md">documentation-map.md</a></td>
+      <td>Complete documentation file inventory, fragmentation analysis, and recommended restructuring plan.</td>
+      <td>Original mission analysis</td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/website-analysis.md">website-analysis.md</a></td>
+      <td>Website (Astro) project analysis — structure, dependencies, build process.</td>
+      <td>Original mission analysis</td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+    <tr>
+      <td><a href="../Other/archive/finalisation-mission-audit-fixes/test-infrastructure.md">test-infrastructure.md</a></td>
+      <td>Test infrastructure analysis — coverage gaps, test runner patterns, port test parity.</td>
+      <td>Original mission analysis</td>
+      <td><span class="badge b-amber">Mission artifact</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="archive"><span class="sec">5</span>Archive <span class="badge b-slate" style="font-size:.65em">Historical</span></h2>
+<p>These files in <code>Development Files/Other/archive/</code> are historical/archival — they are kept for reference but are not actively maintained and do not reflect the current state of the project.</p>
+
+<table>
+  <thead><tr><th>Document</th><th>What it is</th><th>Why it's archived</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>archive/ui-mockups/</code></td>
+      <td>Historical UI mockup — "6-Voice Dictation - Island Overl.html". Pre-dates the Big Shift redesign.</td>
+      <td>Replaced by current UX spec; kept as design-history reference.</td>
+    </tr>
+    <tr>
+      <td><code>archive/launch-videos/</code></td>
+      <td>HyperFrames launch video project — agent configs, narration script, and composition. Not Mumble documentation; a video production project.</td>
+      <td>Video project, not documentation; kept for rebuild reference.</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="external"><span class="sec">6</span>External &amp; Project Files</h2>
+<p>These are at the repo root or in <code>Internal/</code> and serve specific operational purposes. They aren't "documentation" in the Core sense but are listed here for completeness.</p>
+
+<table>
+  <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>LICENSE</code> (repo root)</td><td>MIT License for the Mumble project.</td></tr>
+    <tr><td><code>.gitignore</code> (repo root)</td><td>Git ignore rules for the repository.</td></tr>
+    <tr><td><code>Internal/Install Mumble.bat</code></td><td>Windows installer launcher.</td></tr>
+    <tr><td><code>Internal/Uninstall Mumble.bat</code></td><td>Windows uninstaller launcher.</td></tr>
+    <tr><td><code>Internal/Start Mumble (console).bat</code></td><td>Developer launcher — runs Mumble with console output visible.</td></tr>
+    <tr><td><code>Internal/Open Mumble.bat</code></td><td>Quick launcher for the Mumble app window.</td></tr>
+    <tr><td><code>Internal/Open Mumble (new UI preview).bat</code></td><td>Launcher for the new-UI preview mode.</td></tr>
+    <tr><td><code>Internal/Mumble (hidden).vbs</code></td><td>Hidden launcher (no console window) for autostart.</td></tr>
+    <tr><td><code>Mumble.exe</code> (repo root)</td><td>Native Windows launcher — runs the Python app, bootstraps install on first run.</td></tr>
+    <tr><td><code>Mumble.zip</code> (repo root)</td><td>Packaged distributable (currently stale post-restructure — see STATUS).</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="quick"><span class="sec">7</span>Quick Reference — Which Doc for What?</h2>
+
+<table>
+  <thead><tr><th>You want to&hellip;</th><th>Read this</th></tr></thead>
+  <tbody>
+    <tr><td>Understand the project's philosophy and rules</td><td><a href="README.html">README.html</a></td></tr>
+    <tr><td>Know the current state — bugs, priorities, roadmap</td><td><a href="STATUS.html">STATUS.html</a></td></tr>
+    <tr><td>Learn how the architecture works in detail</td><td><a href="HANDBOOK.html">HANDBOOK.html</a></td></tr>
+    <tr><td>See what was done and when</td><td><a href="LOGS.html">LOGS.html</a></td></tr>
+    <tr><td>Get the full system specification</td><td><a href="MUMBLE_MASTER_SYSTEM_DOCUMENTATION.md">MUMBLE_MASTER_SYSTEM_DOCUMENTATION.md</a></td></tr>
+    <tr><td>Understand what needs fixing on macOS</td><td><a href="MACOS_AUDIT.html">MACOS_AUDIT.html</a></td></tr>
+    <tr><td>Understand what needs fixing on Linux</td><td><a href="LINUX_AUDIT.html">LINUX_AUDIT.html</a></td></tr>
+    <tr><td>Install and use Mumble (as a user)</td><td><a href="../../Internal/README.md">Internal/README.md</a></td></tr>
+    <tr><td>See the UX/design specification</td><td><a href="../Other/design/MUMBLE_UX_SPEC.html">MUMBLE_UX_SPEC.html</a></td></tr>
+    <tr><td>Reference design tokens and brand guidelines</td><td><a href="../Other/design/MUMBLE_ADVERTISING_BRIEF.html">MUMBLE_ADVERTISING_BRIEF.html</a></td></tr>
+    <tr><td>See the full release readiness checklist</td><td><a href="../Other/Mumble v1.0 Release Audit.html">Release Audit</a></td></tr>
+  </tbody>
+</table>
+
+<div class="doc-foot">
+  <span>Mumble v1.0 — Documentation Index</span>
+  <span class="gold">INDEX</span>
+</div>
+
+</div>
+</body>
+</html>

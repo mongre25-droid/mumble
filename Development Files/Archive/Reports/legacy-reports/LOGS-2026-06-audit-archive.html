@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LOGS — 2026-06 audit archive</title>
+<link rel="stylesheet" href="../../_assets/docs.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc-head">
+  <div class="kicker">Historical Record · Archive</div>
+  <h1>2026-06-27/28 audit session log</h1>
+</header>
+
+<h3>2026-06-28 — Offline-first AI architecture overhaul mission</h3>
+
+<p>Major architectural shift: Mumble's post-processing architecture moved from deterministic/cloud-primary
+to <strong>offline-first AI</strong> with a multi-stage local pipeline. Executed a full codebase audit
+(24 findings across 8 modules), removed dead experimental components, and produced the blueprint for a
+hybrid architecture integrating best-in-class open-source components.</p>
+
+<ul>
+  <li><span class="badge b-done">✓ audit</span> <strong>Full codebase audit completed.</strong>
+    24 findings categorised: 4 removed, 4 kept-for-activation, 3 investigate, 1 refactor.
+    Identified dormant modules (<code>local_engine.py</code>, <code>foreign_boost.py</code>) built on
+    2026-06-27 but never wired into the app — infrastructure ready for activation in this new
+    architecture.</li>
+
+  <li><span class="badge b-done">✓ removed</span> <strong>Dead experimental components removed.</strong>
+    <code>model_free.py</code> (trial superseded by local LLM), <code>deepmultilingualpunctuation</code>
+    ML punctuation integration (~80 lines, ~1.3 GB unseen model, never activated — superseded by rpunct
+    at 80 MB), <code>ml_punctuation_enabled</code> dead setting reference from <code>mumble.py</code>,
+    <code>context_store</code> phantom write path from <code>clipboard.py</code> (STATUS bug #19 fixed).
+    All changes synced to macOS + Linux ports. Offline test suite re-verified (11/12 green).</li>
+
+  <li><span class="badge b-done">✓ decided</span> <strong>Local inference backend confirmed.</strong>
+    llama.cpp via llama-cpp-python evaluated as the correct GGUF inference backend. Mumble's existing
+    <code>LlamaCppBackend</code> (dormant, import-guarded, 18/18 tests) is well-designed and should be
+    KEPT and ACTIVATED — not replaced. No migration needed.</li>
+
+  <li><span class="badge b-done">✓ decided</span> <strong>Meeting recording foundation selected.</strong>
+    Ownscribe (MIT, Python, 5 days ago) for transcription + diarization pipeline; TalkTrack (MIT, Python,
+    3 days ago) for Windows WASAPI audio capture patterns. Both importable, same stack as Mumble.</li>
+
+  <li><span class="badge b-done">✓ decided</span> <strong>Default local model: Qwen3.5-4B.</strong>
+    Apache 2.0, ~2.5 GB GGUF (Q4_K_M), 20-30 tok/s CPU. Most intelligent model under 5B parameters
+    (Artificial Analysis, March 2026). Fallback: Phi-4-mini (MIT, 2.49 GB). Light option:
+    Qwen3.5-2B (Apache 2.0, 1.3 GB).</li>
+
+  <li><span class="badge b-done">✓ designed</span> <strong>3-phase custom model roadmap.</strong>
+    Phase 1: Adopt Qwen3.5-4B as-is. Phase 2: QLoRA fine-tune on transcript post-processing data
+    (1-3 months). Phase 3: Domain-specific continued pre-training + model merging (3-6 months).</li>
+
+  <li><span class="badge b-done">✓ registered</span> <strong>Permanent Licences &amp; Third-Party
+    Components register</strong> added to HANDBOOK (§11). 15 entries covering all current and planned
+    dependencies with license type, attribution requirements, redistribution obligations, commercial-use
+    restrictions, and update strategy. No GPL contamination in the critical path.</li>
+
+  <li><strong>Carried into STATUS §5</strong> (Roadmap): comprehensive 5-phase V1 roadmap covering Core
+    Local AI (V1.0, ~8–12 days) → Platform Acceleration (V1.1, ~3–5 weeks) → Meeting Intelligence (V1.2,
+    ~3–4 weeks) → Mumble Custom Model (V1.3, ~5–8 weeks) → Polish &amp; Completion (V1.4, ~4–6 weeks).
+    Total estimated: 16–23 weeks to a finished offline-first AI speech platform.</li>
+</ul>
+
+<h3>2026-06-28 — Full engineering audit (22-finder sweep + adversarial verify) + fixes</h3>
+
+<p>Ran an exhaustive production-readiness audit: 22 deep finders across every module + cross-cutting
+lenses (security, concurrency, reliability, privacy, ports, docs), each finding adversarially re-verified
+against the code. <strong>155 candidate findings → 28 adversarially-confirmed bugs</strong> (+ 11
+investigated-and-dismissed false positives, 2 enhancements). Applied the high-confidence fixes, held the
+offline suite green (<strong>19/19</strong> on Windows with <code>PYTHONUTF8=1</code>;
+<code>test_lightweight</code> still needs optional <code>psutil</code>), and synced the platform-agnostic
+fixes to both ports. Open items carried into <a href="STATUS.html">STATUS</a> §3.</p>
+
+<ul>
+  <li><span class="badge b-done">✓ HIGH security</span> <strong>IPC token auth on all three loopback
+    channels.</strong> New <code>branding.write_session_token</code>/<code>read_session_token</code>/<code>token_ok</code>
+    (constant-time, 0600 token file in <code>DATA_DIR</code>). <code>49519</code> rejects any command
+    without the token (closes <code>paste</code>/<code>grab_selection</code>/<code>record</code>/<code>hub_job</code>/<code>quit</code>
+    injection); <code>49520</code> requires it for <code>history</code>/<code>deck</code>/<code>refresh</code>;
+    <code>49517</code> now needs an exact <code>open</code>. Defeats the CSRF-style "malicious localhost page"
+    threat (a page can't read the token file). New <code>test_session_token.py</code> (12/12). <em>Windows
+    done; port controllers + port <code>webui_shell</code> are the follow-up.</em></li>
+  <li><span class="badge b-done">✓ HIGH</span> <strong>Dead OpenRouter STT default healed.</strong>
+    <code>settings.py</code> default → <code>groq/whisper-large-v3-turbo</code> + a one-time migration that
+    rewrites the persisted dead <code>openai/gpt-4o-mini-transcribe</code> id. Synced to ports.</li>
+  <li><span class="badge b-done">✓ speech-pipeline</span> <strong>Cloud STT empty result no longer silently
+    drops a dictation</strong> (falls through to local), and the <strong>live streaming worker is skipped in
+    Prompt mode</strong> (it was decoding the whole utterance only to be discarded, and polluting the
+    audio-quality chip).</li>
+  <li><span class="badge b-done">✓ Reader/TTS</span> <strong>PCM→WAV uses the server-reported sample rate</strong>
+    (<code>_pcm_rate_from_ctype</code>, parses <code>rate=</code>, bounds-checked) instead of a fixed 24 kHz,
+    and no longer double-wraps a real RIFF/WAV. Synced to ports.</li>
+  <li><span class="badge b-done">✓ reliability</span> <strong>Capture no longer silently lost</strong>
+    (<code>_ctrl_send</code> reply cap 64 KB → 1 MB); <strong>prompt history bounded</strong>
+    (<code>prompts.json</code> 5000-entry cap) and <strong>hardened against a non-numeric timestamp</strong>
+    (<code>recent()</code> TypeError); removed dead unreachable code in <code>ai.cerebras_warm</code>.</li>
+  <li><span class="badge b-done">✓ updater (partial)</span> <strong>Brick-proofing.</strong> A mandatory
+    post-extract fail-safe aborts the update unless the staged folder is a runnable install (entry point +
+    <code>.venv</code>), so a bad release can't destroy a working install; corrected the relaunch path to
+    <code>.venv\Scripts\Mumble.exe</code>; fixed prerelease semver parsing (no more silent "skip"); made
+    <code>min_supported</code> fail closed. <em>Full venv-provisioning + layout-correct payload + manifest
+    signing remain the updater blocker (un-verifiable without a live update cycle).</em></li>
+  <li><span class="badge b-done">✓ port drift repair (partial)</span> <strong>Corrected a false docs
+    claim.</strong> The "shared modules are byte-identical (hash-verified)" status was wrong —
+    <code>settings.py</code> (missing the entire cross-process anti-clobber lock!), <code>ai.py</code>,
+    <code>formatting.py</code>, <code>webui_shell.py</code> had drifted stale on both ports. Re-synced
+    <code>branding · settings · ai · prompt_memory · update · formatting</code> (+ tests) byte-for-byte to
+    macOS &amp; Linux, which also carries the previously-Windows-only settings-clobber fix, the list lead-in
+    preservation, and the above fixes to the ports.</li>
+  <li><strong>Carried into STATUS</strong> (confirmed, deferred with reasons): intra-catalogue TTS fallback
+    + error message (#11/#12), Reader persists the failed provider on fallback (#15), context_store dead
+    write path (#19), off-thread tray mutation (#8), silent CMD-server bind failure (#9), uncapped Lite
+    Prompts render (#18), mode-key cloud fallback (#4), manifest signature (#25), full updater
+    venv/layout fix (#22/#23), and the port-controller IPC-token + remaining drift follow-up.</li>
+</ul>
+
+<h3>2026-06-27 — Production-stability polish pass (Prompt 1 + Prompt 2 audit)</h3>
+
+<p>Worked a large owner brief verify-then-delta: much of it was <strong>already built</strong>, so
+the real work was confirming current state and closing genuine gaps
+(<a href="HANDBOOK.html">HANDBOOK</a> §6/§7). All Python/JS changes verified — full offline suite
+green except the documented <code>test_bindings</code> <code>mouse</code>-package env gap.</p>
+
+<ul>
+  <li><span class="badge b-done">✓ HIGH</span> <strong>Fixed the cross-process settings / API-key
+  clobber</strong> (was <a href="STATUS.html">STATUS</a> §3 — the "API key works then drops after a
+  few hours" bug). <code>settings.py</code> now does <strong>read-merge-before-write under a portable
+  cross-process lock</strong>: a save overwrites only the keys <em>that</em> process changed
+  (<code>self._dirty</code>); every other key adopts the latest on-disk value, so the controller's
+  stale blank key can never wipe one entered in the web UI. New <code>test_settings_merge.py</code>
+  (11/11) pins it.</li>
+
+  <li><strong>List mode</strong> now <strong>preserves lead-in context</strong>
+  (<code>formatting.build_list</code> + cloud <code>LIST_SYSTEM</code>/<code>cerebras_list</code>):
+  "here is my shopping list: apple, milk, bread" keeps the heading and bullets the items instead of
+  deleting the intro; a non-list is returned unmangled. Demoted List + removed Convert from the Deck
+  Smart-Mode roster (<code>app.js drawHistTools</code>); the per-row Convert router and back-compat
+  tags stay.</li>
+
+  <li><strong>Reader is now male-only</strong>: <code>ai.get_tts_voices</code> purges female-tagged
+  voices centrally; defaults moved to male (<code>OPENROUTER_TTS_DEFAULT_VOICE</code> Kore→Fenrir,
+  <code>reader_voice</code> alloy→onyx). <code>test_reader</code> updated (still ALL GREEN). Voice
+  picker centred + widened.</li>
+
+  <li><strong>Deck UX:</strong> removed the brittle full-viewport linked-copy connector SVG (it bled
+  across Stats/Reader/Settings on tab switch); replaced with a row-level hover affordance (the inline
+  Copy button goes gold + pulses). Update spinner upgraded to an elegant conic sweep.</li>
+
+  <li><strong>Window/OS:</strong> default height +5% (webui 1040→1088, Lite 740→774); fixed the
+  <strong>taskbar-restore-to-fullscreen</strong> bug on the <em>pinned</em> path
+  (<code>_show_palette_front</code> now drops a stale maximized state focus-neutrally, matching
+  <code>_bring_to_front</code>).</li>
+
+  <li><strong>Island:</strong> fixed the <strong>bottom white-line artifact</strong> — the LANCZOS
+  downscale now runs on <strong>premultiplied</strong> alpha (<code>_resize_premult</code>), so the
+  rim/bloom no longer fringes the bottom edge over light backgrounds. Island now uses the
+  <strong>work area</strong> (<code>rcWork</code>, not <code>rcMonitor</code>) + an
+  auto-hide-taskbar clearance, so it sits above the taskbar.</li>
+
+  <li><strong>Settings/UI content:</strong> removed redundant page subtitles from
+  Stats/Reader/Settings (kept on Deck); Resource Saver gained a caps <strong>NOT RECOMMENDED</strong>
+  flag + trade-off tooltip; the model-tier selector gained the exact hardware-strain warning
+  microcopy; Home now exposes the <strong>Deck / Reader / Smart Modes</strong> core modules.</li>
+
+  <li><span class="badge b-done">✓ green</span> <strong>Prompt 2 (local engine):</strong> confirmed
+  it is <strong>already built + green</strong> — <code>foreign_boost.py</code> (18/18, the
+  <code>juz→//JUZ</code> phonetic boost) and <code>local_engine.py</code> (18/18, hybrid router +
+  cloud-restriction message + GBNF/LLM seam); blueprint at
+  <code>Other/research/LOCAL_POST_PROCESSING_ENGINE.md</code>.</li>
+
+  <li><strong>Carried into STATUS</strong> (deferred, with reasons): island
+  pill→single-pill+dropdown, the island Context button + deep scraper, autostart taskbar-icon
+  placement, Deck/Island non-overlap, the System-Default-vs-Perplexity search toggle, the
+  Foreign-Mode Deck toggle, username→onboarding, provider-box collapse + Prompting-Provider removal,
+  settings-driven island quick-access, the auto-update venv gap (still open), and local-engine P2
+  wiring.</li>
+</ul>
+
+<h3>2026-06-27 — Local Post-Processing Engine (foundation shipped + blueprint)</h3>
+
+<p>Designed a state-of-the-art local post-processing engine to make the edge the default runtime for
+the primary lanes, and shipped the dependency-free foundation (full design:
+<code>Other/research/LOCAL_POST_PROCESSING_ENGINE.md</code>).</p>
+
+<h4>Shipped, offline-tested, no new dependency</h4>
+
+<div class="tiles">
+  <div class="tile"><div class="n">18/18</div><div class="l">foreign_boost.py tests</div></div>
+  <div class="tile"><div class="n">17/17</div><div class="l">local_engine.py tests</div></div>
+  <div class="tile"><div class="n">0</div><div class="l">new dependencies</div></div>
+</div>
+
+<ul>
+  <li><span class="badge b-done">✓ 18/18</span> <code>Internal/foreign_boost.py</code> (+
+  <code>test_foreign_boost.py</code>) — the LOCAL Foreign-Mode phonetic token-boosting engine.
+  Multi-language packs (Arabic reuses <code>islamic_terms</code> verbatim; Spanish/French starters),
+  a cross-lingual phonetic signature, and a three-signal decision gate (lexicon tier × gateway
+  context × acoustic confidence) that auto-applies high-confidence boosts on-device as
+  <code>//Juz</code> and offers the rest as <code>heard//Juz</code>. Resolves the
+  <code>juz→"just"</code> case offline; the common-English guard keeps "I just left" untouched.</li>
+
+  <li><span class="badge b-done">✓ 17/17</span> <code>Internal/local_engine.py</code> (+
+  <code>test_local_engine.py</code>) — the hybrid local/cloud router (<code>LANE_POLICY</code> +
+  <code>classify_task</code> + <code>route</code>), the verbatim "This specific preset requires
+  cloud acceleration. Please link a cloud API key." warning with a Cerebras (free) hint, a pluggable
+  local-LLM backend seam (<code>NullBackend</code> default, import-guarded
+  <code>LlamaCppBackend</code>), production GBNF grammars (list/json/email), and context-injected
+  style sheets. Imports/tests with no llama-cpp.</li>
+</ul>
+
+<ul>
+  <li><strong>Grounding:</strong> confirmed much of the brief is already built —
+  <code>branding.MODEL_BY_TIER</code> × <code>english_only</code> + <code>mumble._try_load</code>'s
+  release-before-swap already give monolingual/multilingual dynamic loading with a single-resident
+  guarantee; <code>formatting.py</code> is already a strong rule engine. The blueprint targets the
+  real gaps: a discrete router, a <em>local</em> foreign decision, GBNF/context injection, and the
+  explicit onboarding question.</li>
+
+  <li><strong>Carried into STATUS §5</strong> (Local Post-Processing Engine): P2 wiring (no deps),
+  the <code>primary_language</code> swap, and the <strong>owner-gated</strong> P3 local-LLM lane
+  (re-adding <code>llama-cpp-python</code> + a GGUF model reverses the v3.17.0 local-LLM removal —
+  explicit owner call required).</li>
+</ul>
+
+<h3>2026-06-27 — Core-docs verification pass (docs reconciled to code)</h3>
+
+<p>Fact-checked every claim in the four core docs against the actual <code>Internal/</code> source
+(four parallel code-grounded audits). Corrected the docs and recorded what was found already
+fixed:</p>
+
+<ul>
+  <li><span class="badge b-done">✓ in sync</span> <strong>Ports are in sync, not drifting.</strong>
+  All shared engine/store modules and webui files are <strong>byte-identical</strong> across
+  Windows / macOS / Linux (hash-verified); both ports carry 18 test files. The Big Shift assets +
+  Reader fixes are present in both. Retired the old "port drift (9/14 modules differ)" and "Linux
+  test-suite gap" tech-debt items, and the "port the Big Shift/Deck/UX pass to Mac+Linux" roadmap
+  items.</li>
+
+  <li><strong>Reader bugs already fixed (verified in code):</strong> <code>audio.onerror</code> now
+  stops after 3 consecutive failures with a toast; the play/pause/jump path now has a generation
+  guard so two <code>&lt;audio&gt;</code> can't overlap; the dead default TTS model is replaced
+  (<code>google/gemini-3.1-flash-tts-preview</code>) and self-heals any stale saved id; a one-time
+  "cloud transcription failed — using on-device" toast now fires (STT no longer silent).</li>
+
+  <li><strong>macOS/Linux port bugs already fixed (verified):</strong> mac
+  <code>_focused_editable</code> now does a real AXUIElement probe; mac <code>_boot</code> checks
+  <code>AXIsProcessTrusted()</code>; mac <code>autostart</code> is a safe no-op on non-Windows;
+  Linux <code>copy_image</code> detects Wayland via <code>bindings._session_type()</code>; Linux
+  added a pyperclip backend probe + paste guard.</li>
+
+  <li><strong>Stale doc claims corrected:</strong> <code>app_window.py</code> is a LIVE Tkinter
+  fallback (not vestigial); <code>bindings.py</code> funnels input <em>listening</em> but
+  <code>mumble.py</code> drives <code>keyboard</code> for paste/copy output; second-launch exits via
+  <code>sys.exit(0)</code> (not <code>os._exit(0)</code>); <code>Api.run_deck_job</code> does paste
+  at the cursor, the Home record button has a working <code>start_recording</code> verb, and the
+  History Pre/Post raw view is a working inline toggle.</li>
+
+  <li><strong>New findings carried into STATUS:</strong> the macOS/Linux ports store data in
+  <code>~/Mumble</code> rather than the OS-native dir (verbatim Windows <code>branding.py</code>);
+  the idle clipboard poll is still Windows-only-skip (mac always-polls, Linux text-poll forks every
+  0.7s); the port controllers still call the legacy mode functions, so the Big Shift
+  <code>_process</code> flow on the ports needs confirming. Security items (unauthenticated command
+  port, settings clobber) and the auto-update venv gap were re-confirmed still open.</li>
+</ul>
+
+
+
+</div>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mumble — Open-source computer-control research</title>
+  <style>
+    :root { --bg:#0e0d0b; --panel:#171511; --panel2:#201d17; --ink:#f4edda; --muted:#b9af9b; --gold:#e5bd58; --line:#443b2a; --green:#72d19a; --blue:#82b9ff; --red:#ff9a8d; }
+    * { box-sizing:border-box } body { margin:0; background:linear-gradient(145deg,#0d0c0a,#16120a 60%,#0d0c0a); color:var(--ink); font:16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+    main { max-width:1180px; margin:auto; padding:46px 24px 80px; }
+    h1,h2,h3 { line-height:1.16; margin:0 0 .6rem; } h1 { font-size:clamp(2.25rem,6vw,4.4rem); max-width:1000px; letter-spacing:-.045em; } h2 { font-size:1.7rem; margin-top:3rem; } h3 { font-size:1.08rem; } p { margin:.55rem 0 1rem; } a { color:#f0ca67; text-underline-offset:3px; } .eyebrow { color:var(--gold); font-size:.82rem; font-weight:750; letter-spacing:.14em; text-transform:uppercase; } .lede { font-size:1.18rem; max-width:850px; color:#d5cbb8; }
+    .meta { color:var(--muted); font-size:.9rem; } .notice { border:1px solid #685127; border-left:5px solid var(--gold); border-radius:10px; padding:16px 18px; background:#211b10; margin:1.4rem 0; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(255px,1fr)); gap:14px; } .card, .row { border:1px solid var(--line); border-radius:13px; background:linear-gradient(145deg,var(--panel2),var(--panel)); padding:18px; } .card p:last-child { margin-bottom:0; }
+    .best { border-color:#977533; box-shadow:0 0 0 1px #4d3a16 inset; } .tag { display:inline-block; padding:3px 8px; margin:0 5px 7px 0; border-radius:999px; background:#302918; color:#ebce7c; font-size:.76rem; font-weight:700; } .tag.good { background:#153424; color:#98e5b4; } .tag.warn { background:#44251e; color:#ffb1a6; }
+    table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; font-size:.93rem; } th,td { padding:12px; vertical-align:top; text-align:left; border-bottom:1px solid var(--line); } th { background:#272117; color:#f1ce77; } tr:last-child td { border-bottom:0; } .score { font-weight:800; color:var(--gold); white-space:nowrap; } code { background:#2b251a; padding:2px 5px; border-radius:5px; color:#ffe59d; font-size:.9em; }
+    pre { overflow:auto; background:#0a0907; color:#e8dfca; border:1px solid #39301f; padding:18px; border-radius:12px; font-size:.87rem; } ul { padding-left:1.2rem; } li { margin:.36rem 0; } .small { color:var(--muted); font-size:.9rem; } .source-list li { margin:.7rem 0; } .two { display:grid; grid-template-columns:1fr 1fr; gap:18px; } @media(max-width:720px){ main{padding:30px 16px 54px}.two{grid-template-columns:1fr}table{display:block;overflow-x:auto}th,td{min-width:150px} }
+  </style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Research report · 12 July 2026</p>
+  <h1>Open-source computer control for Mumble</h1>
+  <p class="lede">A deep review of open-source desktop agents, browser agents, Windows automation libraries, and voice-command building blocks—with a recommendation tailored to Mumble’s existing Python, Windows-first, privacy-first architecture.</p>
+  <p class="meta">Research method: Firecrawl search/scrape across primary GitHub repositories, GitHub topics and discussions, Reddit discovery threads, and X posts; plus browser verification of the Microsoft UFO repository. Popularity/licence figures below are a point-in-time GitHub API snapshot, not a quality guarantee.</p>
+
+  <section class="notice">
+    <strong>The short answer:</strong> do not embed one broad “autonomous desktop agent” as Mumble’s only control mechanism. Build a small, permissioned <strong>command router</strong> that uses <a href="https://github.com/pywinauto/pywinauto">pywinauto</a> for Windows applications and <a href="https://github.com/microsoft/playwright">Playwright</a> for browser tasks. Add <a href="https://github.com/browser-use/browser-use">Browser Use</a> for open-ended web tasks and make <a href="https://github.com/bytedance/UI-TARS-desktop">UI-TARS Desktop</a> an explicit, visible fallback for unfamiliar UIs. This gives Mumble speed and reliability on routine commands, without pretending that visual AI control is infallible.
+  </section>
+
+  <h2>What “open anything and do anything” really requires</h2>
+  <div class="grid">
+    <article class="card"><h3>1. Intent and policy</h3><p>Turn speech into a structured request, decide whether it is allowed, and ask before destructive or external actions. This belongs in Mumble—not in a third-party agent.</p></article>
+    <article class="card"><h3>2. Direct actions first</h3><p>Launching an app, opening a URL, searching Brave, changing a known setting, or filling a known form should use a deterministic API or automation library. It is faster, auditable, and far less brittle than screen clicking.</p></article>
+    <article class="card"><h3>3. Visual fallback</h3><p>A GUI agent that sees screenshots and clicks is valuable for unknown apps and dynamic interfaces. It is also inherently probabilistic, can misread screens, and needs an obvious stop control.</p></article>
+  </div>
+
+  <h2>Best fit for Mumble</h2>
+  <div class="grid">
+    <article class="card best"><p><span class="tag good">Recommended foundation</span><span class="tag">BSD-3-Clause</span></p><h3>pywinauto + a Mumble command router</h3><p>Best native Windows foundation. Mumble is already Python and runs as a background Windows app, so pywinauto can launch known applications and target their UI Automation/Win32 controls without adding a Node or Electron runtime. Use it for reliable, approved workflows—not as a visual general-purpose agent.</p><p><strong>Use for:</strong> app launch, focusing windows, menus, forms, desktop settings, and an explicit “open application” tool.</p><p><a href="https://github.com/pywinauto/pywinauto">Repository</a></p></article>
+    <article class="card best"><p><span class="tag good">Recommended browser layer</span><span class="tag">Apache-2.0</span></p><h3>Playwright, then Browser Use</h3><p>Use Playwright for predictable browser commands; it gives structured browser control rather than coordinates. Browser Use is the Python/MIT agent layer for requests that are genuinely open-ended, such as “find the latest issue and summarise it.” Brave is Chromium-based, so it is practical to launch it with a chosen profile or remote-debugging connection.</p><p><strong>Use for:</strong> “open Brave and search…”, website navigation, forms, extraction, and web-task fallback.</p><p><a href="https://github.com/microsoft/playwright">Playwright</a> · <a href="https://github.com/browser-use/browser-use">Browser Use</a></p></article>
+    <article class="card best"><p><span class="tag good">Best visual fallback / prototype</span><span class="tag">Apache-2.0</span></p><h3>UI-TARS Desktop</h3><p>Most directly aligned with the request: a local, multimodal desktop agent stack that observes a screen and executes mouse/keyboard actions. It is cross-platform and actively maintained. Treat it as a separately launched, opt-in “visual control” capability—not a silent background authority.</p><p><strong>Use for:</strong> unfamiliar desktop UIs where no accessibility/API route exists.</p><p><a href="https://github.com/bytedance/UI-TARS-desktop">Repository</a> · <a href="https://x.com/BuildFastWithAI/status/2053831501511590196">X launch walkthrough</a></p></article>
+  </div>
+
+  <h2>Recommended Mumble architecture</h2>
+  <pre>spoken command
+  → existing Mumble STT / LLM intent extraction
+  → CommandPlan { action, target, arguments, risk, confirmation_required }
+  → policy + allow-list + preview
+  ├─ direct app/URL action       → Windows launcher / pywinauto
+  ├─ structured web task         → Playwright
+  ├─ open-ended browser request  → Browser Use (isolated browser profile)
+  ├─ saved repeated routine      → OpenAdapt workflow
+  └─ unfamiliar screen           → UI-TARS Desktop, visible + opt-in
+  → activity log + result spoken/displayed by Mumble</pre>
+  <p>For <em>“Open Brave and search open-source GUI agents”</em>, the normal route should not invoke an AI GUI agent at all: resolve the approved Brave executable, percent-encode the query, launch <code>https://search.brave.com/search?q=…</code>, then report success. The visual fallback is for a task such as “configure an obscure setting in this app,” after Mumble has shown the plan and received confirmation.</p>
+
+  <div class="two">
+    <article class="row"><h3>Permission model to ship before autonomy</h3><ul><li><strong>Low risk:</strong> launch/focus approved apps; open a search URL.</li><li><strong>Medium risk:</strong> type into a form; change a local setting; download a file—show a plan and allow one-task approval.</li><li><strong>High risk:</strong> submit, purchase, delete, send messages, change credentials, use a password manager, or run shell commands—require a fresh confirmation at the final action.</li><li><strong>Always:</strong> an emergency global stop hotkey, an on-screen “agent is controlling…” indicator, a per-step activity log, timeouts, and a separate non-admin agent process.</li></ul></article>
+    <article class="row"><h3>Why the router matters</h3><ul><li>Most useful commands need no model after the intent is known.</li><li>Direct tools can report exact success/failure; screenshot agents often cannot.</li><li>An allow-list prevents a webpage or prompt injection from becoming arbitrary desktop authority.</li><li>It keeps Mumble’s privacy promise: local commands and local logs by default, isolated browser profiles for web agents.</li></ul></article>
+  </div>
+
+  <h2>Landscape: desktop and computer-use solutions</h2>
+  <table>
+    <thead><tr><th>Project</th><th>What it is</th><th>Licence / snapshot</th><th>Fit for Mumble</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/bytedance/UI-TARS-desktop">UI-TARS Desktop</a></td><td>Open-source multimodal desktop-agent stack using screen understanding and mouse/keyboard control.</td><td>Apache-2.0 · TypeScript · ~37.9k stars</td><td><span class="score">High, as fallback</span><br>Closest all-in-one visual control option. Larger runtime and model/inference burden; retain explicit user control.</td></tr>
+      <tr><td><a href="https://github.com/microsoft/UFO">Microsoft UFO</a></td><td>Windows-focused GUI-agent research/project; current repository includes UFO² Windows desktop agent and UFO³ multi-device “Galaxy” work.</td><td>MIT · Python · ~9.3k</td><td><span class="score">High research value</span><br>Best source to study Windows agent architecture and app-agent separation. More framework/research integration work than pywinauto.</td></tr>
+      <tr><td><a href="https://github.com/Simular-AI/Agent-S">Agent S</a></td><td>Open agentic framework intended to use computers like a human.</td><td>Apache-2.0 · Python · ~12.0k</td><td><span class="score">Medium</span><br>Worth evaluating as a general GUI-agent baseline, but test it against Mumble’s real command set before committing.</td></tr>
+      <tr><td><a href="https://github.com/OpenAdaptAI/OpenAdapt">OpenAdapt</a></td><td>Records a workflow and compiles it into local, self-healing, audit-ready desktop automation.</td><td>MIT · Python · ~1.6k</td><td><span class="score">High for routines</span><br>Excellent complement: teach Mumble a repeatable workflow once, then run it deterministically rather than asking an LLM to rediscover it.</td></tr>
+      <tr><td><a href="https://github.com/trycua/cua">CUA</a></td><td>Open infrastructure, sandboxes, SDKs and benchmarks for full-desktop computer-use agents across macOS, Linux and Windows.</td><td>MIT · ~19.6k</td><td><span class="score">Medium, later</span><br>Use when Mumble needs isolated execution or agent evaluation—not for the first in-app command implementation.</td></tr>
+      <tr><td><a href="https://github.com/openinterpreter/openinterpreter">Open Interpreter</a></td><td>Current project is a coding-agent harness with computer-use QA skills for browser and native apps.</td><td>Apache-2.0 · Rust · ~64.3k</td><td><span class="score">Medium-low</span><br>Interesting reference for permission/sandbox ideas, but it is not the cleanest embedded Windows-control library for Mumble.</td></tr>
+      <tr><td><a href="https://github.com/pywinauto/pywinauto">pywinauto</a></td><td>Windows GUI Automation via UI Automation and Win32 backends.</td><td>BSD-3-Clause · Python · ~6.1k</td><td><span class="score">Highest foundation fit</span><br>Small, Python-native, direct control for known Windows apps. Pair with a Mumble-owned intent/policy layer.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Landscape: browser solutions</h2>
+  <table>
+    <thead><tr><th>Project</th><th>Strength</th><th>Licence / snapshot</th><th>Recommendation</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/microsoft/playwright">Playwright</a></td><td>Structured, reliable browser automation across Chromium, Firefox and WebKit.</td><td>Apache-2.0 · ~92.7k</td><td><strong>Use first</strong> for known actions and Brave/Chromium automation.</td></tr>
+      <tr><td><a href="https://github.com/browser-use/browser-use">Browser Use</a></td><td>Python agent framework that makes websites accessible to AI agents.</td><td>MIT · Python · ~104.3k</td><td><strong>Use second</strong> for natural-language web tasks that cannot be represented as a fixed tool.</td></tr>
+      <tr><td><a href="https://github.com/browserbase/stagehand">Stagehand</a></td><td>TypeScript SDK for browser agents, combining deterministic browser actions with AI-driven operations.</td><td>MIT · TypeScript · ~23.5k</td><td>Strong alternative if the feature moves into a JS/Node service; less natural than Browser Use for Mumble’s current Python core.</td></tr>
+      <tr><td><a href="https://github.com/lavague-ai/LaVague">LaVague</a></td><td>Large Action Model framework for AI web agents.</td><td>Apache-2.0 · Python · ~6.4k</td><td>Good research/evaluation alternative; not a clear reason to displace Browser Use for the first implementation.</td></tr>
+      <tr><td><a href="https://github.com/Skyvern-AI/skyvern">Skyvern</a></td><td>AI-driven browser workflow automation.</td><td>AGPL-3.0 · Python · ~22.2k</td><td><span class="tag warn">Avoid embedding by default</span><br>Technically capable, but AGPL is a material licence decision for an MIT-distributed Mumble app. Obtain legal review or use a separate deployment only.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Useful additions for Mumble beyond computer control</h2>
+  <div class="grid">
+    <article class="card"><p><span class="tag">Apache-2.0</span></p><h3><a href="https://github.com/dscripka/openWakeWord">openWakeWord</a></h3><p>Local wake-word/phrase detection. This can make command mode hands-free without continuously sending audio away. Start with push-to-talk as the safer default; wake words should visibly indicate when Mumble is listening.</p></article>
+    <article class="card"><p><span class="tag">Apache-2.0</span><span class="tag">MIT</span></p><h3><a href="https://github.com/alphacep/vosk-api">Vosk</a> and <a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a></h3><p>Offline speech options. Mumble already ships faster-whisper, so neither is required for general dictation. Vosk may be useful for a tiny, fixed command grammar; whisper.cpp is useful only if a native/C++ distribution route becomes desirable.</p></article>
+    <article class="card"><h3>Saved voice routines</h3><p>Combine Mumble intent extraction with OpenAdapt recordings: “run my expense-report routine.” This is a much better UX than repeatedly letting a visual agent re-plan a known workflow.</p></article>
+    <article class="card"><h3>Automation history and replay</h3><p>Create a new Deck source type for command plans and results: original words, parsed intent, tools invoked, screenshots/steps (when consented), result, and a one-click “run again.” This is the product feature I would prioritise after basic control.</p></article>
+  </div>
+
+  <h2>Practical rollout</h2>
+  <ol>
+    <li><strong>Phase 1 — safe deterministic commands:</strong> add a local command mode with a small JSON schema. Ship only app launch, Brave search/open URL, window focus, and clipboard/search actions. Implement allow-lists and confirmation UI first.</li>
+    <li><strong>Phase 2 — browser tasks:</strong> run Playwright in an isolated profile. Add Browser Use behind an “AI web task” toggle, domain restrictions, visible progress, and final-step confirmation for submitting/sending.</li>
+    <li><strong>Phase 3 — Windows controls and routines:</strong> add pywinauto skills for the apps Mumble users actually ask for; add record-and-replay/saved routines using OpenAdapt concepts.</li>
+    <li><strong>Phase 4 — visual fallback:</strong> evaluate UI-TARS Desktop in a disposable Windows profile/VM. Only graduate it if it succeeds on a Mumble-owned evaluation set and can be stopped immediately.</li>
+  </ol>
+  <p class="notice"><strong>Licensing conclusion:</strong> the recommended core—pywinauto (BSD-3-Clause), Playwright (Apache-2.0), Browser Use (MIT), UI-TARS Desktop (Apache-2.0), OpenAdapt (MIT), and openWakeWord (Apache-2.0)—is compatible in principle with Mumble’s MIT distribution, subject to retaining notices and verifying each dependency/model’s current terms at the version you ship. Do not treat a repository licence as automatically covering hosted models, checkpoints, or bundled weights.</p>
+
+  <h2>Community signal and caveats</h2>
+  <p>Community search surfaced substantial interest in local desktop agents, especially UI-TARS. An X walkthrough describes natural-language desktop actions and local processing, while a discussion reply cautions that a 7B local model may be insufficient for complex computer-control tasks. Treat both as anecdotal—not benchmark proof. Reddit searches surfaced multiple active “control my computer” and open-agent discussions, but Reddit’s current page/API access did not return stable thread text for reliable quotation; this report therefore does not rely on Reddit comments for technical claims.</p>
+  <p>The important product conclusion is unchanged: visual agents are compelling, but a Mumble user asking for an ordinary task should get a direct, reversible tool action whenever one exists.</p>
+
+  <h2>Sources</h2>
+  <ul class="source-list">
+    <li>Primary desktop projects: <a href="https://github.com/bytedance/UI-TARS-desktop">UI-TARS Desktop</a>, <a href="https://github.com/microsoft/UFO">Microsoft UFO</a>, <a href="https://github.com/Simular-AI/Agent-S">Agent S</a>, <a href="https://github.com/OpenAdaptAI/OpenAdapt">OpenAdapt</a>, <a href="https://github.com/trycua/cua">CUA</a>, and <a href="https://github.com/pywinauto/pywinauto">pywinauto</a>.</li>
+    <li>Primary browser projects: <a href="https://github.com/microsoft/playwright">Playwright</a>, <a href="https://github.com/browser-use/browser-use">Browser Use</a>, <a href="https://github.com/browserbase/stagehand">Stagehand</a>, <a href="https://github.com/lavague-ai/LaVague">LaVague</a>, and <a href="https://github.com/Skyvern-AI/skyvern">Skyvern</a>.</li>
+    <li>Voice and local-runtime references: <a href="https://github.com/dscripka/openWakeWord">openWakeWord</a>, <a href="https://github.com/alphacep/vosk-api">Vosk</a>, <a href="https://github.com/ggml-org/whisper.cpp">whisper.cpp</a>, and <a href="https://github.com/openinterpreter/openinterpreter">Open Interpreter</a>.</li>
+    <li>Community discovery: <a href="https://x.com/BuildFastWithAI/status/2053831501511590196">UI-TARS Desktop X walkthrough</a>, <a href="https://x.com/GenAI_is_real/status/2019267544113373334">local-model latency/capability discussion on X</a>, <a href="https://www.reddit.com/r/LocalLLaMA/comments/1pwfsj3/looking_for_ai_tools_to_control_my_computer/">Reddit: tools to control a computer</a>, and <a href="https://www.reddit.com/r/LocalLLaMA/comments/1ie7u38/forget_openai_operator_heres_an_open_source_ai/">Reddit: open-source computer-use discussion</a>.</li>
+    <li>Discovery indexes used to broaden the GitHub pass: <a href="https://github.com/showlab/awesome-gui-agent">Awesome GUI Agent</a> and <a href="https://github.com/ZJU-REAL/Awesome-GUI-Agents">Awesome GUI Agents</a>.</li>
+  </ul>
+  <p class="small">This is product/technical research, not legal advice. Re-check licences, model-weight terms, security policies, and project activity immediately before selecting a dependency.</p>
+</main>
+</body>
+</html>

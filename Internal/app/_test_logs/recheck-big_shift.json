@@ -1,0 +1,15 @@
+{
+  "mode": "offline",
+  "total": 1,
+  "passed": 1,
+  "failed": 0,
+  "seconds": 0.2,
+  "results": [
+    {
+      "test": "test_big_shift.py",
+      "status": "passed",
+      "returncode": 0,
+      "seconds": 0.2
+    }
+  ]
+}

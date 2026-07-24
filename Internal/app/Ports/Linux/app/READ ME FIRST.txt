@@ -1,0 +1,52 @@
+============================================================
+  MUMBLE — local-first voice-to-text for Linux
+  Talk, and it types in the app you are using.
+============================================================
+
+INSTALL
+
+  Mumble's locked runtime dependencies require Python 3.12 or newer. The
+  installer checks this before creating its virtual environment and prints a
+  clear error if the distro's default Python is too old.
+
+  1) Move the whole Linux Mumble folder somewhere permanent.
+  2) Open a terminal in that folder and run:
+
+       chmod +x install.sh
+       ./install.sh
+
+  The installer creates an isolated Python environment, installs the required
+  GTK/audio packages, downloads the default speech model, adds Mumble to your
+  application menu, and enables login autostart. Run it again to repair or
+  update an existing installation.
+
+HOW TO USE IT
+
+  - Tap Ctrl + Super, speak, then tap Ctrl + Super again.
+  - Ctrl + Alt + V pastes the latest transcript.
+  - Ctrl + Alt + D opens History and the Deck.
+  - Ctrl + Alt + S searches selected text, or starts voice search.
+  - Choose Prompt, Email, or Reply from the island mode deck when needed.
+
+LINUX NOTES
+
+  Mumble supports X11 and Wayland. Global hotkeys need permission to read the
+  input devices. If the app warns about permissions, run:
+
+       sudo usermod -aG input "$USER"
+
+  Then log out and back in. Wayland paste support uses wl-clipboard; X11 uses
+  xclip/xdotool. The installer offers both sets of helpers.
+
+PRIVACY
+
+  Local transcription stays on this computer. Optional Cloud transcription and
+  AI features send the disclosed audio or text only to the provider selected in
+  Settings.
+
+REMOVE
+
+  Run ./uninstall.sh (or choose “Uninstall Mumble” from the application menu),
+  then delete the Mumble folder. User data is kept by default. To remove it too:
+
+       ./uninstall.sh --purge-data

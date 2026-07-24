@@ -1,0 +1,44 @@
+name: Planning map
+description: Create or update the durable map for a multi-session outcome.
+title: "plan: "
+labels: ["kind: planning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use one planning map for a substantial outcome. Link every decision and implementation issue below so a later session can safely continue the work.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What should be observably true when this plan is complete?
+      placeholder: A short, testable outcome in plain English.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and evidence
+      description: Link the relevant Core records, audits, code areas, previous issues, or test evidence.
+    validations:
+      required: true
+  - type: textarea
+    id: slices
+    attributes:
+      label: Work slices
+      description: "List bounded implementation issues as GitHub task-list items, for example: - [ ] #123 Improve clean-run model test."
+    validations:
+      required: true
+  - type: textarea
+    id: dependency_map
+    attributes:
+      label: Blocking relationships
+      description: State what is blocked by what, using issue numbers. Add the same relationships with GitHub's issue relationship control after creating the issue.
+      placeholder: "#124 is blocked by #123 because ..."
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Completion evidence
+      description: "Say exactly what will demonstrate completion: tests, review, a hardware check, a signed release, or another concrete result."
+    validations:
+      required: true

@@ -1,0 +1,50 @@
+---
+import Logo from './Logo.astro';
+import { release } from '../data/release';
+---
+
+<header class="site-header" data-site-header>
+  <div class="container nav-shell">
+    <a class="brand-link" href="/" aria-label="Mumble home">
+      <Logo />
+    </a>
+
+    <nav class="desktop-nav" aria-label="Primary navigation">
+      <a href="/#product">Product</a>
+      <a href="/#workflows">Workflows</a>
+      <a href="/#privacy">Privacy</a>
+      <a href="/#faq">FAQ</a>
+    </nav>
+
+    <a class="button button-small button-gold nav-download" href={release.downloadPath} download>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" />
+      </svg>
+      Download
+    </a>
+
+    <button
+      class="menu-toggle"
+      type="button"
+      aria-expanded="false"
+      aria-controls="mobile-nav"
+      aria-label="Open menu"
+      data-menu-toggle
+    >
+      <span></span><span></span>
+    </button>
+  </div>
+
+  <div class="mobile-nav" id="mobile-nav" aria-hidden="true" data-mobile-nav>
+    <nav aria-label="Mobile navigation">
+      <a href="/#product"><span>01</span>Product</a>
+      <a href="/#workflows"><span>02</span>Workflows</a>
+      <a href="/#privacy"><span>03</span>Privacy</a>
+      <a href="/#faq"><span>04</span>FAQ</a>
+    </nav>
+    <a class="button button-gold" href={release.downloadPath} download>
+      Download Mumble for Windows
+    </a>
+    <p>v{release.version} · Free · No account required</p>
+  </div>
+</header>
