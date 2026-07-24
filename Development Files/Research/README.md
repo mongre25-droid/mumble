@@ -11,5 +11,6 @@ The active research kept here covers:
 - the Mumble Find launcher lifecycle, indexed providers, rendering budget, native dragging, and platform-parity gates in `mumble-launcher-architecture-research.md`;
 - continuous-integration failure evidence and the Windows, macOS, and Linux feature-parity matrix in `mumble-ci-cross-platform-parity-research.md`;
 - processing-mode hydration, immutable routing, local-versus-cloud truth, and benchmark gates in `mumble-processing-mode-routing-investigation.md`;
+- three centred interface directions, rendered evidence, and the selected Focus Stage synthesis in `mumble-centred-experience-prototype-report.md` and `prototypes/mumble-centred-experience/`;
 - meeting-capture comparisons; and
 - the Mumble development workflow.
