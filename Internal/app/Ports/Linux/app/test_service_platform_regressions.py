@@ -524,8 +524,9 @@ def test_meeting_safety():
             with wave.open(inside, "wb") as wf:
                 wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(16000)
                 wf.writeframes(b"\x00\x00")
+            resolved = meeting._resolve_audio_path("meeting_safe.wav")
             check("meeting audio resolution accepts contained files",
-                  meeting._resolve_audio_path("meeting_safe.wav") == inside)
+                  bool(resolved) and os.path.samefile(resolved, inside))
             check("meeting audio resolution blocks traversal",
                   meeting._resolve_audio_path("../meeting_safe.wav") is None)
 

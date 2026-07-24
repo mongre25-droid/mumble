@@ -140,6 +140,8 @@ try:
 
     script_path = os.path.join(_test_parent, "apply_update.command")
     check("writes apply_update.command", os.path.exists(script_path))
+    check("darwin branch does not write a Windows batch script",
+          not os.path.exists(os.path.join(_test_parent, "apply_update.bat")))
 
     if os.path.exists(script_path):
         with open(script_path) as f:
@@ -161,12 +163,6 @@ check("check_for_update is callable", callable(update.check_for_update))
 check("download_and_install is callable", callable(update.download_and_install))
 check("rollback is callable", callable(update.rollback))
 check("start_auto_check is callable", callable(update.start_auto_check))
-
-# Verify NO Windows-isms in update.py
-check("no .bat references in write_swap for darwin",
-      ".bat" not in str(update._write_swap_script.__code__.co_consts).lower()
-      or sys.platform != "darwin")
-
 
 # ============================================ os.startfile() replacement
 print("\n== os.startfile() → subprocess.run(['open', path]) ==")

@@ -3,8 +3,10 @@
 import io
 import json
 import os
+from pathlib import Path
 import stat
 import sys
+import tempfile
 import threading
 
 import pytest
@@ -16,6 +18,16 @@ from ai.transport import (
     read_response_limited,
 )
 from prompt_history import PromptHistory
+
+
+@pytest.fixture
+def short_linux_runtime():
+    """Private runtime root short enough for Linux's fixed AF_UNIX limit."""
+    with tempfile.TemporaryDirectory(
+            prefix="mumble-ipc-", dir="/tmp") as root:
+        runtime = Path(root)
+        os.chmod(runtime, 0o700)
+        yield runtime
 
 
 class _Response(io.BytesIO):
@@ -122,10 +134,11 @@ def test_pywebview_host_waits_for_bridge_instead_of_mock_boot():
 @pytest.mark.skipif(not sys.platform.startswith("linux"),
                     reason="requires Linux AF_UNIX peer credentials")
 def test_linux_ipc_is_private_same_user_and_live_socket_is_preserved(
-        tmp_path, monkeypatch):
-    runtime = tmp_path / "runtime"
-    runtime.mkdir(mode=0o700)
-    os.chmod(runtime, 0o700)
+        tmp_path, monkeypatch, short_linux_runtime):
+    # Linux AF_UNIX addresses have a fixed ~104-byte limit. Use a deliberately
+    # short private runtime root while retaining the long pytest data path, just
+    # as a real desktop session supplies /run/user/<uid>.
+    runtime = short_linux_runtime
     data = tmp_path / "data"
     data.mkdir(mode=0o700)
     os.chmod(data, 0o700)
@@ -159,12 +172,11 @@ def test_linux_ipc_is_private_same_user_and_live_socket_is_preserved(
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"),
                     reason="requires Linux AF_UNIX sockets")
-def test_linux_ipc_reclaims_refused_stale_socket(tmp_path, monkeypatch):
+def test_linux_ipc_reclaims_refused_stale_socket(
+        tmp_path, monkeypatch, short_linux_runtime):
     import socket
 
-    runtime = tmp_path / "runtime"
-    runtime.mkdir(mode=0o700)
-    os.chmod(runtime, 0o700)
+    runtime = short_linux_runtime
     data = tmp_path / "data"
     data.mkdir(mode=0o700)
     os.chmod(data, 0o700)

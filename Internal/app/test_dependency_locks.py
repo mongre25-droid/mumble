@@ -9,6 +9,11 @@ RUNTIME_REQUIREMENTS = [
     APP / "Ports" / "macOS" / "app" / "requirements.txt",
     APP / "Ports" / "Linux" / "app" / "requirements.txt",
 ]
+DEV_REQUIREMENTS = [
+    APP / "requirements-dev.txt",
+    APP / "Ports" / "macOS" / "app" / "requirements-dev.txt",
+    APP / "Ports" / "Linux" / "app" / "requirements-dev.txt",
+]
 
 
 def _pin(path, package):
@@ -23,3 +28,9 @@ def test_pillow_security_pin_is_consistent_across_platforms():
     pins = [_pin(path, "Pillow") for path in RUNTIME_REQUIREMENTS]
 
     assert pins == ["12.3.0", "12.3.0", "12.3.0"]
+
+
+def test_process_measurement_dependency_is_consistent_across_test_platforms():
+    pins = [_pin(path, "psutil") for path in DEV_REQUIREMENTS]
+
+    assert pins == ["7.2.2", "7.2.2", "7.2.2"]

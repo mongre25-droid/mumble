@@ -60,6 +60,7 @@ npm audit --audit-level=moderate</code></pre>
 
 <h2><span class="sec">5</span>Continuous integration evidence</h2>
 <p>The GitHub workflow runs security audits, application tests, website checks, platform packaging, and the Linux install lifecycle as independent jobs. Test JSON and JUnit are diagnostic artifacts and may be uploaded after failure. Package and website candidates are uploaded only by successful jobs. A candidate becomes <em>promotable</em> only in a manually started workflow where every required evidence job succeeds.</p>
+<p>Linux tests use a system-site-packages virtual environment because GTK and Ayatana AppIndicator are operating-system libraries installed through Ubuntu, while Python-only test dependencies such as <code>psutil</code> remain pinned in <code>requirements-dev.txt</code>. Installed-package smoke imports must run from the extracted <code>app/</code> directory so they verify the packaged import layout rather than the repository checkout.</p>
 <p>A green local run is not a green GitHub run. Before using CI artifacts for release preparation, verify that the successful workflow commit exactly matches the reviewed commit.</p>
 
 <h2><span class="sec">6</span>Packaging and ports</h2>

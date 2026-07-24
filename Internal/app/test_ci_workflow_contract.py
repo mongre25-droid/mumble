@@ -62,3 +62,26 @@ def test_ci_requests_json_and_junit_from_every_platform_runner():
     source = _source()
 
     assert source.count("--json test-results.json --junit test-results.xml") >= 3
+
+
+def test_linux_ci_installs_the_tray_namespace_for_tests_and_lifecycle():
+    source = _source()
+
+    assert source.count("gir1.2-ayatanaappindicator3-0.1") >= 2
+
+
+def test_linux_lifecycle_smoke_import_runs_from_the_installed_app_directory():
+    source = _source()
+
+    lifecycle = source.split("  linux-lifecycle:", 1)[1]
+    assert 'cd "$RELEASE_ROOT/app"' in lifecycle
+    assert "./.venv/bin/python" in lifecycle
+
+
+def test_security_matrix_audits_the_complete_development_lock():
+    source = _source()
+
+    security = source.split("  python-security:", 1)[1].split(
+        "  python-tests:", 1
+    )[0]
+    assert "pip_audit -r requirements-dev.txt" in security

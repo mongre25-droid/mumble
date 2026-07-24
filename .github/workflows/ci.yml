@@ -48,8 +48,8 @@ jobs:
           cache-dependency-path: ${{ matrix.app-dir }}/requirements-dev.txt
       - name: Install security tools
         run: python -m pip install --disable-pip-version-check pip-audit==2.10.1 bandit==1.9.4
-      - name: Audit runtime dependency lock
-        run: python -m pip_audit -r requirements.txt --progress-spinner off
+      - name: Audit runtime and development dependency locks
+        run: python -m pip_audit -r requirements-dev.txt --progress-spinner off
       - name: Scan application source
         run: python -m bandit -r . -x "${{ matrix.excludes }}" -lll -ii
 
@@ -93,7 +93,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            gir1.2-gtk-3.0 gir1.2-webkit2-4.1 libportaudio2 \
+            gir1.2-ayatanaappindicator3-0.1 gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 libportaudio2 \
             python3-gi python3-gi-cairo xvfb
       - uses: actions/setup-python@v5
         if: matrix.platform != 'linux'
@@ -270,7 +271,8 @@ jobs:
       - name: Install lifecycle dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y desktop-file-utils gir1.2-gtk-3.0 \
+          sudo apt-get install -y desktop-file-utils \
+            gir1.2-ayatanaappindicator3-0.1 gir1.2-gtk-3.0 \
             gir1.2-webkit2-4.1 libportaudio2 python3-gi python3-gi-cairo xvfb
       - name: Exercise archive install, smoke import, and uninstall
         shell: bash
@@ -295,8 +297,11 @@ jobs:
             "$HOME/.local/share/applications/mumble-voice-to-text.desktop" \
             "$HOME/.local/share/applications/mumble-voice-to-text-uninstall.desktop"
           test -x "$RELEASE_ROOT/mumble"
-          xvfb-run -a "$RELEASE_ROOT/app/.venv/bin/python" -c \
-            'import branding, mumble_linux, webui_shell; print(branding.APP_NAME)'
+          (
+            cd "$RELEASE_ROOT/app"
+            xvfb-run -a ./.venv/bin/python -c \
+              'import branding, mumble_linux, webui_shell; print(branding.APP_NAME)'
+          )
           test -f "$HOME/.config/autostart/mumble-voice-to-text.desktop"
           test -f "$HOME/.local/share/icons/hicolor/256x256/apps/mumble-voice-to-text.png"
           test ! -e "$HOME/.local/share/applications/mumble.desktop"
