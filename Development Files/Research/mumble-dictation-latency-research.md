@@ -952,11 +952,34 @@ Do not replace Mumble's transcription engine first. The verified immediate probl
 
 Extend and validate the content-free trace, then run the stable-prefix faster-whisper experiment against the defined fault, latency, accuracy, resource, and platform gates. Keep `faster-whisper` as the reference while running bounded `sherpa-onnx` and `whisper.cpp` comparisons on named weak, average, and strong machines. Adopt another backend only where measured latency, accuracy, resource use, packaging, recovery behaviour, platform support, and licence compliance are all better for a defined tier.
 
+## Exact baseline revalidation: Mumble main `0aca0233`
+
+This report is revalidated against Mumble main baseline [`0aca0233ddacf79557669c186278d24af17a3dba`](https://github.com/mongre25-droid/mumble/tree/0aca0233ddacf79557669c186278d24af17a3dba), dated 24 July 2026. A direct source diff of the dictation runtime files (`mumble.py`, `recording_limits.py`, `history.py`, `dictation_trace.py`, `transcription.py`, `formatting.py`, and the maintained port controllers) found no dictation-runtime changes since the prior source pass. The older Mumble commit links elsewhere in this historical report are superseded by this exact-baseline statement; pinned upstream links remain unchanged.
+
+### Changed decisions
+
+None. The revalidation confirms, rather than changes, the core findings: the foreground guard is ten minutes; `STREAM_CHUNK_SECONDS` is four seconds; current “partials” are completed independent chunks held internally, not stable-prefix live text; the complete float32 capture remains in memory until Stop; clean shutdown has only a foreground recovery attempt; and the Windows trace measures controller milestones, not renderer or target-application acknowledgement.
+
+The target decisions also remain proposals: bounded durable recovery segments; stable/committed and tentative text as separate surfaces; final-only target-app insertion; explicit VAD and backpressure policy; resident model/session readiness with honest cold/warm labels; and content-free activation-to-paste spans.
+
+### Unchanged decisions and candidate boundaries
+
+Keep `faster-whisper` as the reference baseline and first test a Mumble-owned stable-prefix policy over it. Compare `sherpa-onnx` and `whisper.cpp` only as bounded experiments; use Handy and OpenWhispr for separately measured lifecycle ideas; use Vosk as a weak-tier control; and keep GPL projects such as nerd-dictation and TypeWhisper at ideas/test-oracle level unless licensing is deliberately revisited. Engine licence, runtime/dependency licence, model weights, tokenizer/data provenance, redistribution, attribution, and branding are separate gates. The sidecar source audit also confirms SimulStreaming and Moonshine as stronger current research candidates, but neither is an adoption decision: SimulStreaming has GPU/packaging risk, while Moonshine model terms vary by language and can include attribution/branding requirements.
+
+### Implications for issues #16 and #19
+
+- **#16 — long dictation:** remains open and unimplemented. Its manifest, immutable recovery segments, bounded backpressure, crash injection, stable-prefix merge, one History record, readiness state, and full timing trace are still acceptance work. The current baseline supplies negative controls and measurement hooks; it satisfies none of the over-ten-minute acceptance criteria. GitHub records #16 as blocked by #13 and #15.
+- **#19 — local AI evidence:** should benchmark unchanged faster-whisper first, then evaluate approved streaming and quality candidates in separate lanes. The source audit supports sherpa-onnx’s stateful online session and SimulStreaming’s attention-based commitment as candidates, but provides no Mumble hardware, WER, power, or packaging result. GitHub records #19 as blocked by #13, #14, and #16; this report is research evidence, not adoption approval.
+
+### Remaining gaps
+
+No physical activation-to-paste measurements; no target-renderer acknowledgement; no crash-injection proof on NTFS/APFS/Linux filesystems; no tested bounded queue or durable-segment implementation; no selected model with a complete hash/licence/redistribution record; no candidate benchmark on named weak/average/strong machines; no complete OpenWhispr telemetry/retention audit; and no recursive inspection of Handy’s external streaming dependency.
+
 ## Primary sources
 
 ### Mumble repository evidence
 
-- [Issue #3 revalidation checkout](https://github.com/mongre25-droid/mumble/tree/6f12ed73fd9350692eab8c55b705f9910aae7e77)
+- [Mumble main baseline `0aca0233`](https://github.com/mongre25-droid/mumble/tree/0aca0233ddacf79557669c186278d24af17a3dba)
 - [Current Windows dictation controller](../../Internal/app/mumble.py)
 - [Current recording limits](../../Internal/app/recording_limits.py)
 - [Current privacy-safe trace](../../Internal/app/dictation_trace.py)
