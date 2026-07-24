@@ -772,6 +772,7 @@ class Island:
         self.build_offline = False
         self.flash_offline = False
         self.flash_pasted = True   # done state verb: True→"Pasted!", False→"Saved"
+        self.flash_outcome = "confirmed"
         self.hint_text = ""
         self.hint_left = 0
         self._mx = self._my = 0  # last placed canvas-island top-left (Tk coords)
@@ -901,7 +902,7 @@ class Island:
         self.build_offline = offline
         self.state = "building"
 
-    def flash(self, mode, offline=False, pasted=True):
+    def flash(self, mode, offline=False, pasted=True, outcome=None):
         """Flash the island's finished state. Accepts a single mode or list of
         modes. `pasted` decides the verb: True → "Pasted!" (the text actually
         landed in a focused text field), False → "Saved" (it was kept in History
@@ -920,6 +921,7 @@ class Island:
             MODE_LABELS.get(m, str(m).title()) for m in names))
         self.flash_offline = offline
         self.flash_pasted = bool(pasted)
+        self.flash_outcome = outcome or ("confirmed" if pasted else "saved_only")
         # One uniform ~2s linger for BOTH outcomes (owner v9: transient feedback
         # should be ~2s — the old not-pasted ×3 ≈ 2.7s read as "too long"). The
         # not-pasted "Saved · …" cue is short enough to read inside the same 2s.
@@ -1236,12 +1238,25 @@ class Island:
             dot = accent
             label_color = accent
             rim = _blend(_PILL_RIM, accent, 0.4)
-            pasted = getattr(self, "flash_pasted", True)
-            label = "Pasted!" if pasted else "Saved"
+            outcome = getattr(self, "flash_outcome", "confirmed")
+            labels = {
+                "confirmed": "Pasted!",
+                "sent_unconfirmed": "Sent",
+                "not_sent": "Not sent",
+                "uncertain": "Check field",
+                "saved_only": "Saved",
+            }
+            label = labels.get(outcome, "Saved")
+            pasted = outcome == "confirmed"
             # Not pasted → the tail TELLS the user how to place it (the History
             # window hotkey), instead of the mode name (owner v6: "say press
             # ctrl+alt+d", never imply it was already pasted).
-            hint = getattr(self, "done_label", "") if pasted else "Ctrl + Alt + D"
+            hints = {
+                "sent_unconfirmed": "Saved in Deck",
+                "uncertain": "No auto-retry",
+            }
+            hint = (getattr(self, "done_label", "") if pasted else
+                    hints.get(outcome, "Ctrl + Alt + D"))
             offline = bool(self.flash_offline)
         elif state == "hint":
             label = self.hint_text
@@ -1321,9 +1336,15 @@ class Island:
         if state == "building" and getattr(self, "build_label", ""):
             label = f"Building  ·  {self.build_label}"
         elif state == "done":
-            pasted = getattr(self, "flash_pasted", True)
-            verb = "Pasted!" if pasted else "Saved"
-            dl = getattr(self, "done_label", "") if pasted else "Ctrl + Alt + D"
+            outcome = getattr(self, "flash_outcome", "confirmed")
+            verb = {
+                "confirmed": "Pasted!", "sent_unconfirmed": "Sent",
+                "not_sent": "Not sent", "uncertain": "Check field",
+                "saved_only": "Saved",
+            }.get(outcome, "Saved")
+            dl = (getattr(self, "done_label", "") if outcome == "confirmed" else
+                  {"sent_unconfirmed": "Saved in Deck",
+                   "uncertain": "No auto-retry"}.get(outcome, "Ctrl + Alt + D"))
             label = f"{verb}  ·  {dl}" if dl else verb
         anim_w = 0 if is_hint else self._anim_span()
         text_w = f.measure(label) if label else 0

@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import urllib.error
+import uuid
 
 import branding
 
@@ -82,6 +83,12 @@ import recording_limits
 import transcription  # optional cloud STT (advanced); local faster-whisper is default
 import ui
 import update
+from insertion import InsertionOutcome, InsertionRequest, InsertionResult, InsertionTransaction
+from windows_insertion import (
+    WindowsClipboardAdapter,
+    WindowsNativeInputAdapter,
+    WindowsTargetAdapter,
+)
 from branding import MODE_LABELS, STATE_COLORS, C
 from clipboard import Clipboard, _clipboard_seq
 from context_store import ConversationStore
@@ -242,6 +249,17 @@ class Mumble:
         self._tx_lock = threading.Lock()  # serialize model.transcribe (defensive)
         self._paste_lock = threading.Lock()  # serialize _paste (non-reentrant clipboard)
         self._last_paste_sent_at = None  # visible Ctrl+V point for latency metrics
+        self._insertion_target = WindowsTargetAdapter()
+        self._insertion_clipboard = WindowsClipboardAdapter()
+        self._insertion_native = WindowsNativeInputAdapter()
+        self._insertion_transaction = InsertionTransaction(
+            self._insertion_target,
+            self._insertion_clipboard,
+            self._insertion_native,
+            trace=self._insertion_trace,
+        )
+        self._dictation_insertion_target = None
+        self._dictation_insertion_operation_id = None
         self._deck_job_lock = threading.Lock()  # in-flight guard for Deck/History jobs
         self._deck_job_active = False           # True while a Deck job is running
         self._last_llm_ok = (
@@ -714,7 +732,11 @@ class Mumble:
                 return False
             keyboard.send("ctrl+z")
             time.sleep(0.14)
-            return bool(self._paste(corrected))
+            result = self._paste(corrected, source="correction_replace")
+            return result.outcome in {
+                InsertionOutcome.CONFIRMED,
+                InsertionOutcome.SENT_UNCONFIRMED,
+            }
         except Exception as e:
             print("[correction-learning] replace failed:", e)
             return False
@@ -1426,6 +1448,11 @@ class Mumble:
 
     def start_recording(self):
         self._trace_begin_dictation()
+        # Bind the eventual insertion to the exact window and focused child that
+        # owned activation. Processing may take seconds; a later focus switch
+        # must never redirect this dictation into a different field.
+        self._dictation_insertion_target = self._capture_insertion_target()
+        self._dictation_insertion_operation_id = uuid.uuid4().hex
         # Veto only when there is genuinely no way to transcribe. Cloud
         # transcription mode runs with NO local model resident (it's unloaded to
         # free RAM, or deferred at boot), yet recording must still work — the
@@ -1810,12 +1837,14 @@ class Mumble:
             except Exception as e:
                 print("reprocess stats error:", e)
             self._send_webui_async({"cmd": "refresh", "what": "history"})
-            landed = self._paste(out)
+            result = self._paste(out, source="mode_reprocess")
             print(f"[reprocess · {m}] {out!r}")
             if self.island:
                 self._tk_schedule(self.island.flash, m,
-                                  offline=used_offline, pasted=bool(landed))
-            self._remember_correction_candidate(out, m, bool(landed))
+                                  offline=used_offline,
+                                  pasted=result.confirmed,
+                                  outcome=result.outcome.value)
+            self._remember_correction_candidate(out, m, result.confirmed)
             self._set_state("idle")
         except Exception as e:
             print("reprocess error:", e)
@@ -1853,11 +1882,13 @@ class Mumble:
             except Exception as e:
                 print("finalize-text stats error:", e)
             self._send_webui_async({"cmd": "refresh", "what": "history"})
-            landed = self._paste(clean)
+            result = self._paste(clean, source="finalize_text")
             if self.island:
-                self._tk_schedule(self.island.flash, "text", pasted=bool(landed))
-                self._maybe_island_tip(bool(landed))  # ITEM 19
-            self._remember_correction_candidate(clean, "text", bool(landed))
+                self._tk_schedule(self.island.flash, "text",
+                                  pasted=result.confirmed,
+                                  outcome=result.outcome.value)
+                self._maybe_island_tip(result.confirmed)  # ITEM 19
+            self._remember_correction_candidate(clean, "text", result.confirmed)
             self._set_state("idle")
         except Exception as e:
             print("finalize-text error:", e)
@@ -2564,11 +2595,26 @@ class Mumble:
             # sit in front of the paste on this thread.
             if search_requested:
                 self._open_search(out)
-                landed = True
+                insertion_result = None
+                confirmed = True
                 print(f"[{mode}] Searched: {out}")
             else:
-                landed = self._paste(out)
-            self._trace_mark("paste_finished", success=bool(landed))
+                insertion_result = self._paste(
+                    out,
+                    source="dictation",
+                    activation_target=getattr(
+                        self, "_dictation_insertion_target", None),
+                    operation_id=getattr(
+                        self, "_dictation_insertion_operation_id", None),
+                )
+                confirmed = insertion_result.confirmed
+            self._trace_mark(
+                "paste_finished",
+                success=confirmed,
+                outcome=("searched" if search_requested else
+                         insertion_result.outcome.value),
+                send_count=(0 if search_requested else insertion_result.send_count),
+            )
             if timing is not None:
                 visible_at = None if search_requested else getattr(
                     self, "_last_paste_sent_at", None)
@@ -2588,21 +2634,25 @@ class Mumble:
                 self._dictation_timing = None
             self._trace_finish(
                 "searched" if search_requested else
-                ("pasted" if landed else "saved_only"),
-                success=bool(landed),
+                ("pasted" if insertion_result.confirmed else
+                 insertion_result.outcome.value),
+                success=confirmed,
                 audio_duration_ms=duration * 1000.0,
                 mode=mode,
             )
             if self.island:
-                # Honest verb (owner v4): "Pasted!" only when the text actually
-                # landed in a focused field; otherwise "Saved · Ctrl+Alt+D" — it's
-                # in History, the user just needs the History window to place it.
-                pasted = bool(landed) or bool(search_requested)
-                self._tk_schedule(self.island.flash, mode,
-                                  offline=used_offline, pasted=pasted)
-                self._maybe_island_tip(pasted)  # ITEM 19
+                if search_requested:
+                    self._tk_schedule(self.island.flash, mode,
+                                      offline=used_offline, pasted=True,
+                                      outcome="confirmed")
+                else:
+                    self._tk_schedule(
+                        self.island.flash, mode, offline=used_offline,
+                        pasted=insertion_result.confirmed,
+                        outcome=insertion_result.outcome.value)
+                self._maybe_island_tip(confirmed)  # ITEM 19
             self._remember_correction_candidate(
-                out, mode, bool(landed) and not bool(search_requested))
+                out, mode, confirmed and not bool(search_requested))
             # Tray + main-window refresh AFTER the paste — isolated, never fatal.
             try:
                 self.refresh_tray_menu()
@@ -2736,94 +2786,75 @@ class Mumble:
             time.sleep(delay)
         return False
 
-    def _paste(self, text, keep_on_clipboard=False):
-        """Paste `text` at the cursor. Returns True if it likely landed in an
-        editable field. With keep_on_clipboard=True the text is LEFT on the
-        clipboard afterwards (so Ctrl+V keeps working); otherwise the user's
-        previous clipboard is restored — Mumble must NOT silently replace what
-        the user had copied (Rule 2).
-
-        SERIALIZED (owner v6 bug audit): the dictation paste path and the
-        flyout/cmd click-to-paste path call this from different threads, and the
-        clipboard pause/resume + previous-clipboard save/restore are NOT reentrant
-        — two overlapping pastes could corrupt the clipboard or re-capture
-        Mumble's own output. The lock lets one finish before the next starts."""
-        wait_started = time.perf_counter()
-        with self._paste_lock:
-            self._trace_mark(
-                "paste_lock_acquired",
-                wait_ms=(time.perf_counter() - wait_started) * 1000.0,
+    def _ensure_insertion_transaction(self):
+        """Create adapters lazily for focused controller tests and recovery paths."""
+        if getattr(self, "_insertion_transaction", None) is None:
+            self._insertion_target = WindowsTargetAdapter()
+            self._insertion_clipboard = WindowsClipboardAdapter()
+            self._insertion_native = WindowsNativeInputAdapter()
+            self._insertion_transaction = InsertionTransaction(
+                self._insertion_target,
+                self._insertion_clipboard,
+                self._insertion_native,
+                trace=self._insertion_trace,
             )
-            return self._paste_impl(text, keep_on_clipboard)
+        return self._insertion_transaction
 
-    def _paste_impl(self, text, keep_on_clipboard=False):
+    def _capture_insertion_target(self):
+        try:
+            self._ensure_insertion_transaction()
+            return self._insertion_target.current()
+        except Exception as exc:
+            print("insertion target capture error:", exc)
+            return None
+
+    def _insertion_trace(self, name, **fields):
+        if name == "paste_sent":
+            self._last_paste_sent_at = time.perf_counter()
+        self._trace_mark(name, **fields)
+
+    @staticmethod
+    def _insertion_confirmed(result):
+        return bool(result and result.outcome is InsertionOutcome.CONFIRMED)
+
+    def _paste(self, text, keep_on_clipboard=False, *, source="dictation",
+               activation_target=None, operation_id=None):
+        """Run one idempotent, target-bound text insertion transaction."""
+        text = text or ""
         self._last_paste_sent_at = None
-        landed = self._focused_editable()
+        transaction = self._ensure_insertion_transaction()
+        target = activation_target or self._capture_insertion_target()
+        request = InsertionRequest(
+            operation_id=operation_id or uuid.uuid4().hex,
+            source=source,
+            content_kind="text",
+            text=text,
+            activation_target=target,
+            restore_clipboard=not keep_on_clipboard,
+            settle_seconds=min(1.2, 0.18 + len(text) / 20000.0),
+        )
         if self.clipboard:
             self.clipboard.pause()
             try:
-                # Tag this as Mumble's OWN output so it's excluded from "context" later
-                # (owner decision: Mumble must not feed its own results back to itself).
                 self.clipboard.mark_own(text)
             except Exception:
                 pass
+        wait_started = time.perf_counter()
         try:
-            previous = pyperclip.paste()
-        except Exception:
-            previous = ""
-        try:
-            # Put our text on the clipboard and CONFIRM it before Ctrl+V — a lost
-            # copy would otherwise paste stale clipboard content (an old prompt).
-            if not self._set_clipboard(text):
-                raise RuntimeError(
-                    "clipboard stayed busy; paste cancelled to protect existing content")
-            # Release held modifiers so Ctrl+V lands cleanly (Rule 7).
-            # Release the mode key specifically in case the user is physically
-            # holding it during paste (e.g. right shift).
-            for mod in ("ctrl", "alt", "shift", "windows"):
-                try:
-                    keyboard.release(mod)
-                except Exception:
-                    pass
-            try:
-                keyboard.release(self.mode_key)
-            except Exception:
-                pass
-            time.sleep(0.04)
-            self._trace_mark("paste_sent")
-            keyboard.send("ctrl+v")
-            self._last_paste_sent_at = time.perf_counter()
-            # Give the target app time to READ and RELEASE the clipboard before
-            # we restore. Restoring too early loses the race: the restore copy
-            # fails while the app still holds the clipboard open, leaving our
-            # text behind — the exact "it replaced what I'd copied" bug.
-            # SCALED BY LENGTH (long-paste fix): big transcripts take editors
-            # noticeably longer to ingest — restoring after a fixed 0.18s
-            # could yank the clipboard mid-paste and truncate/abort the paste.
-            time.sleep(min(1.2, 0.18 + len(text) / 20000.0))
-        except Exception as e:
-            print("paste error:", e)
-            landed = False
+            with self._paste_lock:
+                self._trace_mark(
+                    "paste_lock_acquired",
+                    wait_ms=(time.perf_counter() - wait_started) * 1000.0,
+                    operation_id=request.operation_id,
+                )
+                return transaction.insert(request)
         finally:
-            # Restore the user's previous clipboard (unless keep_on_clipboard).
-            # Use the CONFIRMED setter with retries so a brief clipboard lock
-            # can't leave Mumble's text behind. If `previous` is empty, the prior
-            # clipboard was either empty or non-text (image/RTF/files) which
-            # pyperclip can't read or restore — we can't bring that back, so our
-            # text stays (the documented tradeoff for non-text content).
-            if keep_on_clipboard:
-                self._set_clipboard(text)
-            elif previous:
-                self._set_clipboard(previous)
             if self.clipboard:
-                # Sync the monitor to whatever is actually on the clipboard now,
-                # so it never re-captures the result as a fresh history item.
                 try:
                     self.clipboard._last_text = pyperclip.paste() or ""
                 except Exception:
                     pass
                 self.clipboard.resume(skip_current=True)
-        return landed
 
     # ================================================================= hotkeys
     def on_hotkey(self):
@@ -3126,13 +3157,13 @@ class Mumble:
         # paste exception stranded the pill spinning on "building" forever (owner
         # v6 audit). _set_state("idle") in the finally matches the other paths.
         try:
-            landed = self._paste(out)
+            result = self._paste(out, source="deck_job")
             if self.island:
                 flash = ["context", mode] if mode else "context"
-                # "Pasted!" only when it really landed; otherwise "Saved · Ctrl+Alt+D"
-                # (it's in History) — owner v4: never claim a paste that didn't happen.
                 self._tk_schedule(self.island.flash, flash,
-                                  offline=used_offline, pasted=bool(landed))
+                                  offline=used_offline,
+                                  pasted=result.confirmed,
+                                  outcome=result.outcome.value)
         finally:
             # Tray + main-window refresh AFTER the paste — never block it.
             try:
@@ -3143,24 +3174,33 @@ class Mumble:
                 pass
             self._set_state("idle")
 
-    def _paste_image(self, path):
-        """Paste a clipboard-history image: put it back as CF_DIB and send
-        Ctrl+V. The image stays on the clipboard afterwards (there is no way to
-        snapshot/restore arbitrary prior non-text content without pywin32)."""
-        if not self.copy_image(path):
-            return False   # copy_image already notified WHY — never blind-fire Ctrl+V
+    def _paste_image(self, path, *, source="deck_image", activation_target=None,
+                     operation_id=None):
+        """Run image insertion through the same target and clipboard contract."""
+        self._last_paste_sent_at = None
+        transaction = self._ensure_insertion_transaction()
+        request = InsertionRequest(
+            operation_id=operation_id or uuid.uuid4().hex,
+            source=source,
+            content_kind="image",
+            image_path=path or "",
+            activation_target=activation_target or self._capture_insertion_target(),
+            settle_seconds=0.30,
+        )
+        wait_started = time.perf_counter()
+        if self.clipboard:
+            self.clipboard.pause()
         try:
-            for mod in ("ctrl", "alt", "shift", "windows"):
-                try:
-                    keyboard.release(mod)
-                except Exception:
-                    pass
-            time.sleep(0.05)
-            keyboard.send("ctrl+v")
-            return True
-        except Exception as e:
-            print("paste image error:", e)
-            return False
+            with self._paste_lock:
+                self._trace_mark(
+                    "paste_lock_acquired",
+                    wait_ms=(time.perf_counter() - wait_started) * 1000.0,
+                    operation_id=request.operation_id,
+                )
+                return transaction.insert(request)
+        finally:
+            if self.clipboard:
+                self.clipboard.resume(skip_current=True)
 
     # ---- the Mumble command channel (controller ⇄ web window) --------------
     # The web window runs as its own process; these two tiny localhost sockets
@@ -3265,22 +3305,42 @@ class Mumble:
                     text = req.get("text") or ""
                     try:
                         time.sleep(0.25)  # let focus return to the target
-                        pasted = bool(text) and bool(self._paste(text))
-                        resp.update(ok=pasted, pasted=pasted,
-                                    message="" if pasted else "The target did not accept the paste.")
+                        result = self._paste(
+                            text, source="deck_history",
+                            activation_target=self._capture_insertion_target(),
+                            operation_id=req.get("operation_id") or uuid.uuid4().hex,
+                        )
+                        handled = result.outcome in {
+                            InsertionOutcome.CONFIRMED,
+                            InsertionOutcome.SENT_UNCONFIRMED,
+                        }
+                        pasted = bool(result.confirmed)
+                        resp.update(ok=handled, pasted=pasted,
+                                    **result.as_dict())
                     except Exception as e:
                         print("cmd paste error:", e)
-                        resp.update(ok=False, pasted=False, message=str(e))
+                        resp.update(ok=False, pasted=False, outcome="saved_only",
+                                    message=str(e))
                 elif cmd == "paste_image":
                     path = req.get("path") or ""
                     try:
                         time.sleep(0.25)
-                        pasted = bool(path) and bool(self._paste_image(path))
-                        resp.update(ok=pasted, pasted=pasted,
-                                    message="" if pasted else "The image could not be pasted.")
+                        result = self._paste_image(
+                            path, source="deck_image",
+                            activation_target=self._capture_insertion_target(),
+                            operation_id=req.get("operation_id") or uuid.uuid4().hex,
+                        )
+                        handled = result.outcome in {
+                            InsertionOutcome.CONFIRMED,
+                            InsertionOutcome.SENT_UNCONFIRMED,
+                        }
+                        pasted = bool(result.confirmed)
+                        resp.update(ok=handled, pasted=pasted,
+                                    **result.as_dict())
                     except Exception as e:
                         print("cmd paste_image error:", e)
-                        resp.update(ok=False, pasted=False, message=str(e))
+                        resp.update(ok=False, pasted=False, outcome="saved_only",
+                                    message=str(e))
                 elif cmd == "rebind":
                     # Hotkeys are a transaction owned by the controller: validate,
                     # register the new hook, persist it, then retire only the old
@@ -3666,6 +3726,8 @@ class Mumble:
         island message when there is nothing to paste or the paste can't land. (The
         tray "Re-paste last" item calls this too.)"""
         self._bump_feature("quick_paste")
+        activation_target = self._capture_insertion_target()
+        operation_id = uuid.uuid4().hex
         with self.lock:
             if self.busy or self.recording or self.paused:
                 return
@@ -3678,16 +3740,24 @@ class Mumble:
                 if not text.strip():
                     self._quick_status("No history yet — dictate something first")
                     return
-                landed = False
+                result = None
                 try:
-                    landed = self._paste(text)   # silent: no mode flash on success
+                    result = self._paste(
+                        text, source="paste_latest",
+                        activation_target=activation_target,
+                        operation_id=operation_id,
+                    )
                 except Exception as e:
                     print("quick-paste error:", e)
-                if not landed:
-                    # The text is on the clipboard but nothing editable was focused,
-                    # so it didn't paste anywhere — say so plainly (the requested
-                    # failure feedback) instead of silently doing nothing.
-                    self._quick_status("Click a text field, then press the paste key")
+                if result is None:
+                    self._quick_status("Not sent — open Deck to copy the latest result")
+                elif result.outcome is InsertionOutcome.SENT_UNCONFIRMED:
+                    self._quick_status("Sent — check the field; the result is saved in Deck")
+                elif result.outcome is InsertionOutcome.UNCERTAIN:
+                    self._quick_status("Check the field before retrying — saved in Deck")
+                elif result.outcome in {
+                    InsertionOutcome.NOT_SENT, InsertionOutcome.SAVED_ONLY}:
+                    self._quick_status("Not sent — open Deck to copy or paste the latest result")
             finally:
                 self.busy = False
 

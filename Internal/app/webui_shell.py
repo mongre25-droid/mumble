@@ -29,6 +29,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -360,9 +361,13 @@ class Api:
         if not text:
             return {"ok": False, "live": False, "message": "There is no text to paste."}
         self._dismiss_for_paste()
-        r = _ctrl_send({"cmd": "paste", "text": text}, timeout=4.0)
+        r = _ctrl_send({"cmd": "paste", "text": text,
+                        "operation_id": uuid.uuid4().hex}, timeout=4.0)
         if r and r.get("ok"):
-            return {"ok": True, "live": True}
+            return {"ok": True, "live": True,
+                    "pasted": bool(r.get("pasted")),
+                    "outcome": r.get("outcome") or "sent_unconfirmed",
+                    "message": r.get("message") or ""}
         self._restore_after_failed_paste()
         return {"ok": False, "live": bool(r),
                 "message": (r or {}).get("message") or "The paste could not be confirmed."}
@@ -371,9 +376,13 @@ class Api:
         if not path:
             return {"ok": False, "live": False, "message": "That image is no longer available."}
         self._dismiss_for_paste()
-        r = _ctrl_send({"cmd": "paste_image", "path": path}, timeout=4.0)
+        r = _ctrl_send({"cmd": "paste_image", "path": path,
+                        "operation_id": uuid.uuid4().hex}, timeout=4.0)
         if r and r.get("ok"):
-            return {"ok": True, "live": True}
+            return {"ok": True, "live": True,
+                    "pasted": bool(r.get("pasted")),
+                    "outcome": r.get("outcome") or "sent_unconfirmed",
+                    "message": r.get("message") or ""}
         self._restore_after_failed_paste()
         return {"ok": False, "live": bool(r),
                 "message": (r or {}).get("message") or "The image paste could not be confirmed."}

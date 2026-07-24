@@ -19,7 +19,7 @@
 
 <h2><span class="sec">1</span>What is current</h2>
 <table><thead><tr><th>Area</th><th>State</th><th>Evidence boundary</th></tr></thead><tbody>
-  <tr><td>Dictation</td><td><span class="badge b-done">implemented</span></td><td>Hotkey capture, local faster-whisper transcription, formatting, optional shaping, clipboard-safe paste, and local history exist in <code>Internal/app/</code>.</td></tr>
+  <tr><td>Dictation</td><td><span class="badge b-done">implemented</span></td><td>Hotkey capture, local faster-whisper transcription, formatting, optional shaping, target-bound insertion with saved-result fallback, and local history exist in <code>Internal/app/</code>. Physical application coverage remains a release gate.</td></tr>
   <tr><td>Deck</td><td><span class="badge b-done">implemented</span></td><td>History, clipboard capture, favourites, search, presets, and real job execution are part of the current Web UI and controller.</td></tr>
   <tr><td>Meetings</td><td><span class="badge b-done">implemented</span></td><td>Meeting recording, transcription, storage, search, retry, and export paths are present; hardware and long-session validation remain separate gates.</td></tr>
   <tr><td>Reader</td><td><span class="badge b-done">implemented</span></td><td>Document import, parsing, progress, statistics, and optional text-to-speech are present.</td></tr>
@@ -40,7 +40,7 @@
   <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
   <li><span class="badge b-done">passed locally</span> Website lock installation, static build, Astro diagnostics, and dependency audit pass with zero reported audit findings.</li>
   <li><span class="badge b-gated">release gate</span> Clean extraction, install, launch, update, and uninstall on a disposable Windows environment.</li>
-  <li><span class="badge b-gated">release gate</span> Physical microphone, global hotkey, focus-preserving paste, and clipboard restoration checks.</li>
+  <li><span class="badge b-gated">release gate</span> Physical microphone, global hotkey, focus-preserving paste, and clipboard restoration checks. Issue 15 adds deterministic transaction coverage and a native two-field Windows fixture; Office, browsers, Electron, delayed-focus, rich-text, and elevated-app checks remain required physical evidence.</li>
   <li><span class="badge b-gated">release gate</span> Signing, publisher identity, public release notes, and a tested rollback path.</li>
 </ul>
 

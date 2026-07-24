@@ -11,6 +11,7 @@ import mumble
 import branding
 import meeting
 import meeting_store
+from insertion import InsertionOutcome, InsertionResult
 
 
 class _Settings:
@@ -714,10 +715,23 @@ def test_autostart_setting_tracks_real_shortcut_result():
 def test_failed_clipboard_write_never_sends_paste_hotkey():
     app = mumble.Mumble.__new__(mumble.Mumble)
     app.clipboard = None
-    app.mode_key = "right shift"
-    app._focused_editable = lambda: True
-    app._set_clipboard = lambda _value: False
     sent = []
+
+    class FailedClipboardTransaction:
+        def insert(self, request):
+            return InsertionResult(
+                operation_id=request.operation_id,
+                source=request.source,
+                outcome=InsertionOutcome.SAVED_ONLY,
+                reason="clipboard write failed: fixture busy",
+                message="saved only",
+                send_count=0,
+            )
+
+    app._insertion_transaction = FailedClipboardTransaction()
+    app._capture_insertion_target = lambda: None
+    app._trace_mark = lambda *_args, **_kwargs: None
+    app._paste_lock = threading.Lock()
 
     original_send = mumble.keyboard.send
     original_release = mumble.keyboard.release
@@ -728,14 +742,15 @@ def test_failed_clipboard_write_never_sends_paste_hotkey():
     mumble.pyperclip.paste = lambda: "previous clipboard"
     mumble.time.sleep = lambda _seconds: None
     try:
-        landed = app._paste_impl("new dictated text")
+        result = app._paste("new dictated text")
     finally:
         mumble.keyboard.send = original_send
         mumble.keyboard.release = original_release
         mumble.pyperclip.paste = original_paste
         mumble.time.sleep = original_sleep
 
-    assert landed is False
+    assert result.outcome is InsertionOutcome.SAVED_ONLY
+    assert result.send_count == 0
     assert sent == []
 
 

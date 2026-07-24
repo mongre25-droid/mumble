@@ -311,6 +311,34 @@ def completed_dictation_contract():
         controller._dictation_inference_ordinal = 0
         controller._focused_editable = lambda: True
 
+        class Target:
+            def current(self):
+                return object()
+
+        class Transaction:
+            def insert(self, request):
+                controller._insertion_trace(
+                    "clipboard_ready", operation_id=request.operation_id,
+                    content_kind=request.content_kind,
+                )
+                controller._insertion_trace(
+                    "paste_sent", operation_id=request.operation_id,
+                    requested=4, accepted=4,
+                )
+                return mumble.InsertionResult(
+                    operation_id=request.operation_id,
+                    source=request.source,
+                    outcome=mumble.InsertionOutcome.CONFIRMED,
+                    reason="fixture confirmed one insertion",
+                    message="Pasted.",
+                    send_count=1,
+                    native_requested=4,
+                    native_accepted=4,
+                )
+
+        controller._insertion_target = Target()
+        controller._insertion_transaction = Transaction()
+
         clipboard_state = {"text": "original clipboard"}
         old_paste = mumble.pyperclip.paste
         old_copy = mumble.pyperclip.copy
