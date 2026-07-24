@@ -2,11 +2,13 @@
 
 **Decision record:** GitHub issue [#5](https://github.com/mongre25-droid/mumble/issues/5)
 
-**Research date:** 24 July 2026
+**Research date:** 24 July 2026 (revalidated against baseline `0aca0233`)
 
 **Scope:** candidate selection and benchmark design only; no runtime, model, or product behaviour was changed
 
 **Current baseline:** keep Mumble's existing `faster-whisper` path until Mumble-owned measurements prove that another option is better
+
+**Related implementation constraints:** [specification #12](https://github.com/mongre25-droid/mumble/issues/12) requires end-to-end performance and platform evidence; [#14](https://github.com/mongre25-droid/mumble/issues/14) requires one immutable local-or-hosted route; [#16](https://github.com/mongre25-droid/mumble/issues/16) requires stable partials, bounded recovery, and one final insertion; and [#19](https://github.com/mongre25-droid/mumble/issues/19) requires reproducible benchmark, licence, packaging, and fallback gates. This report is planning evidence for those issues, not proof that any acceptance criterion is complete.
 
 ## Executive decision
 
@@ -77,6 +79,10 @@ Moonshine's pinned README reports Open ASR Leaderboard averages of 7.84% WER for
 - its Whisper comparison feeds VAD-segmented phrases to `faster-whisper`, which is useful but is not Mumble's current four-second architecture.
 
 These are promising, reproducible upstream signals. They are not permission to replace the baseline.
+
+### What this means for issue #19
+
+The first benchmark is intentionally small: `faster-whisper` versus Moonshine Small Streaming versus the selected sherpa-onnx Zipformer INT8 model on one English live-dictation harness. Parakeet is a separate strong-hardware, completed-utterance quality ceiling. Qwen3, Qwen2.5, and Granite are a separate explicit-action text suite; they must not be mixed into the STT result. No candidate has Mumble-owned accuracy, latency, memory, failure-recovery, or Windows-packaging evidence at this baseline.
 
 ### Candidates not admitted to the first STT matrix
 
@@ -234,6 +240,17 @@ Mumble should establish whether ordinary text search is sufficient before introd
 | `sqlite-vec` | Native SQLite extension | Medium while pre-v1 | Prototype database only |
 
 Do not assume that two projects using ONNX Runtime can share one binary safely. Version, execution-provider, DLL, and architecture compatibility must be tested in the packaged application.
+
+## Local versus Cerebras comparison boundary
+
+The local candidates can be benchmarked without sending Mumble data off the device. A Cerebras comparison is a separate, owner-approved hosted experiment, not a free substitute for local evidence:
+
+1. It requires a valid Cerebras account and API credential. The current official pricing page describes a free trial with $5 in credits after account creation and a verified payment method, plus a Developer pay-as-you-go tier; the rate-limit documentation says the exact limits depend on the organisation and tier. Do not infer “free” from the presence of a key.
+2. Before any request, the owner must approve the account, billing state, model, synthetic corpus, data boundary, and maximum spend. No personal audio, transcript, meeting content, or retrieved local content may be used.
+3. The test must record model ID, prompt-template hash, account tier, input/output tokens, rate limits, retries, time to first output, final output, and total action-to-valid-output latency. Provider token speed is not Mumble activation-to-paste latency.
+4. If credentials, billing status, or owner approval are missing or ambiguous, use recorded fixtures only and report Cerebras quality, latency, cost, and reliability as unmeasured. Do not claim a local-versus-Cerebras winner.
+
+This boundary follows #14's route rule: device-only must produce zero hosted calls across dictation, Deck, Meetings, Reader, and future actions. It also follows #19's explicit no-paid-cloud-comparator gate.
 
 ## Benchmark plan
 
