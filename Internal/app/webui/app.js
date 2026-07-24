@@ -4124,7 +4124,19 @@ async function hydrateSettings() {
     if (name) control.setAttribute("aria-label", name);
   });
   // mic list (populated separately from the generic binding)
-  const mics = await call("list_microphones");
+  let mics;
+  try {
+    mics = await call("list_microphones");
+    if (!Array.isArray(mics)) throw new Error("No microphone list returned");
+  } catch (e) {
+    if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
+    setSettingsHydrationState(
+      "error",
+      "Your saved settings were read, but microphones could not be checked. Try again when audio devices are ready.",
+    );
+    toast("Microphones could not be checked. Your settings were not changed.", "err", 4200);
+    return false;
+  }
   if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
   const msel = $("#set-mic");
   if (msel) {

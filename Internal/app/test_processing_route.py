@@ -30,6 +30,18 @@ def settings(**overrides):
         "llm_provider": "cerebras",
         "cerebras_api_key": "secret",
         "cerebras_model": "gpt-oss-120b",
+        "user_name": "Original User",
+        "prompt_prefs": {"tone": "warm", "detail": "concise"},
+        "primary_language": "fr",
+        "english_only": False,
+        "foreign_mode": True,
+        "foreign_languages": ["arabic", "french"],
+        "vocabulary": {"mumblee": "Mumble"},
+        "vocabulary_terms": ["Mumble", "OpenAI"],
+        "format_enabled": True,
+        "polish_aggressiveness": "Light",
+        "rpunct_enabled": True,
+        "modes": {"email": {"signoff": "Regards"}},
     }
     values.update(overrides)
     return MemorySettings(**values)
@@ -134,6 +146,204 @@ def test_snapshot_freezes_the_exact_provider_configuration_for_the_invocation():
 
     assert result == "ok"
     assert calls == [("cerebras", "gpt-oss-120b", "secret")]
+
+
+def test_public_route_projection_never_copies_or_serializes_the_credential():
+    class CredentialMustStayOpaque:
+        def __deepcopy__(self, _memo):
+            raise AssertionError("credential was copied for serialization")
+
+    decision = processing_route.RouteDecision(
+        invocation_id="test-invocation",
+        feature="prompt",
+        lane="prompt",
+        requested_route="hosted",
+        effective_route="hosted",
+        reason="ready",
+        provider="cerebras",
+        model="test-model",
+        endpoint_class="cerebras_compatible",
+        privacy_boundary="transcript_text_leaves_device",
+        ready=True,
+        provider_supported=True,
+        key_present=True,
+        pro_mode=True,
+        device_only=False,
+        api_key=CredentialMustStayOpaque(),
+    )
+
+    public = decision.public_dict()
+
+    assert "api_key" not in public
+    assert public["invocation_id"] == "test-invocation"
+
+
+def test_processing_input_snapshot_deeply_freezes_preferences_language_vocabulary_and_context():
+    source = settings()
+    snapshot = processing_route.snapshot_inputs(
+        source,
+        feature="prompt",
+        lane="prompt",
+        context="original selected private text",
+        context_policy="highlighted_selection",
+        context_strict=True,
+        local_model_ready=False,
+    )
+
+    source.values["user_name"] = "Changed User"
+    source.values["prompt_prefs"]["tone"] = "changed"
+    source.values["foreign_languages"].append("changed")
+    source.values["vocabulary"]["later"] = "Later"
+    source.values["vocabulary_terms"].append("Later")
+    source.values["modes"]["email"]["signoff"] = "Changed"
+
+    assert snapshot.user_name == "Original User"
+    assert snapshot.prompt_prefs_dict() == {"detail": "concise", "tone": "warm"}
+    assert snapshot.primary_language == "fr"
+    assert snapshot.english_only is False
+    assert snapshot.foreign_languages == ("arabic", "french")
+    assert snapshot.vocabulary_dict() == {"mumblee": "Mumble"}
+    assert snapshot.vocabulary_terms == ("Mumble", "OpenAI")
+    assert snapshot.modes_dict() == {"email": {"signoff": "Regards"}}
+    assert snapshot.context == "original selected private text"
+    assert snapshot.context_policy == "highlighted_selection"
+    assert snapshot.context_strict is True
+    assert snapshot.local_model_ready is False
+    assert "original selected private text" not in repr(snapshot)
+    assert "secret" not in repr(snapshot)
+
+
+def test_generate_uses_the_frozen_prompt_language_and_context_after_live_state_changes(monkeypatch):
+    source = settings()
+    snapshot = processing_route.snapshot_inputs(
+        source,
+        feature="prompt",
+        lane="prompt",
+        context="original conversation context",
+        context_policy="captured_conversation",
+        context_strict=False,
+        local_model_ready=False,
+    )
+    source.values.update(
+        user_name="Changed User",
+        prompt_prefs={"tone": "changed"},
+        primary_language="en",
+        english_only=True,
+        vocabulary_terms=["ChangedTerm"],
+    )
+
+    observed = {}
+    monkeypatch.setattr(
+        mumble.ai,
+        "set_language_context",
+        lambda language, english_only: observed.update(
+            language=(language, english_only)
+        ),
+    )
+    monkeypatch.setattr(
+        mumble.ai,
+        "cerebras_prompt",
+        lambda content, key, context, model, **kwargs: observed.update(
+            content=content,
+            key=key,
+            context=context,
+            model=model,
+            prefs=kwargs.get("prefs"),
+        ) or iter(["frozen prompt"]),
+    )
+    monkeypatch.setattr(mumble.ai, "_extract_final_prompt", lambda text: text)
+
+    app = mumble.Mumble.__new__(mumble.Mumble)
+    app.settings = source
+    app._gather_context = lambda *_args: (_ for _ in ()).throw(
+        AssertionError("context was gathered more than once")
+    )
+    app._conv_context_for_prompt = lambda: (_ for _ in ()).throw(
+        AssertionError("conversation context was re-read")
+    )
+    app._mark_llm_ok = lambda: None
+    app._pro_fallback_notice = lambda *_args: None
+
+    mode, output, used_offline = app._generate(
+        "write a release note",
+        det_mode="prompt",
+        det_request="write a release note",
+        invocation_snapshot=snapshot,
+    )
+
+    assert (mode, output, used_offline) == ("prompt", "frozen prompt", False)
+    assert observed == {
+        "language": ("fr", False),
+        "content": "write a release note",
+        "key": "secret",
+        "context": "original conversation context",
+        "model": "gpt-oss-120b",
+        "prefs": {"detail": "concise", "tone": "warm"},
+    }
+
+
+def test_cloud_generate_uses_frozen_vocabulary_and_polish_preference(monkeypatch):
+    source = settings()
+    snapshot = processing_route.snapshot_inputs(
+        source,
+        feature="dictation",
+        lane="text",
+        context="",
+        context_policy="none",
+        context_strict=False,
+        local_model_ready=False,
+    )
+    source.values.update(
+        vocabulary_terms=["ChangedTerm"],
+        polish_aggressiveness="Strong",
+        primary_language="en",
+        english_only=True,
+    )
+
+    observed = {}
+    monkeypatch.setattr(
+        mumble.ai,
+        "set_language_context",
+        lambda language, english_only: observed.update(
+            language=(language, english_only)
+        ),
+    )
+    monkeypatch.setattr(
+        mumble.formatting,
+        "annotate_vocab_terms",
+        lambda text, terms: observed.update(terms=tuple(terms)) or text,
+    )
+    monkeypatch.setattr(
+        mumble.ai,
+        "polish_text",
+        lambda text, key, model, **kwargs: observed.update(
+            text=text,
+            key=key,
+            model=model,
+            aggressiveness=kwargs.get("aggressiveness"),
+        ) or ("frozen polish", False),
+    )
+
+    app = mumble.Mumble.__new__(mumble.Mumble)
+    app.settings = source
+    app._builder = lambda *_args, **_kwargs: ("text", "fallback")
+
+    mode, output = app._cloud_generate(
+        "mumblee is useful",
+        "Original User",
+        mode_hint="text",
+        invocation_snapshot=snapshot,
+    )
+
+    assert (mode, output) == ("text", "frozen polish")
+    assert observed == {
+        "language": ("fr", False),
+        "terms": ("Mumble", "OpenAI"),
+        "text": "mumblee is useful",
+        "key": "secret",
+        "model": "gpt-oss-120b",
+        "aggressiveness": "Light",
+    }
 
 
 @pytest.mark.parametrize("overrides", [
@@ -305,3 +515,20 @@ def test_settings_uses_truthful_stage_effect_and_route_disclosure_language():
     assert 'setSettingsHydrationState("loading")' in js
     assert '"error",\n      "Your existing configuration' in js
     assert 'setSettingsHydrationState("ready")' in js
+
+
+def test_durable_records_keep_issue_14_and_physical_validation_open():
+    status = (
+        APP_DIR.parent.parent / "Development Files" / "Core" / "STATUS.html"
+    ).read_text(encoding="utf-8")
+    logs = (
+        APP_DIR.parent.parent / "Development Files" / "Core" / "LOGS.html"
+    ).read_text(encoding="utf-8")
+
+    assert "Processing truth</td><td><span class=\"badge b-gated\">implementation candidate" in status
+    assert "Issue #14 remains open" in status
+    assert "issues 14, 15, and 20" in status
+    assert "processing-route implementation candidate" in logs
+    assert "No live provider request was made" in logs
+    assert "Physical macOS/Linux use and owner UI approval remain unverified" in logs
+    assert "processing route truth implemented" not in logs.lower()

@@ -3401,8 +3401,59 @@ function wireKeyFields() {
   });
 }
 
+let SETTINGS_HYDRATION_VERSION = 0;
+const SETTINGS_MUTATION_VERSION = Object.create(null);
+
+function setSettingsHydrationState(state, message) {
+  const view = $('[data-view="settings"]');
+  if (!view) return;
+  view.dataset.settingsState = state;
+  view.setAttribute("aria-busy", state === "loading" ? "true" : "false");
+  const title = $("#settings-hydration-title");
+  const copy = $("#settings-hydration-copy");
+  const retry = $("#settings-hydration-retry");
+  if (state === "loading") {
+    if (title) title.textContent = "Loading your saved settings…";
+    if (copy) copy.textContent = "Controls will appear when Mumble has confirmed the saved and effective setup.";
+  } else if (state === "error") {
+    if (title) title.textContent = "Settings could not be read";
+    if (copy) copy.textContent = message || "Your existing configuration was not changed. Try again when the app is ready.";
+  }
+  if (retry) {
+    retry.hidden = state !== "error";
+    if (!retry.dataset.wired) {
+      retry.dataset.wired = "1";
+      retry.addEventListener("click", () => hydrateSettings());
+    }
+  }
+  $$('[data-view="settings"] [data-setting]').forEach((control) => {
+    if (state !== "ready" && !control.disabled) {
+      control.dataset.hydrationDisabled = "1";
+      control.disabled = true;
+    } else if (state === "ready" && control.dataset.hydrationDisabled === "1") {
+      control.disabled = false;
+      delete control.dataset.hydrationDisabled;
+    }
+  });
+}
+
 async function hydrateSettings() {
-  SET = await call("get_settings");
+  const requestId = ++SETTINGS_HYDRATION_VERSION;
+  setSettingsHydrationState("loading");
+  try {
+    const loaded = await call("get_settings");
+    if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
+    if (!loaded || typeof loaded !== "object") throw new Error("No settings returned");
+    SET = loaded;
+  } catch (e) {
+    if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
+    setSettingsHydrationState(
+      "error",
+      "Your existing configuration was not changed. Try again when the app is ready.",
+    );
+    toast("Settings could not be loaded. Your existing configuration was not changed.", "err", 4200);
+    return false;
+  }
   // generic [data-setting] binding
   $$("[data-setting]").forEach((el) => {
     const key = el.dataset.setting;
@@ -3429,6 +3480,8 @@ async function hydrateSettings() {
       el.addEventListener(ev, async () => {
         const previous = nested(SET, key);
         let v = el.type === "checkbox" ? el.checked : el.value;
+        const mutationId = (SETTINGS_MUTATION_VERSION[key] || 0) + 1;
+        SETTINGS_MUTATION_VERSION[key] = mutationId;
         if (el.dataset.type === "number") v = Number(v);
         // Never write an untouched masked key back over the real one.
         if (el.dataset.masked === "1" || (typeof v === "string" && v.indexOf("•") >= 0)) return;
@@ -3438,6 +3491,7 @@ async function hydrateSettings() {
         } catch (e) {
           r = { ok: false, message: (e && e.message) || "Couldn't save this setting" };
         }
+        if (mutationId !== SETTINGS_MUTATION_VERSION[key]) return;
         if (!r || r.ok === false) {
           // Keep the control and in-memory settings honest when validation or
           // persistence fails. Previously the UI flashed "Saved" and adopted a
@@ -3477,7 +3531,20 @@ async function hydrateSettings() {
   });
   wireKeyFields();
   // mic list (populated separately from the generic binding)
-  const mics = await call("list_microphones");
+  let mics;
+  try {
+    mics = await call("list_microphones");
+    if (!Array.isArray(mics)) throw new Error("No microphone list returned");
+  } catch (e) {
+    if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
+    setSettingsHydrationState(
+      "error",
+      "Your saved settings were read, but microphones could not be checked. Try again when audio devices are ready.",
+    );
+    toast("Microphones could not be checked. Your settings were not changed.", "err", 4200);
+    return false;
+  }
+  if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
   const msel = $("#set-mic");
   if (msel) {
     msel.innerHTML = mics
@@ -3529,6 +3596,9 @@ async function hydrateSettings() {
   });
   // Account card (cloud sync)
   hydrateAccountCard();
+  if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
+  setSettingsHydrationState("ready");
+  return true;
 }
 function nested(o, path) {
   return path.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
@@ -4073,22 +4143,25 @@ function reflectCloudStt() {
    from reflectCloudStt (on settings load + transcription-mode change) and from
    the main settings change handler for AI provider / hardware / model changes. */
 function updateSetupSummary() {
+  const route = SET._route_state || {};
+  const transcription = route.transcription || {};
+  const action = route.action_processing || {};
   // Transcription mode
   const sumTx = $("#sum-tx-mode");
   if (sumTx) {
-    const mode = SET.transcription_mode || "local";
+    const mode = transcription.effective || SET.transcription_mode || "local";
     sumTx.textContent = mode === "cloud" ? "Cloud" : "Local (private)";
     sumTx.className = "setup-value " + (mode === "cloud" ? "t-amber" : "t-green");
   }
-  // AI provider + Pro Mode
+  // Saved provider and effective text-shaping route
   const sumProv = $("#sum-provider");
   if (sumProv) {
-    const prov = SET.llm_provider || "cerebras";
-    const pro = SET.pro_mode ? "Pro" : "Offline";
+    const prov = action.provider || SET.llm_provider || "cerebras";
+    const effective = action.effective === "cloud" ? "Hosted" : "On this device";
     const provNames = { cerebras: "Cerebras", openai: "OpenAI", anthropic: "Claude",
                         openrouter: "OpenRouter", deepseek: "DeepSeek", groq: "Groq" };
-    sumProv.textContent = (provNames[prov] || prov) + " · " + pro;
-    sumProv.className = "setup-value " + (SET.pro_mode ? "t-gold" : "t-mute");
+    sumProv.textContent = effective + " · " + (provNames[prov] || prov);
+    sumProv.className = "setup-value " + (action.effective === "cloud" ? "t-gold" : "t-mute");
   }
   // Loaded model
   const sumModel = $("#sum-model");

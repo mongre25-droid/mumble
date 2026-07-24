@@ -1504,13 +1504,20 @@
             </div>
 
             <!-- ===================== SETTINGS ===================== -->
-            <div class="view" data-view="settings" hidden>
+            <div class="view" data-view="settings" data-settings-state="loading" aria-busy="true" hidden>
 
                 <header class="view-intro view-intro-compact">
                     <span class="section-kicker"><span data-icon="gear"></span>Make Mumble yours</span>
                     <h1>Settings</h1>
                     <p>Configure the way Mumble listens, thinks, saves, and behaves — organised by what you want to change.</p>
                 </header>
+
+                <div class="settings-hydration" id="settings-hydration" role="status" aria-live="polite">
+                    <span class="settings-hydration-spinner" aria-hidden="true"></span>
+                    <div><b id="settings-hydration-title">Loading your saved settings…</b>
+                        <span id="settings-hydration-copy">Controls will appear when Mumble has confirmed the saved and effective setup.</span></div>
+                    <button type="button" class="btn btn-sm" id="settings-hydration-retry" hidden>Try again</button>
+                </div>
 
                 <nav class="settings-index" role="tablist" aria-label="Settings categories">
                     <button type="button" role="tab" aria-selected="true" data-settings-tab="general">General</button>
@@ -1544,7 +1551,7 @@
                         <div class="setup-item">
                             <div class="setup-item-head">
                                 <span data-icon="star" class="setup-icon"></span>
-                                <span class="setup-label">AI &amp; Pro Mode</span>
+                                <span class="setup-label">Text shaping</span>
                             </div>
                             <span class="setup-value" id="sum-provider">—</span>
                         </div>
@@ -1992,8 +1999,8 @@
                             <span data-icon="key"></span>
                         </div>
                         <h3 class="fs13 fw6">AI Provider</h3>
-                        <label class="switch ml-auto" id="pro-mode-switch-wrap" title="Pro Mode: sends transcript text to your AI provider for cleaning and Smart Modes. Off = offline formatting only.">
-                            <span class="fs11 t-dim mr6" style="white-space:nowrap">Pro Mode</span>
+                        <label class="switch ml-auto" id="pro-mode-switch-wrap" title="Hosted text processing sends transcript text to your configured provider. Off keeps text shaping on this device.">
+                            <span class="fs11 t-dim mr6" style="white-space:nowrap">Hosted text processing</span>
                             <input
                                 type="checkbox"
                                 data-setting="pro_mode" /><span
@@ -2004,12 +2011,12 @@
                     </div>
                     <div class="card" style="padding: 12px; background: var(--surface-2); margin-bottom: 14px" id="pro-mode-explain">
                         <p class="t-mute fs12 lh16">
-                            <b>Pro Mode ON</b>: your transcribed <b>text</b> is sent to your AI provider for cleanup,
+                            <b>Hosted text processing ON</b>: your transcribed <b>text</b> is sent to your AI provider for cleanup,
                             formatting and Smart Modes (email, prompt shaping). Smart Modes send transcript text only; transcription privacy follows the Local or Cloud choice below.
                         </p>
                         <p class="t-mute fs12 lh16 mt4">
-                            <b>Pro Mode OFF</b>: Mumble uses offline, rule-based formatting — no network required,
-                            everything stays local. <span class="t-dim">Smart Modes need Pro Mode + a valid key, or an on-device model (below).</span>
+                            <b>Hosted text processing OFF</b>: Mumble uses offline, rule-based formatting — no network required,
+                            everything stays local. <span class="t-dim">Smart Modes need hosted text processing + a valid key, or an on-device model (below).</span>
                         </p>
                     </div>
 
@@ -2544,9 +2551,9 @@
                         <div>
                             <div class="set-label">Visual effects</div>
                             <div class="set-sub">
-                                Basic = lightest rendering (no blur/ambient
+                                Light = lightest rendering (no blur/ambient
                                 motion) · Standard = full liquid glass ·
-                                Enhanced = real glass, ambient gold dust, richer
+                                Full = real glass, ambient gold dust, richer
                                 motion. (Separate from “Mumble Lite”, the
                                 tkinter low-end build below.)
                             </div>
@@ -2557,9 +2564,9 @@
                                 data-setting="ui_effects"
                                 style="width: 150px"
                             >
-                                <option value="lite">Basic</option>
-                                <option value="standard">Standard</option>
-                                <option value="enhanced">Enhanced</option>
+                                <option value="lite">Light effects</option>
+                                <option value="standard">Standard effects</option>
+                                <option value="enhanced">Full effects</option>
                             </select>
                         </div>
                     </div>
@@ -3287,12 +3294,12 @@
                             id="ob-effects-99"
                             style="display: flex"
                         >
-                            <button class="flex-1" data-fx="lite">Basic</button>
+                            <button class="flex-1" data-fx="lite">Light</button>
                             <button class="flex-1" data-fx="standard">
                                 Standard
                             </button>
                             <button class="active flex-1" data-fx="enhanced">
-                                Enhanced ✦
+                                Full ✦
                             </button>
                         </div>
                         <span class="help"
@@ -3361,9 +3368,9 @@
                     <div class="field mb12" style="text-align: left">
                         <span class="label">Visual experience</span>
                         <div class="segment full" id="ob-effects" style="display: flex">
-                            <button class="flex-1" data-fx="lite">Basic</button>
+                            <button class="flex-1" data-fx="lite">Light</button>
                             <button class="flex-1" data-fx="standard">Standard</button>
-                            <button class="active flex-1" data-fx="enhanced">Enhanced ✦</button>
+                            <button class="active flex-1" data-fx="enhanced">Full ✦</button>
                         </div>
                         <span class="help">Same layout and features either way. Change any time in Settings → System.</span>
                     </div>

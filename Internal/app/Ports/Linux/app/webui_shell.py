@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai  # noqa: E402
 import branding  # noqa: E402
 import local_engine as _local_engine  # noqa: E402
+import processing_route  # noqa: E402
 import presets as presets_mod  # noqa: E402
 import reader_store  # noqa: E402
 from clipboard import Clipboard  # noqa: E402
@@ -781,15 +782,18 @@ class Api:
         text = (text or "").strip()
         if not text:
             return {"ok": False, "message": "Nothing to summarize."}
+        decision = processing_route.snapshot(
+            self.settings, feature="reader", lane="reader_summary"
+        )
+        if not decision.ready:
+            return {
+                "ok": False,
+                "message": "This summary stayed on this device because the selected text-processing route is not ready.",
+                "route": decision.public_dict(),
+            }
         try:
-            provider = self.settings.get("llm_provider", "cerebras") or "cerebras"
-            info = ai.PROVIDERS.get(provider) or ai.PROVIDERS["cerebras"]
-            key = self.settings.get(info.get("key_setting", ""), "") or ""
-            model = (self.settings.get(info.get("model_setting", ""), "")
-                     or info.get("default_model", "gpt-oss-120b")).strip()
-            if not key and provider != "local":
-                return {"ok": False,
-                        "message": "Add your %s API key in Settings to summarize." % provider}
+            provider = decision.provider
+            info = ai.PROVIDERS[provider]
             # Token-limit policy: Cerebras' free tier is rate-limited (~30k
             # tokens/min), so cap the input to stay inside one request and ask
             # for a tight summary. Paid providers (OpenAI, Anthropic, OpenRouter,
@@ -805,13 +809,18 @@ class Api:
                 "information. Add nothing that isn't in the text. Output only the summary, "
                 "no preamble.")
             user = "Summarize the following:\n\n" + doc
-            summary = ai.cerebras_chat(
-                system, user, key, model=model or "gpt-oss-120b",
-                url=info.get("url"), max_tokens=out_budget, timeout=t_out)
+            summary = processing_route.call_provider(
+                decision,
+                ai.cerebras_chat,
+                system, user, decision.api_key,
+                model=decision.model, url=info.get("url"),
+                max_tokens=out_budget, timeout=t_out,
+            )
             summary = (summary or "").strip()
             if not summary:
                 return {"ok": False, "message": "The summary came back empty."}
-            return {"ok": True, "summary": summary}
+            return {"ok": True, "summary": summary,
+                    "route": decision.public_dict()}
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
@@ -1306,6 +1315,81 @@ class Api:
                     "models_dir": getattr(branding, "MODELS_DIR", ""),
                     "has_binary": False, "enabled": True}
 
+    def _settings_route_state(self):
+        """Project requested and effective privacy routes from runtime inputs."""
+        requested_stt = self.settings.get("transcription_mode", "local") or "local"
+        stt_provider = (
+            self.settings.get("cloud_transcription_provider", "groq") or ""
+        ).strip().lower()
+        stt_keys = {
+            "groq": "groq_api_key",
+            "openai": "openai_api_key",
+            "openrouter": "openrouter_api_key",
+        }
+        stt_supported = stt_provider in stt_keys
+        stt_has_key = bool(stt_supported and (
+            self.settings.get(stt_keys[stt_provider], "") or ""
+        ).strip())
+        local_only = bool(self.settings.get("local_only_mode", False))
+        if local_only:
+            stt_effective, stt_reason = "local", "local_only"
+        elif requested_stt != "cloud":
+            stt_effective, stt_reason = "local", "selected"
+        elif not stt_supported:
+            stt_effective, stt_reason = "local", "unsupported_provider"
+        elif not stt_has_key:
+            stt_effective, stt_reason = "local", "no_key"
+        else:
+            stt_effective, stt_reason = "cloud", "selected"
+
+        route_facts = processing_route.settings_state(self.settings)
+        plain_decision = route_facts["plain_processing"]
+        action_decision = route_facts["action_processing"]
+        reason_compat = {
+            "device_only": "local_only",
+            "hosted_processing_off": "pro_off",
+            "missing_key": "no_key",
+            "ready": "selected",
+        }
+        processing_effective = (
+            "cloud" if action_decision["effective_route"] == "hosted" else "local"
+        )
+        return {
+            "transcription": {
+                "requested": requested_stt,
+                "provider": stt_provider,
+                "provider_supported": stt_supported,
+                "has_key": stt_has_key,
+                "effective": stt_effective,
+                "reason": stt_reason,
+                "sends_audio": stt_effective == "cloud",
+            },
+            "plain_processing": {
+                "effective": (
+                    "cloud"
+                    if plain_decision["effective_route"] == "hosted"
+                    else "local"
+                ),
+                "reason": reason_compat.get(
+                    plain_decision["reason"], plain_decision["reason"]
+                ),
+                "sends_text": plain_decision["effective_route"] == "hosted",
+                "decision": plain_decision,
+            },
+            "action_processing": {
+                "provider": action_decision["provider"],
+                "provider_supported": action_decision["provider_supported"],
+                "has_key": action_decision["key_present"],
+                "effective": processing_effective,
+                "reason": reason_compat.get(
+                    action_decision["reason"], action_decision["reason"]
+                ),
+                "sends_text": processing_effective == "cloud",
+                "decision": action_decision,
+            },
+            "local_only": local_only,
+        }
+
     def get_settings(self):
         try:
             self.settings.load()
@@ -1350,6 +1434,7 @@ class Api:
             "meeting_processing_mode",
         ]
         result = {k: self.settings.get(k) for k in keys}
+        result["_route_state"] = self._settings_route_state()
         # ITEM 7 (owner 2026-06-29): API keys must NOT leak to the JS bridge by
         # default, but the old redaction to the literal "[saved]" loaded that
         # 7-char token straight into the password field — so the key LOOKED

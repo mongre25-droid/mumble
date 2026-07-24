@@ -11,6 +11,7 @@ intelligent cleanup and formatting. With Pro Mode off (or no key), everything ru
 locally on the CPU via the offline builder.
 """
 
+import copy
 import ctypes
 import os
 import queue
@@ -2309,15 +2310,17 @@ class Mumble:
         self._pending_stat_context = stat_context
         # Snapshot the AI/processing configuration at the START of this dictation
         # run so that settings changes mid-pipeline do NOT affect the in-progress
-        # run (VAL-CROSS-020). The snapshot is a shallow copy of the relevant
-        # settings keys — cheap to make and safe to use throughout this call.
+        # run (VAL-CROSS-020). Nested preferences and vocabulary are copied too,
+        # so later in-place edits cannot alter the invocation already underway.
         _snap = {
             "pro_mode": self.settings.get("pro_mode", True),
             "local_only_mode": self.settings.get("local_only_mode", False),
             "llm_provider": self.settings.get("llm_provider", "cerebras"),
             "english_only": self.settings.get("english_only", True),
             "foreign_mode": self.settings.get("foreign_mode", False),
-            "foreign_languages": self.settings.get("foreign_languages"),
+            "foreign_languages": list(
+                self.settings.get("foreign_languages", []) or []
+            ),
             "format_enabled": self.settings.get("format_enabled", True),
             "instant_text": self.settings.get("instant_text", True),
             "cerebras_api_key": self.settings.get("cerebras_api_key", ""),
@@ -2328,6 +2331,23 @@ class Mumble:
             ),
             "local_api_key": self.settings.get("local_api_key", ""),
             "local_model": self.settings.get("local_model", "llama3"),
+            "user_name": self.settings.get("user_name", ""),
+            "prompt_prefs": copy.deepcopy(
+                self.settings.get("prompt_prefs", {}) or {}
+            ),
+            "primary_language": self.settings.get("primary_language", ""),
+            "vocabulary": copy.deepcopy(
+                self.settings.get("vocabulary", {}) or {}
+            ),
+            "vocabulary_terms": list(
+                self.settings.get("vocabulary_terms", []) or []
+            ),
+            "polish_aggressiveness": self.settings.get(
+                "polish_aggressiveness", "Light"
+            ),
+            "rpunct_enabled": self.settings.get("rpunct_enabled", True),
+            "modes": copy.deepcopy(self.settings.get("modes", {}) or {}),
+            "_local_model_ready": local_engine.local_llm_ready(),
         }
 
         # Consume the search request up front so an error or early return can
@@ -2406,6 +2426,55 @@ class Mumble:
                 timing["raw_ready_at"] = time.perf_counter()
             self._trace_mark("final_transcript_ready")
 
+            # Resolve the lane and gather mutable context exactly once before
+            # any text shaping begins. The resulting immutable snapshot is the
+            # only settings/context input passed through generation.
+            if mode_active:
+                det_mode = getattr(self, "_active_mode_start", None) or "prompt"
+                clip_count = 0
+            else:
+                det_mode, clip_count = "text", 0
+            context, context_strict = self._gather_context(
+                det_mode, clip_count, mode_active
+            )
+            if not context:
+                context_policy = "none"
+            elif context.startswith("[Conversation]"):
+                context_policy = "captured_conversation"
+            elif "highlighted selection" in context or context_strict:
+                context_policy = "highlighted_selection"
+            elif "latest clipboard" in context:
+                context_policy = "latest_clipboard"
+            else:
+                context_policy = "explicit_context"
+            if det_mode == "prompt":
+                try:
+                    conversation = self._conv_context_for_prompt()
+                    if conversation:
+                        context = conversation + (
+                            "\n\n" + context if context else ""
+                        )
+                        context_policy = (
+                            "captured_conversation+" + context_policy
+                            if context_policy != "none"
+                            else "captured_conversation"
+                        )
+                except Exception:
+                    pass
+            _input_snapshot = processing_route.snapshot_inputs(
+                _snap,
+                feature=(
+                    det_mode
+                    if det_mode in ("prompt", "email", "reply")
+                    else "dictation"
+                ),
+                lane=det_mode,
+                context=context,
+                context_policy=context_policy,
+                context_strict=context_strict,
+                local_model_ready=_snap["_local_model_ready"],
+            )
+
             # Personal vocabulary, two passes before anything downstream sees
             # the transcript: (1) explicit wrong=right pairs (advanced), then
             # (2) term matching — high-confidence phonetic/fuzzy hits on the
@@ -2413,10 +2482,10 @@ class Mumble:
             # candidates are offered to the polish AI later (annotate_vocab_terms).
             try:
                 raw = formatting.apply_vocabulary(
-                    raw, self.settings.get("vocabulary", {})
+                    raw, _input_snapshot.vocabulary_dict()
                 )
                 raw = formatting.apply_vocabulary_terms(
-                    raw, self.settings.get("vocabulary_terms", [])
+                    raw, _input_snapshot.vocabulary_terms
                 )
             except Exception as e:
                 print("vocabulary error:", e)
@@ -2428,11 +2497,7 @@ class Mumble:
             # Mode resolution: an island mode is active → force THAT lane (ITEM 4 —
             # was hardcoded to "prompt"; now Prompt/Email/List/Reply per the deck).
             # No mode active → plain, clean, punctuated text only (no inference).
-            if mode_active:
-                forced = getattr(self, "_active_mode_start", None) or "prompt"
-                det_mode, det_request, clip_count = forced, raw, 0
-            else:
-                det_mode, det_request, clip_count = "text", raw, 0
+            det_request = raw
 
             # Cloud-dominance routing (local_engine.route): cloud is the primary
             # authority whenever a key is present and local-only is OFF; otherwise
@@ -2441,12 +2506,9 @@ class Mumble:
             # local_only_mode privacy toggle. Uses the _snap config captured at
             # process start so settings changes mid-run don't affect the route
             # (VAL-CROSS-020).
-            _feature = det_mode if det_mode in ("prompt", "email", "reply") else "dictation"
-            _route = processing_route.snapshot(
-                _snap, feature=_feature, lane=det_mode
-            )
+            _route = _input_snapshot.route
             will_cloud = _route.cloud_augmented
-            instant_text = bool(_snap.get("instant_text", True)) and not mode_active
+            instant_text = _input_snapshot.instant_text and not mode_active
             if instant_text:
                 will_cloud = False
 
@@ -2511,8 +2573,7 @@ class Mumble:
                     windows,
                     keyword_template=self._active_keyword_template,
                     window_words=window_words if mode_active else None,
-                    config_snap=_snap,
-                    route_decision=_route,
+                    invocation_snapshot=_input_snapshot,
                 )
             # Mode was ambiguous → the interactive "Which mode?" picker is now up
             # and OWNS the outcome (re-process the preserved words, or paste the
@@ -4805,6 +4866,7 @@ class Mumble:
         window_words=None,
         cfg=None,
         prompt_cfg=None,
+        invocation_snapshot=None,
     ):
         """Send to the AI, routed by lane:
 
@@ -4821,6 +4883,21 @@ class Mumble:
         request).
 
         Returns (mode, output) or raises."""
+        if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot):
+            decision = invocation_snapshot.route
+            provider_info = ai.PROVIDERS.get(decision.provider) or {}
+            cfg = {
+                "key": decision.api_key,
+                "provider": decision.provider,
+                "model": decision.model,
+                "url": provider_info.get("url", ""),
+                "supported": decision.provider_supported,
+            }
+            prompt_cfg = cfg
+            name = invocation_snapshot.user_name
+            prefs = invocation_snapshot.prompt_prefs_dict()
+            context = invocation_snapshot.context
+            context_strict = invocation_snapshot.context_strict
         if cfg is None:
             cfg = self._ai_cfg()
         if prompt_cfg is None:
@@ -4830,8 +4907,12 @@ class Mumble:
         # the live settings on every AI call so non-English dictation strips the
         # British-English rule and gains a target-language directive.
         try:
-            _pl = (self.settings.get("primary_language", "") or "").strip().lower()
-            _eo = bool(self.settings.get("english_only", True))
+            if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot):
+                _pl = invocation_snapshot.primary_language
+                _eo = invocation_snapshot.english_only
+            else:
+                _pl = (self.settings.get("primary_language", "") or "").strip().lower()
+                _eo = bool(self.settings.get("english_only", True))
             if _pl:
                 _eo = branding.MODEL_BY_LANGUAGE.get(_pl, False)
             ai.set_language_context(_pl or "en", _eo)
@@ -4909,7 +4990,10 @@ class Mumble:
             # using the local phonetic boost engine, then hand to cloud for
             # final disambiguation. The boost engine marks but does not resolve
             # when a cloud key is present (mark_uncertainty mode).
-            langs = self.settings.get("foreign_languages") or ["arabic"]
+            if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot):
+                langs = list(invocation_snapshot.foreign_languages) or ["arabic"]
+            else:
+                langs = self.settings.get("foreign_languages") or ["arabic"]
             marked = foreign_boost.mark_uncertainty(content, languages=langs)
             annotated = islamic_terms.annotate_foreign(marked)
             return self._collect(
@@ -4951,7 +5035,11 @@ class Mumble:
         # in _process). On AI failure the offline fallback uses the untouched
         # `raw`, so annotations can never leak into pasted output.
         try:
-            terms = self.settings.get("vocabulary_terms", [])
+            terms = (
+                invocation_snapshot.vocabulary_terms
+                if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot)
+                else self.settings.get("vocabulary_terms", [])
+            )
             if terms:
                 annotated = formatting.annotate_vocab_terms(polish_input, terms)
                 if annotated != polish_input:
@@ -4965,7 +5053,11 @@ class Mumble:
             # full stop. Very long dictations are split and polished in chunks to
             # avoid silent truncation. Privacy: sees ONLY the transcript — no
             # context/clipboard/history is ever passed in.
-            aggr = self.settings.get("polish_aggressiveness", "Light")
+            aggr = (
+                invocation_snapshot.polish_aggressiveness
+                if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot)
+                else self.settings.get("polish_aggressiveness", "Light")
+            )
             try:
                 out, truncated = ai.polish_text(
                     polish_input,
@@ -4976,7 +5068,9 @@ class Mumble:
                 )
             except Exception as e:
                 print("polish API failed, using offline builder:", e)
-                return "text", self._builder(raw, "text", raw)[1]
+                return "text", self._builder(
+                    raw, "text", raw, True, invocation_snapshot,
+                )[1]
             if truncated:
                 self._notify(
                     "Mumble",
@@ -4993,18 +5087,25 @@ class Mumble:
                 model,
                 url=url,
                 second_opinion=True,
-                aggressiveness=self.settings.get("polish_aggressiveness", "Light"),
+                aggressiveness=(
+                    invocation_snapshot.polish_aggressiveness
+                    if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot)
+                    else self.settings.get("polish_aggressiveness", "Light")
+                ),
                 context=poll_ctx,
                 window_words=window_words,
             )
             out = self._collect_text(gen)
         except Exception as e:
             print("polish API failed, using offline builder:", e)
-            return "text", self._builder(raw, "text", raw)[1]
+            return "text", self._builder(
+                raw, "text", raw, True, invocation_snapshot,
+            )[1]
         clean, ai_mode, conf, redo = ai.split_mode_tail(out)
         return self._handle_second_opinion(
             clean, ai_mode, conf, redo, raw, name, poll_ctx, prefs, context_strict,
             cfg=cfg, prompt_cfg=prompt_cfg,
+            invocation_snapshot=invocation_snapshot,
         )
 
     def _conv_context_for_prompt(self):
@@ -5028,7 +5129,7 @@ class Mumble:
 
     def _handle_second_opinion(
         self, clean, ai_mode, conf, redo, raw, name, context, prefs, context_strict,
-        cfg=None, prompt_cfg=None,
+        cfg=None, prompt_cfg=None, invocation_snapshot=None,
     ):
         """Act on the AI's free 'the local detector missed a mode' second opinion.
         High-confidence prompt → auto re-run with the constitution; high-confidence
@@ -5045,12 +5146,15 @@ class Mumble:
                 # Include captured conversation context for the redo path
                 # (same zero-friction injection as the primary prompt lane).
                 redo_ctx = context
-                try:
-                    conv = self._conv_context_for_prompt()
-                    if conv:
-                        redo_ctx = conv + ("\n\n" + redo_ctx if redo_ctx else "")
-                except Exception:
-                    pass
+                if not isinstance(
+                    invocation_snapshot, processing_route.ProcessingInputSnapshot
+                ):
+                    try:
+                        conv = self._conv_context_for_prompt()
+                        if conv:
+                            redo_ctx = conv + ("\n\n" + redo_ctx if redo_ctx else "")
+                    except Exception:
+                        pass
                 gen = ai.cerebras_prompt(
                     (raw or "").strip(),
                     pcfg["key"],
@@ -5073,7 +5177,14 @@ class Mumble:
                 # latest clipboard item) so the auto-rerun reply isn't written
                 # blind with no quoted message. (mode_active=False → skip a
                 # now-stale selection grab and use the clipboard directly.)
-                if ai_mode == "reply" and not (rerun_ctx or "").strip():
+                if (
+                    ai_mode == "reply"
+                    and not (rerun_ctx or "").strip()
+                    and not isinstance(
+                        invocation_snapshot,
+                        processing_route.ProcessingInputSnapshot,
+                    )
+                ):
                     try:
                         rerun_ctx, _ = self._gather_context("reply", 1, False)
                     except Exception:
@@ -5083,6 +5194,7 @@ class Mumble:
                     prefs=prefs, context_strict=context_strict,
                     cfg=cfg,
                     prompt_cfg=prompt_cfg,
+                    invocation_snapshot=invocation_snapshot,
                 )
             except Exception as e:
                 print("auto mode re-run failed:", e)
@@ -5096,7 +5208,10 @@ class Mumble:
         self._offer_mode_pick(raw, ai_mode, ai._clean(clean))
         return "__pick__", ai._clean(clean)
 
-    def _builder(self, raw, det_mode="text", det_request="", fmt=True):
+    def _builder(
+        self, raw, det_mode="text", det_request="", fmt=True,
+        invocation_snapshot=None,
+    ):
         """Offline floor — routes through local_engine to decide whether the
         local LLM, cloud AI, or rules-only formatting handles each lane.
 
@@ -5109,12 +5224,22 @@ class Mumble:
 
         Cloud path (key present, not local_only) is handled by _generate()
         before we reach here — _builder is the offline fallback."""
-        name = self.settings.get("user_name", "")
+        frozen = isinstance(
+            invocation_snapshot, processing_route.ProcessingInputSnapshot
+        )
+        name = (
+            invocation_snapshot.user_name
+            if frozen else self.settings.get("user_name", "")
+        )
         try:
             if det_mode == "foreign":
                 # Foreign Mode: run phonetic boost for uncertainty marking
                 # and high-confidence term replacement on-device.
-                langs = self.settings.get("foreign_languages") or ["arabic"]
+                langs = (
+                    list(invocation_snapshot.foreign_languages) or ["arabic"]
+                    if frozen
+                    else self.settings.get("foreign_languages") or ["arabic"]
+                )
                 boosted = foreign_boost.boost(raw, languages=langs)
                 if boosted:
                     raw = foreign_boost.strip_flags(boosted)
@@ -5123,9 +5248,18 @@ class Mumble:
                 return "foreign", islamic_terms.correct_islamic_terms(base)
 
             # Route through local_engine for non-foreign lanes
-            cloud_key = bool(self._ai_key())
-            local_only = self.settings.get("local_only_mode", False)
-            llm_ready = local_engine.local_llm_ready()
+            cloud_key = (
+                invocation_snapshot.route.key_present
+                if frozen else bool(self._ai_key())
+            )
+            local_only = (
+                invocation_snapshot.route.device_only
+                if frozen else self.settings.get("local_only_mode", False)
+            )
+            llm_ready = (
+                invocation_snapshot.local_model_ready
+                if frozen else local_engine.local_llm_ready()
+            )
             decision = local_engine.route(
                 det_mode,
                 cloud_key_present=cloud_key,
@@ -5146,9 +5280,15 @@ class Mumble:
                     print("local LLM generation failed, falling to rules:", e)
 
             # Rules-only formatting (LOCAL engine or LLM fallback)
-            rpunct = self.settings.get("rpunct_enabled", True)
+            rpunct = (
+                invocation_snapshot.rpunct_enabled
+                if frozen else self.settings.get("rpunct_enabled", True)
+            )
             mode, out = formatting.process(
-                raw, self.settings.get("modes", {}), name, fmt, commands=False,
+                raw,
+                invocation_snapshot.modes_dict()
+                if frozen else self.settings.get("modes", {}),
+                name, fmt, commands=False,
                 auto=False, rpunct_enabled=rpunct,
             )
             if out and out.strip():
@@ -5196,18 +5336,29 @@ class Mumble:
                     "reason": str(e), "models_dir": getattr(branding, "MODELS_DIR", ""),
                     "has_binary": False}
 
-    def _local_llm_generate(self, raw, det_mode, context):
+    def _local_llm_generate(
+        self, raw, det_mode, context, invocation_snapshot=None
+    ):
         """On-device smart-mode shaping via the local LLM, when one is resident. The
         MIDDLE tier between the cloud lane and the deterministic builder: it lifts
         prompt/email/reply from templated to fluent output WITHOUT the cloud. Returns
         cleaned text, or None to fall through to the builder (it never hard-blocks)."""
         if det_mode not in local_engine.SMART_LANES:
             return None
-        if not local_engine.local_llm_ready():
+        frozen = isinstance(
+            invocation_snapshot, processing_route.ProcessingInputSnapshot
+        )
+        if frozen and not invocation_snapshot.local_model_ready:
+            return None
+        if not frozen and not local_engine.local_llm_ready():
             return None
         try:
             system, user, grammar = local_engine.build_local_request(
-                det_mode, raw, prefs=self.settings.get("prompt_prefs"),
+                det_mode, raw,
+                prefs=(
+                    invocation_snapshot.prompt_prefs_dict()
+                    if frozen else self.settings.get("prompt_prefs")
+                ),
                 context=context or "")
             out = local_engine.get_backend().generate(
                 system, user, grammar=grammar, max_tokens=768)
@@ -5229,13 +5380,19 @@ class Mumble:
         window_words=None,
         config_snap=None,
         route_decision=None,
+        invocation_snapshot=None,
     ):
         """AI-driven generation. Lane A (plain text) → minimal polish; Lane B (a
         mode the button armed) → focused/constitution path. (Material-as-context
         AI jobs moved to the Deck — see _run_deck_job; "context" is no longer a
         spoken trigger.) Returns (mode, text, used_offline)."""
-        name = self.settings.get("user_name", "")
-        prefs = self.settings.get("prompt_prefs")
+        if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot):
+            name = invocation_snapshot.user_name
+            prefs = invocation_snapshot.prompt_prefs_dict()
+            route_decision = invocation_snapshot.route
+        else:
+            name = self.settings.get("user_name", "")
+            prefs = self.settings.get("prompt_prefs")
         if route_decision is None:
             feature = det_mode if det_mode in ("prompt", "email", "reply") else "dictation"
             route_decision = processing_route.snapshot(
@@ -5259,18 +5416,25 @@ class Mumble:
         prompt_cfg = cfg
         key = cfg["key"]
         # Use snapshot config if provided (for settings-change isolation).
-        pro_mode = config_snap["pro_mode"] if config_snap else self.settings.get("pro_mode", True)
-        snap_fmt = config_snap["format_enabled"] if config_snap else self.settings.get("format_enabled", True)
-
-        context, context_strict = self._gather_context(
-            det_mode, clip_count, mode_active
-        )
+        if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot):
+            pro_mode = invocation_snapshot.route.pro_mode
+            snap_fmt = invocation_snapshot.format_enabled
+            context = invocation_snapshot.context
+            context_strict = invocation_snapshot.context_strict
+        else:
+            pro_mode = config_snap["pro_mode"] if config_snap else self.settings.get("pro_mode", True)
+            snap_fmt = config_snap["format_enabled"] if config_snap else self.settings.get("format_enabled", True)
+            context, context_strict = self._gather_context(
+                det_mode, clip_count, mode_active
+            )
         # Conversation context: when Prompt Mode is active and a conversation
         # has been captured via "Capture chat", include it in the AI prompt so
         # the model understands what the user was discussing. Zero-friction —
         # no settings checkbox; context is included automatically when available.
         # Gated by Prompt Mode only (not injected for Email, Foreign, or Text).
-        if det_mode == "prompt":
+        if det_mode == "prompt" and not isinstance(
+            invocation_snapshot, processing_route.ProcessingInputSnapshot
+        ):
             try:
                 conv = self._conv_context_for_prompt()
                 if conv:
@@ -5294,6 +5458,7 @@ class Mumble:
                     context_strict=context_strict,
                     keyword_template=keyword_template, words=words,
                     window_words=window_words, cfg=cfg, prompt_cfg=prompt_cfg,
+                    invocation_snapshot=invocation_snapshot,
                 )
                 if out and out.strip():
                     self._mark_llm_ok()
@@ -5306,7 +5471,9 @@ class Mumble:
         # lanes from templated to fluent output BEFORE the deterministic builder.
         # Returns None (→ builder) when no model is present, so default behaviour is
         # unchanged. used_offline stays True: this is the no-cloud path.
-        llm_out = self._local_llm_generate(raw, det_mode, context)
+        llm_out = self._local_llm_generate(
+            raw, det_mode, context, invocation_snapshot
+        )
         if llm_out and llm_out.strip():
             return det_mode, llm_out, True
 
@@ -5320,7 +5487,28 @@ class Mumble:
         try:
             from pipeline import get_orchestrator
             orch = get_orchestrator()
-            result = orch.process(raw, lane=det_mode, config=config_snap)
+            pipeline_config = config_snap
+            if isinstance(
+                invocation_snapshot, processing_route.ProcessingInputSnapshot
+            ):
+                pipeline_config = {
+                    "pro_mode": invocation_snapshot.route.pro_mode,
+                    "local_only_mode": invocation_snapshot.route.device_only,
+                    "format_enabled": invocation_snapshot.format_enabled,
+                    "instant_text": invocation_snapshot.instant_text,
+                    "primary_language": invocation_snapshot.primary_language,
+                    "english_only": invocation_snapshot.english_only,
+                    "foreign_mode": invocation_snapshot.foreign_mode,
+                    "foreign_languages": list(
+                        invocation_snapshot.foreign_languages
+                    ),
+                    "vocabulary": invocation_snapshot.vocabulary_dict(),
+                    "vocabulary_terms": list(
+                        invocation_snapshot.vocabulary_terms
+                    ),
+                    "prompt_prefs": invocation_snapshot.prompt_prefs_dict(),
+                }
+            result = orch.process(raw, lane=det_mode, config=pipeline_config)
             if result and result.strip():
                 return det_mode, result, True
         except ImportError:
@@ -5329,7 +5517,7 @@ class Mumble:
             print("pipeline processing failed, using builder:", e)
 
         mode, out = self._builder(
-            raw, det_mode, det_request, snap_fmt
+            raw, det_mode, det_request, snap_fmt, invocation_snapshot,
         )
         return mode, out, True
 

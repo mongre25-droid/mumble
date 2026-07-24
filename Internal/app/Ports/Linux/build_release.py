@@ -94,6 +94,7 @@ RUNTIME_PATHS = (
     "platform/__init__.py",
     "platform/linux_fallback.py",
     "presets.py",
+    "processing_route.py",
     "prompt_constitution.py",
     "prompt_history.py",
     "prompt_template_registry.py",

@@ -47,12 +47,12 @@
   <li><span class="badge b-done">promotion boundary</span> Verified that candidate promotion remains a separate manual action; the successful push run did not publish or release anything.</li>
 </ul>
 
-<h2><span class="sec">5</span>24 July 2026 â€” processing route truth implemented</h2>
+<h2><span class="sec">5</span>25 July 2026 — processing-route implementation candidate</h2>
 <ul>
-  <li><span class="badge b-done">single policy</span> Added one immutable requested/effective route decision for Dictation, Prompt, Email, Reply, Deck, Meetings, and Reader text shaping.</li>
-  <li><span class="badge b-done">privacy boundary</span> Added a final hosted-call guard that prevents provider code from running under device-only, hosted-off, missing-key, or unsupported-provider states.</li>
-  <li><span class="badge b-done">Settings truth</span> Added explicit loading, ready, and error states; suppressed stale hydration and save responses; and separated Speech to text, Text shaping, and Light/Standard/Full visual effects.</li>
-  <li><span class="badge b-done">browser evidence</span> Exercised the real Edge/Chromium Settings page with delayed, rejected, and out-of-order bridge responses without making a provider request.</li>
+  <li><span class="badge b-done">source candidate</span> Prepared one immutable requested/effective route decision for Dictation, Prompt, Email, Reply, Deck, Meetings, and Reader text shaping, plus a complete immutable Windows dictation input snapshot.</li>
+  <li><span class="badge b-done">automated privacy evidence</span> Mocked-provider tests verify that guarded Reader entry points on Windows, macOS, and Linux reject device-only, hosted-off, missing-key, and unsupported-provider routes before provider code runs.</li>
+  <li><span class="badge b-done">automated Settings evidence</span> Real Edge/Chromium checks cover loading, recovery after rejected microphone enumeration, stale bridge responses, and error states; platform-copy source checks cover the maintained hydration contract and Light/Standard/Full naming.</li>
+  <li><span class="badge b-gated">evidence boundary</span> No live provider request was made. Issue #14 remains open for independent review. Physical macOS/Linux use and owner UI approval remain unverified; nothing was released or deployed.</li>
 </ul>
 
 <h2><span class="sec">6</span>Current product snapshot</h2>
