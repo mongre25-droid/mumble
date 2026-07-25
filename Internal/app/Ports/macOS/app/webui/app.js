@@ -3426,13 +3426,37 @@ function setSettingsHydrationState(state, message) {
       retry.addEventListener("click", () => hydrateSettings());
     }
   }
-  $$('[data-view="settings"] [data-setting]').forEach((control) => {
-    if (state !== "ready" && !control.disabled) {
-      control.dataset.hydrationDisabled = "1";
-      control.disabled = true;
-    } else if (state === "ready" && control.dataset.hydrationDisabled === "1") {
-      control.disabled = false;
-      delete control.dataset.hydrationDisabled;
+  const selector = 'button,input,select,textarea,a[href],[role="button"],[tabindex]';
+  if (!view.dataset.hydrationGuardWired) {
+    view.dataset.hydrationGuardWired = "1";
+    const block = (event) => {
+      const action = event.target.closest?.(selector);
+      if (view.dataset.settingsState !== "ready" && action && action !== retry) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    ["click", "change", "input", "keydown"].forEach((type) => view.addEventListener(type, block, true));
+  }
+  $$(selector, view).forEach((control) => {
+    if (control === retry) return;
+    if (state !== "ready" && control.dataset.hydrationGuarded !== "1") {
+      control.dataset.hydrationGuarded = "1";
+      control.dataset.hydrationTabIndex = control.getAttribute("tabindex") ?? "";
+      control.dataset.hydrationAriaDisabled = control.getAttribute("aria-disabled") ?? "";
+      if ("disabled" in control) {
+        control.dataset.hydrationWasDisabled = control.disabled ? "1" : "0";
+        control.disabled = true;
+      }
+      control.setAttribute("aria-disabled", "true");
+      control.tabIndex = -1;
+    } else if (state === "ready" && control.dataset.hydrationGuarded === "1") {
+      if ("disabled" in control && control.dataset.hydrationWasDisabled === "0") control.disabled = false;
+      const oldTab = control.dataset.hydrationTabIndex;
+      if (oldTab === "") control.removeAttribute("tabindex"); else control.setAttribute("tabindex", oldTab);
+      const oldAria = control.dataset.hydrationAriaDisabled;
+      if (oldAria === "") control.removeAttribute("aria-disabled"); else control.setAttribute("aria-disabled", oldAria);
+      ["hydrationGuarded", "hydrationTabIndex", "hydrationAriaDisabled", "hydrationWasDisabled"].forEach((key) => delete control.dataset[key]);
     }
   });
 }
@@ -3526,6 +3550,13 @@ async function hydrateSettings() {
           // One OpenRouter key, shared everywhere OpenRouter is used.
           if (key === "openrouter_api_key") syncOpenRouterKey(v);
         }
+        if ([
+          "transcription_mode", "cloud_transcription_provider",
+          "local_only_mode", "pro_mode", "llm_provider", "instant_text",
+          "cerebras_api_key", "openrouter_api_key", "groq_api_key",
+          "openai_api_key", "anthropic_api_key", "deepseek_api_key",
+          "local_llm_enabled", "local_llm_model",
+        ].includes(key)) await refreshRouteState();
       });
     }
   });
@@ -4146,6 +4177,8 @@ function updateSetupSummary() {
   const route = SET._route_state || {};
   const transcription = route.transcription || {};
   const action = route.action_processing || {};
+  const provNames = { cerebras: "Cerebras", openai: "OpenAI", anthropic: "Claude",
+                      openrouter: "OpenRouter", deepseek: "DeepSeek", groq: "Groq", local: "Local model" };
   // Transcription mode
   const sumTx = $("#sum-tx-mode");
   if (sumTx) {
@@ -4158,8 +4191,6 @@ function updateSetupSummary() {
   if (sumProv) {
     const prov = action.provider || SET.llm_provider || "cerebras";
     const effective = action.effective === "cloud" ? "Hosted" : "On this device";
-    const provNames = { cerebras: "Cerebras", openai: "OpenAI", anthropic: "Claude",
-                        openrouter: "OpenRouter", deepseek: "DeepSeek", groq: "Groq" };
     sumProv.textContent = effective + " · " + (provNames[prov] || prov);
     sumProv.className = "setup-value " + (action.effective === "cloud" ? "t-gold" : "t-mute");
   }
@@ -4169,6 +4200,32 @@ function updateSetupSummary() {
     sumModel.textContent = SET.model || "—";
     sumModel.className = "setup-value t-dim fs11";
   }
+  const decision = action.decision || {};
+  const provider = provNames[action.provider] || action.provider || "No provider";
+  const effectiveHosted = action.effective === "cloud";
+  const reason = action.reason || "checking";
+  setText("#processing-route-title", effectiveHosted ? `Hosted text shaping · ${provider}` : `On-device text shaping · ${reason.replaceAll("_", " ")}`);
+  setText("#processing-route-copy", effectiveHosted
+    ? `Transcript text may be sent to ${provider}; microphone audio never uses this route.`
+    : "Transcript text stays on this Mac for shaping. The saved hosted choice remains visible below.");
+  setText("#route-fact-saved", SET.pro_mode ? `Hosted text processing · ${provider}${decision.model ? ` · ${decision.model}` : ""}` : "On-device text shaping");
+  setText("#route-fact-effective", effectiveHosted ? `Hosted · ready (${provider})` : `On this Mac · ${reason.replaceAll("_", " ")}`);
+  setText("#route-fact-engine", effectiveHosted ? `Transcript text · ${provider}${decision.model ? ` · ${decision.model}` : ""}` : "Transcript text · local shaping pipeline");
+  setText("#route-fact-location", effectiveHosted ? `${provider} hosted service` : "This Mac");
+  setText("#route-fact-egress", effectiveHosted ? "Transcript text and selected context; never microphone audio on this route" : "Nothing for text shaping");
+  setText("#route-fact-tradeoff", effectiveHosted ? "Network and provider affect speed and quality. Provider use may cost money." : "No hosted-provider charge. Speed and quality depend on this Mac and its local engine.");
+  const routeStatus = $("#processing-route-status");
+  if (routeStatus) routeStatus.dataset.route = effectiveHosted ? "cloud" : (reason === "no_key" ? "warning" : "local");
+}
+
+async function refreshRouteState() {
+  try {
+    const fresh = await call("get_settings");
+    if (fresh && fresh._route_state) SET._route_state = fresh._route_state;
+  } catch (_) {
+    // Keep the last confirmed route; the save path already reports failures.
+  }
+  updateSetupSummary();
 }
 
 /* ONE OpenRouter key, shared everywhere OpenRouter is selected (main provider,
@@ -4226,6 +4283,7 @@ async function testKey(provider, keySel, fb) {
   flash($(fb), "Testing…", "busy");
   const r = await call("test_key", provider, key);
   flash($(fb), r.message, r.ok ? "ok" : "err");
+  await refreshRouteState();
 }
 async function testMic(fb) {
   const idx = +($("#set-mic")?.value ?? -1);
@@ -4481,6 +4539,7 @@ async function obTestKey() {
         (prov === "cerebras" ? "Cerebras" : "OpenRouter") + " connected";
   }
   flash($("#ob-key-fb"), r.message, r.ok ? "ok" : "err");
+  await refreshRouteState();
 }
 async function finishOnboarding() {
   const fx = $("#ob-effects .active")?.dataset.fx || "enhanced";
@@ -4516,6 +4575,7 @@ async function finishOnboarding() {
     ui_effects: fx,
     english_only: englishOnly,
   });
+  await refreshRouteState();
   // The app bundle already lives in Applications on macOS; only the
   // LaunchAgent choice needs applying here.
   call("apply_shortcuts", {
@@ -4669,7 +4729,7 @@ async function confirmReaderCloudUse(kind) {
   const provider = kind === "tts" ? (READER.provider || "the voice provider") :
     ((SET && SET.llm_provider) || "your AI provider");
   const body = kind === "tts"
-    ? `Reader voice sends each short passage to ${provider} to create audio. If it is unavailable, another configured voice provider may be tried. Reader Sync, when enabled, also stores your library in your account.`
+    ? `Reader voice sends each short passage to ${provider} to create audio. If one voice model is unavailable, another compatible model from that same provider may be tried. Reader Sync, when enabled, also stores your library in your account.`
     : `Summarize sends the document text to ${provider}. Do not continue with confidential material unless you are comfortable sharing it with that provider.`;
   const ok = await confirmModal({ icon: "shield", title: "Send document text?",
     body, confirmText: "Continue", danger: false });
@@ -6089,6 +6149,7 @@ async function readerSaveKey() {
   try {
     await call("set_setting", "openrouter_api_key", key);
     syncOpenRouterKey(key); // fill the Settings OpenRouter fields too (one shared key)
+    await refreshRouteState();
     if (inp) inp.value = "";
     if (msg) msg.textContent = "Connected — loading voices…";
     await initReader(); // re-check has_key → reveal the Reader + populate models
@@ -6952,11 +7013,12 @@ async function boot() {
     SET.user_name = v;
   });
   // Provider choice in onboarding: save the chosen LLM provider
-  $("#ob-provider")?.addEventListener("change", () => {
+  $("#ob-provider")?.addEventListener("change", async () => {
     const v = $("#ob-provider").value;
     OB.provider = v;
-    call("set_setting", "llm_provider", v);
+    await call("set_setting", "llm_provider", v);
     SET.llm_provider = v;
+    await refreshRouteState();
     // Update the get-key button URL
     const openUrl = v === "openrouter" ? "https://openrouter.ai/keys" : "https://cloud.cerebras.ai/";
     const getKeyBtn = $("#ob-get-key");

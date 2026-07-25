@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for ai/tts_providers.py — TTS provider abstraction, voice catalogue,
-and transparent provider fallback.
+and same-provider model fallback.
 
 Usage:
     python test_tts_providers.py

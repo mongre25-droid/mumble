@@ -27,6 +27,30 @@ _PROVIDERS = {
         "default_model": "openai/gpt-oss-120b",
         "endpoint_class": "openai_compatible",
     },
+    "openai": {
+        "key_setting": "openai_api_key",
+        "model_setting": "openai_model",
+        "default_model": "gpt-5.4-mini",
+        "endpoint_class": "openai_native",
+    },
+    "anthropic": {
+        "key_setting": "anthropic_api_key",
+        "model_setting": "anthropic_model",
+        "default_model": "claude-opus-4-8",
+        "endpoint_class": "anthropic_native",
+    },
+    "deepseek": {
+        "key_setting": "deepseek_api_key",
+        "model_setting": "deepseek_model",
+        "default_model": "deepseek-chat",
+        "endpoint_class": "openai_compatible",
+    },
+    "groq": {
+        "key_setting": "groq_api_key",
+        "model_setting": "groq_model",
+        "default_model": "llama-3.3-70b-versatile",
+        "endpoint_class": "openai_compatible",
+    },
     # ``local`` is a user-selected, on-device OpenAI-compatible endpoint such
     # as Ollama or LM Studio.  It is deliberately a separate route from a
     # missing/unsupported hosted provider: device-only must still permit local
@@ -38,6 +62,21 @@ _PROVIDERS = {
         "default_model": "llama3",
         "endpoint_class": "local_endpoint",
         "requires_key": False,
+    },
+}
+
+_SPEECH_PROVIDERS = {
+    "openrouter": {
+        "key_setting": "openrouter_api_key",
+        "model_setting": "reader_tts_model",
+        "default_model": "openai/gpt-4o-mini-tts",
+        "endpoint_class": "openrouter_speech",
+    },
+    "openai": {
+        "key_setting": "openai_api_key",
+        "model_setting": "reader_tts_model",
+        "default_model": "gpt-4o-mini-tts",
+        "endpoint_class": "openai_speech",
     },
 }
 
@@ -146,22 +185,22 @@ class ProcessingInputSnapshot:
     """
 
     route: RouteDecision
-    user_name: str
-    prompt_preferences: _FrozenMapping
-    primary_language: str
-    english_only: bool
-    foreign_mode: bool
-    foreign_languages: tuple[str, ...]
-    vocabulary: _FrozenMapping
-    vocabulary_terms: tuple[str, ...]
-    format_enabled: bool
-    polish_aggressiveness: str
-    rpunct_enabled: bool
-    modes: _FrozenMapping
-    instant_text: bool
-    local_model_ready: bool
-    context_policy: str
-    context_strict: bool
+    user_name: str = field(repr=False)
+    prompt_preferences: _FrozenMapping = field(repr=False)
+    primary_language: str = field(repr=False)
+    english_only: bool = field(repr=False)
+    foreign_mode: bool = field(repr=False)
+    foreign_languages: tuple[str, ...] = field(repr=False)
+    vocabulary: _FrozenMapping = field(repr=False)
+    vocabulary_terms: tuple[str, ...] = field(repr=False)
+    format_enabled: bool = field(repr=False)
+    polish_aggressiveness: str = field(repr=False)
+    rpunct_enabled: bool = field(repr=False)
+    modes: _FrozenMapping = field(repr=False)
+    instant_text: bool = field(repr=False)
+    local_model_ready: bool = field(repr=False)
+    context_policy: str = field(repr=False)
+    context_strict: bool = field(repr=False)
     context: str = field(repr=False)
 
     def prompt_prefs_dict(self) -> dict[str, Any]:
@@ -178,16 +217,40 @@ def _get(settings: Any, key: str, default: Any = None) -> Any:
     return settings.get(key, default)
 
 
-def snapshot(settings: Any, *, feature: str, lane: str) -> RouteDecision:
+def snapshot(
+    settings: Any,
+    *,
+    feature: str,
+    lane: str,
+    provider_override: str | None = None,
+    model_override: str | None = None,
+) -> RouteDecision:
     """Resolve and freeze the requested/effective route for one action."""
-    provider = str(_get(settings, "llm_provider", "cerebras") or "").strip().lower()
-    provider_info = _PROVIDERS.get(provider)
+    speech_lane = feature == "reader" and lane in {
+        "reader_speech", "reader_speech_test"
+    }
+    if speech_lane:
+        provider = str(
+            provider_override
+            if provider_override is not None
+            else _get(settings, "reader_tts_provider", "openrouter") or ""
+        ).strip().lower()
+        provider_info = _SPEECH_PROVIDERS.get(provider)
+    else:
+        provider = str(
+            _get(settings, "llm_provider", "cerebras") or ""
+        ).strip().lower()
+        provider_info = _PROVIDERS.get(provider)
     supported = provider_info is not None
     if supported:
         api_key = str(_get(settings, provider_info["key_setting"], "") or "").strip()
         model = str(
-            _get(settings, provider_info["model_setting"], "")
-            or provider_info["default_model"]
+            model_override
+            if model_override is not None
+            else (
+                _get(settings, provider_info["model_setting"], "")
+                or provider_info["default_model"]
+            )
         ).strip()
         endpoint_class = provider_info["endpoint_class"]
     else:
@@ -198,7 +261,7 @@ def snapshot(settings: Any, *, feature: str, lane: str) -> RouteDecision:
     pro_mode = bool(_get(settings, "pro_mode", True))
     device_only = bool(_get(settings, "local_only_mode", False))
     instant_text = bool(_get(settings, "instant_text", True))
-    explicit_local = (
+    explicit_local = not speech_lane and (
         (feature == "dictation" and lane == "text" and instant_text)
         or provider == "local"
     )
@@ -247,14 +310,15 @@ def snapshot_inputs(
     *,
     feature: str,
     lane: str,
-    context: str,
-    context_policy: str,
-    context_strict: bool,
-    local_model_ready: bool,
+    context: str = "",
+    context_policy: str = "none",
+    context_strict: bool = False,
+    local_model_ready: bool = False,
+    route_decision: RouteDecision | None = None,
 ) -> ProcessingInputSnapshot:
     """Capture every mutable input used by one text-shaping invocation."""
     return ProcessingInputSnapshot(
-        route=snapshot(settings, feature=feature, lane=lane),
+        route=route_decision or snapshot(settings, feature=feature, lane=lane),
         user_name=str(_get(settings, "user_name", "") or "").strip(),
         prompt_preferences=_freeze_mapping(
             _get(settings, "prompt_prefs", {}) or {}
@@ -311,10 +375,13 @@ def call_hosted(
 ) -> Any:
     """Guard then enter provider code without re-reading mutable settings."""
     require_hosted(decision)
+    kwargs.setdefault("route_decision", decision)
     return provider_call(*args, **kwargs)
 
 
-def require_provider(decision: RouteDecision) -> RouteDecision:
+def require_provider(
+    decision: RouteDecision, *, expected_provider: str | None = None
+) -> RouteDecision:
     """Authorize one frozen provider invocation at the final call seam.
 
     Local endpoints remain available in device-only mode.  Every other provider
@@ -323,6 +390,8 @@ def require_provider(decision: RouteDecision) -> RouteDecision:
     """
     if not isinstance(decision, RouteDecision):
         raise TypeError("Provider calls require an explicit RouteDecision")
+    if expected_provider and decision.provider != expected_provider:
+        raise HostedRouteBlocked(decision)
     if decision.provider == "local" and decision.effective_route == LOCAL and decision.ready:
         return decision
     return require_hosted(decision)
@@ -332,10 +401,12 @@ def call_provider(
     decision: RouteDecision,
     provider_call: Callable[..., Any],
     *args: Any,
+    expected_provider: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Guard then invoke either the local endpoint or an allowed hosted one."""
-    require_provider(decision)
+    require_provider(decision, expected_provider=expected_provider)
+    kwargs.setdefault("route_decision", decision)
     return provider_call(*args, **kwargs)
 
 

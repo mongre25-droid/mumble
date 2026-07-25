@@ -6,7 +6,7 @@ Extracted from the monolithic ai.py. Provides:
   - OpenRouterTTSProvider (wraps OpenRouter's /audio/speech endpoint)
   - OpenAITTSProvider (OpenAI's native /v1/audio/speech endpoint)
   - Voice catalogue with quality/gender/persona metadata
-  - Transparent provider fallback via synthesize_with_fallback()
+  - Same-provider model fallback via synthesize_with_fallback()
   - PCM-to-WAV framing for Gemini-class TTS
   - Male-first voice sorting for the Reader UI
 """
@@ -16,6 +16,8 @@ import json
 import urllib.error
 import urllib.request
 import wave
+
+import processing_route
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -64,7 +66,7 @@ class TTSProvider:
         raise NotImplementedError
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60):
+                   response_format=None, timeout=60, route_decision=None):
         raise NotImplementedError
 
     @property
@@ -149,8 +151,9 @@ def _pcm_rate_from_ctype(ctype, default=_TTS_PCM_RATE):
 
 # ---- OpenRouter TTS ----------------------------------------------------------
 def openrouter_tts(text, api_key, model=None, voice=None,
-                   response_format=None, timeout=60):
+                   response_format=None, timeout=60, route_decision=None):
     """Synthesize text to speech through OpenRouter's /audio/speech endpoint."""
+    processing_route.require_provider(route_decision, expected_provider="openrouter")
     key = (api_key or "").strip()
     if not key:
         raise ValueError("Add your OpenRouter API key in Settings to use the Reader.")
@@ -270,7 +273,7 @@ class OpenRouterTTSProvider(TTSProvider):
         return voices
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60):
+                   response_format=None, timeout=60, route_decision=None):
         key = (self._get_key() or "").strip()
         if not key:
             raise ValueError("Add your OpenRouter API key in Settings to use the Reader.")
@@ -279,7 +282,8 @@ class OpenRouterTTSProvider(TTSProvider):
         audio, ctype = openrouter_tts(
             text, key, model=mid,
             voice=vc,
-            response_format=response_format, timeout=timeout)
+            response_format=response_format, timeout=timeout,
+            route_decision=route_decision)
         return audio, ctype
 
     def _get_key(self):
@@ -323,7 +327,7 @@ class OpenAITTSProvider(TTSProvider):
         return voices
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60):
+                   response_format=None, timeout=60, route_decision=None):
         key = (self._get_key() or "").strip()
         if not key:
             raise ValueError("Add your OpenAI API key in Settings.")
@@ -336,6 +340,8 @@ class OpenAITTSProvider(TTSProvider):
         vc = voice_id or self.default_voice
         fmt = response_format or "mp3"
         payload = {"model": mid, "input": txt, "voice": vc, "response_format": fmt}
+        processing_route.require_provider(
+            route_decision, expected_provider=self.provider_id)
         try:
             req = urllib.request.Request(
                 OPENAI_TTS_URL, data=json.dumps(payload).encode("utf-8"), method="POST")
@@ -428,11 +434,12 @@ def get_tts_defaults(provider_id=None):
     return (p.provider_id, p.default_model, p.default_voice)
 
 
-def synthesize_with_fallback(text, voice_id=None, model=None, provider_id=None):
-    """Synthesize text-to-speech with transparent provider fallback."""
+def synthesize_with_fallback(text, voice_id=None, model=None, provider_id=None,
+                             route_decision=None):
+    """Synthesize text-to-speech with same-provider model fallback."""
     ALL_IDS = ["openrouter", "openai"]
     requested = provider_id if provider_id in ALL_IDS else "openrouter"
-    prov_order = [requested] + [pid for pid in ALL_IDS if pid != requested]
+    prov_order = [requested]
     attempts = []
     for i, pid in enumerate(prov_order):
         if pid == "openrouter":
@@ -461,7 +468,8 @@ def synthesize_with_fallback(text, voice_id=None, model=None, provider_id=None):
             else:
                 effective_voice = getattr(p, "default_voice", None)
             audio, ctype = p.synthesize(
-                text, voice_id=effective_voice, model=effective_model)
+                text, voice_id=effective_voice, model=effective_model,
+                route_decision=route_decision)
             meta = {"ok": True, "provider": pid,
                     "model": effective_model,
                     "voice": effective_voice}

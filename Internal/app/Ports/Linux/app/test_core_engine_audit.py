@@ -404,6 +404,7 @@ def test_local_provider_accepts_bare_host_and_handles_bad_port():
 
 def test_anthropic_provider_preserves_assistant_turns(monkeypatch):
     from ai.providers import anthropic
+    import processing_route
 
     captured = {}
 
@@ -413,12 +414,19 @@ def test_anthropic_provider_preserves_assistant_turns(monkeypatch):
 
     monkeypatch.setattr(anthropic, "_anthropic_chat", fake_chat)
     provider = anthropic.AnthropicProvider("key")
+    decision = processing_route.snapshot(
+        {
+            "pro_mode": True, "local_only_mode": False, "instant_text": False,
+            "llm_provider": "anthropic", "anthropic_api_key": "key",
+        },
+        feature="prompt", lane="prompt",
+    )
     assert provider.chat([
         {"role": "system", "content": "system"},
         {"role": "user", "content": "first"},
         {"role": "assistant", "content": "answer"},
         {"role": "user", "content": "follow-up"},
-    ]) == "ok"
+    ], route_decision=decision) == "ok"
     assert [m["role"] for m in captured["conversation"]] == [
         "user", "assistant", "user",
     ]

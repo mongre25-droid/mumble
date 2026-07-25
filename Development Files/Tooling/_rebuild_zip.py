@@ -38,6 +38,18 @@ EXCLUDE_DIRS = {
     "_test_logs", ".pytest_cache", ".mypy_cache", ".ruff_cache", "tests",
 }
 
+ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
+
+
+def write_file(archive, source, archive_name):
+    """Write one deterministic member independent of checkout timestamps."""
+    info = zipfile.ZipInfo(archive_name.replace("\\", "/"), ZIP_EPOCH)
+    info.create_system = 3
+    info.external_attr = (0o100644 & 0xFFFF) << 16
+    info.compress_type = zipfile.ZIP_DEFLATED
+    with open(source, "rb") as handle:
+        archive.writestr(info, handle.read(), compresslevel=9)
+
 
 def find_repo_root(start):
     """Walk up from `start` until a dir contains Internal/app/mumble.py."""
@@ -62,13 +74,13 @@ def add_tree(z, src_dir, arc_prefix):
     and test/compiled files (the app/ runtime)."""
     n = 0
     for root, dirs, files in os.walk(src_dir):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        dirs[:] = sorted(d for d in dirs if d not in EXCLUDE_DIRS)
         for fn in sorted(files):
             if _skip_file(fn):
                 continue
             full = os.path.join(root, fn)
             rel = os.path.relpath(full, src_dir).replace(os.sep, "/")
-            z.write(full, arc_prefix + rel)
+            write_file(z, full, arc_prefix + rel)
             n += 1
     return n
 
@@ -91,7 +103,7 @@ def main():
         # 1. root Mumble.exe — the native launcher.
         exe = os.path.join(root, "Mumble.exe")
         if os.path.isfile(exe):
-            z.write(exe, "Mumble/Mumble.exe")
+            write_file(z, exe, "Mumble/Mumble.exe")
             counts["Mumble.exe"] = 1
         else:
             print("WARNING: root Mumble.exe missing — zip will lack the launcher.")
@@ -99,7 +111,7 @@ def main():
         # component notices live under Internal/app and are included by add_tree.
         licence = os.path.join(root, "LICENSE")
         if os.path.isfile(licence):
-            z.write(licence, "Mumble/LICENSE")
+            write_file(z, licence, "Mumble/LICENSE")
             counts["LICENSE"] = 1
         else:
             print("WARNING: root LICENSE missing — zip will lack Mumble's licence.")
@@ -109,7 +121,7 @@ def main():
         for fn in sorted(os.listdir(internal)):
             full = os.path.join(internal, fn)
             if os.path.isfile(full):
-                z.write(full, "Mumble/Internal/" + fn)
+                write_file(z, full, "Mumble/Internal/" + fn)
                 ni += 1
         counts["Internal launchers"] = ni
         # 3. Internal/app/ runtime (pruned).
@@ -137,6 +149,7 @@ def main():
         "Internal/ launcher (Open Mumble.bat)": "Mumble/Internal/Open Mumble.bat" in names,
         "Internal/ hidden .vbs": "Mumble/Internal/Mumble (hidden).vbs" in names,
         "app runtime (mumble.py)": "Mumble/Internal/app/mumble.py" in names,
+        "processing route policy shipped": "Mumble/Internal/app/processing_route.py" in names,
         "webui shipped": "Mumble/Internal/app/webui/app.js" in names,
         "Mumble Search runtime shipped": (
             "Mumble/Internal/app/experimental/system_search/engine.py" in names

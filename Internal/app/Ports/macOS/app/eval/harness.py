@@ -147,6 +147,19 @@ def resolve_providers(provider_names, keys):
     return providers, skipped
 
 
+def _provider_decision(provider, lane):
+    """Give explicit route permission to this opt-in, live eval invocation."""
+    import processing_route
+    template = _PROVIDER_TEMPLATES[provider["name"]]
+    values = {
+        "pro_mode": True, "local_only_mode": False, "instant_text": False,
+        "llm_provider": provider["name"],
+        template["key_setting"]: provider["key"],
+        template["model_setting"]: provider["model"],
+    }
+    return processing_route.snapshot(values, feature=lane, lane=lane)
+
+
 # ---------------------------------------------------------------------------
 # Lane runners — execute one scenario against one provider
 # ---------------------------------------------------------------------------
@@ -161,6 +174,7 @@ def _run_polish(request, provider, timeout=120):
         gen = ai.cerebras_polish(
             request, provider["key"], provider["model"],
             url=provider["url"], aggressiveness="Light",
+            route_decision=_provider_decision(provider, "text"),
         )
         for chunk in gen:
             if isinstance(chunk, str) and not chunk.startswith("\x00"):
@@ -182,6 +196,7 @@ def _run_prompt(request, provider, timeout=120):
         gen = ai.cerebras_prompt(
             request, provider["key"],
             model=provider["model"], url=provider["url"],
+            route_decision=_provider_decision(provider, "prompt"),
         )
         for chunk in gen:
             if isinstance(chunk, str) and not chunk.startswith("\x00"):
@@ -203,6 +218,7 @@ def _run_email(request, provider, timeout=120):
         gen = ai.cerebras_email(
             request, "eval_user", provider["key"],
             model=provider["model"], url=provider["url"],
+            route_decision=_provider_decision(provider, "email"),
         )
         for chunk in gen:
             if isinstance(chunk, str) and not chunk.startswith("\x00"):
@@ -224,6 +240,7 @@ def _run_reply(request, provider, context="", timeout=120):
         gen = ai.cerebras_reply(
             request, "eval_user", provider["key"],
             context=context, model=provider["model"], url=provider["url"],
+            route_decision=_provider_decision(provider, "reply"),
         )
         for chunk in gen:
             if isinstance(chunk, str) and not chunk.startswith("\x00"):
@@ -245,6 +262,7 @@ def _run_foreign(request, provider, timeout=120):
         gen = ai.cerebras_foreign(
             request, "eval_user", provider["key"],
             model=provider["model"], url=provider["url"],
+            route_decision=_provider_decision(provider, "foreign"),
         )
         for chunk in gen:
             if isinstance(chunk, str) and not chunk.startswith("\x00"):

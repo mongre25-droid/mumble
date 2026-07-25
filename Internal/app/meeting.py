@@ -996,15 +996,21 @@ def _chunk_transcript_lines(lines, max_chars=ANALYSIS_CHUNK_CHARS):
     return chunks
 
 
-def _analysis_context(settings, feature="meetings", lane="meeting_analysis"):
+def _analysis_context(
+    settings, feature="meetings", lane="meeting_analysis", context="",
+):
     """Freeze the route and provider facts for one meeting action."""
-    decision = processing_route.snapshot(settings, feature=feature, lane=lane)
-    info = ai.PROVIDERS.get(decision.provider) or {}
-    return ai, info, decision
+    invocation = processing_route.snapshot_inputs(
+        settings, feature=feature, lane=lane,
+        context=context, context_policy="meeting_transcript",
+    )
+    info = ai.PROVIDERS.get(invocation.route.provider) or {}
+    return ai, info, invocation
 
 
 def _analysis_call(context, system, user, max_tokens, timeout):
-    ai_module, info, decision = context
+    ai_module, info, invocation = context
+    decision = invocation.route
     return processing_route.call_provider(
         decision,
         ai_module.cerebras_chat,
@@ -1069,7 +1075,7 @@ def summarize_meeting(meeting_id, settings):
         return None
     chunks = _chunk_transcript_lines(
         _meeting_transcript_lines(meeting_record, timestamps=True))
-    context = _analysis_context(settings)
+    context = _analysis_context(settings, context="\n\n".join(chunks))
     if not chunks or context is None:
         return None
 
@@ -1120,7 +1126,7 @@ def _extract_list_analysis(meeting_id, settings, system, store_field,
         return []
     chunks = _chunk_transcript_lines(
         _meeting_transcript_lines(meeting_record, timestamps=True))
-    context = _analysis_context(settings)
+    context = _analysis_context(settings, context="\n\n".join(chunks))
     if not chunks or context is None:
         return []
     title = meeting_record.get("title", "Meeting")
@@ -1168,7 +1174,7 @@ def extract_open_questions(meeting_id, settings):
         return []
     chunks = _chunk_transcript_lines(
         _meeting_transcript_lines(meeting_record, timestamps=True))
-    context = _analysis_context(settings)
+    context = _analysis_context(settings, context="\n\n".join(chunks))
     if not chunks or context is None:
         return []
     title = meeting_record.get("title", "Meeting")
@@ -1204,7 +1210,7 @@ def process_meeting_deep(meeting_id, settings):
         return None
     chunks = _chunk_transcript_lines(
         _meeting_transcript_lines(meeting_record, timestamps=True))
-    context = _analysis_context(settings)
+    context = _analysis_context(settings, context="\n\n".join(chunks))
     if not chunks or context is None:
         return None
     title = meeting_record.get("title", "Meeting")

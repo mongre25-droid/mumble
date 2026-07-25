@@ -2080,6 +2080,19 @@
                             ><span class="thumb"></span
                         ></label>
                     </div>
+                    <div class="route-status" id="processing-route-status" role="status" aria-live="polite">
+                        <span class="route-status-dot"></span>
+                        <div><b id="processing-route-title">Checking text route…</b>
+                            <span id="processing-route-copy">Mumble is resolving the effective processing path.</span></div>
+                    </div>
+                    <dl class="processing-route-facts" id="processing-route-facts">
+                        <div><dt>Saved choice</dt><dd id="route-fact-saved">Checking…</dd></div>
+                        <div><dt>Effective route</dt><dd id="route-fact-effective">Checking…</dd></div>
+                        <div><dt>Input and engine</dt><dd id="route-fact-engine">Transcript text · checking…</dd></div>
+                        <div><dt>Location</dt><dd id="route-fact-location">Checking…</dd></div>
+                        <div><dt>What leaves this device</dt><dd id="route-fact-egress">Checking…</dd></div>
+                        <div><dt>Speed, quality, and cost</dt><dd id="route-fact-tradeoff">Measured results depend on this computer, the network, model, and provider.</dd></div>
+                    </dl>
                     <div class="card" style="padding: 12px; background: var(--surface-2); margin-bottom: 14px" id="pro-mode-explain">
                         <p class="t-mute fs12 lh16">
                             <b>Hosted text processing ON</b>: your transcribed <b>text</b> is sent to your AI provider for cleanup,

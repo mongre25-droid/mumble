@@ -23,7 +23,7 @@
   <tr><td>Deck</td><td><span class="badge b-done">implemented</span></td><td>History, clipboard capture, favourites, search, presets, and real job execution are part of the current Web UI and controller.</td></tr>
   <tr><td>Meetings</td><td><span class="badge b-done">implemented</span></td><td>Meeting recording, transcription, storage, search, retry, and export paths are present; hardware and long-session validation remain separate gates.</td></tr>
   <tr><td>Reader</td><td><span class="badge b-done">implemented</span></td><td>Document import, parsing, progress, statistics, and optional text-to-speech are present.</td></tr>
-  <tr><td>Processing truth</td><td><span class="badge b-gated">implementation candidate</span></td><td>Source and automated tests cover one immutable route decision across the named Windows surfaces, guarded Reader entry points on Windows/macOS/Linux, a complete Windows dictation input snapshot, and truthful Settings hydration. Issue #14 remains open pending independent review; physical macOS/Linux use, live-provider behaviour, and owner UI approval remain unverified.</td></tr>
+  <tr><td>Processing truth</td><td><span class="badge b-gated">corrected local candidate</span></td><td>The Issue #14 correction candidate requires one immutable route decision at the final provider adapter, freezes the full invocation inputs across Windows/macOS/Linux entry points, guards Reader summary and speech, hides private snapshot fields, and keeps every Settings action closed until hydration succeeds. Device-only recorder tests make zero hosted calls. Issue #14 remains open; independent review, physical-platform use, live-provider behaviour, CI, and owner UI approval remain unverified.</td></tr>
   <tr><td>Search</td><td><span class="badge b-exist">supported on Windows/Linux</span></td><td>Local app, file, and folder indexing is bounded and local; macOS does not load this surface.</td></tr>
   <tr><td>Ports</td><td><span class="badge b-gated">maintained seams</span></td><td>macOS and Linux have separate launch, input, paste, overlay, storage, and packaging seams. They are not a substitute for release validation.</td></tr>
 </tbody></table>
@@ -36,7 +36,9 @@
   <li><span class="badge b-gated">development setup</span> The documented local command assumes <code>Internal/app/.venv/Scripts/python.exe</code>, but this checkout currently contains the branded <code>Mumble.exe</code> there and no Python interpreter. Reproducible development-environment setup remains open.</li>
   <li><span class="badge b-done">passed locally</span> Windows, macOS, and Linux runtime locks use Pillow 12.3.0 and all three <code>pip-audit</code> checks report no known vulnerabilities.</li>
   <li><span class="badge b-done">exact-head CI</span> Run <code>30067617990</code> passed every required independent evidence job and the aggregate result at commit <code>cb64f0e6</code>. Promotion remained a separate manual action and was not run.</li>
-  <li><span class="badge b-done">passed locally</span> Rebuilt <code>Internal/Releases/Mumble.zip</code> from the current source: version <code>0.95</code>, 123 entries, and all package-layout checks passed.</li>
+  <li><span class="badge b-done">local correction evidence</span> The Issue #14 candidate passed 77/77 Windows test modules (269 counted cases), 39/39 macOS modules (104 cases), and 38/38 Linux modules (128 cases). These are offline source and compatibility checks, not physical-platform or live-provider evidence.</li>
+  <li><span class="badge b-done">passed locally</span> Rebuilt <code>Internal/Releases/Mumble.zip</code> deterministically from the correction source: version <code>0.95</code>, 125 entries, including <code>processing_route.py</code>. Clean extraction and isolated imports passed; installation was not attempted.</li>
+  <li><span class="badge b-done">passed locally</span> macOS ZIP and Linux ZIP/TAR candidates were built twice with identical hashes, include the synchronized processing-route source, and passed clean extraction/import checks. Signing, notarization, installation, and physical use were not attempted.</li>
   <li><span class="badge b-done">passed locally</span> Windows launcher verifier confirmed the current target, working directory, icon, entry script, shortcuts, and Flow Launcher paths.</li>
   <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
   <li><span class="badge b-done">passed locally</span> Website lock installation, static build, Astro diagnostics, and dependency audit pass with zero reported audit findings.</li>
@@ -47,7 +49,7 @@
 
 <h2><span class="sec">3</span>Active priorities</h2>
 <ol>
-  <li>Work the implementation frontier in issues 14, 15, and 20: independently review processing-route truth, then continue target-bound insertion and the production Focus Stage foundation.</li>
+  <li>Independently review the local Issue #14 correction before integration. Issues #15 and #20 are separate work and are likely to conflict in controllers, Settings UI, provider seams, port copies, package archives, and these Core records.</li>
   <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>

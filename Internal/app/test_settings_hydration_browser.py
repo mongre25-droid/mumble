@@ -66,7 +66,8 @@ def _wait_debugger(port):
     raise AssertionError("Edge debugging endpoint did not start")
 
 
-def test_settings_delayed_rejected_and_stale_hydration_are_truthful():
+@pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
+def test_settings_delayed_rejected_and_stale_hydration_are_truthful(platform_app):
     edge = next((str(path) for path in EDGE_CANDIDATES if path.exists()), None)
     node = shutil.which("node")
     if not edge or not node:
@@ -122,6 +123,7 @@ await send('Runtime.enable');
 await send('Page.addScriptToEvaluateOnNewDocument', {source: `
   window.__settingsRequests = [];
   window.__micRequests = [];
+  window.__bridgeCalls = [];
   const fallback = async (name) => {
     if (name === 'pretty_binding') return {pretty:'Ctrl + Win'};
     if (name === 'local_llm_status') return {enabled:false, ready:false};
@@ -135,7 +137,10 @@ await send('Page.addScriptToEvaluateOnNewDocument', {source: `
     if (name === 'list_microphones') return () => new Promise((resolve, reject) => {
       window.__micRequests.push({resolve, reject});
     });
-    return (..._args) => fallback(String(name));
+    return (..._args) => {
+      window.__bridgeCalls.push(String(name));
+      return fallback(String(name));
+    };
   }})};
 `});
 await send('Page.navigate', {url: targetUrl});
@@ -160,29 +165,53 @@ const base = {
     action_processing:{effective:'local',reason:'no_key',provider:'cerebras',provider_supported:true,has_key:false}
   }
 };
+let expectedMicRequests = await evaluate(`window.__micRequests.length`);
 await evaluate(`navTo('settings'); true`);
 const delayed = await evaluate(`(() => { const v=document.querySelector('[data-view="settings"]'); const s=document.querySelector('[data-setting="ui_effects"]'); return {state:v.dataset.settingsState,busy:v.getAttribute('aria-busy'),disabled:s.disabled,visibility:getComputedStyle(s).visibility,value:s.value}; })()`);
 if (delayed.state !== 'loading' || delayed.busy !== 'true' || !delayed.disabled || delayed.visibility !== 'hidden') throw new Error('false first frame: '+JSON.stringify(delayed));
-await evaluate(`window.__settingsRequests[0].resolve(${JSON.stringify(base)}); true`);
+const loadingActions = await evaluate(`(() => {
+  const view=document.querySelector('[data-view="settings"]');
+  const nodes=Array.from(view.querySelectorAll('button,input,select,textarea,a[href],[role="button"],[tabindex]'));
+  const retry=document.querySelector('#settings-hydration-retry');
+  const actionable=nodes.filter(el => el !== retry);
+  const bad=actionable.filter(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.tabIndex !== -1);
+  const labels=bad.map(el => el.id || el.getAttribute('data-setting') || el.getAttribute('data-settings-tab') || el.textContent.trim().slice(0,40));
+  const before=window.__bridgeCalls.length;
+  actionable.forEach(el => el.click());
+  return {count:actionable.length,bad:labels,bridgeDelta:window.__bridgeCalls.length-before};
+})()`);
+if (loadingActions.count < 40 || loadingActions.bad.length || loadingActions.bridgeDelta) throw new Error('loading actions were usable: '+JSON.stringify(loadingActions));
+await evaluate(`window.__settingsRequests.at(-1).resolve(${JSON.stringify(base)}); true`);
 for (let i=0; i<100; i++) {
-  if (await evaluate(`window.__micRequests.length === 1`)) break;
+  if (await evaluate(`window.__micRequests.length > ${expectedMicRequests}`)) break;
   await new Promise(r => setTimeout(r, 25));
 }
-await evaluate(`window.__micRequests[0].reject(new Error('microphone bridge rejected')); true`);
+expectedMicRequests = await evaluate(`window.__micRequests.length`);
+await evaluate(`window.__micRequests.at(-1).reject(new Error('microphone bridge rejected')); true`);
 for (let i=0; i<100; i++) {
   if (await evaluate(`document.querySelector('[data-view="settings"]').dataset.settingsState === 'error'`)) break;
   await new Promise(r => setTimeout(r, 25));
 }
 const micFailed = await evaluate(`(() => { const v=document.querySelector('[data-view="settings"]'); const s=document.querySelector('[data-setting="ui_effects"]'); return {state:v.dataset.settingsState,busy:v.getAttribute('aria-busy'),disabled:s.disabled,visibility:getComputedStyle(s).visibility}; })()`);
 if (micFailed.state !== 'error' || micFailed.busy !== 'false' || !micFailed.disabled || micFailed.visibility !== 'hidden') throw new Error('microphone rejection stayed loading: '+JSON.stringify(micFailed));
+const errorActions = await evaluate(`(() => {
+  const view=document.querySelector('[data-view="settings"]');
+  const retry=document.querySelector('#settings-hydration-retry');
+  const nodes=Array.from(view.querySelectorAll('button,input,select,textarea,a[href],[role="button"],[tabindex]'));
+  const actionable=nodes.filter(el => el !== retry);
+  const bad=actionable.filter(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.tabIndex !== -1);
+  return {count:actionable.length,bad:bad.map(el => el.id || el.getAttribute('data-setting') || el.textContent.trim().slice(0,40)),retryUsable:!retry.disabled && retry.getAttribute('aria-disabled') !== 'true'};
+})()`);
+if (errorActions.count < 40 || errorActions.bad.length || !errorActions.retryUsable) throw new Error('error actions were usable or retry was blocked: '+JSON.stringify(errorActions));
 
 await evaluate(`hydrateSettings(); true`);
-await evaluate(`window.__settingsRequests[1].resolve(${JSON.stringify(base)}); true`);
+await evaluate(`window.__settingsRequests.at(-1).resolve(${JSON.stringify(base)}); true`);
 for (let i=0; i<100; i++) {
-  if (await evaluate(`window.__micRequests.length === 2`)) break;
+  if (await evaluate(`window.__micRequests.length > ${expectedMicRequests}`)) break;
   await new Promise(r => setTimeout(r, 25));
 }
-await evaluate(`window.__micRequests[1].resolve([{index:1,name:'Recovered microphone'}]); true`);
+expectedMicRequests = await evaluate(`window.__micRequests.length`);
+await evaluate(`window.__micRequests.at(-1).resolve([{index:1,name:'Recovered microphone'}]); true`);
 for (let i=0; i<100; i++) {
   if (await evaluate(`document.querySelector('[data-view="settings"]').dataset.settingsState === 'ready'`)) break;
   await new Promise(r => setTimeout(r, 25));
@@ -190,41 +219,68 @@ for (let i=0; i<100; i++) {
 const ready = await evaluate(`(() => { const v=document.querySelector('[data-view="settings"]'); const s=document.querySelector('[data-setting="ui_effects"]'); return {state:v.dataset.settingsState,disabled:s.disabled,visibility:getComputedStyle(s).visibility,value:s.value}; })()`);
 if (ready.state !== 'ready' || ready.disabled || ready.visibility === 'hidden' || ready.value !== 'enhanced') throw new Error('bad ready state: '+JSON.stringify(ready));
 
-await evaluate(`hydrateSettings(); true`);
-await evaluate(`window.__settingsRequests[2].resolve(${JSON.stringify(base)}); true`);
+const hosted = {...base, instant_text:false, _route_state:{
+  transcription:{effective:'local',reason:'selected',provider:'groq'},
+  plain_processing:{effective:'cloud',reason:'selected'},
+  action_processing:{effective:'cloud',reason:'selected',provider:'cerebras',provider_supported:true,has_key:true,decision:{model:'gpt-oss-120b'}}
+}};
+const routeRequestsBefore = await evaluate(`window.__settingsRequests.length`);
+await evaluate(`(() => { const el=document.querySelector('[data-setting="instant_text"]'); el.checked=false; el.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`);
 for (let i=0; i<100; i++) {
-  if (await evaluate(`window.__micRequests.length === 3`)) break;
+  if (await evaluate(`window.__settingsRequests.length > ${routeRequestsBefore}`)) break;
   await new Promise(r => setTimeout(r, 25));
 }
-await evaluate(`hydrateSettings(); true`);
-await evaluate(`window.__settingsRequests[3].resolve(${JSON.stringify(base)}); true`);
+await evaluate(`window.__settingsRequests.at(-1).resolve(${JSON.stringify(hosted)}); true`);
 for (let i=0; i<100; i++) {
-  if (await evaluate(`window.__micRequests.length === 4`)) break;
+  if ((await evaluate(`document.querySelector('#route-fact-effective')?.textContent || ''`)).includes('Hosted')) break;
   await new Promise(r => setTimeout(r, 25));
 }
-await evaluate(`window.__micRequests[3].resolve([{index:3,name:'Newest microphone'}]); true`);
+const routeRefresh = await evaluate(`({
+  effective:document.querySelector('#route-fact-effective')?.textContent || '',
+  location:document.querySelector('#route-fact-location')?.textContent || '',
+  egress:document.querySelector('#route-fact-egress')?.textContent || '',
+  getSettingsCalls:window.__settingsRequests.length
+})`);
+if (!routeRefresh.effective.includes('Hosted') || !routeRefresh.location.toLowerCase().includes('hosted') || !routeRefresh.egress.includes('Transcript text') || routeRefresh.getSettingsCalls !== routeRequestsBefore + 1) throw new Error('route disclosure did not refresh after save: '+JSON.stringify(routeRefresh));
+
+await evaluate(`hydrateSettings(); true`);
+await evaluate(`window.__settingsRequests.at(-1).resolve(${JSON.stringify(base)}); true`);
+for (let i=0; i<100; i++) {
+  if (await evaluate(`window.__micRequests.length > ${expectedMicRequests}`)) break;
+  await new Promise(r => setTimeout(r, 25));
+}
+expectedMicRequests = await evaluate(`window.__micRequests.length`);
+const staleMicIndex = (await evaluate(`window.__micRequests.length`)) - 1;
+await evaluate(`hydrateSettings(); true`);
+await evaluate(`window.__settingsRequests.at(-1).resolve(${JSON.stringify(base)}); true`);
+for (let i=0; i<100; i++) {
+  if (await evaluate(`window.__micRequests.length > ${expectedMicRequests}`)) break;
+  await new Promise(r => setTimeout(r, 25));
+}
+expectedMicRequests = await evaluate(`window.__micRequests.length`);
+await evaluate(`window.__micRequests.at(-1).resolve([{index:3,name:'Newest microphone'}]); true`);
 for (let i=0; i<100; i++) {
   if (await evaluate(`document.querySelector('[data-view="settings"]').dataset.settingsState === 'ready'`)) break;
   await new Promise(r => setTimeout(r, 25));
 }
-await evaluate(`window.__micRequests[2].resolve([{index:2,name:'Stale microphone'}]); true`);
+await evaluate(`window.__micRequests[${staleMicIndex}].resolve([{index:2,name:'Stale microphone'}]); true`);
 await new Promise(r => setTimeout(r, 100));
 const race = await evaluate(`(() => { const s=document.querySelector('#set-mic'); return {value:s.value,labels:Array.from(s.options).map(o=>o.textContent)}; })()`);
 if (race.value !== '3' || race.labels.join('|') !== 'Newest microphone') throw new Error('stale microphone response won: '+JSON.stringify(race));
 
 await evaluate(`hydrateSettings(); true`);
-await evaluate(`window.__settingsRequests[4].reject(new Error('bridge rejected')); true`);
+await evaluate(`window.__settingsRequests.at(-1).reject(new Error('bridge rejected')); true`);
 for (let i=0; i<100; i++) {
   if (await evaluate(`document.querySelector('[data-view="settings"]').dataset.settingsState === 'error'`)) break;
   await new Promise(r => setTimeout(r, 25));
 }
 const failed = await evaluate(`(() => { const v=document.querySelector('[data-view="settings"]'); const s=document.querySelector('[data-setting="ui_effects"]'); return {state:v.dataset.settingsState,disabled:s.disabled,visibility:getComputedStyle(s).visibility}; })()`);
 if (failed.state !== 'error' || !failed.disabled || failed.visibility !== 'hidden') throw new Error('bad error state: '+JSON.stringify(failed));
-console.log(JSON.stringify({delayed, micFailed, ready, race, failed}));
+console.log(JSON.stringify({delayed, loadingActions, micFailed, errorActions, ready, routeRefresh, race, failed}));
 ws.close();
 """
         result = subprocess.run(
-            [node, "--input-type=module", "-e", script, str(port), INDEX_URI],
+            [node, "--input-type=module", "-e", script, str(port), (platform_app / "webui" / "index.html").as_uri()],
             capture_output=True,
             text=True,
             timeout=45,
@@ -232,8 +288,13 @@ ws.close();
         assert result.returncode == 0, result.stderr or result.stdout
         evidence = json.loads(result.stdout.strip().splitlines()[-1])
         assert evidence["delayed"]["state"] == "loading"
+        assert evidence["loadingActions"]["count"] >= 40
+        assert evidence["loadingActions"]["bad"] == []
         assert evidence["micFailed"]["state"] == "error"
+        assert evidence["errorActions"]["bad"] == []
+        assert evidence["errorActions"]["retryUsable"] is True
         assert evidence["ready"]["value"] == "enhanced"
+        assert "Hosted" in evidence["routeRefresh"]["effective"]
         assert evidence["race"]["labels"] == ["Newest microphone"]
         assert evidence["failed"]["state"] == "error"
     finally:

@@ -3989,13 +3989,37 @@ function setSettingsHydrationState(state, message) {
       retry.addEventListener("click", () => hydrateSettings());
     }
   }
-  $$('[data-view="settings"] [data-setting]').forEach((control) => {
-    if (state !== "ready" && !control.disabled) {
-      control.dataset.hydrationDisabled = "1";
-      control.disabled = true;
-    } else if (state === "ready" && control.dataset.hydrationDisabled === "1") {
-      control.disabled = false;
-      delete control.dataset.hydrationDisabled;
+  const selector = 'button,input,select,textarea,a[href],[role="button"],[tabindex]';
+  if (!view.dataset.hydrationGuardWired) {
+    view.dataset.hydrationGuardWired = "1";
+    const block = (event) => {
+      const action = event.target.closest?.(selector);
+      if (view.dataset.settingsState !== "ready" && action && action !== retry) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    ["click", "change", "input", "keydown"].forEach((type) => view.addEventListener(type, block, true));
+  }
+  $$(selector, view).forEach((control) => {
+    if (control === retry) return;
+    if (state !== "ready" && control.dataset.hydrationGuarded !== "1") {
+      control.dataset.hydrationGuarded = "1";
+      control.dataset.hydrationTabIndex = control.getAttribute("tabindex") ?? "";
+      control.dataset.hydrationAriaDisabled = control.getAttribute("aria-disabled") ?? "";
+      if ("disabled" in control) {
+        control.dataset.hydrationWasDisabled = control.disabled ? "1" : "0";
+        control.disabled = true;
+      }
+      control.setAttribute("aria-disabled", "true");
+      control.tabIndex = -1;
+    } else if (state === "ready" && control.dataset.hydrationGuarded === "1") {
+      if ("disabled" in control && control.dataset.hydrationWasDisabled === "0") control.disabled = false;
+      const oldTab = control.dataset.hydrationTabIndex;
+      if (oldTab === "") control.removeAttribute("tabindex"); else control.setAttribute("tabindex", oldTab);
+      const oldAria = control.dataset.hydrationAriaDisabled;
+      if (oldAria === "") control.removeAttribute("aria-disabled"); else control.setAttribute("aria-disabled", oldAria);
+      ["hydrationGuarded", "hydrationTabIndex", "hydrationAriaDisabled", "hydrationWasDisabled"].forEach((key) => delete control.dataset[key]);
     }
   });
 }
@@ -5602,7 +5626,7 @@ async function confirmReaderCloudUse(kind) {
   const provider = kind === "tts" ? (READER.provider || "the voice provider") :
     ((SET && SET.llm_provider) || "your AI provider");
   const body = kind === "tts"
-    ? `Reader voice sends each short passage to ${provider} to create audio. If it is unavailable, another configured voice provider may be tried. Reader Sync, when enabled, also stores your library in your account.`
+    ? `Reader voice sends each short passage to ${provider} to create audio. If one voice model is unavailable, another compatible model from that same provider may be tried. Reader Sync, when enabled, also stores your library in your account.`
     : `Summarize sends the document text to ${provider}. Do not continue with confidential material unless you are comfortable sharing it with that provider.`;
   const ok = await confirmModal({ icon: "shield", title: "Send document text?",
     body, confirmText: "Continue", danger: false });

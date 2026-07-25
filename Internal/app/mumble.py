@@ -1561,15 +1561,21 @@ class Mumble:
             return
         if not self.settings.get("pro_mode", True):
             return
-        cfg = self._ai_cfg()
-        if not cfg["key"]:
+        decision = processing_route.snapshot(
+            self.settings, feature="dictation", lane="prompt")
+        if not decision.ready:
             return
         if (time.time() - self._last_llm_ok) < 90:
             return  # warm enough — don't waste a call
 
         def run():
             try:
-                ai.cerebras_warm(cfg["key"], cfg["model"], url=cfg["url"])
+                provider_info = ai.PROVIDERS.get(decision.provider) or {}
+                ai.cerebras_warm(
+                    decision.api_key, decision.model,
+                    url=provider_info.get("url", ""),
+                    route_decision=decision,
+                )
                 self._last_llm_ok = time.time()  # worker is now warm
                 print("AI warmed up")
             except Exception as e:
@@ -3108,9 +3114,16 @@ class Mumble:
             directive = _presets.MODE_DIRECTIVES.get(mode)
             if directive:
                 instruction += "\n\nOUTPUT FORM:\n" + directive
-        route_decision = processing_route.snapshot(
-            self.settings, feature="deck", lane=mode or "deck_reason"
+        deck_snapshot = processing_route.snapshot_inputs(
+            self.settings,
+            feature="deck",
+            lane=mode or "deck_reason",
+            context=ctx_block,
+            context_policy="deck_selection",
+            local_model_ready=local_engine.local_llm_ready(),
         )
+        route_decision = deck_snapshot.route
+        ctx_block = deck_snapshot.context
         key = route_decision.api_key
         if self.island:
             build = ["context", mode] if mode else "context"
@@ -4867,6 +4880,7 @@ class Mumble:
         cfg=None,
         prompt_cfg=None,
         invocation_snapshot=None,
+        route_decision=None,
     ):
         """Send to the AI, routed by lane:
 
@@ -4885,6 +4899,7 @@ class Mumble:
         Returns (mode, output) or raises."""
         if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot):
             decision = invocation_snapshot.route
+            route_decision = decision
             provider_info = ai.PROVIDERS.get(decision.provider) or {}
             cfg = {
                 "key": decision.api_key,
@@ -4942,6 +4957,7 @@ class Mumble:
                         url=pcfg["url"],
                         prefs=prefs,
                         context_strict=context_strict,
+                        route_decision=route_decision,
                     )
                     draft = self._collect_text(gen)
                     break
@@ -4971,11 +4987,13 @@ class Mumble:
             return "prompt", ai._extract_final_prompt(draft)
         if mode_hint == "email":
             return self._collect(
-                ai.cerebras_email(content, name, key, context, model, url=url), "email"
+                ai.cerebras_email(content, name, key, context, model, url=url,
+                                  route_decision=route_decision), "email"
             )
         if mode_hint == "reply":
             return self._collect(
-                ai.cerebras_reply(content, name, key, context, model, url=url), "reply"
+                ai.cerebras_reply(content, name, key, context, model, url=url,
+                                  route_decision=route_decision), "reply"
             )
         if mode_hint == "convert":
             # Convert is ONLY a router now (owner directive 2026-06-13): _process
@@ -4983,7 +5001,8 @@ class Mumble:
             # If it ever slips through unrouted, clean it up as plain Text — there
             # is no generic JSON/table/prose/units conversion lane.
             return self._collect(
-                ai.cerebras_text(content, name, key, context, model, url=url), "text"
+                ai.cerebras_text(content, name, key, context, model, url=url,
+                                 route_decision=route_decision), "text"
             )
         if mode_hint == "foreign":
             # Mark low-confidence / foreign tokens with // uncertainty markers
@@ -4998,7 +5017,7 @@ class Mumble:
             annotated = islamic_terms.annotate_foreign(marked)
             return self._collect(
                 ai.cerebras_foreign(annotated, name, key, context, model, url=url,
-                                    languages=langs),
+                                    languages=langs, route_decision=route_decision),
                 "foreign",
             )
 
@@ -5065,6 +5084,7 @@ class Mumble:
                     model,
                     url=url,
                     aggressiveness=aggr,
+                    route_decision=route_decision,
                 )
             except Exception as e:
                 print("polish API failed, using offline builder:", e)
@@ -5094,6 +5114,7 @@ class Mumble:
                 ),
                 context=poll_ctx,
                 window_words=window_words,
+                route_decision=route_decision,
             )
             out = self._collect_text(gen)
         except Exception as e:
@@ -5163,6 +5184,11 @@ class Mumble:
                     url=pcfg["url"],
                     prefs=prefs,
                     context_strict=context_strict,
+                    route_decision=(
+                        invocation_snapshot.route
+                        if isinstance(invocation_snapshot, processing_route.ProcessingInputSnapshot)
+                        else None
+                    ),
                 )
                 return self._collect(gen, "prompt")
             except Exception as e:
@@ -5441,6 +5467,26 @@ class Mumble:
                     context = conv + ("\n\n" + context if context else "")
             except Exception:
                 pass
+        if not isinstance(
+            invocation_snapshot, processing_route.ProcessingInputSnapshot
+        ):
+            snapshot_source = config_snap or self.settings
+            invocation_snapshot = processing_route.snapshot_inputs(
+                snapshot_source,
+                feature=(det_mode if det_mode in ("prompt", "email", "reply") else "dictation"),
+                lane=det_mode,
+                context=context,
+                context_policy="reprocessing" if config_snap is None else "dictation",
+                context_strict=context_strict,
+                local_model_ready=local_engine.local_llm_ready(),
+                route_decision=route_decision,
+            )
+            name = invocation_snapshot.user_name
+            prefs = invocation_snapshot.prompt_prefs_dict()
+            pro_mode = invocation_snapshot.route.pro_mode
+            snap_fmt = invocation_snapshot.format_enabled
+            context = invocation_snapshot.context
+            context_strict = invocation_snapshot.context_strict
         cloud_allowed = bool(pro_mode and key)
         if isinstance(route_decision, processing_route.RouteDecision):
             cloud_allowed = bool(route_decision.ready and (

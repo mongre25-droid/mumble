@@ -422,19 +422,36 @@ class Api:
             "has_key": has_any_key,
         }
 
+    def _reader_speech_decision(self, lane, provider=None, model=None):
+        return processing_route.snapshot(
+            self.settings,
+            feature="reader",
+            lane=lane,
+            provider_override=provider,
+            model_override=model,
+        )
+
     def reader_tts(self, text, model=None, voice=None, provider=None):
         """Synthesize one chunk of text through the selected TTS provider and
         return base64 audio. Never raises into the bridge. Remembers the last
         good provider/model/voice so the Reader resumes with the user's pick.
 
-        On failure, falls back transparently to the alternate provider. Only
-        surfaces a hard error if every available provider fails."""
+        On failure, may try a compatible model from the same provider. A frozen
+        decision never authorizes a different provider."""
         pid = provider or self.settings.get("reader_tts_provider", "openrouter")
+        decision = self._reader_speech_decision(
+            "reader_speech", provider=pid, model=model)
+        if not decision.ready:
+            return {"ok": False, "message": "Reader speech stayed on this device because its route is not ready.", "route": decision.public_dict()}
         try:
-            audio, ctype, meta = ai.synthesize_with_fallback(
-                text, voice_id=voice, model=model, provider_id=pid)
+            audio, ctype, meta = processing_route.call_provider(
+                decision, ai.synthesize_with_fallback, text,
+                voice_id=voice, model=decision.model, provider_id=decision.provider,
+                expected_provider=decision.provider)
             if not meta.get("ok"):
                 return {"ok": False, "message": meta.get("message", "TTS failed.")}
+            if (meta.get("provider") or decision.provider) != decision.provider:
+                return {"ok": False, "message": "Reader speech provider did not match its frozen route."}
             effective_provider = meta.get("provider") or pid
             effective_model = meta.get("model") or model
             effective_voice = meta.get("voice") or voice
@@ -463,9 +480,15 @@ class Api:
         repeated previews do not leak temporary audio files."""
         try:
             pid = provider or self.settings.get("reader_tts_provider", "openrouter")
+            decision = self._reader_speech_decision(
+                "reader_speech_test", provider=pid, model=model)
+            if not decision.ready:
+                return {"ok": False, "message": "Reader speech test stayed on this device because its route is not ready.", "route": decision.public_dict()}
             test_phrase = "Hello. This is a test of the text to speech voice."
-            audio, ctype, meta = ai.synthesize_with_fallback(
-                test_phrase, voice_id=voice, model=model, provider_id=pid)
+            audio, ctype, meta = processing_route.call_provider(
+                decision, ai.synthesize_with_fallback, test_phrase,
+                voice_id=voice, model=decision.model, provider_id=decision.provider,
+                expected_provider=decision.provider)
             if not meta.get("ok"):
                 return {"ok": False, "message": meta.get("message", "TTS test failed.")}
             import base64
@@ -782,9 +805,12 @@ class Api:
         text = (text or "").strip()
         if not text:
             return {"ok": False, "message": "Nothing to summarize."}
-        decision = processing_route.snapshot(
-            self.settings, feature="reader", lane="reader_summary"
+        invocation = processing_route.snapshot_inputs(
+            self.settings, feature="reader", lane="reader_summary",
+            context=text, context_policy="reader_document",
         )
+        decision = invocation.route
+        text = invocation.context
         if not decision.ready:
             return {
                 "ok": False,

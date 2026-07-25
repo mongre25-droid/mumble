@@ -47,12 +47,14 @@
   <li><span class="badge b-done">promotion boundary</span> Verified that candidate promotion remains a separate manual action; the successful push run did not publish or release anything.</li>
 </ul>
 
-<h2><span class="sec">5</span>25 July 2026 — processing-route implementation candidate</h2>
+<h2><span class="sec">5</span>25 July 2026 — processing-route correction candidate</h2>
 <ul>
-  <li><span class="badge b-done">source candidate</span> Prepared one immutable requested/effective route decision for Dictation, Prompt, Email, Reply, Deck, Meetings, and Reader text shaping, plus a complete immutable Windows dictation input snapshot.</li>
-  <li><span class="badge b-done">automated privacy evidence</span> Mocked-provider tests verify that guarded Reader entry points on Windows, macOS, and Linux reject device-only, hosted-off, missing-key, and unsupported-provider routes before provider code runs.</li>
-  <li><span class="badge b-done">automated Settings evidence</span> Real Edge/Chromium checks cover loading, recovery after rejected microphone enumeration, stale bridge responses, and error states; platform-copy source checks cover the maintained hydration contract and Light/Standard/Full naming.</li>
-  <li><span class="badge b-gated">evidence boundary</span> No live provider request was made. Issue #14 remains open for independent review. Physical macOS/Linux use and owner UI approval remain unverified; nothing was released or deployed.</li>
+  <li><span class="badge b-done">corrected source candidate</span> Preserved reviewed candidate <code>5bbe0570</code> and made route permission mandatory at the final text and speech provider adapters. Dictation, Prompt, Email, Reply, Deck, Meetings, Reader summary/speech, reprocessing, and maintained port entry points now carry one full frozen invocation snapshot.</li>
+  <li><span class="badge b-done">automated privacy evidence</span> In-process provider recorders prove zero hosted calls in device-only mode across Windows/macOS/Linux and direct provider calls. Mutation tests keep nested routing, readiness, language, vocabulary, preferences, and context frozen; distinctive private values and credentials remain absent from representations, logs, UI projections, and <code>public_dict</code>.</li>
+  <li><span class="badge b-done">automated Settings evidence</span> Real Edge/Chromium checks enumerate the whole actionable Settings subtree on all three maintained copies. Loading, rejected hydration, retry, stale-response ordering, and recovery fail closed until the current response succeeds; port route disclosures refresh after route-changing saves.</li>
+  <li><span class="badge b-done">offline verification</span> The trusted runners passed 77/77 Windows modules (269 cases), 39/39 macOS modules (104 cases), and 38/38 Linux modules (128 cases). A 65-case focused route/Reader/Meetings/browser suite, JavaScript syntax, changed-Python compilation, normalized source synchronization, and diff whitespace checks also passed.</li>
+  <li><span class="badge b-done">offline packages</span> Deterministic rebuilds matched twice: Windows ZIP <code>431133FA...</code> (125 entries), macOS ZIP <code>0E7CCC9A...</code> (100 files), Linux ZIP <code>D7EA0371...</code>, and Linux TAR <code>6B83BAF1...</code>. All contain the synchronized route module and passed clean extraction/import checks.</li>
+  <li><span class="badge b-gated">evidence boundary</span> No live provider request, app restart, physical platform test, installation, signing, notarization, CI run, merge, publication, deployment, or release occurred. Issue #14 remains open for a new independent review and owner decision; Issues #15 and #20 may conflict at shared controllers, Settings, provider, port, package, and Core-record seams.</li>
 </ul>
 
 <h2><span class="sec">6</span>Current product snapshot</h2>

@@ -17,7 +17,10 @@ PREFIX = "Mumble/Internal/app/"
 # NEW app files that must be added even though they aren't in the existing zip's
 # entry list (the refresh loop only iterates pre-existing entries). Listed by
 # their app-relative path; add here whenever a brand-new shipped module lands.
-ENSURE = ["island_render.py", "transcription.py", "reader_store.py"]
+ENSURE = [
+    "island_render.py", "transcription.py", "reader_store.py",
+    "processing_route.py",
+]
 
 
 def main():

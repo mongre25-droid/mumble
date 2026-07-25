@@ -103,17 +103,21 @@ print(json.dumps(evidence))
 
 
 def test_every_maintained_reader_uses_the_same_guarded_seam():
-    canonical_route = (APP_DIR / "processing_route.py").read_bytes()
+    canonical_route = (APP_DIR / "processing_route.py").read_text(
+        encoding="utf-8"
+    ).replace("\r\n", "\n")
 
     for platform_app in PLATFORM_APP_DIRS:
         route_file = platform_app / "processing_route.py"
-        assert route_file.read_bytes() == canonical_route
+        assert route_file.read_text(encoding="utf-8").replace(
+            "\r\n", "\n"
+        ) == canonical_route
 
         shell_source = (platform_app / "webui_shell.py").read_text(encoding="utf-8")
         reader_source = shell_source.split("    def reader_summarize", 1)[1].split(
             "\n    # ---- store helpers", 1
         )[0]
-        assert "processing_route.snapshot(" in reader_source
+        assert "processing_route.snapshot_inputs(" in reader_source
         assert "processing_route.call_provider(" in reader_source
         assert "summary = ai.cerebras_chat(" not in reader_source
 

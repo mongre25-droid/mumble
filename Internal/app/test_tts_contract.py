@@ -8,6 +8,7 @@ import pytest
 
 import ai
 import ai.tts_providers as modular_tts
+import processing_route
 import settings
 
 
@@ -20,6 +21,20 @@ EXPECTED_DEFAULTS = {
     VOXTRAL: "gb_oliver_neutral",
     MAI: "en-US-Harper:MAI-Voice-2",
 }
+
+
+def _openrouter_route():
+    return processing_route.snapshot(
+        {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "instant_text": False,
+            "llm_provider": "openrouter",
+            "openrouter_api_key": "sk-or-test",
+        },
+        feature="reader", lane="reader_speech",
+        provider_override="openrouter",
+    )
 
 
 class _Response:
@@ -67,7 +82,8 @@ def test_openrouter_payload_and_audio_contract(
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     audio, returned_type = impl.openrouter_tts(
-        "Reader contract", "sk-or-test", model=model)
+        "Reader contract", "sk-or-test", model=model,
+        route_decision=_openrouter_route())
 
     assert captured["url"] == "https://openrouter.ai/api/v1/audio/speech"
     assert captured["payload"] == {
@@ -110,7 +126,8 @@ def test_intra_openrouter_fallback_uses_sibling_voice(monkeypatch, impl):
     monkeypatch.setattr(impl, "get_tts_provider", lambda provider: providers[provider])
 
     audio, content_type, meta = impl.synthesize_with_fallback(
-        "fallback", model=GEMINI, provider_id="openrouter")
+        "fallback", model=GEMINI, provider_id="openrouter",
+        route_decision=_openrouter_route())
 
     assert calls[:2] == [
         (GEMINI, "Fenrir"),

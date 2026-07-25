@@ -119,7 +119,7 @@ def test_selected_local_provider_remains_available_without_a_key_or_hosted_mode(
     assert decision.reason == "local_provider"
     assert decision.ready is True
     assert processing_route.call_provider(
-        decision, lambda: calls.append("local") or "ok"
+        decision, lambda **_kwargs: calls.append("local") or "ok"
     ) == "ok"
     assert calls == ["local"]
 
@@ -136,7 +136,7 @@ def test_snapshot_freezes_the_exact_provider_configuration_for_the_invocation():
 
     result = processing_route.call_hosted(
         decision,
-        lambda *, provider, model, api_key: calls.append(
+        lambda *, provider, model, api_key, **_kwargs: calls.append(
             (provider, model, api_key)
         ) or "ok",
         provider=decision.provider,
@@ -525,10 +525,10 @@ def test_durable_records_keep_issue_14_and_physical_validation_open():
         APP_DIR.parent.parent / "Development Files" / "Core" / "LOGS.html"
     ).read_text(encoding="utf-8")
 
-    assert "Processing truth</td><td><span class=\"badge b-gated\">implementation candidate" in status
+    assert "Processing truth</td><td><span class=\"badge b-gated\">corrected local candidate" in status
     assert "Issue #14 remains open" in status
-    assert "issues 14, 15, and 20" in status
-    assert "processing-route implementation candidate" in logs
-    assert "No live provider request was made" in logs
-    assert "Physical macOS/Linux use and owner UI approval remain unverified" in logs
+    assert "Issues #15 and #20 are separate work" in status
+    assert "processing-route correction candidate" in logs
+    assert "No live provider request" in logs
+    assert "physical platform test" in logs
     assert "processing route truth implemented" not in logs.lower()

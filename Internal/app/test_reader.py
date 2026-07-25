@@ -22,8 +22,23 @@ except Exception:
     pass
 
 import ai  # noqa: E402  (light: json/urllib only)
+import processing_route
 
 _fails = []
+
+
+def _openrouter_route():
+    return processing_route.snapshot(
+        {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "instant_text": False,
+            "llm_provider": "openrouter",
+            "openrouter_api_key": "sk-or-key",
+        },
+        feature="reader", lane="reader_speech",
+        provider_override="openrouter",
+    )
 
 
 def check(desc, cond):
@@ -137,7 +152,8 @@ print("\n== format negotiation — payload.response_format matches the model =="
 orig = _install_fake(b"ID3mp3bytes", "audio/mpeg")
 try:
     audio, ctype = ai.openrouter_tts("hello", "sk-or-key",
-                                     model="mistralai/voxtral-mini-tts-2603")
+                                     model="mistralai/voxtral-mini-tts-2603",
+                                     route_decision=_openrouter_route())
     check("mp3 model sends response_format=mp3",
           _captured["payload"].get("response_format") == "mp3")
     check("mp3 bytes pass through unchanged", audio == b"ID3mp3bytes")
@@ -152,7 +168,8 @@ pcm = b"\x00\x00" * 100
 orig = _install_fake(pcm, "audio/L16")
 try:
     audio, ctype = ai.openrouter_tts("hello", "sk-or-key",
-                                     model="google/gemini-3.1-flash-tts-preview")
+                                     model="google/gemini-3.1-flash-tts-preview",
+                                     route_decision=_openrouter_route())
     check("Gemini sends response_format=pcm",
           _captured["payload"].get("response_format") == "pcm")
     check("raw PCM is wrapped to WAV (RIFF header)", audio[:4] == b"RIFF")
@@ -331,8 +348,10 @@ class _MockProvider:
     def __init__(self, pid, should_fail=False):
         self.provider_id = pid
         self._fail = should_fail
+        self.calls = 0
     def synthesize(self, text, voice_id=None, model=None,
-                   response_format=None, timeout=60):
+                   response_format=None, timeout=60, route_decision=None):
+        self.calls += 1
         if self._fail:
             raise RuntimeError(f"{self.provider_id} is down")
         return (b"fake_audio_" + self.provider_id.encode(),
@@ -347,21 +366,21 @@ _fake_map = {
 ai.get_tts_provider = lambda pid: _fake_map.get(pid, _fake_map["openrouter"])
 
 try:
-    # Primary (openrouter) fails → falls back to openai.
+    # One frozen route authorizes exactly one provider. It may fall back to a
+    # sibling model, but it must never cross to OpenAI.
     audio, ctype, meta = ai.synthesize_with_fallback(
-        "hello", voice_id="Kore", provider_id="openrouter")
-    check("fallback succeeds when primary fails", meta.get("ok") is True)
-    check("fallback meta flags fallback=True", meta.get("fallback") is True)
-    check("fallback meta names the fallback provider",
-          meta.get("fallback_provider") == "openai")
-    check("fallback returns audio from the alternate",
-          audio == b"fake_audio_openai")
-    check("fallback returns content-type", ctype == "audio/mpeg")
+        "hello", voice_id="Kore", provider_id="openrouter",
+        route_decision=_openrouter_route())
+    check("provider failure fails closed", meta.get("ok") is False)
+    check("provider failure returns no audio", audio is None)
+    check("provider failure returns no content-type", ctype is None)
+    check("frozen route never crosses to OpenAI", _fake_map["openai"].calls == 0)
 
     # Both fail → hard error.
     _fake_map["openai"]._fail = True
     audio2, ctype2, meta2 = ai.synthesize_with_fallback(
-        "hello", voice_id="Kore", provider_id="openrouter")
+        "hello", voice_id="Kore", provider_id="openrouter",
+        route_decision=_openrouter_route())
     check("all-fail returns ok=False", meta2.get("ok") is False)
     check("all-fail has an error message", bool(meta2.get("message")))
     check("all-fail returns None audio", audio2 is None)
@@ -371,7 +390,8 @@ try:
     # Primary succeeds → no fallback needed.
     _fake_map["openrouter"]._fail = False
     audio3, ctype3, meta3 = ai.synthesize_with_fallback(
-        "hello", voice_id="Kore", provider_id="openrouter")
+        "hello", voice_id="Kore", provider_id="openrouter",
+        route_decision=_openrouter_route())
     check("primary-success returns ok=True", meta3.get("ok") is True)
     check("primary-success has no fallback flag",
           meta3.get("fallback") is not True)
@@ -384,7 +404,7 @@ finally:
 
 # ============================================== intra-catalogue fallback (VAL-TTS-008)
 print("\n== intra-catalogue fallback — a bad OpenRouter model tries siblings "
-      "before switching provider ==")
+      "without switching provider ==")
 _orig_get2 = ai.get_tts_provider
 _cat = [m for (m, _l, _f) in ai.OPENROUTER_TTS_MODELS]
 
@@ -397,7 +417,7 @@ class _ModelAwareProvider:
         self.tried = []
 
     def synthesize(self, text, voice_id=None, model=None,
-                   response_format=None, timeout=60):
+                   response_format=None, timeout=60, route_decision=None):
         self.tried.append(model)
         if model in self._bad:
             raise RuntimeError(f"model {model} 404")
@@ -411,7 +431,8 @@ _oa = _ModelAwareProvider("openai", bad_models=[])
 ai.get_tts_provider = lambda pid: {"openrouter": _or, "openai": _oa}.get(pid, _or)
 try:
     audio, ctype, meta = ai.synthesize_with_fallback(
-        "hi", model=_cat[0], voice_id="Fenrir", provider_id="openrouter")
+        "hi", model=_cat[0], voice_id="Fenrir", provider_id="openrouter",
+        route_decision=_openrouter_route())
     check("intra-catalogue: succeeds via a sibling OpenRouter model",
           meta.get("ok") is True and meta.get("provider") == "openrouter")
     check("intra-catalogue: stayed on OpenRouter (OpenAI never reached)",

@@ -6,6 +6,33 @@ knowing its internals.
 """
 
 from abc import ABC, abstractmethod
+from functools import wraps
+import inspect
+
+import processing_route
+
+
+def _guard_provider_method(method):
+    if inspect.isgeneratorfunction(method):
+        @wraps(method)
+        def guarded_stream(self, *args, **kwargs):
+            decision = kwargs.pop("route_decision", None)
+
+            def generate():
+                processing_route.require_provider(
+                    decision, expected_provider=self.model_info.get("provider"))
+                yield from method(self, *args, **kwargs)
+
+            return generate()
+        return guarded_stream
+
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        decision = kwargs.pop("route_decision", None)
+        processing_route.require_provider(
+            decision, expected_provider=self.model_info.get("provider"))
+        return method(self, *args, **kwargs)
+    return guarded
 
 
 class BaseProvider(ABC):
@@ -21,6 +48,14 @@ class BaseProvider(ABC):
     reasoning-model detection) live here so individual providers don't
     duplicate them.
     """
+
+    def __init_subclass__(cls, **kwargs):
+        """Make route permission mandatory for every present and future adapter."""
+        super().__init_subclass__(**kwargs)
+        for name in ("chat", "chat_stream"):
+            method = cls.__dict__.get(name)
+            if method is not None and not getattr(method, "__isabstractmethod__", False):
+                setattr(cls, name, _guard_provider_method(method))
 
     # ------------------------------------------------------------------
     # Abstract interface — every provider MUST implement these

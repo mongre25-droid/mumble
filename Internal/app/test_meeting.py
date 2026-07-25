@@ -151,7 +151,7 @@ def _install_ai_stub(results=None):
     _call_count = [0]
 
     def fake(system, user, key, model=None, url=None,
-             max_tokens=None, timeout=None):
+             max_tokens=None, timeout=None, **_kwargs):
         _call_count[0] += 1
         idx = min(_call_count[0] - 1, len(_stub_results) - 1)
         return _stub_results[idx]
@@ -1880,7 +1880,7 @@ settings = _FakeSettings(llm_provider="cerebras", cerebras_api_key="test-key")
 _captured_user = []
 
 def _capturing_chat(system, user, key, model=None, url=None,
-                    max_tokens=None, timeout=None):
+                    max_tokens=None, timeout=None, **_kwargs):
     _captured_user.append(user)
     late = "LATE_MARKER" in user
     if "Maintain the complete list" in system:
