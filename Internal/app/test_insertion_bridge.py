@@ -3,6 +3,7 @@
 
 import unittest
 
+import dictation_trace
 import webui_shell
 
 
@@ -58,6 +59,8 @@ class InsertionBridgeTests(unittest.TestCase):
         self.assertEqual(2, sum(call["cmd"] == "insertion_status"
                                 for call in calls))
         self.assertEqual(1, len({call["operation_id"] for call in calls}))
+        self.assertTrue(all(dictation_trace.validated_operation_id(
+            call["operation_id"]) for call in calls))
         self.assertEqual("terminal", result["state"])
         self.assertEqual("sent_unconfirmed", result["outcome"])
 
@@ -93,6 +96,29 @@ class InsertionBridgeTests(unittest.TestCase):
         self.assertEqual("unknown", result["outcome"])
         self.assertFalse(result["confirmed"])
         self.assertIn("do not retry", result["message"].lower())
+
+    def test_deck_job_producer_uses_the_same_canonical_operation_identity(self):
+        api = webui_shell.Api.__new__(webui_shell.Api)
+        api._window = Window()
+        calls = []
+        old_send = webui_shell._ctrl_send
+
+        def send(command, timeout=2.0, _retry=True):
+            calls.append(dict(command))
+            return {"ok": True, "operation_id": command["operation_id"]}
+
+        webui_shell._ctrl_send = send
+        try:
+            result = api.run_deck_job(items=[])
+        finally:
+            webui_shell._ctrl_send = old_send
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(["prepare_insertion", "deck_job"],
+                         [call["cmd"] for call in calls])
+        self.assertEqual(1, len({call["operation_id"] for call in calls}))
+        self.assertTrue(all(dictation_trace.validated_operation_id(
+            call["operation_id"]) for call in calls))
 
     def test_lost_status_transport_after_submit_is_explicitly_unknown(self):
         api = webui_shell.Api.__new__(webui_shell.Api)

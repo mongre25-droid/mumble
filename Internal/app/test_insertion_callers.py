@@ -3,6 +3,7 @@
 
 import threading
 import unittest
+import uuid
 from collections import OrderedDict
 
 import numpy as np
@@ -10,6 +11,8 @@ import numpy as np
 import mumble
 from insertion import (
     InsertionCoordinator,
+    InsertionCoordinatorCapacityError,
+    InsertionOperationExpired,
     InsertionOutcome,
     InsertionRequestConflict,
     InsertionResult,
@@ -20,6 +23,10 @@ from insertion import (
 
 TARGET_A = TargetContext(101, 201, 301, 401, "medium", "Edit", True)
 TARGET_B = TargetContext(102, 202, 302, 402, "medium", "Edit", True)
+
+
+def operation_id(label):
+    return uuid.uuid5(uuid.NAMESPACE_OID, label).hex
 
 
 class Settings:
@@ -215,13 +222,14 @@ class InsertionCallerTests(unittest.TestCase):
 
         replaced = controller._replace_correction_capture(
             {"id": "capture-1", "target_hwnd": TARGET_A.window,
-             "target_lease": lease},
+             "target_lease": lease, "operation_id": "4" * 32},
             "corrected",
         )
 
         self.assertFalse(replaced)
         self.assertEqual(1, len(calls))
         self.assertEqual(lease, calls[0]["target_lease"])
+        self.assertEqual("4" * 32, calls[0]["operation_id"])
         self.assertTrue(calls[0]["undo_before_paste"])
 
     def test_each_deck_action_freezes_the_current_external_target_before_dismiss(self):
@@ -234,14 +242,14 @@ class InsertionCallerTests(unittest.TestCase):
         controller._deck_displacement_confirmed = False
 
         current = controller._prepare_deck_insertion_lease(
-            "deck-op-current", "deck_history", ui_process_id=9999)
+            operation_id("deck-op-current"), "deck_history", ui_process_id=9999)
         not_displaced = controller._prepare_deck_insertion_lease(
-            "deck-op-not-displaced", "deck_history",
+            operation_id("deck-op-not-displaced"), "deck_history",
             ui_process_id=TARGET_B.process_id)
         controller._deck_focus_request_pending = True
         controller._note_webui_focus(True)
         displaced = controller._prepare_deck_insertion_lease(
-            "deck-op-displaced", "deck_history",
+            operation_id("deck-op-displaced"), "deck_history",
             ui_process_id=TARGET_B.process_id)
 
         self.assertEqual(TARGET_B, current.target)
@@ -271,7 +279,7 @@ class InsertionCallerTests(unittest.TestCase):
         controller._prepared_insertion_leases = OrderedDict()
 
         lease = controller._prepared_insertion_lease(
-            "missing-operation", "deck_image")
+            operation_id("missing-operation"), "deck_image")
 
         self.assertIsNone(lease.target)
         self.assertFalse(lease.mumble_displaced_target)
@@ -431,6 +439,201 @@ class InsertionCallerTests(unittest.TestCase):
             accepted,
             controller._prepared_insertion_lease(
                 operation_id, "deck_history"))
+
+    def test_active_capacity_fails_closed_and_preserves_the_original_target(self):
+        controller, active = self._prepared_controller()
+        original_id = "e" * 32
+        original = controller._prepare_deck_insertion_lease(
+            original_id, "deck_history", ui_process_id=9999)
+        for index in range(1, 256):
+            controller._prepare_deck_insertion_lease(
+                "{:032x}".format(index), "deck_history", ui_process_id=9999)
+        before = list(controller._prepared_insertion_leases.items())
+
+        with self.assertRaises(InsertionCoordinatorCapacityError):
+            controller._prepare_deck_insertion_lease(
+                "f" * 32, "deck_history", ui_process_id=9999)
+
+        self.assertEqual(before, list(controller._prepared_insertion_leases.items()))
+        active["target"] = TARGET_B
+        with self.assertRaises(InsertionRequestConflict):
+            controller._prepare_deck_insertion_lease(
+                original_id, "deck_history", ui_process_id=9999)
+        self.assertIs(
+            original,
+            controller._prepared_insertion_lease(
+                original_id, "deck_history"))
+        self.assertEqual(TARGET_A, original.target)
+        observed = []
+
+        class Transaction:
+            def insert(self, request):
+                observed.append(request.target_lease.target)
+                return InsertionResult(
+                    request.operation_id, request.source,
+                    InsertionOutcome.SAVED_ONLY, "fixture", "Saved.", 0,
+                    target_lease=request.target_lease)
+
+        transaction = Transaction()
+        controller._insertion_transaction = transaction
+        controller._insertion_coordinator = InsertionCoordinator(transaction)
+        controller._ensure_insertion_transaction = lambda: transaction
+        controller._paste_lock = threading.Lock()
+        controller._trace_mark = lambda *_args, **_kwargs: None
+        controller.clipboard = None
+        controller._paste(
+            "content-free fixture", source="deck_history",
+            target_lease=original, operation_id=original_id)
+
+        self.assertEqual([TARGET_A], observed)
+
+    def test_terminal_completion_releases_active_binding_and_blocks_reuse(self):
+        controller, _active = self._prepared_controller()
+        operation = "f" * 32
+        lease = controller._prepare_deck_insertion_lease(
+            operation, "deck_history", ui_process_id=9999)
+        sends = []
+
+        class Transaction:
+            def insert(self, request):
+                sends.append(request.target_lease.target)
+                return InsertionResult(
+                    operation_id=request.operation_id,
+                    source=request.source,
+                    outcome=InsertionOutcome.SAVED_ONLY,
+                    reason="fixture",
+                    message="Saved.",
+                    send_count=0,
+                    target_lease=request.target_lease,
+                )
+
+        transaction = Transaction()
+        controller._insertion_transaction = transaction
+        controller._insertion_coordinator = InsertionCoordinator(transaction)
+        controller._ensure_insertion_transaction = lambda: transaction
+        controller._paste_lock = threading.Lock()
+        controller._trace_mark = lambda *_args, **_kwargs: None
+        controller.clipboard = None
+
+        first = controller._paste(
+            "content-free fixture", source="deck_history",
+            target_lease=lease, operation_id=operation)
+        second = controller._paste(
+            "content-free fixture", source="deck_history",
+            target_lease=lease, operation_id=operation)
+
+        self.assertIs(first, second)
+        self.assertEqual([TARGET_A], sends)
+        self.assertNotIn(operation, controller._prepared_insertion_leases)
+        with self.assertRaises(InsertionOperationExpired):
+            controller._prepare_deck_insertion_lease(
+                operation, "deck_history", ui_process_id=9999)
+
+    def test_repeated_prepare_complete_cycles_keep_state_bounded_and_replay_closed(self):
+        controller, _active = self._prepared_controller()
+        sends = []
+
+        class Transaction:
+            def insert(self, request):
+                sends.append(request.operation_id)
+                return InsertionResult(
+                    request.operation_id, request.source,
+                    InsertionOutcome.SAVED_ONLY, "fixture", "Saved.", 0,
+                    target_lease=request.target_lease)
+
+        transaction = Transaction()
+        controller._insertion_transaction = transaction
+        controller._insertion_coordinator = InsertionCoordinator(
+            transaction, retention=8)
+        controller._ensure_insertion_transaction = lambda: transaction
+        controller._paste_lock = threading.Lock()
+        controller._trace_mark = lambda *_args, **_kwargs: None
+        controller.clipboard = None
+        first_operation = "1" * 32
+
+        for index in range(300):
+            current_id = (first_operation if index == 0
+                          else "{:032x}".format(index + 1000))
+            lease = controller._prepare_deck_insertion_lease(
+                current_id, "deck_history", ui_process_id=9999)
+            controller._paste(
+                "content-free fixture", source="deck_history",
+                target_lease=lease, operation_id=current_id)
+
+        self.assertEqual(300, len(sends))
+        self.assertEqual(0, len(controller._prepared_insertion_leases))
+        self.assertLessEqual(len(controller._insertion_coordinator._entries), 8)
+        self.assertLessEqual(len(controller._insertion_coordinator._retired), 8)
+        self.assertEqual(
+            1 << 17,
+            len(controller._get_prepared_insertion_tombstones()._bits))
+        with self.assertRaises(InsertionOperationExpired):
+            controller._prepare_deck_insertion_lease(
+                first_operation, "deck_history", ui_process_id=9999)
+
+    def test_invalid_identifier_is_rejected_before_lower_registry_state(self):
+        controller, _active = self._prepared_controller()
+        sentinel = "PRIVATE_TRANSCRIPT_CONTENT"
+
+        for action in (
+                lambda: controller._prepare_deck_insertion_lease(
+                    sentinel, "deck_history", ui_process_id=9999),
+                lambda: controller._prepared_insertion_lease(
+                    sentinel, "deck_history"),
+                lambda: controller._paste(
+                    "content-free fixture", source="dictation",
+                    target_lease=TargetLease(
+                        TARGET_A, "dictation", "stop", False),
+                    operation_id=sentinel),
+                lambda: controller._paste_image(
+                    "content-free-fixture.png", source="deck_image",
+                    target_lease=TargetLease(
+                        TARGET_A, "deck_image", "before_deck_dismiss", False),
+                    operation_id=sentinel)):
+            with self.assertRaises(ValueError) as caught:
+                action()
+            self.assertNotIn(sentinel, str(caught.exception))
+
+        self.assertNotIn(sentinel, controller._prepared_insertion_leases)
+
+    def test_stalled_target_inspection_does_not_block_existing_lookup(self):
+        controller, _active = self._prepared_controller()
+        existing_id = "2" * 32
+        existing = controller._prepare_deck_insertion_lease(
+            existing_id, "deck_history", ui_process_id=9999)
+        inspection_started = threading.Event()
+        release_inspection = threading.Event()
+        lookup_finished = threading.Event()
+        lookup_result = []
+
+        def stalled_capture():
+            inspection_started.set()
+            release_inspection.wait(2)
+            return TARGET_B
+
+        controller._capture_insertion_target = stalled_capture
+        preparing = threading.Thread(
+            target=lambda: controller._prepare_deck_insertion_lease(
+                "3" * 32, "deck_history", ui_process_id=9999))
+
+        def lookup():
+            lookup_result.append(controller._prepared_insertion_lease(
+                existing_id, "deck_history"))
+            lookup_finished.set()
+
+        looking_up = threading.Thread(target=lookup)
+        preparing.start()
+        self.assertTrue(inspection_started.wait(1))
+        looking_up.start()
+        lookup_completed_while_inspection_stalled = lookup_finished.wait(0.5)
+        release_inspection.set()
+        preparing.join(2)
+        looking_up.join(2)
+
+        self.assertTrue(lookup_completed_while_inspection_stalled)
+        self.assertTrue(all(not worker.is_alive()
+                            for worker in (preparing, looking_up)))
+        self.assertEqual([existing], lookup_result)
 
 
 if __name__ == "__main__":

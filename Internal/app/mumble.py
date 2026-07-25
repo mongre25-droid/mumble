@@ -89,11 +89,14 @@ import ui
 import update
 from insertion import (
     InsertionCoordinator,
+    InsertionCoordinatorCapacityError,
+    InsertionOperationExpired,
     InsertionOutcome,
     InsertionRequest,
     InsertionRequestConflict,
     InsertionResult,
     InsertionTransaction,
+    OperationIdReplayGuard,
     TargetLease,
 )
 from windows_insertion import (
@@ -278,6 +281,7 @@ class Mumble:
         self._deck_focus_request_pending = False
         self._deck_displacement_confirmed = False
         self._prepared_insertion_leases = OrderedDict()
+        self._prepared_insertion_tombstones = OperationIdReplayGuard()
         self._prepared_insertion_lock = threading.Lock()
         self._deck_job_lock = threading.Lock()  # in-flight guard for Deck/History jobs
         self._deck_job_active = False           # True while a Deck job is running
@@ -600,6 +604,7 @@ class Mumble:
             if eligible:
                 self._last_correction_capture = {
                     "id": f"{time.time_ns():x}",
+                    "operation_id": uuid.uuid4().hex,
                     "text": str(text).strip(),
                     "mode": mode,
                     "created_at": time.time(),
@@ -758,7 +763,8 @@ class Mumble:
                 corrected,
                 source="correction_replace",
                 target_lease=lease,
-                operation_id="correction-{}".format(capture.get("id") or uuid.uuid4().hex),
+                operation_id=(dictation_trace.validated_operation_id(
+                    capture.get("operation_id")) or uuid.uuid4().hex),
                 undo_before_paste=True,
             )
             # An unconfirmed replacement can never be called successful: the
@@ -2889,19 +2895,38 @@ class Mumble:
                 self._prepared_insertion_lock = lock
         return lock
 
+    @staticmethod
+    def _require_operation_id(value):
+        operation_id = dictation_trace.validated_operation_id(value)
+        if operation_id is None:
+            raise ValueError("invalid_operation_id")
+        return operation_id
+
+    def _get_prepared_insertion_tombstones(self):
+        guard = getattr(self, "_prepared_insertion_tombstones", None)
+        if guard is None:
+            guard = OperationIdReplayGuard()
+            self._prepared_insertion_tombstones = guard
+        return guard
+
     def _prepare_deck_insertion_lease(self, operation_id, source,
                                       ui_process_id=None):
         """Freeze the external destination before the Deck is dismissed."""
-        operation_id = str(operation_id or "")
-        if not operation_id:
-            return None
-        source = str(source or "deck")
+        operation_id = self._require_operation_id(operation_id)
+        if source not in {"deck_history", "deck_image", "deck_job"}:
+            raise ValueError("invalid_insertion_source")
+        try:
+            ui_pid = int(ui_process_id or 0)
+        except (TypeError, ValueError):
+            ui_pid = 0
+        # Windows/UI inspection may stall.  It must never hold the registry lock
+        # needed by an already-prepared operation's final lookup.
+        current = self._capture_insertion_target()
         with self._get_prepared_insertion_lock():
-            current = self._capture_insertion_target()
-            try:
-                ui_pid = int(ui_process_id or 0)
-            except (TypeError, ValueError):
-                ui_pid = 0
+            tombstones = self._get_prepared_insertion_tombstones()
+            if operation_id in tombstones:
+                raise InsertionOperationExpired(
+                    "operation identity is no longer reusable")
             retained = getattr(self, "_deck_insertion_lease", None)
             target = None
             displaced_by_mumble = False
@@ -2936,27 +2961,33 @@ class Mumble:
                 return original
             if lease.target is None:
                 return lease
+            if len(leases) >= 256:
+                raise InsertionCoordinatorCapacityError(
+                    "prepared insertion capacity is occupied by active operations")
             leases[operation_id] = lease
             leases.move_to_end(operation_id)
-            while len(leases) > 256:
-                leases.popitem(last=False)
             return lease
 
     def _note_webui_focus(self, focused):
         """Record only a focus gain caused by this controller's Deck request."""
         focused = bool(focused)
-        if not focused:
-            self._deck_focus_request_pending = False
-            self._deck_displacement_confirmed = False
-            return
-        if getattr(self, "_deck_focus_request_pending", False):
-            self._deck_focus_request_pending = False
-            self._deck_displacement_confirmed = True
+        with self._get_prepared_insertion_lock():
+            if not focused:
+                self._deck_focus_request_pending = False
+                self._deck_displacement_confirmed = False
+                return
+            if getattr(self, "_deck_focus_request_pending", False):
+                self._deck_focus_request_pending = False
+                self._deck_displacement_confirmed = True
 
     def _prepared_insertion_lease(self, operation_id, source):
-        operation_id = str(operation_id or "")
-        source = str(source or "deck")
+        operation_id = self._require_operation_id(operation_id)
+        if source not in {"deck_history", "deck_image", "deck_job"}:
+            raise ValueError("invalid_insertion_source")
         with self._get_prepared_insertion_lock():
+            if operation_id in self._get_prepared_insertion_tombstones():
+                raise InsertionOperationExpired(
+                    "operation identity is no longer reusable")
             lease = getattr(self, "_prepared_insertion_leases", {}).get(
                 operation_id)
             if lease is not None and lease.source != source:
@@ -2965,14 +2996,25 @@ class Mumble:
             return lease or TargetLease(
                 None, source, "before_deck_dismiss", False)
 
+    def _retire_prepared_insertion(self, operation_id):
+        """Finish or abandon one prepared Deck binding without permitting reuse."""
+        operation_id = self._require_operation_id(operation_id)
+        with self._get_prepared_insertion_lock():
+            leases = getattr(self, "_prepared_insertion_leases", {})
+            leases.pop(operation_id, None)
+            self._get_prepared_insertion_tombstones().remember(operation_id)
+
     def _insertion_trace(self, name, **fields):
+        operation_id = dictation_trace.validated_operation_id(
+            fields.get("operation_id"))
+        if operation_id is None:
+            return None
+        fields = dict(fields)
+        fields["operation_id"] = operation_id
         if name == "paste_sent":
             self._last_paste_sent_at = time.perf_counter()
         if getattr(self, "_dictation_trace_session", None) is not None:
             return self._trace_mark(name, **fields)
-        operation_id = str(fields.get("operation_id") or "")
-        if not operation_id:
-            return None
         lock = getattr(self, "_insertion_trace_lock", None)
         if lock is None:
             lock = threading.Lock()
@@ -3018,11 +3060,13 @@ class Mumble:
         """Run one idempotent, target-bound text insertion transaction."""
         text = text or ""
         self._last_paste_sent_at = None
+        operation_id = self._require_operation_id(
+            operation_id or uuid.uuid4().hex)
         transaction = self._ensure_insertion_transaction()
         lease = target_lease or self._make_insertion_lease(
             source, "invocation", target=activation_target)
         request = InsertionRequest(
-            operation_id=operation_id or uuid.uuid4().hex,
+            operation_id=operation_id,
             source=source,
             content_kind="text",
             text=text,
@@ -3040,8 +3084,8 @@ class Mumble:
                 pass
         wait_started = time.perf_counter()
         coordinator = self._insertion_coordinator
-        coordinator.prepare(request)
         try:
+            coordinator.prepare(request)
             with self._paste_lock:
                 self._trace_mark(
                     "paste_lock_acquired",
@@ -3050,6 +3094,8 @@ class Mumble:
                 )
                 return coordinator.submit(request)
         finally:
+            if source in {"deck_history", "deck_image", "deck_job"}:
+                self._retire_prepared_insertion(operation_id)
             if self.clipboard:
                 try:
                     self.clipboard._last_text = pyperclip.paste() or ""
@@ -3253,6 +3299,8 @@ class Mumble:
                 items, intent, intent_title, mode,
                 target_lease=target_lease, operation_id=operation_id)
         finally:
+            if operation_id is not None:
+                self._retire_prepared_insertion(operation_id)
             with self._deck_job_lock:
                 self._deck_job_active = False
         return True
@@ -3391,11 +3439,13 @@ class Mumble:
                      target_lease=None, operation_id=None):
         """Run image insertion through the same target and clipboard contract."""
         self._last_paste_sent_at = None
+        operation_id = self._require_operation_id(
+            operation_id or uuid.uuid4().hex)
         transaction = self._ensure_insertion_transaction()
         lease = target_lease or self._make_insertion_lease(
             source, "invocation", target=activation_target)
         request = InsertionRequest(
-            operation_id=operation_id or uuid.uuid4().hex,
+            operation_id=operation_id,
             source=source,
             content_kind="image",
             image_path=path or "",
@@ -3405,10 +3455,10 @@ class Mumble:
         )
         wait_started = time.perf_counter()
         coordinator = self._insertion_coordinator
-        coordinator.prepare(request)
         if self.clipboard:
             self.clipboard.pause()
         try:
+            coordinator.prepare(request)
             with self._paste_lock:
                 self._trace_mark(
                     "paste_lock_acquired",
@@ -3417,6 +3467,8 @@ class Mumble:
                 )
                 return coordinator.submit(request)
         finally:
+            if source in {"deck_history", "deck_image", "deck_job"}:
+                self._retire_prepared_insertion(operation_id)
             if self.clipboard:
                 self.clipboard.resume(skip_current=True)
 
@@ -3570,6 +3622,20 @@ class Mumble:
                                 "reason": "operation_id_conflict",
                                 "message": "This paste request is already bound to a different destination.",
                             }
+                        except InsertionOperationExpired:
+                            resp = {
+                                "ok": False,
+                                "operation_id": operation_id,
+                                "reason": "operation_id_retired",
+                                "message": "This paste operation has already finished or was abandoned. Begin a new Deck action.",
+                            }
+                        except InsertionCoordinatorCapacityError:
+                            resp = {
+                                "ok": False,
+                                "operation_id": operation_id,
+                                "reason": "insertion_capacity_reached",
+                                "message": "Mumble is still protecting earlier paste operations. Finish them before beginning another Deck action.",
+                            }
                 elif cmd == "paste":
                     text = req.get("text") or ""
                     try:
@@ -3583,7 +3649,7 @@ class Mumble:
                         pasted = bool(result.confirmed)
                         resp.update(ok=True, pasted=pasted,
                                     **result.as_dict())
-                    except InsertionRequestConflict:
+                    except (InsertionRequestConflict, InsertionOperationExpired):
                         resp.update(ok=False, pasted=False, outcome="saved_only",
                                     confirmed=False, reason="operation_id_conflict",
                                     cleanup_warning="",
@@ -3607,7 +3673,7 @@ class Mumble:
                         pasted = bool(result.confirmed)
                         resp.update(ok=True, pasted=pasted,
                                     **result.as_dict())
-                    except InsertionRequestConflict:
+                    except (InsertionRequestConflict, InsertionOperationExpired):
                         resp.update(ok=False, pasted=False, outcome="saved_only",
                                     confirmed=False, reason="operation_id_conflict",
                                     cleanup_warning="",
@@ -3623,7 +3689,7 @@ class Mumble:
                         self._ensure_insertion_transaction()
                         status = self._insertion_coordinator.status(operation_id)
                         resp = {"ok": status.get("state") != "missing", **status}
-                    except InsertionRequestConflict:
+                    except (InsertionRequestConflict, InsertionOperationExpired):
                         resp = {"ok": False, "state": "rejected",
                                 "reason": "operation_id_conflict",
                                 "message": "This paste request no longer matches its operation."}
@@ -3679,7 +3745,7 @@ class Mumble:
                     try:
                         job_lease = self._prepared_insertion_lease(
                             operation_id, "deck_job")
-                    except InsertionRequestConflict:
+                    except (InsertionRequestConflict, InsertionOperationExpired):
                         job_lease = None
                         accepted = False
                         resp.update(
@@ -3688,6 +3754,8 @@ class Mumble:
                             message="This Deck job does not match its prepared destination.")
                     else:
                         accepted = self._reserve_deck_job()
+                        if not accepted:
+                            self._retire_prepared_insertion(operation_id)
                     resp.update(
                         ok=accepted,
                         accepted=accepted,
@@ -3712,6 +3780,7 @@ class Mumble:
                         except Exception as e:
                             with self._deck_job_lock:
                                 self._deck_job_active = False
+                            self._retire_prepared_insertion(operation_id)
                             resp.update(ok=False, accepted=False, message=str(e))
                 elif cmd == "grab_selection":
                     # The Deck's "Capture" button (and re-pressing the Deck hotkey
@@ -4093,11 +4162,13 @@ class Mumble:
         releases the held hotkey modifiers, restores the prior clipboard, and
         returns '' when nothing is selected — so an ordinary Deck-open (tray menu,
         no selection) is completely unaffected."""
-        self._deck_insertion_lease = self._make_insertion_lease(
+        deck_lease = self._make_insertion_lease(
             "deck", "before_mumble_focus", mumble_displaced_target=False)
-        self._deck_focus_request_pending = bool(
-            self._deck_insertion_lease and self._deck_insertion_lease.target)
-        self._deck_displacement_confirmed = False
+        with self._get_prepared_insertion_lock():
+            self._deck_insertion_lease = deck_lease
+            self._deck_focus_request_pending = bool(
+                deck_lease and deck_lease.target)
+            self._deck_displacement_confirmed = False
         try:
             sel = self._grab_selection_quiet()
         except Exception:
@@ -4116,11 +4187,13 @@ class Mumble:
                     time.sleep(0.3)
                     if self._send_webui(msg):
                         return
-                self._deck_focus_request_pending = False
-                self._deck_displacement_confirmed = False
+                with self._get_prepared_insertion_lock():
+                    self._deck_focus_request_pending = False
+                    self._deck_displacement_confirmed = False
             threading.Thread(target=_retry, daemon=True).start()
         else:
-            self._deck_focus_request_pending = False
+            with self._get_prepared_insertion_lock():
+                self._deck_focus_request_pending = False
 
     def on_search_hotkey(self):
         # Never steal focus from a dictation target. During start/stop ``busy``

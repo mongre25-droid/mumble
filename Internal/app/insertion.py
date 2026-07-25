@@ -16,6 +16,8 @@ import threading
 import time
 from typing import Callable, Optional, Tuple
 
+from dictation_trace import validated_operation_id
+
 
 class InsertionOutcome(str, Enum):
     CONFIRMED = "confirmed"
@@ -290,6 +292,39 @@ class InsertionCoordinatorCapacityError(RuntimeError):
     """The bounded identity registry is full of non-evictable operations."""
 
 
+class OperationIdReplayGuard:
+    """Fixed-memory, fail-closed memory of operation identities seen this run.
+
+    Mumble operation IDs are random 32-hex values scoped to one authenticated
+    controller session.  This compact guard keeps replay protection after exact
+    terminal records are trimmed.  A hash collision can only reject a new
+    operation; it can never authorize replay.
+    """
+
+    def __init__(self, bit_count=1 << 20, hash_count=5):
+        self._bit_count = max(1024, int(bit_count))
+        self._hash_count = max(2, min(8, int(hash_count)))
+        self._bits = bytearray((self._bit_count + 7) // 8)
+
+    def _indexes(self, operation_id):
+        digest = hashlib.blake2b(
+            operation_id.encode("ascii"), digest_size=32,
+            person=b"mumble-op-id").digest()
+        for index in range(self._hash_count):
+            offset = (index * 4) % len(digest)
+            value = int.from_bytes(digest[offset:offset + 4], "little")
+            yield value % self._bit_count
+
+    def remember(self, operation_id):
+        for index in self._indexes(operation_id):
+            self._bits[index // 8] |= 1 << (index % 8)
+
+    def __contains__(self, operation_id):
+        return all(
+            self._bits[index // 8] & (1 << (index % 8))
+            for index in self._indexes(operation_id))
+
+
 @dataclass
 class _CoordinatorEntry:
     fingerprint: str
@@ -317,6 +352,14 @@ class InsertionCoordinator:
         self._lock = threading.Lock()
         self._entries = OrderedDict()
         self._retired = OrderedDict()
+        self._seen_operation_ids = OperationIdReplayGuard()
+
+    @staticmethod
+    def _require_operation_id(value):
+        operation_id = validated_operation_id(value)
+        if operation_id is None:
+            raise ValueError("invalid_operation_id")
+        return operation_id
 
     def _check(self, operation_id, fingerprint):
         entry = (self._entries.get(operation_id)
@@ -327,14 +370,16 @@ class InsertionCoordinator:
         return entry
 
     def prepare(self, request: InsertionRequest):
-        if not request.operation_id:
-            raise ValueError("operation_id is required")
+        operation_id = self._require_operation_id(request.operation_id)
         fingerprint = request.fingerprint()
         with self._lock:
             now = self._clock()
             self._expire_locked(now)
-            entry = self._check(request.operation_id, fingerprint)
+            entry = self._check(operation_id, fingerprint)
             if entry is None:
+                if operation_id in self._seen_operation_ids:
+                    raise InsertionOperationExpired(
+                        "operation identity is no longer reusable")
                 self._reserve_slot_locked()
                 entry = _CoordinatorEntry(
                     fingerprint=fingerprint,
@@ -344,22 +389,27 @@ class InsertionCoordinator:
                     created_at=now,
                     state_changed_at=now,
                 )
-                self._entries[request.operation_id] = entry
+                self._seen_operation_ids.remember(operation_id)
+                self._entries[operation_id] = entry
             else:
-                if request.operation_id in self._entries:
-                    self._entries.move_to_end(request.operation_id)
+                if operation_id in self._entries:
+                    self._entries.move_to_end(operation_id)
                 else:
-                    self._retired.move_to_end(request.operation_id)
+                    self._retired.move_to_end(operation_id)
             return self._status_locked(entry)
 
     def submit(self, request: InsertionRequest) -> InsertionResult:
+        operation_id = self._require_operation_id(request.operation_id)
         fingerprint = request.fingerprint()
         owner = False
         with self._lock:
             now = self._clock()
             self._expire_locked(now)
-            entry = self._check(request.operation_id, fingerprint)
+            entry = self._check(operation_id, fingerprint)
             if entry is None:
+                if operation_id in self._seen_operation_ids:
+                    raise InsertionOperationExpired(
+                        "operation identity is no longer reusable")
                 self._reserve_slot_locked()
                 entry = _CoordinatorEntry(
                     fingerprint=fingerprint,
@@ -369,7 +419,8 @@ class InsertionCoordinator:
                     created_at=now,
                     state_changed_at=now,
                 )
-                self._entries[request.operation_id] = entry
+                self._seen_operation_ids.remember(operation_id)
+                self._entries[operation_id] = entry
                 owner = True
             elif entry.state == "prepared":
                 entry.state = "pending"
@@ -403,7 +454,7 @@ class InsertionCoordinator:
                 entry.state = "terminal"
                 entry.state_changed_at = self._clock()
                 entry.event.set()
-                self._entries.move_to_end(request.operation_id)
+                self._entries.move_to_end(operation_id)
                 self._trim_locked()
             return result
 
@@ -423,20 +474,32 @@ class InsertionCoordinator:
             return entry.result
 
     def status(self, operation_id, fingerprint=None):
+        operation_id = self._require_operation_id(operation_id)
         with self._lock:
             self._expire_locked(self._clock())
-            entry = self._entries.get(str(operation_id or ""))
+            entry = self._entries.get(operation_id)
             if entry is None:
-                entry = self._retired.get(str(operation_id or ""))
+                entry = self._retired.get(operation_id)
             if entry is None:
-                return {"state": "missing", "operation_id": str(operation_id or "")}
+                if operation_id in self._seen_operation_ids:
+                    return {
+                        "state": "expired",
+                        "operation_id": operation_id,
+                        "outcome": "unknown",
+                        "confirmed": False,
+                        "reason": "operation_identity_retired",
+                        "message": (
+                            "This paste operation is no longer reusable. Begin "
+                            "a new Deck action instead of retrying it."),
+                    }
+                return {"state": "missing", "operation_id": operation_id}
             if fingerprint is not None and entry.fingerprint != fingerprint:
                 raise InsertionRequestConflict(
                     "operation_id_reused_with_different_request")
-            if str(operation_id) in self._entries:
-                self._entries.move_to_end(str(operation_id))
+            if operation_id in self._entries:
+                self._entries.move_to_end(operation_id)
             else:
-                self._retired.move_to_end(str(operation_id))
+                self._retired.move_to_end(operation_id)
             return self._status_locked(entry)
 
     def _status_locked(self, entry):
@@ -536,15 +599,21 @@ class InsertionTransaction:
         self._cache_size = max(8, int(cache_size))
         self._lock = threading.Lock()
         self._completed = OrderedDict()
+        self._seen_operation_ids = OperationIdReplayGuard()
 
     def insert(self, request: InsertionRequest) -> InsertionResult:
-        if not request.operation_id:
-            raise ValueError("operation_id is required")
+        operation_id = validated_operation_id(request.operation_id)
+        if operation_id is None:
+            raise ValueError("invalid_operation_id")
         with self._lock:
-            prior = self._completed.get(request.operation_id)
+            prior = self._completed.get(operation_id)
             if prior is not None:
-                self._completed.move_to_end(request.operation_id)
+                self._completed.move_to_end(operation_id)
                 return prior
+            if operation_id in self._seen_operation_ids:
+                raise InsertionOperationExpired(
+                    "operation identity is no longer reusable")
+            self._seen_operation_ids.remember(operation_id)
             target = ((request.target_lease.target
                        if request.target_lease is not None else None)
                       or request.activation_target)

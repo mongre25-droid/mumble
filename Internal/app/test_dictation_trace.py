@@ -491,12 +491,8 @@ def insertion_only_trace_contract():
             "source": "deck_history",
             "content_kind": "text",
         })
-        unsafe_session.mark(
-            "insertion_started", operation_id=unsafe_operation_id,
-            source="deck_history", content_kind="text")
-        unsafe_session.finish(
-            "not_sent", operation_id=unsafe_operation_id,
-            source="deck_history", send_count=0)
+        check("unsafe operation cannot create a trace session",
+              unsafe_session is None)
         unsafe_serialized = json.dumps(read_traces(unsafe_path))
         check("unsafe operation text cannot enter the strict trace sink",
               unsafe_operation_id not in unsafe_serialized)
@@ -539,6 +535,8 @@ def insertion_only_trace_contract():
         check("unsafe operation text cannot enter controller trace material",
               unsafe_operation_id not in json.dumps(
                   read_traces(unsafe_controller_path)))
+        check("unsafe operation cannot enter controller trace registry",
+              unsafe_operation_id not in controller._insertion_trace_sessions)
         check("controller boundary rejects unsafe operation identifiers",
               controller._validated_external_operation_id(
                   unsafe_operation_id) is None)

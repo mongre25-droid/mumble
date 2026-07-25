@@ -139,7 +139,9 @@ def _safe_fields(fields):
         if key not in ALLOWED_FIELDS:
             continue
         if key == "operation_id":
-            safe[key] = validated_operation_id(value) or "<redacted>"
+            operation_id = validated_operation_id(value)
+            if operation_id is not None:
+                safe[key] = operation_id
         else:
             safe[key] = _safe_value(value)
     return safe
@@ -234,6 +236,10 @@ class DictationTraceSink:
     def start_insertion(self, context=None):
         """Create a content-free insertion record when no dictation trace exists."""
         values = dict(context or {})
+        operation_id = validated_operation_id(values.get("operation_id"))
+        if operation_id is None:
+            return None
+        values["operation_id"] = operation_id
         values["trace_kind"] = "insertion"
         return self.start(values)
 

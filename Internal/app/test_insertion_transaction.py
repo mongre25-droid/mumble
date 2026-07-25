@@ -3,6 +3,7 @@
 
 import threading
 import unittest
+import uuid
 from dataclasses import replace
 
 from insertion import (
@@ -147,9 +148,16 @@ class FakeNativeInput:
 
 
 class InsertionTransactionTests(unittest.TestCase):
+    @staticmethod
+    def operation_id(label):
+        if (isinstance(label, str) and len(label) == 32
+                and all(character in "0123456789abcdef" for character in label)):
+            return label
+        return uuid.uuid5(uuid.NAMESPACE_OID, label).hex
+
     def make_request(self, operation_id="dictation-1", **changes):
         values = dict(
-            operation_id=operation_id,
+            operation_id=self.operation_id(operation_id),
             source="dictation",
             content_kind="text",
             text="new words",
@@ -601,7 +609,7 @@ class InsertionTransactionTests(unittest.TestCase):
         one.start()
         self.assertTrue(entered.wait(1))
 
-        pending = coordinator.status("timeout-op")
+        pending = coordinator.status(request.operation_id)
         two.start()
         self.assertEqual("pending", pending["state"])
         self.assertEqual(1, native.send_calls)
@@ -611,7 +619,8 @@ class InsertionTransactionTests(unittest.TestCase):
 
         self.assertEqual(1, native.send_calls)
         self.assertIs(first[0], second[0])
-        self.assertEqual("terminal", coordinator.status("timeout-op")["state"])
+        self.assertEqual("terminal", coordinator.status(
+            request.operation_id)["state"])
 
     def test_coordinator_rejects_operation_id_reuse_with_new_content(self):
         coordinator = InsertionCoordinator(InsertionTransaction(
@@ -645,11 +654,74 @@ class InsertionTransactionTests(unittest.TestCase):
             coordinator.submit(request)
 
         self.assertEqual("pending", coordinator.status(
-            "bounded-join")["state"])
+            request.operation_id)["state"])
         release.set()
         owner.join(2)
         self.assertEqual("terminal", coordinator.status(
-            "bounded-join")["state"])
+            request.operation_id)["state"])
+
+    def test_invalid_identifier_is_rejected_content_free_at_all_coordinator_boundaries(self):
+        transaction = InsertionTransaction(
+            FakeTarget(), FakeClipboard(), FakeNativeInput(),
+            settle_delay=lambda _seconds: None)
+        coordinator = InsertionCoordinator(transaction)
+        sentinel = "PRIVATE_TRANSCRIPT_CONTENT"
+        request = InsertionRequest(
+            operation_id=sentinel,
+            source="dictation",
+            content_kind="text",
+            text="content-free fixture",
+            activation_target=TARGET)
+
+        for action in (
+                lambda: transaction.insert(request),
+                lambda: coordinator.prepare(request),
+                lambda: coordinator.submit(request),
+                lambda: coordinator.status(sentinel)):
+            with self.assertRaises(ValueError) as caught:
+                action()
+            self.assertNotIn(sentinel, str(caught.exception))
+
+        self.assertNotIn(sentinel, coordinator._entries)
+        self.assertNotIn(sentinel, coordinator._retired)
+        self.assertNotIn(sentinel, transaction._completed)
+
+    def test_trimmed_terminal_identity_cannot_start_a_second_insertion(self):
+        sends = []
+
+        class Transaction:
+            def insert(_self, request):
+                sends.append(request.operation_id)
+                return InsertionResult(
+                    request.operation_id, request.source,
+                    InsertionOutcome.CONFIRMED, "confirmed", "Pasted.", 1)
+
+        coordinator = InsertionCoordinator(Transaction(), retention=8)
+        first = self.make_request("first-terminal")
+        coordinator.submit(first)
+        for index in range(24):
+            coordinator.submit(self.make_request("terminal-{}".format(index)))
+
+        self.assertEqual(
+            "expired", coordinator.status(first.operation_id)["state"])
+        with self.assertRaises(InsertionOperationExpired):
+            coordinator.submit(first)
+        self.assertEqual(1, sends.count(first.operation_id))
+
+    def test_transaction_cache_trim_keeps_fixed_memory_replay_protection(self):
+        target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
+        transaction = InsertionTransaction(
+            target, clipboard, native, cache_size=8,
+            settle_delay=lambda _seconds: None)
+        first = self.make_request("first-transaction-terminal")
+        transaction.insert(first)
+        for index in range(24):
+            transaction.insert(self.make_request(
+                "transaction-terminal-{}".format(index)))
+
+        with self.assertRaises(InsertionOperationExpired):
+            transaction.insert(first)
+        self.assertEqual(25, native.send_calls)
 
     def test_prepared_operation_expires_to_a_non_reusable_tombstone(self):
         now = {"value": 10.0}
