@@ -24,6 +24,9 @@ import uuid
 
 import branding
 
+
+_PREPARED_INSERTION_LOCK_INIT = threading.Lock()
+
 branding.ensure_dirs()
 
 # Always tee stdout/stderr to the log file — not only when launched without a
@@ -275,6 +278,7 @@ class Mumble:
         self._deck_focus_request_pending = False
         self._deck_displacement_confirmed = False
         self._prepared_insertion_leases = OrderedDict()
+        self._prepared_insertion_lock = threading.Lock()
         self._deck_job_lock = threading.Lock()  # in-flight guard for Deck/History jobs
         self._deck_job_active = False           # True while a Deck job is running
         self._last_llm_ok = (
@@ -2873,48 +2877,70 @@ class Mumble:
             mumble_displaced_target=bool(mumble_displaced_target),
         )
 
+    def _get_prepared_insertion_lock(self):
+        """Return the one lock protecting prepared Deck target bindings."""
+        lock = getattr(self, "_prepared_insertion_lock", None)
+        if lock is not None:
+            return lock
+        with _PREPARED_INSERTION_LOCK_INIT:
+            lock = getattr(self, "_prepared_insertion_lock", None)
+            if lock is None:
+                lock = threading.Lock()
+                self._prepared_insertion_lock = lock
+        return lock
+
     def _prepare_deck_insertion_lease(self, operation_id, source,
                                       ui_process_id=None):
         """Freeze the external destination before the Deck is dismissed."""
         operation_id = str(operation_id or "")
         if not operation_id:
             return None
-        current = self._capture_insertion_target()
-        try:
-            ui_pid = int(ui_process_id or 0)
-        except (TypeError, ValueError):
-            ui_pid = 0
-        retained = getattr(self, "_deck_insertion_lease", None)
-        target = None
-        displaced_by_mumble = False
-        if current is not None and (not ui_pid or current.process_id != ui_pid):
-            target = current
-        elif retained is not None:
-            target = retained.target
-            # A retained external target is restoration-authorised only when
-            # the observed foreground belongs to Mumble's Web UI at the exact
-            # action boundary. Merely remembering an older target proves no
-            # Mumble-caused displacement.
-            displaced_by_mumble = bool(
-                current is not None and ui_pid
-                and current.process_id == ui_pid and target is not None
-                and getattr(self, "_deck_displacement_confirmed", False))
-        # Displacement proof is single-use. A later Deck action must have its
-        # own controller-requested focus transition or fail closed.
-        self._deck_focus_request_pending = False
-        self._deck_displacement_confirmed = False
-        lease = TargetLease(
-            target, str(source or "deck"), "before_deck_dismiss",
-            displaced_by_mumble)
-        leases = getattr(self, "_prepared_insertion_leases", None)
-        if leases is None:
-            leases = OrderedDict()
-            self._prepared_insertion_leases = leases
-        leases[operation_id] = lease
-        leases.move_to_end(operation_id)
-        while len(leases) > 256:
-            leases.popitem(last=False)
-        return lease
+        source = str(source or "deck")
+        with self._get_prepared_insertion_lock():
+            current = self._capture_insertion_target()
+            try:
+                ui_pid = int(ui_process_id or 0)
+            except (TypeError, ValueError):
+                ui_pid = 0
+            retained = getattr(self, "_deck_insertion_lease", None)
+            target = None
+            displaced_by_mumble = False
+            if current is not None and (not ui_pid or current.process_id != ui_pid):
+                target = current
+            elif retained is not None:
+                target = retained.target
+                # A retained external target is restoration-authorised only when
+                # the observed foreground belongs to Mumble's Web UI at the exact
+                # action boundary. Merely remembering an older target proves no
+                # Mumble-caused displacement.
+                displaced_by_mumble = bool(
+                    current is not None and ui_pid
+                    and current.process_id == ui_pid and target is not None
+                    and getattr(self, "_deck_displacement_confirmed", False))
+            # Displacement proof is single-use. A later Deck action must have its
+            # own controller-requested focus transition or fail closed.
+            self._deck_focus_request_pending = False
+            self._deck_displacement_confirmed = False
+            lease = TargetLease(
+                target, source, "before_deck_dismiss", displaced_by_mumble)
+            leases = getattr(self, "_prepared_insertion_leases", None)
+            if leases is None:
+                leases = OrderedDict()
+                self._prepared_insertion_leases = leases
+            original = leases.get(operation_id)
+            if original is not None:
+                if original != lease:
+                    raise InsertionRequestConflict(
+                        "prepared_operation_binding_conflict")
+                leases.move_to_end(operation_id)
+                return original
+            if lease.target is None:
+                return lease
+            leases[operation_id] = lease
+            leases.move_to_end(operation_id)
+            while len(leases) > 256:
+                leases.popitem(last=False)
+            return lease
 
     def _note_webui_focus(self, focused):
         """Record only a focus gain caused by this controller's Deck request."""
@@ -2928,10 +2954,16 @@ class Mumble:
             self._deck_displacement_confirmed = True
 
     def _prepared_insertion_lease(self, operation_id, source):
-        lease = getattr(self, "_prepared_insertion_leases", {}).get(
-            str(operation_id or ""))
-        return lease or TargetLease(
-            None, str(source or "deck"), "before_deck_dismiss", False)
+        operation_id = str(operation_id or "")
+        source = str(source or "deck")
+        with self._get_prepared_insertion_lock():
+            lease = getattr(self, "_prepared_insertion_leases", {}).get(
+                operation_id)
+            if lease is not None and lease.source != source:
+                raise InsertionRequestConflict(
+                    "prepared_operation_binding_conflict")
+            return lease or TargetLease(
+                None, source, "before_deck_dismiss", False)
 
     def _insertion_trace(self, name, **fields):
         if name == "paste_sent":
@@ -3428,6 +3460,17 @@ class Mumble:
         got = req.get("token") or ""
         return bool(want) and hmac.compare_digest(str(got), str(want))
 
+    @staticmethod
+    def _validated_external_operation_id(value):
+        """Accept only IDs generated by the Web UI, never caller-controlled text."""
+        return dictation_trace.validated_operation_id(value)
+
+    @staticmethod
+    def _validated_external_insertion_source(value):
+        if value in {"deck_history", "deck_image", "deck_job"}:
+            return value
+        return None
+
     def _start_cmd_server(self):
         """Serve JSON-line commands from the web window. Daemon accept loop;
         each handler replies one JSON line. Heavy work goes to worker threads
@@ -3466,8 +3509,21 @@ class Mumble:
                     except Exception:
                         pass
                     return
+                insertion_commands = {
+                    "prepare_insertion", "paste", "paste_image",
+                    "insertion_status", "deck_job",
+                }
+                operation_id = (self._validated_external_operation_id(
+                    req.get("operation_id")) if cmd in insertion_commands else None)
                 resp = {"ok": True}
-                if cmd == "status":
+                if cmd in insertion_commands and operation_id is None:
+                    resp = {
+                        "ok": False,
+                        "operation_id": "",
+                        "reason": "invalid_operation_id",
+                        "message": "This paste request has an invalid operation identifier.",
+                    }
+                elif cmd == "status":
                     st, txt = self.status()
                     resp.update(state=st, text=txt, recording=self.recording,
                                 active_mode=getattr(self, "active_mode", None))
@@ -3488,18 +3544,32 @@ class Mumble:
                     # switch, not two Mumbles fighting over the mic.
                     self.cmd_q.put("quit")
                 elif cmd == "prepare_insertion":
-                    operation_id = str(req.get("operation_id") or "")
-                    lease = self._prepare_deck_insertion_lease(
-                        operation_id,
-                        req.get("source") or "deck",
-                        req.get("ui_process_id"),
-                    )
-                    resp.update(
-                        ok=bool(lease and lease.target),
-                        operation_id=operation_id,
-                        message=("" if lease and lease.target else
-                                 "Choose an editable destination before using Deck paste."),
-                    )
+                    source = self._validated_external_insertion_source(
+                        req.get("source"))
+                    if source is None:
+                        resp = {
+                            "ok": False,
+                            "operation_id": operation_id,
+                            "reason": "invalid_insertion_source",
+                            "message": "This paste request has an invalid source.",
+                        }
+                    else:
+                        try:
+                            lease = self._prepare_deck_insertion_lease(
+                                operation_id, source, req.get("ui_process_id"))
+                            resp.update(
+                                ok=bool(lease and lease.target),
+                                operation_id=operation_id,
+                                message=("" if lease and lease.target else
+                                         "Choose an editable destination before using Deck paste."),
+                            )
+                        except InsertionRequestConflict:
+                            resp = {
+                                "ok": False,
+                                "operation_id": operation_id,
+                                "reason": "operation_id_conflict",
+                                "message": "This paste request is already bound to a different destination.",
+                            }
                 elif cmd == "paste":
                     text = req.get("text") or ""
                     try:
@@ -3507,12 +3577,17 @@ class Mumble:
                         result = self._paste(
                             text, source="deck_history",
                             target_lease=self._prepared_insertion_lease(
-                                req.get("operation_id"), "deck_history"),
-                            operation_id=req.get("operation_id") or uuid.uuid4().hex,
+                                operation_id, "deck_history"),
+                            operation_id=operation_id,
                         )
                         pasted = bool(result.confirmed)
                         resp.update(ok=True, pasted=pasted,
                                     **result.as_dict())
+                    except InsertionRequestConflict:
+                        resp.update(ok=False, pasted=False, outcome="saved_only",
+                                    confirmed=False, reason="operation_id_conflict",
+                                    cleanup_warning="",
+                                    message="This paste request does not match its prepared destination. The result remains saved in Deck and History.")
                     except Exception as e:
                         print("cmd paste error:", type(e).__name__)
                         resp.update(ok=False, pasted=False, outcome="saved_only",
@@ -3526,12 +3601,17 @@ class Mumble:
                         result = self._paste_image(
                             path, source="deck_image",
                             target_lease=self._prepared_insertion_lease(
-                                req.get("operation_id"), "deck_image"),
-                            operation_id=req.get("operation_id") or uuid.uuid4().hex,
+                                operation_id, "deck_image"),
+                            operation_id=operation_id,
                         )
                         pasted = bool(result.confirmed)
                         resp.update(ok=True, pasted=pasted,
                                     **result.as_dict())
+                    except InsertionRequestConflict:
+                        resp.update(ok=False, pasted=False, outcome="saved_only",
+                                    confirmed=False, reason="operation_id_conflict",
+                                    cleanup_warning="",
+                                    message="This image paste request does not match its prepared destination. The image remains in Deck.")
                     except Exception as e:
                         print("cmd paste_image error:", type(e).__name__)
                         resp.update(ok=False, pasted=False, outcome="saved_only",
@@ -3539,7 +3619,6 @@ class Mumble:
                                     cleanup_warning="",
                                     message="The image paste request could not be completed. The image remains in Deck.")
                 elif cmd == "insertion_status":
-                    operation_id = str(req.get("operation_id") or "")
                     try:
                         self._ensure_insertion_transaction()
                         status = self._insertion_coordinator.status(operation_id)
@@ -3597,17 +3676,26 @@ class Mumble:
                         if mode:
                             self._bump_feature("convert")
 
-                    accepted = self._reserve_deck_job()
+                    try:
+                        job_lease = self._prepared_insertion_lease(
+                            operation_id, "deck_job")
+                    except InsertionRequestConflict:
+                        job_lease = None
+                        accepted = False
+                        resp.update(
+                            ok=False, accepted=False,
+                            reason="operation_id_conflict",
+                            message="This Deck job does not match its prepared destination.")
+                    else:
+                        accepted = self._reserve_deck_job()
                     resp.update(
                         ok=accepted,
                         accepted=accepted,
-                        message="" if accepted else "A Deck job is already running.",
+                        message=("" if accepted else resp.get("message") or
+                                 "A Deck job is already running."),
                     )
                     if accepted:
-                        job_lease = self._prepared_insertion_lease(
-                            req.get("operation_id"), "deck_job")
-                        job_operation_id = (req.get("operation_id")
-                                            or uuid.uuid4().hex)
+                        job_operation_id = operation_id
                         def _wj():
                             try:
                                 time.sleep(0.25)

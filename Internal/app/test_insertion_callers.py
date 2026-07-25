@@ -8,7 +8,14 @@ from collections import OrderedDict
 import numpy as np
 
 import mumble
-from insertion import InsertionOutcome, InsertionResult, TargetContext, TargetLease
+from insertion import (
+    InsertionCoordinator,
+    InsertionOutcome,
+    InsertionRequestConflict,
+    InsertionResult,
+    TargetContext,
+    TargetLease,
+)
 
 
 TARGET_A = TargetContext(101, 201, 301, 401, "medium", "Edit", True)
@@ -21,6 +28,18 @@ class Settings:
 
 
 class InsertionCallerTests(unittest.TestCase):
+    def _prepared_controller(self, target=TARGET_A):
+        controller = mumble.Mumble.__new__(mumble.Mumble)
+        active = {"target": target}
+        controller._capture_insertion_target = lambda: active["target"]
+        controller._prepared_insertion_leases = OrderedDict()
+        controller._prepared_insertion_lock = threading.Lock()
+        controller._deck_insertion_lease = TargetLease(
+            TARGET_A, "deck", "before_mumble_focus", False)
+        controller._deck_focus_request_pending = False
+        controller._deck_displacement_confirmed = False
+        return controller, active
+
     def _delayed_controller(self):
         controller = mumble.Mumble.__new__(mumble.Mumble)
         controller.busy = False
@@ -256,6 +275,162 @@ class InsertionCallerTests(unittest.TestCase):
 
         self.assertIsNone(lease.target)
         self.assertFalse(lease.mumble_displaced_target)
+
+    def test_same_id_mismatch_cannot_rebind_the_final_deck_insertion(self):
+        controller, active = self._prepared_controller()
+        operation_id = "a" * 32
+        first = controller._prepare_deck_insertion_lease(
+            operation_id, "deck_history", ui_process_id=9999)
+
+        active["target"] = TARGET_B
+        with self.assertRaises(InsertionRequestConflict):
+            controller._prepare_deck_insertion_lease(
+                operation_id, "deck_history", ui_process_id=9999)
+
+        retained = controller._prepared_insertion_lease(
+            operation_id, "deck_history")
+        observed = []
+
+        class Transaction:
+            def insert(self, request):
+                observed.append(request.target_lease)
+                return InsertionResult(
+                    operation_id=request.operation_id,
+                    source=request.source,
+                    outcome=InsertionOutcome.SAVED_ONLY,
+                    reason="fixture",
+                    message="Saved.",
+                    send_count=0,
+                    target_lease=request.target_lease,
+                )
+
+        transaction = Transaction()
+        controller._insertion_transaction = transaction
+        controller._insertion_coordinator = InsertionCoordinator(transaction)
+        controller._ensure_insertion_transaction = lambda: transaction
+        controller._paste_lock = threading.Lock()
+        controller._trace_mark = lambda *_args, **_kwargs: None
+        controller.clipboard = None
+
+        controller._paste(
+            "content-free fixture", source="deck_history",
+            target_lease=retained, operation_id=operation_id)
+
+        self.assertIs(first, retained)
+        self.assertEqual([TARGET_A], [lease.target for lease in observed])
+
+    def test_same_id_identical_prepare_is_idempotent(self):
+        controller, _active = self._prepared_controller()
+        operation_id = "b" * 32
+
+        first = controller._prepare_deck_insertion_lease(
+            operation_id, "deck_history", ui_process_id=9999)
+        replay = controller._prepare_deck_insertion_lease(
+            operation_id, "deck_history", ui_process_id=9999)
+
+        self.assertIs(first, replay)
+        self.assertIs(
+            first,
+            controller._prepared_insertion_lease(
+                operation_id, "deck_history"))
+
+    def test_only_the_first_valid_target_creates_the_immutable_binding(self):
+        controller, active = self._prepared_controller(target=None)
+        controller._deck_insertion_lease = None
+        operation_id = "c" * 32
+
+        missing = controller._prepare_deck_insertion_lease(
+            operation_id, "deck_history", ui_process_id=9999)
+        self.assertIsNone(missing.target)
+        self.assertNotIn(operation_id, controller._prepared_insertion_leases)
+
+        active["target"] = TARGET_A
+        accepted = controller._prepare_deck_insertion_lease(
+            operation_id, "deck_history", ui_process_id=9999)
+
+        self.assertEqual(TARGET_A, accepted.target)
+        self.assertIs(
+            accepted,
+            controller._prepared_insertion_lease(
+                operation_id, "deck_history"))
+
+    def test_same_id_rejects_different_source_window_or_security_lease(self):
+        cases = ("source", "window", "displacement")
+        for index, changed in enumerate(cases, start=1):
+            with self.subTest(changed=changed):
+                controller, active = self._prepared_controller()
+                operation_id = ("{:x}".format(index) * 32)[:32]
+                original = controller._prepare_deck_insertion_lease(
+                    operation_id, "deck_history", ui_process_id=9999)
+
+                source = "deck_history"
+                ui_process_id = 9999
+                if changed == "source":
+                    source = "deck_image"
+                elif changed == "window":
+                    active["target"] = TARGET_B
+                else:
+                    active["target"] = TargetContext(
+                        900, 9999, 901, 902, "medium", "Edit", True)
+                    controller._deck_displacement_confirmed = True
+
+                with self.assertRaises(InsertionRequestConflict):
+                    controller._prepare_deck_insertion_lease(
+                        operation_id, source, ui_process_id=ui_process_id)
+
+                if changed == "source":
+                    with self.assertRaises(InsertionRequestConflict):
+                        controller._prepared_insertion_lease(
+                            operation_id, "deck_image")
+
+                self.assertIs(
+                    original,
+                    controller._prepared_insertion_lease(
+                        operation_id, "deck_history"))
+
+    def test_concurrent_same_id_prepare_has_one_immutable_winner(self):
+        controller, _active = self._prepared_controller()
+        operation_id = "d" * 32
+        barrier = threading.Barrier(3)
+        results = []
+        results_lock = threading.Lock()
+
+        def capture_for_thread():
+            return threading.current_thread().fixture_target
+
+        controller._capture_insertion_target = capture_for_thread
+
+        def prepare(target):
+            threading.current_thread().fixture_target = target
+            barrier.wait()
+            try:
+                lease = controller._prepare_deck_insertion_lease(
+                    operation_id, "deck_history", ui_process_id=9999)
+                result = ("accepted", lease)
+            except InsertionRequestConflict:
+                result = ("rejected", target)
+            with results_lock:
+                results.append(result)
+
+        workers = [
+            threading.Thread(target=prepare, args=(TARGET_A,)),
+            threading.Thread(target=prepare, args=(TARGET_B,)),
+        ]
+        for worker in workers:
+            worker.start()
+        barrier.wait()
+        for worker in workers:
+            worker.join(2)
+
+        self.assertTrue(all(not worker.is_alive() for worker in workers))
+        self.assertEqual(["accepted", "rejected"],
+                         sorted(result[0] for result in results))
+        accepted = next(result[1] for result in results
+                        if result[0] == "accepted")
+        self.assertIs(
+            accepted,
+            controller._prepared_insertion_lease(
+                operation_id, "deck_history"))
 
 
 if __name__ == "__main__":

@@ -443,9 +443,11 @@ def insertion_only_trace_contract():
     with tempfile.TemporaryDirectory(prefix="mumble_insertion_trace_") as temp_dir:
         trace_path = os.path.join(temp_dir, "dictation-traces.jsonl")
         sink = DictationTraceSink(trace_path, enabled=True)
+        valid_operation_id = "a" * 32
+        unsafe_operation_id = "PRIVATE_TRANSCRIPT_CONTENT"
         session = sink.start_insertion({
             "trace_kind": "insertion",
-            "operation_id": "opaque-operation-7",
+            "operation_id": valid_operation_id,
             "source": "paste_latest",
             "content_kind": "text",
             "text": "PRIVATE TRANSCRIPT",
@@ -454,7 +456,7 @@ def insertion_only_trace_contract():
         })
         session.mark(
             "insertion_started",
-            operation_id="opaque-operation-7",
+            operation_id=valid_operation_id,
             requested_count=4,
             target_captured=True,
             editable=True,
@@ -476,11 +478,28 @@ def insertion_only_trace_contract():
         check("insertion-only operation is bounded in the strict sink", len(rows) == 1)
         serialized = json.dumps(rows[0])
         check("safe insertion identity and counts survive",
-              "opaque-operation-7" in serialized
+              valid_operation_id in serialized
               and '"accepted_count": 4' in serialized
               and '"send_count": 1' in serialized)
         check("private insertion data has no trace field",
               "PRIVATE" not in serialized and "secret.png" not in serialized)
+
+        unsafe_path = os.path.join(temp_dir, "unsafe-operation.jsonl")
+        unsafe_sink = DictationTraceSink(unsafe_path, enabled=True)
+        unsafe_session = unsafe_sink.start_insertion({
+            "operation_id": unsafe_operation_id,
+            "source": "deck_history",
+            "content_kind": "text",
+        })
+        unsafe_session.mark(
+            "insertion_started", operation_id=unsafe_operation_id,
+            source="deck_history", content_kind="text")
+        unsafe_session.finish(
+            "not_sent", operation_id=unsafe_operation_id,
+            source="deck_history", send_count=0)
+        unsafe_serialized = json.dumps(read_traces(unsafe_path))
+        check("unsafe operation text cannot enter the strict trace sink",
+              unsafe_operation_id not in unsafe_serialized)
 
         import mumble
         controller_path = os.path.join(temp_dir, "controller-insertions.jsonl")
@@ -490,18 +509,42 @@ def insertion_only_trace_contract():
             controller_path, enabled=True)
         controller._insertion_trace_sessions = {}
         controller._insertion_trace_lock = threading.Lock()
+        controller_operation_id = "b" * 32
         controller._insertion_trace(
-            "insertion_started", operation_id="controller-op",
+            "insertion_started", operation_id=controller_operation_id,
             source="deck_history", content_kind="text",
             target_captured=True)
         controller._insertion_trace(
-            "insertion_finished", operation_id="controller-op",
+            "insertion_finished", operation_id=controller_operation_id,
             source="deck_history", outcome="not_sent", send_count=0,
             fallback_reason="target_changed", cleanup_warning=False)
         controller_rows = read_traces(controller_path)
         check("controller creates a bounded record without dictation",
               len(controller_rows) == 1
               and controller_rows[0]["context"]["trace_kind"] == "insertion")
+        controller_serialized = json.dumps(controller_rows[0])
+        check("valid opaque identity correlates controller trace events",
+              controller_serialized.count(controller_operation_id) >= 2)
+
+        unsafe_controller_path = os.path.join(
+            temp_dir, "unsafe-controller-operation.jsonl")
+        controller._dictation_trace_sink = DictationTraceSink(
+            unsafe_controller_path, enabled=True)
+        controller._insertion_trace(
+            "insertion_started", operation_id=unsafe_operation_id,
+            source="deck_history", content_kind="text")
+        controller._insertion_trace(
+            "insertion_finished", operation_id=unsafe_operation_id,
+            source="deck_history", outcome="not_sent", send_count=0)
+        check("unsafe operation text cannot enter controller trace material",
+              unsafe_operation_id not in json.dumps(
+                  read_traces(unsafe_controller_path)))
+        check("controller boundary rejects unsafe operation identifiers",
+              controller._validated_external_operation_id(
+                  unsafe_operation_id) is None)
+        check("controller boundary accepts runtime opaque identifiers",
+              controller._validated_external_operation_id(
+                  valid_operation_id) == valid_operation_id)
 
 
 if __name__ == "__main__":
