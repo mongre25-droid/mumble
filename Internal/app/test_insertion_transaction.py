@@ -7,11 +7,16 @@ import unittest
 from insertion import (
     ClipboardOwnership,
     ClipboardSnapshot,
+    ClipboardWriteFailure,
     InsertionOutcome,
     InsertionCoordinator,
+    InsertionCoordinatorCapacityError,
+    InsertionOperationExpired,
     InsertionRequestConflict,
+    InsertionWaitTimeout,
     InsertionReason,
     InsertionRequest,
+    InsertionResult,
     InsertionTransaction,
     NativeAcceptance,
     TargetLease,
@@ -184,6 +189,43 @@ class InsertionTransactionTests(unittest.TestCase):
         self.assertEqual(1, target.restore_calls)
         self.assertEqual(1, native.send_calls)
 
+    def test_all_deck_actions_share_exact_displacement_send_and_focus_policy(self):
+        cases = [
+            ("deck_history", "text", "", "words"),
+            ("deck_image", "image", r"C:\fixture.png", ""),
+            ("deck_job", "text", "", "job result"),
+        ]
+        for source, kind, image_path, text in cases:
+            for displaced in (False, True):
+                with self.subTest(source=source, displaced=displaced):
+                    target, clipboard, native = (
+                        FakeTarget(), FakeClipboard(), FakeNativeInput())
+                    target.active = OTHER_TARGET
+                    transaction = InsertionTransaction(
+                        target, clipboard, native,
+                        settle_delay=lambda _seconds: None)
+                    request = self.make_request(
+                        "{}-{}".format(source, displaced),
+                        source=source, content_kind=kind,
+                        text=text, image_path=image_path,
+                        activation_target=None,
+                        target_lease=TargetLease(
+                            TARGET, source, "before_deck_dismiss", displaced),
+                    )
+
+                    result = transaction.insert(request)
+
+                    self.assertEqual(1 if displaced else 0,
+                                     target.restore_calls)
+                    self.assertEqual(1 if displaced else 0,
+                                     native.send_calls)
+                    self.assertEqual(TARGET if displaced else OTHER_TARGET,
+                                     target.active)
+                    self.assertEqual(
+                        InsertionOutcome.CONFIRMED if displaced else
+                        InsertionOutcome.SAVED_ONLY,
+                        result.outcome)
+
     def test_confirmed_insert_sends_once_and_restores_all_formats(self):
         target = FakeTarget()
         clipboard = FakeClipboard()
@@ -289,6 +331,39 @@ class InsertionTransactionTests(unittest.TestCase):
         self.assertEqual(InsertionReason.CLIPBOARD_WRITE_FAILED.value,
                          result.reason)
         self.assertEqual(0, native.send_calls)
+
+    def test_partial_clipboard_failure_reports_recovery_truth_and_never_sends(self):
+        cases = [
+            ("restored", ClipboardWriteFailure(
+                "second format failed", clipboard_restored=True),
+             True, False, ""),
+            ("external", ClipboardWriteFailure(
+                "third format failed", clipboard_changed_externally=True,
+                cleanup_warning="The newer clipboard was left untouched."),
+             False, True, "left untouched"),
+            ("restore-failed", ClipboardWriteFailure(
+                "readback mismatch",
+                cleanup_warning="The previous clipboard could not be restored."),
+             False, False, "could not be restored"),
+        ]
+        for name, failure, restored, changed, warning in cases:
+            with self.subTest(name=name):
+                target, clipboard, native = (
+                    FakeTarget(), FakeClipboard(), FakeNativeInput())
+                clipboard.write = lambda *_args, failure=failure: (
+                    (_ for _ in ()).throw(failure))
+                transaction = InsertionTransaction(target, clipboard, native)
+
+                result = transaction.insert(self.make_request(
+                    "clipboard-recovery-" + name))
+
+                self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
+                self.assertEqual(InsertionReason.CLIPBOARD_WRITE_FAILED.value,
+                                 result.reason)
+                self.assertEqual(restored, result.clipboard_restored)
+                self.assertEqual(changed, result.clipboard_changed_externally)
+                self.assertIn(warning, result.cleanup_warning)
+                self.assertEqual(0, native.send_calls)
 
     def test_physical_modifier_timeout_is_not_sent(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
@@ -441,6 +516,167 @@ class InsertionTransactionTests(unittest.TestCase):
 
         with self.assertRaises(InsertionRequestConflict):
             coordinator.prepare(self.make_request("reused", text="second"))
+
+    def test_coordinator_join_wait_is_explicitly_bounded(self):
+        entered = threading.Event()
+        release = threading.Event()
+
+        class BlockingTransaction:
+            def insert(_self, request):
+                entered.set()
+                release.wait(2)
+                return InsertionResult(
+                    request.operation_id, request.source,
+                    InsertionOutcome.CONFIRMED, "confirmed", "Pasted.", 1)
+
+        coordinator = InsertionCoordinator(
+            BlockingTransaction(), join_timeout_s=0.0)
+        request = self.make_request("bounded-join")
+        owner = threading.Thread(target=lambda: coordinator.submit(request))
+        owner.start()
+        self.assertTrue(entered.wait(1))
+
+        with self.assertRaises(InsertionWaitTimeout):
+            coordinator.submit(request)
+
+        self.assertEqual("pending", coordinator.status(
+            "bounded-join")["state"])
+        release.set()
+        owner.join(2)
+        self.assertEqual("terminal", coordinator.status(
+            "bounded-join")["state"])
+
+    def test_prepared_operation_expires_to_a_non_reusable_tombstone(self):
+        now = {"value": 10.0}
+        coordinator = InsertionCoordinator(
+            InsertionTransaction(FakeTarget(), FakeClipboard(), FakeNativeInput()),
+            retention=8, clock=lambda: now["value"], prepared_ttl_s=2.0)
+        request = self.make_request("abandoned-prepared")
+        coordinator.prepare(request)
+        now["value"] = 13.0
+
+        status = coordinator.status(request.operation_id)
+
+        self.assertEqual("expired", status["state"])
+        self.assertEqual("unknown", status["outcome"])
+        with self.assertRaises(InsertionOperationExpired):
+            coordinator.submit(request)
+        with self.assertRaises(InsertionRequestConflict):
+            coordinator.prepare(self.make_request(
+                request.operation_id, text="different"))
+
+    def test_hung_pending_operation_becomes_unknown_without_a_second_send(self):
+        now = {"value": 20.0}
+        entered = threading.Event()
+        release = threading.Event()
+        sends = {"count": 0}
+
+        class BlockingTransaction:
+            def insert(_self, request):
+                sends["count"] += 1
+                entered.set()
+                release.wait(2)
+                return InsertionResult(
+                    request.operation_id, request.source,
+                    InsertionOutcome.CONFIRMED, "confirmed", "Pasted.", 1)
+
+        coordinator = InsertionCoordinator(
+            BlockingTransaction(), clock=lambda: now["value"],
+            pending_ttl_s=2.0, join_timeout_s=0.0)
+        request = self.make_request("hung-pending")
+        owner = threading.Thread(target=lambda: coordinator.submit(request))
+        owner.start()
+        self.assertTrue(entered.wait(1))
+        now["value"] = 23.0
+
+        status = coordinator.status(request.operation_id)
+        self.assertEqual("unknown", status["state"])
+        self.assertIn("do not retry", status["message"].lower())
+        with self.assertRaises(InsertionWaitTimeout):
+            coordinator.submit(request)
+        self.assertEqual(1, sends["count"])
+        release.set()
+        owner.join(2)
+        self.assertEqual("terminal", coordinator.status(
+            request.operation_id)["state"])
+        self.assertEqual(1, sends["count"])
+
+    def test_coordinator_capacity_is_bounded_for_prepared_completed_and_mixed_loads(self):
+        now = {"value": 0.0}
+        coordinator = InsertionCoordinator(
+            InsertionTransaction(
+                FakeTarget(), FakeClipboard(), FakeNativeInput(),
+                settle_delay=lambda _seconds: None),
+            retention=8, clock=lambda: now["value"], prepared_ttl_s=1.0)
+        accepted = 0
+        for index in range(24):
+            request = self.make_request("load-{}".format(index))
+            coordinator.prepare(request)
+            accepted += 1
+            if index % 3 == 0:
+                coordinator.submit(request)
+            now["value"] += 0.6
+            self.assertLessEqual(len(coordinator._entries), 8)
+            self.assertLessEqual(len(coordinator._retired), 8)
+        self.assertEqual(24, accepted)
+
+        with self.assertRaises(InsertionCoordinatorCapacityError):
+            for index in range(100, 120):
+                coordinator.prepare(self.make_request("prepared-{}".format(index)))
+        self.assertLessEqual(len(coordinator._entries), 8)
+
+    def test_hung_pending_load_stays_bounded_and_never_resubmits(self):
+        now = {"value": 0.0}
+        releases = {}
+        entered = {}
+        sends = {}
+
+        class BlockingTransaction:
+            def insert(_self, request):
+                sends[request.operation_id] = (
+                    sends.get(request.operation_id, 0) + 1)
+                entered[request.operation_id].set()
+                releases[request.operation_id].wait(2)
+                return InsertionResult(
+                    request.operation_id, request.source,
+                    InsertionOutcome.CONFIRMED, "confirmed", "Pasted.", 1)
+
+        coordinator = InsertionCoordinator(
+            BlockingTransaction(), retention=8, clock=lambda: now["value"],
+            pending_ttl_s=1.0, join_timeout_s=0.0)
+        threads = []
+        requests = []
+        for index in range(8):
+            request = self.make_request("hung-load-{}".format(index))
+            requests.append(request)
+            entered[request.operation_id] = threading.Event()
+            releases[request.operation_id] = threading.Event()
+            thread = threading.Thread(
+                target=lambda value=request: coordinator.submit(value))
+            threads.append(thread)
+            thread.start()
+            self.assertTrue(entered[request.operation_id].wait(1))
+
+        now["value"] = 2.0
+        for request in requests:
+            self.assertEqual("unknown", coordinator.status(
+                request.operation_id)["state"])
+            with self.assertRaises(InsertionWaitTimeout):
+                coordinator.submit(request)
+        with self.assertRaises(InsertionCoordinatorCapacityError):
+            coordinator.prepare(self.make_request("hung-load-overflow"))
+        self.assertEqual(8, len(coordinator._entries))
+        self.assertTrue(all(count == 1 for count in sends.values()))
+
+        for event in releases.values():
+            event.set()
+        for thread in threads:
+            thread.join(2)
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertTrue(all(count == 1 for count in sends.values()))
+        self.assertTrue(all(
+            coordinator.status(request.operation_id)["state"] == "terminal"
+            for request in requests))
 
     def test_correction_undo_and_replacement_share_one_operation_and_target_lease(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()

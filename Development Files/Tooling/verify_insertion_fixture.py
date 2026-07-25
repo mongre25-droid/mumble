@@ -176,6 +176,8 @@ def main(argv=None):
         a_value, b_value = target_a.get(), target_b.get()
         insertion_count = a_value.count(PAYLOAD) + b_value.count(PAYLOAD)
         focus_widget = root.focus_get()
+        focus_logical = ("A" if focus_widget is target_a else
+                         "B" if focus_widget is target_b else "none")
         clipboard_value = _clipboard_text(root)
         expected_count = 1 if args.mode in {"normal", "delayed-focus",
                                             "delayed-read", "restore-failure",
@@ -197,6 +199,34 @@ def main(argv=None):
             "privilege-unknown": {InsertionOutcome.SAVED_ONLY},
             "unintended-field": {InsertionOutcome.SAVED_ONLY},
         }
+        expected_focus = {
+            mode: ("B" if mode == "unintended-field" else "A")
+            for mode in MODES
+        }
+        expected_native = {
+            "normal": (4, 4, 1),
+            "delayed-focus": (4, 4, 1),
+            "swallowed-input": (4, 4, 1),
+            "clipboard-mutation": (4, 4, 1),
+            "delayed-read": (4, 4, 1),
+            "zero-count": (4, 0, 1),
+            "partial-count": (4, 2, 1),
+            "restore-failure": (4, 4, 1),
+            "privilege-higher": (0, 0, 0),
+            "privilege-unknown": (0, 0, 0),
+            "unintended-field": (0, 0, 0),
+        }
+        expected_wording = {
+            "normal": "Sent", "delayed-focus": "Sent",
+            "swallowed-input": "Sent", "clipboard-mutation": "Sent",
+            "delayed-read": "Sent", "restore-failure": "Sent",
+            "zero-count": "Not sent", "partial-count": "not confirmed",
+            "privilege-higher": "Not sent", "privilege-unknown": "Not sent",
+            "unintended-field": "Not sent",
+        }
+        expected_cleanup_warning = args.mode in {
+            "clipboard-mutation", "restore-failure"}
+        native_requested, native_accepted, send_count = expected_native[args.mode]
         outcome_ok = bool(
             terminal and terminal.outcome in expected_outcomes[args.mode])
         passed = all((
@@ -205,18 +235,30 @@ def main(argv=None):
             (a_value == PAYLOAD) == expected_a,
             b_value == "",
             clipboard_value == expected_clipboard,
-            bool(terminal and terminal.message),
-            focus_widget in {target_a, target_b},
+            bool(terminal and expected_wording[args.mode].casefold()
+                 in terminal.message.casefold()),
+            bool(terminal and terminal.native_requested == native_requested),
+            bool(terminal and terminal.native_accepted == native_accepted),
+            bool(terminal and terminal.send_count == send_count),
+            bool(terminal and bool(terminal.cleanup_warning)
+                 == expected_cleanup_warning),
+            focus_logical == expected_focus[args.mode],
         ))
         state["failed"] = not passed
         detail = (
             "{} — outcome={}; count={}; A={!r}; B={!r}; focus={}; "
-            "clipboard={!r}; message={}".format(
+            "requested={}; accepted={}; sends={}; clipboard={!r}; message={}; "
+            "cleanup_warning={!r}".format(
                 "PASS" if passed else "FAIL",
                 terminal.outcome.value if terminal else "missing",
                 insertion_count, a_value, b_value,
-                str(focus_widget), clipboard_value,
-                terminal.message if terminal else "missing terminal result"))
+                focus_logical,
+                terminal.native_requested if terminal else "missing",
+                terminal.native_accepted if terminal else "missing",
+                terminal.send_count if terminal else "missing",
+                clipboard_value,
+                terminal.message if terminal else "missing terminal result",
+                terminal.cleanup_warning if terminal else "missing"))
         result_label.config(text=detail, fg="#187a2f" if passed else "#aa2020")
         print(detail)
         root.after(max(100, args.linger_ms), root.destroy)

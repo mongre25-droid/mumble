@@ -272,6 +272,8 @@ class Mumble:
         self._dictation_insertion_lease = None
         self._dictation_insertion_operation_id = None
         self._deck_insertion_lease = None
+        self._deck_focus_request_pending = False
+        self._deck_displacement_confirmed = False
         self._prepared_insertion_leases = OrderedDict()
         self._deck_job_lock = threading.Lock()  # in-flight guard for Deck/History jobs
         self._deck_job_active = False           # True while a Deck job is running
@@ -1771,7 +1773,8 @@ class Mumble:
                 pass
 
     # ---- mode-ambiguity recovery: ASK which mode, don't say "speak again" -----
-    def _offer_mode_pick(self, raw, ai_guess, clean):
+    def _offer_mode_pick(self, raw, ai_guess, clean, *, target_lease=None,
+                         operation_id=None):
         """Low-confidence mode recovery (0.9 rework). The old click-picker popup
         ("Which mode? — pick one") confused users and lingered ~8s. Instead show a
         brief, self-explaining island chip that FADES in ~2s: hold the mode key
@@ -1795,6 +1798,8 @@ class Mumble:
             # Headless: no chip surface — just paste the polished default.
             threading.Thread(target=self._finalize_text,
                              args=(clean, stat_context),
+                             kwargs={"target_lease": target_lease,
+                                     "operation_id": operation_id},
                              daemon=True).start()
             return
         # The whole hint is the chip label (state=="hint"); name the REAL mode key.
@@ -1810,11 +1815,13 @@ class Mumble:
                     return
                 self._clarify_token = None
                 self._clarify_until = 0.0
-            self._finalize_text(clean, stat_context)
+            self._finalize_text(
+                clean, stat_context, target_lease=target_lease,
+                operation_id=operation_id)
 
         threading.Thread(target=_fade_fallback, daemon=True).start()
 
-    def _reprocess(self, raw, mode):
+    def _reprocess(self, raw, mode, *, target_lease=None, operation_id=None):
         """Re-run a USER-CHOSEN mode on a PRESERVED transcript — the click-to-pick
         recovery from the mode picker (owner v6). The spoken words are never lost:
         they're processed in the mode you chose and pasted. Self-contained
@@ -1833,7 +1840,8 @@ class Mumble:
             # low-confidence text polish could re-open the picker in a loop). Real
             # modes run their focused lane and never re-trigger the picker.
             m, out, used_offline = self._generate(
-                raw, mode, raw, clip, mode != "text", None, None)
+                raw, mode, raw, clip, mode != "text", None, None,
+                target_lease=target_lease, operation_id=operation_id)
             if not out:
                 self._idle()
                 return
@@ -1854,7 +1862,9 @@ class Mumble:
             except Exception as e:
                 print("reprocess stats error:", e)
             self._send_webui_async({"cmd": "refresh", "what": "history"})
-            result = self._paste(out, source="mode_reprocess")
+            result = self._paste(
+                out, source="mode_reprocess", target_lease=target_lease,
+                operation_id=operation_id)
             print(f"[reprocess · {m}] {out!r}")
             if self.island:
                 self._tk_schedule(self.island.flash, m,
@@ -1872,7 +1882,8 @@ class Mumble:
         finally:
             self.busy = False
 
-    def _finalize_text(self, clean, stat_context=None):
+    def _finalize_text(self, clean, stat_context=None, *, target_lease=None,
+                       operation_id=None):
         """Paste the polished plain-text default (the mode picker was dismissed).
         Nothing is lost even when the user doesn't pick a mode."""
         clean = (clean or "").strip()
@@ -1902,7 +1913,9 @@ class Mumble:
             except Exception as e:
                 print("finalize-text stats error:", e)
             self._send_webui_async({"cmd": "refresh", "what": "history"})
-            result = self._paste(clean, source="finalize_text")
+            result = self._paste(
+                clean, source="finalize_text", target_lease=target_lease,
+                operation_id=operation_id)
             if self.island:
                 self._tk_schedule(self.island.flash, "text",
                                   pasted=result.confirmed,
@@ -2356,6 +2369,11 @@ class Mumble:
         return "good" if mean > -0.35 else ("fair" if mean > -0.7 else "bad")
 
     def _process(self, audio, duration, mode_active=False, windows=None):
+        # Freeze the Stop-time insertion context before any shaping or mode
+        # clarification can yield control. Later focus is never a new target.
+        insertion_lease = getattr(self, "_dictation_insertion_lease", None)
+        insertion_operation_id = getattr(
+            self, "_dictation_insertion_operation_id", None)
         timing = getattr(self, "_dictation_timing", None)
         stat_context = dict(getattr(self, "_dictation_stat_context", {}) or {})
         if not stat_context:
@@ -2567,6 +2585,8 @@ class Mumble:
                     window_words=window_words if mode_active else None,
                     config_snap=_snap,
                     route_decision=_route,
+                    target_lease=insertion_lease,
+                    operation_id=insertion_operation_id,
                 )
             # Mode was ambiguous → the interactive "Which mode?" picker is now up
             # and OWNS the outcome (re-process the preserved words, or paste the
@@ -2631,10 +2651,8 @@ class Mumble:
                 insertion_result = self._paste(
                     out,
                     source="dictation",
-                    target_lease=getattr(
-                        self, "_dictation_insertion_lease", None),
-                    operation_id=getattr(
-                        self, "_dictation_insertion_operation_id", None),
+                    target_lease=insertion_lease,
+                    operation_id=insertion_operation_id,
                 )
                 confirmed = insertion_result.confirmed
             self._trace_mark(
@@ -2868,12 +2886,26 @@ class Mumble:
             ui_pid = 0
         retained = getattr(self, "_deck_insertion_lease", None)
         target = None
+        displaced_by_mumble = False
         if current is not None and (not ui_pid or current.process_id != ui_pid):
             target = current
         elif retained is not None:
             target = retained.target
+            # A retained external target is restoration-authorised only when
+            # the observed foreground belongs to Mumble's Web UI at the exact
+            # action boundary. Merely remembering an older target proves no
+            # Mumble-caused displacement.
+            displaced_by_mumble = bool(
+                current is not None and ui_pid
+                and current.process_id == ui_pid and target is not None
+                and getattr(self, "_deck_displacement_confirmed", False))
+        # Displacement proof is single-use. A later Deck action must have its
+        # own controller-requested focus transition or fail closed.
+        self._deck_focus_request_pending = False
+        self._deck_displacement_confirmed = False
         lease = TargetLease(
-            target, str(source or "deck"), "before_deck_dismiss", True)
+            target, str(source or "deck"), "before_deck_dismiss",
+            displaced_by_mumble)
         leases = getattr(self, "_prepared_insertion_leases", None)
         if leases is None:
             leases = OrderedDict()
@@ -2884,11 +2916,22 @@ class Mumble:
             leases.popitem(last=False)
         return lease
 
+    def _note_webui_focus(self, focused):
+        """Record only a focus gain caused by this controller's Deck request."""
+        focused = bool(focused)
+        if not focused:
+            self._deck_focus_request_pending = False
+            self._deck_displacement_confirmed = False
+            return
+        if getattr(self, "_deck_focus_request_pending", False):
+            self._deck_focus_request_pending = False
+            self._deck_displacement_confirmed = True
+
     def _prepared_insertion_lease(self, operation_id, source):
         lease = getattr(self, "_prepared_insertion_leases", {}).get(
             str(operation_id or ""))
         return lease or TargetLease(
-            None, str(source or "deck"), "before_deck_dismiss", True)
+            None, str(source or "deck"), "before_deck_dismiss", False)
 
     def _insertion_trace(self, name, **fields):
         if name == "paste_sent":
@@ -3626,6 +3669,7 @@ class Mumble:
                     # island freezes its frame counter, state timers, and painting
                     # while unfocused — no CPU/GPU waste on unseen frames (VAL-PERF-005).
                     val = req.get("value", True)
+                    self._note_webui_focus(val)
                     if self.island:
                         self._tk_schedule(self.island.set_focused, bool(val))
                         # When regaining focus, tick the status so the chip updates
@@ -3962,7 +4006,10 @@ class Mumble:
         returns '' when nothing is selected — so an ordinary Deck-open (tray menu,
         no selection) is completely unaffected."""
         self._deck_insertion_lease = self._make_insertion_lease(
-            "deck", "before_mumble_focus", mumble_displaced_target=True)
+            "deck", "before_mumble_focus", mumble_displaced_target=False)
+        self._deck_focus_request_pending = bool(
+            self._deck_insertion_lease and self._deck_insertion_lease.target)
+        self._deck_displacement_confirmed = False
         try:
             sel = self._grab_selection_quiet()
         except Exception:
@@ -3981,7 +4028,11 @@ class Mumble:
                     time.sleep(0.3)
                     if self._send_webui(msg):
                         return
+                self._deck_focus_request_pending = False
+                self._deck_displacement_confirmed = False
             threading.Thread(target=_retry, daemon=True).start()
+        else:
+            self._deck_focus_request_pending = False
 
     def on_search_hotkey(self):
         # Never steal focus from a dictation target. During start/stop ``busy``
@@ -5031,6 +5082,8 @@ class Mumble:
         window_words=None,
         cfg=None,
         prompt_cfg=None,
+        target_lease=None,
+        operation_id=None,
     ):
         """Send to the AI, routed by lane:
 
@@ -5230,7 +5283,8 @@ class Mumble:
         clean, ai_mode, conf, redo = ai.split_mode_tail(out)
         return self._handle_second_opinion(
             clean, ai_mode, conf, redo, raw, name, poll_ctx, prefs, context_strict,
-            cfg=cfg, prompt_cfg=prompt_cfg,
+            cfg=cfg, prompt_cfg=prompt_cfg, target_lease=target_lease,
+            operation_id=operation_id,
         )
 
     def _conv_context_for_prompt(self):
@@ -5254,7 +5308,7 @@ class Mumble:
 
     def _handle_second_opinion(
         self, clean, ai_mode, conf, redo, raw, name, context, prefs, context_strict,
-        cfg=None, prompt_cfg=None,
+        cfg=None, prompt_cfg=None, target_lease=None, operation_id=None,
     ):
         """Act on the AI's free 'the local detector missed a mode' second opinion.
         High-confidence prompt → auto re-run with the constitution; high-confidence
@@ -5309,6 +5363,8 @@ class Mumble:
                     prefs=prefs, context_strict=context_strict,
                     cfg=cfg,
                     prompt_cfg=prompt_cfg,
+                    target_lease=target_lease,
+                    operation_id=operation_id,
                 )
             except Exception as e:
                 print("auto mode re-run failed:", e)
@@ -5319,7 +5375,9 @@ class Mumble:
         # picker owns the outcome (pick → re-process those words; dismiss → paste the
         # polished text), so we DEFER the paste here with a sentinel that _process
         # recognises and skips. The transcript is preserved in self._last_raw / raw.
-        self._offer_mode_pick(raw, ai_mode, ai._clean(clean))
+        self._offer_mode_pick(
+            raw, ai_mode, ai._clean(clean), target_lease=target_lease,
+            operation_id=operation_id)
         return "__pick__", ai._clean(clean)
 
     def _builder(self, raw, det_mode="text", det_request="", fmt=True):
@@ -5455,6 +5513,8 @@ class Mumble:
         window_words=None,
         config_snap=None,
         route_decision=None,
+        target_lease=None,
+        operation_id=None,
     ):
         """AI-driven generation. Lane A (plain text) → minimal polish; Lane B (a
         mode the button armed) → focused/constitution path. (Material-as-context
@@ -5509,6 +5569,8 @@ class Mumble:
                     window_words=window_words,
                     cfg=cfg,
                     prompt_cfg=prompt_cfg,
+                    target_lease=target_lease,
+                    operation_id=operation_id,
                 )
                 if out and out.strip():
                     self._mark_llm_ok()

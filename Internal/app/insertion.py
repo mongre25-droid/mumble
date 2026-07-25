@@ -240,6 +240,30 @@ class InsertionRequestConflict(ValueError):
     """An operation ID was reused for a different immutable request."""
 
 
+class ClipboardWriteFailure(RuntimeError):
+    """A failed replacement with explicit, non-content-bearing recovery truth."""
+
+    def __init__(self, reason, *, clipboard_restored=False,
+                 clipboard_changed_externally=False, cleanup_warning=""):
+        super().__init__(str(reason or "clipboard_write_failed"))
+        self.clipboard_restored = bool(clipboard_restored)
+        self.clipboard_changed_externally = bool(
+            clipboard_changed_externally)
+        self.cleanup_warning = str(cleanup_warning or "")
+
+
+class InsertionWaitTimeout(TimeoutError):
+    """A same-ID observer stopped waiting; the owner may still finish."""
+
+
+class InsertionOperationExpired(RuntimeError):
+    """A prepared operation expired and cannot later be submitted."""
+
+
+class InsertionCoordinatorCapacityError(RuntimeError):
+    """The bounded identity registry is full of non-evictable operations."""
+
+
 @dataclass
 class _CoordinatorEntry:
     fingerprint: str
@@ -248,19 +272,29 @@ class _CoordinatorEntry:
     event: threading.Event
     result: Optional[InsertionResult] = None
     error: Optional[BaseException] = None
+    created_at: float = 0.0
+    state_changed_at: float = 0.0
 
 
 class InsertionCoordinator:
     """Controller-owned pending and terminal operation identity registry."""
 
-    def __init__(self, transaction, *, retention=256):
+    def __init__(self, transaction, *, retention=256, clock=time.monotonic,
+                 join_timeout_s=4.0, prepared_ttl_s=30.0,
+                 pending_ttl_s=30.0):
         self._transaction = transaction
         self._retention = max(8, int(retention))
+        self._clock = clock
+        self._join_timeout_s = max(0.0, float(join_timeout_s))
+        self._prepared_ttl_s = max(0.0, float(prepared_ttl_s))
+        self._pending_ttl_s = max(0.0, float(pending_ttl_s))
         self._lock = threading.Lock()
         self._entries = OrderedDict()
+        self._retired = OrderedDict()
 
     def _check(self, operation_id, fingerprint):
-        entry = self._entries.get(operation_id)
+        entry = (self._entries.get(operation_id)
+                 or self._retired.get(operation_id))
         if entry is not None and entry.fingerprint != fingerprint:
             raise InsertionRequestConflict(
                 "operation_id_reused_with_different_request")
@@ -271,41 +305,60 @@ class InsertionCoordinator:
             raise ValueError("operation_id is required")
         fingerprint = request.fingerprint()
         with self._lock:
+            now = self._clock()
+            self._expire_locked(now)
             entry = self._check(request.operation_id, fingerprint)
             if entry is None:
+                self._reserve_slot_locked()
                 entry = _CoordinatorEntry(
                     fingerprint=fingerprint,
                     request=request,
                     state="prepared",
                     event=threading.Event(),
+                    created_at=now,
+                    state_changed_at=now,
                 )
                 self._entries[request.operation_id] = entry
-                self._trim_locked()
             else:
-                self._entries.move_to_end(request.operation_id)
+                if request.operation_id in self._entries:
+                    self._entries.move_to_end(request.operation_id)
+                else:
+                    self._retired.move_to_end(request.operation_id)
             return self._status_locked(entry)
 
     def submit(self, request: InsertionRequest) -> InsertionResult:
         fingerprint = request.fingerprint()
         owner = False
         with self._lock:
+            now = self._clock()
+            self._expire_locked(now)
             entry = self._check(request.operation_id, fingerprint)
             if entry is None:
+                self._reserve_slot_locked()
                 entry = _CoordinatorEntry(
                     fingerprint=fingerprint,
                     request=request,
                     state="pending",
                     event=threading.Event(),
+                    created_at=now,
+                    state_changed_at=now,
                 )
                 self._entries[request.operation_id] = entry
                 owner = True
             elif entry.state == "prepared":
                 entry.state = "pending"
+                entry.state_changed_at = now
                 owner = True
             elif entry.state == "terminal":
                 if entry.error is not None:
                     raise entry.error
                 return entry.result
+            elif entry.state == "expired":
+                raise InsertionOperationExpired(
+                    "prepared insertion operation expired")
+            elif entry.state == "unknown":
+                raise InsertionWaitTimeout(
+                    "insertion operation is still unresolved; do not retry")
             wait_event = entry.event
 
         if owner:
@@ -315,32 +368,49 @@ class InsertionCoordinator:
                 with self._lock:
                     entry.error = exc
                     entry.state = "terminal"
+                    entry.state_changed_at = self._clock()
                     entry.event.set()
                     self._trim_locked()
                 raise
             with self._lock:
                 entry.result = result
                 entry.state = "terminal"
+                entry.state_changed_at = self._clock()
                 entry.event.set()
                 self._entries.move_to_end(request.operation_id)
                 self._trim_locked()
             return result
 
-        wait_event.wait()
+        if not wait_event.wait(self._join_timeout_s):
+            raise InsertionWaitTimeout(
+                "timed out waiting for the existing insertion operation")
         with self._lock:
+            self._expire_locked(self._clock())
+            if entry.state == "expired":
+                raise InsertionOperationExpired(
+                    "prepared insertion operation expired")
+            if entry.state == "unknown":
+                raise InsertionWaitTimeout(
+                    "insertion operation is still unresolved; do not retry")
             if entry.error is not None:
                 raise entry.error
             return entry.result
 
     def status(self, operation_id, fingerprint=None):
         with self._lock:
+            self._expire_locked(self._clock())
             entry = self._entries.get(str(operation_id or ""))
+            if entry is None:
+                entry = self._retired.get(str(operation_id or ""))
             if entry is None:
                 return {"state": "missing", "operation_id": str(operation_id or "")}
             if fingerprint is not None and entry.fingerprint != fingerprint:
                 raise InsertionRequestConflict(
                     "operation_id_reused_with_different_request")
-            self._entries.move_to_end(str(operation_id))
+            if str(operation_id) in self._entries:
+                self._entries.move_to_end(str(operation_id))
+            else:
+                self._retired.move_to_end(str(operation_id))
             return self._status_locked(entry)
 
     def _status_locked(self, entry):
@@ -354,13 +424,64 @@ class InsertionCoordinator:
                 "operation_id": entry.request.operation_id,
                 "error": "internal_error",
             }
+        if entry.state == "expired":
+            return {
+                "state": "expired",
+                "operation_id": entry.request.operation_id,
+                "outcome": "unknown",
+                "confirmed": False,
+                "reason": "prepared_operation_expired",
+                "message": (
+                    "This prepared paste expired before it started. Choose the "
+                    "destination again and begin a new Deck action."),
+            }
+        if entry.state == "unknown":
+            return {
+                "state": "unknown",
+                "operation_id": entry.request.operation_id,
+                "outcome": "unknown",
+                "confirmed": False,
+                "reason": "pending_operation_expired",
+                "message": (
+                    "The paste result is still unknown. Do not retry; check the "
+                    "selected field before using the saved result."),
+            }
         return {
             "state": "pending",
             "operation_id": entry.request.operation_id,
         }
 
-    def _trim_locked(self):
-        while len(self._entries) > self._retention:
+    def _expire_locked(self, now):
+        expired_prepared = []
+        for operation_id, entry in list(self._entries.items()):
+            age = max(0.0, now - entry.state_changed_at)
+            if entry.state == "prepared" and age >= self._prepared_ttl_s:
+                entry.state = "expired"
+                entry.state_changed_at = now
+                entry.event.set()
+                expired_prepared.append((operation_id, entry))
+            elif entry.state == "pending" and age >= self._pending_ttl_s:
+                # The worker cannot be killed safely. Tombstone the identity so
+                # observers stop waiting and no later caller can submit it again.
+                entry.state = "unknown"
+                entry.state_changed_at = now
+                entry.event.set()
+        for operation_id, entry in expired_prepared:
+            self._entries.pop(operation_id, None)
+            self._retired[operation_id] = entry
+            self._retired.move_to_end(operation_id)
+        while len(self._retired) > self._retention:
+            self._retired.popitem(last=False)
+
+    def _reserve_slot_locked(self):
+        self._trim_locked(limit=self._retention - 1)
+        if len(self._entries) >= self._retention:
+            raise InsertionCoordinatorCapacityError(
+                "insertion coordinator capacity is occupied by unresolved identities")
+
+    def _trim_locked(self, *, limit=None):
+        limit = self._retention if limit is None else max(0, int(limit))
+        while len(self._entries) > limit:
             removable = next(
                 (key for key, value in self._entries.items()
                  if value.state == "terminal"), None)
@@ -527,9 +648,16 @@ class InsertionTransaction:
 
         try:
             ownership = self._clipboard.write(request, snapshot)
-        except Exception:
-            return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.CLIPBOARD_WRITE_FAILED)
+        except Exception as exc:
+            return self._result(
+                request, InsertionOutcome.SAVED_ONLY,
+                InsertionReason.CLIPBOARD_WRITE_FAILED,
+                clipboard_restored=bool(getattr(
+                    exc, "clipboard_restored", False)),
+                clipboard_changed_externally=bool(getattr(
+                    exc, "clipboard_changed_externally", False)),
+                cleanup_warning=str(getattr(exc, "cleanup_warning", "") or ""),
+            )
         self._trace("clipboard_ready", operation_id=request.operation_id,
                     source=request.source, content_kind=request.content_kind)
 

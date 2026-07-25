@@ -389,14 +389,46 @@ class Api:
         return values
 
     def _submit_insertion(self, command):
-        """Submit once; a socket timeout only queries the same operation ID."""
+        """Submit once, then poll only that immutable operation to a safe bound."""
         operation_id = str(command.get("operation_id") or "")
+
+        def unknown_reply():
+            return {
+                "ok": True,
+                "state": "unknown",
+                "operation_id": operation_id,
+                "outcome": "unknown",
+                "confirmed": False,
+                "pasted": False,
+                "reason": "terminal_result_timeout",
+                "cleanup_warning": "",
+                "message": (
+                    "The paste result is still unknown. Do not retry: check the "
+                    "selected field and use the saved Deck item only after confirming "
+                    "it was not inserted."),
+            }
+
         reply = _ctrl_send(command, timeout=4.0)
         if reply is None:
             reply = _ctrl_send(
                 {"cmd": "insertion_status", "operation_id": operation_id},
                 timeout=1.0,
             )
+        clock = getattr(self, "_insertion_clock", time.monotonic)
+        sleep = getattr(self, "_insertion_sleep", time.sleep)
+        timeout_s = max(0.0, float(getattr(
+            self, "_insertion_terminal_timeout_s", 4.0)))
+        poll_s = max(0.01, float(getattr(
+            self, "_insertion_poll_interval_s", 0.10)))
+        deadline = clock() + timeout_s
+        while reply and reply.get("state") == "pending" and clock() < deadline:
+            sleep(min(poll_s, max(0.0, deadline - clock())))
+            reply = _ctrl_send(
+                {"cmd": "insertion_status", "operation_id": operation_id},
+                timeout=1.0,
+            )
+        if reply is None or reply.get("state") == "pending":
+            reply = unknown_reply()
         return self._insertion_reply(reply, operation_id)
 
     def deck_paste(self, text):

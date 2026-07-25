@@ -1355,7 +1355,19 @@ function showInsertionResult(result, confirmedMessage, ms = 2200) {
   return result && result.outcome === "confirmed" && result.confirmed === true;
 }
 
+function acceptInsertionResult(result) {
+  const operationId = String((result && result.operation_id) || "");
+  if (!operationId) return true;
+  const seen = acceptInsertionResult.seen ||
+    (acceptInsertionResult.seen = new Set());
+  if (seen.has(operationId)) return false;
+  seen.add(operationId);
+  while (seen.size > 256) seen.delete(seen.values().next().value);
+  return true;
+}
+
 window.pyInsertionResult = function pyInsertionResult(result) {
+  if (!acceptInsertionResult(result)) return;
   showInsertionResult(result, "Pasted Deck result", 2600);
 };
 

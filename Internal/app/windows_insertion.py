@@ -13,6 +13,7 @@ import time
 from insertion import (
     ClipboardOwnership,
     ClipboardSnapshot,
+    ClipboardWriteFailure,
     NativeAcceptance,
     TargetContext,
     TargetEditability,
@@ -39,6 +40,18 @@ VK_Z = 0x5A
 GWL_STYLE = -16
 ES_PASSWORD = 0x0020
 ES_READONLY = 0x0800
+
+
+class _PartialClipboardReplacement(RuntimeError):
+    def __init__(self, reason, sequence, written, *, sequence_proves_ownership=False):
+        super().__init__(str(reason))
+        self.sequence = int(sequence)
+        self.written = tuple(written)
+        self.sequence_proves_ownership = bool(sequence_proves_ownership)
+
+
+class _ClipboardOwnershipChanged(RuntimeError):
+    pass
 
 
 class _GUITHREADINFO(ctypes.Structure):
@@ -382,16 +395,56 @@ class WindowsClipboardAdapter:
         else:
             raise ValueError("unsupported insertion content kind: {}".format(
                 request.content_kind))
-        sequence = self._replace_formats(payloads)
+        try:
+            sequence = self._replace_formats(payloads)
+        except _PartialClipboardReplacement as exc:
+            raise self._recover_failed_write(snapshot, exc) from exc
         for payload_id, payload_data in payloads:
             if self._read_format_bytes(payload_id) != payload_data:
-                if self._sequence() == sequence:
-                    self._replace_formats(
-                        (old_id, old_data)
-                        for old_id, _name, old_data in snapshot.formats)
-                raise RuntimeError("clipboard_readback_mismatch")
+                failure = _PartialClipboardReplacement(
+                    "clipboard_readback_mismatch", sequence, payloads,
+                    sequence_proves_ownership=True)
+                raise self._recover_failed_write(snapshot, failure)
         return ClipboardOwnership(
             sequence, hashlib.sha256(data).hexdigest(), format_id)
+
+    def _recover_failed_write(self, snapshot, failure):
+        """Restore only when the failed partial replacement is still ours."""
+        try:
+            self._replace_formats(
+                ((format_id, data)
+                 for format_id, _name, data in snapshot.formats),
+                before_clear=lambda: self._failed_write_still_owned(failure),
+            )
+        except _ClipboardOwnershipChanged:
+            return ClipboardWriteFailure(
+                str(failure), clipboard_changed_externally=True,
+                cleanup_warning=(
+                    "The clipboard changed during Mumble's failed write, so the "
+                    "newer clipboard was left untouched."),
+            )
+        except Exception:
+            restored = False
+        else:
+            restored = all(
+                self._read_format_bytes(format_id) == data
+                for format_id, _name, data in snapshot.formats)
+        return ClipboardWriteFailure(
+            str(failure), clipboard_restored=restored,
+            cleanup_warning=("" if restored else
+                "The previous clipboard could not be restored after Mumble's "
+                "write failed."),
+        )
+
+    def _failed_write_still_owned(self, failure):
+        """Called while the clipboard is open, before any recovery clear."""
+        if self._sequence() != failure.sequence:
+            return False
+        if failure.sequence_proves_ownership:
+            return True
+        return all(
+            self._read_format_bytes_open(format_id) == data
+            for format_id, data in failure.written)
 
     def still_owns(self, ownership):
         if self._sequence() != ownership.sequence:
@@ -434,24 +487,44 @@ class WindowsClipboardAdapter:
 
     def _read_format_bytes(self, format_id):
         with self._opened():
-            handle = self.user32.GetClipboardData(format_id)
-            size = int(self.kernel32.GlobalSize(handle) or 0) if handle else 0
-            if not handle or not size:
-                return None
-            pointer = self.kernel32.GlobalLock(handle)
-            if not pointer:
-                return None
-            try:
-                return ctypes.string_at(pointer, size)
-            finally:
-                self.kernel32.GlobalUnlock(handle)
+            return self._read_format_bytes_open(format_id)
 
-    def _replace_formats(self, formats):
-        with self._opened():
-            if not self.user32.EmptyClipboard():
-                raise RuntimeError("clipboard_clear_failed")
-            for format_id, data in formats:
-                self._set_format(format_id, data)
+    def _read_format_bytes_open(self, format_id):
+        handle = self.user32.GetClipboardData(format_id)
+        size = int(self.kernel32.GlobalSize(handle) or 0) if handle else 0
+        if not handle or not size:
+            return None
+        pointer = self.kernel32.GlobalLock(handle)
+        if not pointer:
+            return None
+        try:
+            return ctypes.string_at(pointer, size)
+        finally:
+            self.kernel32.GlobalUnlock(handle)
+
+    def _replace_formats(self, formats, *, before_clear=None):
+        payloads = tuple(formats)
+        written = []
+        cleared = False
+        try:
+            with self._opened():
+                if before_clear is not None and not before_clear():
+                    raise _ClipboardOwnershipChanged(
+                        "clipboard ownership changed before recovery")
+                if not self.user32.EmptyClipboard():
+                    raise RuntimeError("clipboard_clear_failed")
+                cleared = True
+                for format_id, data in payloads:
+                    self._set_format(format_id, data)
+                    # SetClipboardData owns the successful HGLOBAL from here.
+                    written.append((format_id, data))
+        except Exception as exc:
+            # Opening or clearing failed before Mumble changed clipboard data.
+            # Recovery here could overwrite an external owner unnecessarily.
+            if not cleared:
+                raise
+            raise _PartialClipboardReplacement(
+                str(exc), self._sequence(), written) from exc
         return self._sequence()
 
     def _privacy_formats(self):

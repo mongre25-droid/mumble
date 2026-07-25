@@ -26,6 +26,21 @@ def function_source(source, name):
 
 
 class InsertionUiContractTests(unittest.TestCase):
+    def test_async_terminal_completion_is_presented_once_per_operation(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node is not installed")
+        source = APP_JS.read_text(encoding="utf-8")
+        helper = function_source(source, "acceptInsertionResult")
+        script = (helper + "\nconsole.log(JSON.stringify([" +
+                  "acceptInsertionResult({operation_id:'one',state:'terminal'})," +
+                  "acceptInsertionResult({operation_id:'one',state:'terminal'})," +
+                  "acceptInsertionResult({operation_id:'two',state:'terminal'})]));")
+        completed = subprocess.run(
+            [node, "-e", script], check=True, capture_output=True,
+            text=True, encoding="utf-8")
+        self.assertEqual([True, False, True], json.loads(completed.stdout))
+
     def test_every_non_confirmed_outcome_is_never_called_pasted(self):
         node = shutil.which("node")
         if not node:

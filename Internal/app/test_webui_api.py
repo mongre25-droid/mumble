@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Smoke test for the web UI's Python bridge (webui_shell.Api).
 
-SAFE BY DESIGN: read-only against the live stores, plus a settings write that
-restores the original value, and a favourites toggle that toggles back. It
-never clears or deletes user data, never touches the network beyond what the
-caller opts into (no update check, no key test with a real key).
+SAFE BY DESIGN: every run owns a throwaway data directory and disables live
+controller/network behavior before importing the bridge. It never reads or
+mutates the user's live Mumble stores, even when launched ad hoc or alongside
+the running application.
 
-Run:  .venv\\Scripts\\python.exe test_webui_api.py   → prints WEBUI_API_OK
+Preferred run: python run_tests.py test_webui_api.py
 """
 
 import json
@@ -14,7 +14,18 @@ import os
 import sys
 import tempfile
 
+_OWNED_TEST_DATA = None
+if not (os.environ.get("MUMBLE_TEST_DATA_DIR") or "").strip():
+    _OWNED_TEST_DATA = tempfile.TemporaryDirectory(
+        prefix="mumble_webui_api_test_")
+    os.environ["MUMBLE_TEST_DATA_DIR"] = _OWNED_TEST_DATA.name
+os.environ["MUMBLE_OFFLINE_TESTS"] = "1"
+
 import webui_shell
+
+# Fixed controller ports can belong to a real running Mumble. This test checks
+# bridge response shapes with an absent controller and must never contact it.
+webui_shell._ctrl_send = lambda *_args, **_kwargs: None
 
 FAILED = []
 
