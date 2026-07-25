@@ -13,7 +13,7 @@
   <div class="meta"><div><span class="ico">◆</span><b>Last refreshed:</b> 26 July 2026</div><div><span class="ico">◆</span><b>Release position:</b> pre-release hardening</div><div><span class="ico">◆</span><b>Companions:</b> <a href="README.html">README</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div></div>
 </header>
 
-<div class="plain"><div class="tag">Current truth</div><div><p>Mumble is being treated as version <strong>0.95</strong>: the current product is implemented, but release confidence still depends on verification of packaging, clean installation, physical microphone/paste behaviour, signing, and publication.</p></div></div>
+<div class="plain"><div class="tag">Current truth</div><div><p>Mumble is being treated as version <strong>0.95</strong>: the current product is implemented, but release confidence still depends on verification of packaging, clean installation, physical microphone/paste behaviour, signing, and publication. Issue #20's rejected-review corrections are implemented locally for another independent review; this is not a merge, release, assistive-technology, or physical-validation claim.</p></div></div>
 
 <div class="tiles"><div class="tile"><div class="n">0.95</div><div class="l">Current source version</div></div><div class="tile"><div class="n">Local</div><div class="l">Default transcription path</div></div><div class="tile"><div class="n">Windows</div><div class="l">Product-contract platform</div></div><div class="tile"><div class="n">Gated</div><div class="l">Public release readiness</div></div></div>
 
@@ -67,6 +67,9 @@
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>
 </ol>
+
+<div class="callout"><strong>Issue #20 evidence boundary:</strong> focused contract tests and the local production browser harness verify browser-managed 200% tab zoom, persistent live-region DOM behaviour, source-bound screenshot freshness, and the other automated UI contracts. They do not verify physical display or operating-system scaling, assistive-technology output, microphone input, hardware hotkeys, focus-preserving paste, clipboard restoration, merge readiness, or release readiness.</div>
+<div class="callout"><strong>Maintainability follow-up:</strong> <code>focus-stage.js</code> and <code>focus-stage-contract.json</code> still carry matching handwritten contract data. Browser and Python checks detect drift, but a packaging-safe single-source loading or generation path was not small enough to add inside this correction task; this remains a non-blocking P3 note.</div>
 
 <h2><span class="sec">5</span>Documentation boundary</h2>
 <p>This page is the short present-state record. <a href="README.html">README</a> defines what Mumble is and how the project is organized. <a href="HANDBOOK.html">HANDBOOK</a> defines how to build and verify it. <a href="LOGS.html">LOGS</a> records completed milestones.</p>

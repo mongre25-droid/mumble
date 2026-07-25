@@ -8,6 +8,7 @@
         <link rel="stylesheet" href="app.css" />
         <link rel="stylesheet" href="enhanced.css" />
         <link rel="stylesheet" href="remaster.css?v=20260721-coherent-surfaces" />
+        <link rel="stylesheet" href="focus-stage.css?v=20260724-foundation" />
     </head>
     <body>
         <div id="app">
@@ -31,24 +32,24 @@
             </div>
 
             <!-- ===================== NAV ===================== -->
-            <div class="navbar" role="navigation" aria-label="Primary">
-                <div class="nav glass">
-                    <button class="nav-btn active" data-nav="home">
+            <div class="navbar" role="navigation" aria-label="Primary destinations">
+                <div class="nav glass centred-destination-grid">
+                    <button type="button" class="nav-btn active" data-nav="home" aria-current="page">
                         <span data-icon="home"></span>Home
                     </button>
-                    <button class="nav-btn" data-nav="history">
+                    <button type="button" class="nav-btn" data-nav="history">
                         <span data-icon="history"></span>Deck
                     </button>
-                    <button class="nav-btn" data-nav="stats">
+                    <button type="button" class="nav-btn" data-nav="stats">
                         <span data-icon="chart"></span>Stats
                     </button>
-                    <button class="nav-btn" data-nav="meetings">
+                    <button type="button" class="nav-btn" data-nav="meetings">
                         <span data-icon="mic"></span>Meetings
                     </button>
-                    <button class="nav-btn" data-nav="reader">
+                    <button type="button" class="nav-btn" data-nav="reader">
                         <span data-icon="book"></span>Reader
                     </button>
-                    <button class="nav-btn" data-nav="settings">
+                    <button type="button" class="nav-btn" data-nav="settings">
                         <span data-icon="gear"></span>Settings
                     </button>
                 </div>
@@ -58,7 +59,7 @@
             <!-- ===================== HOME ===================== -->
             <div class="view" data-view="home">
                 <!-- Hero -->
-                <div class="hero">
+                <div class="hero focus-stage">
                     <div class="hero-glow"></div>
                     <div class="hero-topline"></div>
                     <div class="home-hero-layout">
@@ -289,7 +290,8 @@
 
                         <!-- Dictation + Deck CTAs -->
                         <div
-                            class="flex items-center gap12 wrap justify-center"
+                            id="home-dictation-actions"
+                            class="flex items-center gap12 wrap justify-center control-rail"
                         >
                             <button
                                 id="record-btn"
@@ -323,12 +325,13 @@
                                 >
                             </button>
                         </div>
+                        <div id="home-live-state" hidden></div>
                         <p class="help mt8" id="home-dictation-limit">
                             Normal dictation records for up to 10 minutes at a time.
                         </p>
                     </div>
 
-                    <aside class="home-shortcuts-panel" aria-labelledby="home-shortcuts-title">
+                    <aside class="home-shortcuts-panel context-ledger" aria-labelledby="home-shortcuts-title">
                         <div class="home-shortcuts-heading">
                             <span class="section-kicker"><span data-icon="keyboard"></span>Global shortcuts</span>
                             <h2 id="home-shortcuts-title">First word to finished work.</h2>
@@ -433,7 +436,7 @@
                     </div>
                 </div>
 
-                <div class="home-workflow" aria-label="How Mumble works">
+                <div class="home-workflow numbered-spine" aria-label="How Mumble works">
                     <div class="home-step">
                         <span class="home-step-no">01</span>
                         <span class="home-step-icon" data-icon="mic"></span>
@@ -777,7 +780,7 @@
                      already says Deck; this band only ate vertical space. Its removal
                      also clears the hard black-rectangle artifact (the solid toolbar
                      bg no longer contrasts against a header card above it). -->
-                <div class="deck-toolbar mumble-surface mumble-surface--primary">
+                <div class="deck-toolbar mumble-surface mumble-surface--primary command-surface">
                     <div class="deck-content-browser">
                         <div class="deck-content-summary">
                             <span class="section-kicker"><span data-icon="layers"></span>Deck content</span>
@@ -3761,6 +3764,7 @@
 
         <div id="toast-wrap" role="status" aria-live="polite" aria-atomic="true"></div>
 
+        <script src="focus-stage.js?v=20260724-foundation"></script>
         <script src="app.js?v=20260717-settings4"></script>
         <!-- Fixed local bridge loader; Windows/Linux-only implementation stays experimental. -->
         <script src="system-search-loader.js"></script>

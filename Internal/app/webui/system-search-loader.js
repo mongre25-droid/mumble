@@ -4,22 +4,6 @@
 
   let previewLoaded = false;
 
-  function ensureNav() {
-    if (document.querySelector("#ss-nav-button")) return;
-    const nav = document.querySelector(".navbar .nav");
-    if (!nav) return;
-    const settings = nav.querySelector('[data-nav="settings"]');
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "nav-btn";
-    button.id = "ss-nav-button";
-    button.setAttribute("aria-label", "Open Mumble Search launcher");
-    button.innerHTML = '<span data-icon="search" aria-hidden="true"></span>Search';
-    nav.insertBefore(button, settings || null);
-    button.addEventListener("click", window.openSystemSearch);
-    if (typeof window.paintIcons === "function") window.paintIcons(button);
-  }
-
   window.openSystemSearch = async function () {
     if (
       window.pywebview &&
@@ -70,7 +54,9 @@
     }
   }
 
-  ensureNav();
-  window.addEventListener("DOMContentLoaded", ensureNav);
-  window.addEventListener("pywebviewready", ensureNav);
+  // Mumble Find is a momentary command, not a seventh destination. Existing
+  // Home/Settings actions and the global shortcut call openSystemSearch.
+  document.querySelectorAll("[data-open-system-search]").forEach((button) => {
+    button.addEventListener("click", window.openSystemSearch);
+  });
 })();
