@@ -14,6 +14,7 @@ against an isolated temp data dir so the live token file is never touched.
 Run:  .venv\\Scripts\\python.exe test_cmd_auth.py
 """
 import shutil
+import inspect
 import sys
 import tempfile
 
@@ -52,6 +53,19 @@ try:
     check("missing token rejected", app._cmd_token_ok({"cmd": "paste"}) is False)
     check("empty token rejected",
           app._cmd_token_ok({"token": "", "cmd": "paste"}) is False)
+    check("abandonment uses the same authenticated dispatch gate",
+          app._cmd_token_ok({
+              "token": "secret-token-abc123",
+              "cmd": "abandon_insertion",
+          }) is True)
+    command_source = inspect.getsource(mumble.Mumble._start_cmd_server)
+    check("abandonment dispatch occurs only after authentication",
+          '"abandon_insertion"' in command_source
+          and command_source.index('if not self._cmd_token_ok(req)')
+          < command_source.index('"abandon_insertion"'))
+    check("controller command loop runs transport-independent lease cleanup",
+          "srv.settimeout(1.0)" in command_source
+          and "self._cleanup_prepared_insertions()" in command_source)
 
     # An app whose token never minted must fail CLOSED (no attribute at all).
     app2 = mumble.Mumble.__new__(mumble.Mumble)

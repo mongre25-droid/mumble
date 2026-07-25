@@ -29,6 +29,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -334,15 +335,37 @@ class Api:
                 "message": "Recording runs in the full app — start Mumble "
                            "from the tray and press the hotkey anywhere."}
 
-    def _dismiss_for_paste(self):
+    def _dismiss_for_paste(self, operation_id, source):
         """Get the main window out of the way so focus returns to the app being
-        pasted into (its History paste buttons call this before deck_paste)."""
+        pasted into, after the controller freezes the retained external target."""
+        prepared = _ctrl_send({
+            "cmd": "prepare_insertion",
+            "operation_id": operation_id,
+            "source": source,
+            "ui_process_id": os.getpid(),
+        }, timeout=1.0)
+        if not prepared or not prepared.get("ok"):
+            if prepared:
+                live = self.controller_alive()
+                prepared["live"] = live
+                if not live:
+                    prepared["message"] = (
+                        "Start Mumble from the tray, then choose an editable "
+                        "destination and try again."
+                    )
+                return prepared
+            return {
+                "ok": False,
+                "live": False,
+                "message": "Start Mumble from the tray, then choose an editable destination and try again.",
+            }
         try:
             win = getattr(self, "_window", None)
             if win is not None:
                 win.minimize()
         except Exception:
             pass
+        return prepared
 
     def _restore_after_failed_paste(self):
         """Bring the Deck back when the controller could not complete an action."""
@@ -354,6 +377,74 @@ class Api:
         except Exception:
             pass
 
+    @staticmethod
+    def _insertion_reply(reply, operation_id):
+        """Normalize controller truth without treating transport as paste proof."""
+        if not reply:
+            return None
+        values = dict(reply)
+        values.setdefault("operation_id", operation_id)
+        values.setdefault("confirmed", values.get("outcome") == "confirmed")
+        values.setdefault("pasted", bool(values.get("confirmed")))
+        values.setdefault("cleanup_warning", "")
+        values.setdefault("reason", "")
+        return values
+
+    @staticmethod
+    def _abandon_insertion(operation_id):
+        """Best-effort authenticated cleanup after prepared transport is lost."""
+        try:
+            return _ctrl_send({
+                "cmd": "abandon_insertion",
+                "operation_id": operation_id,
+            }, timeout=1.0)
+        except Exception:
+            return None
+
+    def _submit_insertion(self, command):
+        """Submit once, then poll only that immutable operation to a safe bound."""
+        operation_id = str(command.get("operation_id") or "")
+
+        def unknown_reply():
+            return {
+                "ok": True,
+                "state": "unknown",
+                "operation_id": operation_id,
+                "outcome": "unknown",
+                "confirmed": False,
+                "pasted": False,
+                "reason": "terminal_result_timeout",
+                "cleanup_warning": "",
+                "message": (
+                    "The paste result is still unknown. Do not retry: check the "
+                    "selected field and use the saved Deck item only after confirming "
+                    "it was not inserted."),
+            }
+
+        reply = _ctrl_send(command, timeout=4.0)
+        if reply is None:
+            reply = _ctrl_send(
+                {"cmd": "insertion_status", "operation_id": operation_id},
+                timeout=1.0,
+            )
+        clock = getattr(self, "_insertion_clock", time.monotonic)
+        sleep = getattr(self, "_insertion_sleep", time.sleep)
+        timeout_s = max(0.0, float(getattr(
+            self, "_insertion_terminal_timeout_s", 4.0)))
+        poll_s = max(0.01, float(getattr(
+            self, "_insertion_poll_interval_s", 0.10)))
+        deadline = clock() + timeout_s
+        while reply and reply.get("state") == "pending" and clock() < deadline:
+            sleep(min(poll_s, max(0.0, deadline - clock())))
+            reply = _ctrl_send(
+                {"cmd": "insertion_status", "operation_id": operation_id},
+                timeout=1.0,
+            )
+        if reply is None or reply.get("state") == "pending":
+            self._abandon_insertion(operation_id)
+            reply = unknown_reply()
+        return self._insertion_reply(reply, operation_id)
+
     def deck_paste(self, text):
         """Quick-paste from History: get this window out of the way so focus
         returns to the app the user came from, then have the controller paste
@@ -361,10 +452,23 @@ class Api:
         text = text or ""
         if not text:
             return {"ok": False, "live": False, "message": "There is no text to paste."}
-        self._dismiss_for_paste()
-        r = _ctrl_send({"cmd": "paste", "text": text}, timeout=4.0)
+        operation_id = uuid.uuid4().hex
+        prepared = self._dismiss_for_paste(operation_id, "deck_history")
+        if not prepared or not prepared.get("ok"):
+            return {"ok": False, "live": bool((prepared or {}).get("live", True)),
+                    "message": (prepared or {}).get("message") or
+                               "Choose an editable destination before using Deck paste."}
+        r = self._submit_insertion({
+            "cmd": "paste", "text": text, "operation_id": operation_id})
         if r and r.get("ok"):
-            return {"ok": True, "live": True}
+            r.update(ok=True, live=True)
+            if r.get("state") == "pending":
+                r.update(
+                    outcome="pending", confirmed=False, pasted=False,
+                    message="Still working. Mumble will not send this paste twice.")
+            elif r.get("outcome") in {"not_sent", "saved_only"}:
+                self._restore_after_failed_paste()
+            return r
         self._restore_after_failed_paste()
         return {"ok": False, "live": bool(r),
                 "message": (r or {}).get("message") or "The paste could not be confirmed."}
@@ -372,10 +476,24 @@ class Api:
     def deck_paste_image(self, path):
         if not path:
             return {"ok": False, "live": False, "message": "That image is no longer available."}
-        self._dismiss_for_paste()
-        r = _ctrl_send({"cmd": "paste_image", "path": path}, timeout=4.0)
+        operation_id = uuid.uuid4().hex
+        prepared = self._dismiss_for_paste(operation_id, "deck_image")
+        if not prepared or not prepared.get("ok"):
+            return {"ok": False, "live": bool((prepared or {}).get("live", True)),
+                    "message": (prepared or {}).get("message") or
+                               "Choose an editable destination before using Deck paste."}
+        r = self._submit_insertion({
+            "cmd": "paste_image", "path": path,
+            "operation_id": operation_id})
         if r and r.get("ok"):
-            return {"ok": True, "live": True}
+            r.update(ok=True, live=True)
+            if r.get("state") == "pending":
+                r.update(
+                    outcome="pending", confirmed=False, pasted=False,
+                    message="Still working. Mumble will not send this paste twice.")
+            elif r.get("outcome") in {"not_sent", "saved_only"}:
+                self._restore_after_failed_paste()
+            return r
         self._restore_after_failed_paste()
         return {"ok": False, "live": bool(r),
                 "message": (r or {}).get("message") or "The image paste could not be confirmed."}
@@ -2626,12 +2744,19 @@ class Api:
              "text": (i or {}).get("text", "")}
             for i in (items or [])
         ]
-        self._dismiss_for_paste()
+        operation_id = uuid.uuid4().hex
+        prepared = self._dismiss_for_paste(operation_id, "deck_job")
+        if not prepared or not prepared.get("ok"):
+            return {"ok": False, "live": bool((prepared or {}).get("live", True)),
+                    "message": (prepared or {}).get("message") or
+                               "Choose an editable destination before running this Deck action."}
         r = _ctrl_send({"cmd": "deck_job", "slot": preset_slot,
-                        "mode": mode, "items": payload})
+                        "mode": mode, "items": payload,
+                        "operation_id": operation_id})
         if r and r.get("ok"):
             return {"ok": True, "live": True,
-                    "message": "Working — the result will paste at your cursor."}
+                    "message": "Working—the result will be saved, then Mumble will attempt the selected field."}
+        self._abandon_insertion(operation_id)
         self._restore_after_failed_paste()
         # A stale or differently authenticated controller is not usable by this
         # window. Present the same actionable tray guidance as an absent
@@ -3211,6 +3336,22 @@ def _serve_webui_commands(srv, H, ensure_main, ensure_search, title):
                                 try:
                                     w.evaluate_js(
                                         f"window.pyRefresh && window.pyRefresh({what})")
+                                except Exception as e:
+                                    ok, message = False, str(e)
+                        elif cmd == "insertion_result":
+                            w = H.get("main")
+                            if w is not None:
+                                result = json.dumps({
+                                    key: req.get(key) for key in (
+                                        "operation_id", "source", "outcome",
+                                        "confirmed", "reason", "message",
+                                        "cleanup_warning", "send_count",
+                                    )
+                                })
+                                try:
+                                    w.evaluate_js(
+                                        "window.pyInsertionResult && "
+                                        "window.pyInsertionResult({})".format(result))
                                 except Exception as e:
                                     ok, message = False, str(e)
                         elif cmd == "system_search":

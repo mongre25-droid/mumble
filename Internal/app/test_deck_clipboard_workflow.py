@@ -132,8 +132,13 @@ def test_web_contracts():
           "pasted =" in paste_branch and "threading.Thread" not in paste_branch)
     bridge_paste = shell[shell.index("    def deck_paste(self, text):"):
                          shell.index("    def set_app_focused", shell.index("    def deck_paste(self, text):"))]
+    bridge_submit = shell[shell.index("    def _submit_insertion(self, command):"):
+                          shell.index("    def deck_paste(self, text):")]
     check("bridge waits for and propagates paste truth",
-          "timeout=4.0" in bridge_paste and "r.get(\"ok\")" in bridge_paste)
+          "_submit_insertion" in bridge_paste
+          and "timeout=4.0" in bridge_submit
+          and '"insertion_status"' in bridge_submit
+          and "r.get(\"outcome\")" in bridge_paste)
     check("bridge restores Deck on paste failure",
           bridge_paste.count("_restore_after_failed_paste()") >= 2)
 

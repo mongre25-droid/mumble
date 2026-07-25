@@ -19,7 +19,7 @@
 
 <h2><span class="sec">1</span>What is current</h2>
 <table><thead><tr><th>Area</th><th>State</th><th>Evidence boundary</th></tr></thead><tbody>
-  <tr><td>Dictation</td><td><span class="badge b-done">implemented</span></td><td>Hotkey capture, local faster-whisper transcription, formatting, optional shaping, clipboard-safe paste, and local history exist in <code>Internal/app/</code>.</td></tr>
+  <tr><td>Dictation</td><td><span class="badge b-done">implemented</span></td><td>Hotkey capture, local faster-whisper transcription, formatting, optional shaping, and local history exist in <code>Internal/app/</code>. Issue 15 now has a corrected target-bound insertion candidate and normal-integrity fixture evidence, but independent review and the physical application matrix remain open gates.</td></tr>
   <tr><td>Deck</td><td><span class="badge b-done">implemented</span></td><td>History, clipboard capture, favourites, search, presets, and real job execution are part of the current Web UI and controller.</td></tr>
   <tr><td>Meetings</td><td><span class="badge b-done">implemented</span></td><td>Meeting recording, transcription, storage, search, retry, and export paths are present; hardware and long-session validation remain separate gates.</td></tr>
   <tr><td>Reader</td><td><span class="badge b-done">implemented</span></td><td>Document import, parsing, progress, statistics, and optional text-to-speech are present.</td></tr>
@@ -44,7 +44,7 @@
   <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
   <li><span class="badge b-done">exact-head CI</span> Website clean lock installation, patched PostCSS 8.5.18 dependency audit, static build, Astro diagnostics, and release-artifact consistency passed in run <code>30133098809</code> with zero reported audit findings.</li>
   <li><span class="badge b-gated">release gate</span> Clean extraction, install, launch, update, and uninstall on a disposable Windows environment.</li>
-  <li><span class="badge b-gated">release gate</span> Physical microphone, global hotkey, focus-preserving paste, and clipboard restoration checks.</li>
+  <li><span class="badge b-gated">issue 15 incomplete</span> This isolated local correction candidate preserves the prior target, clipboard, terminal-result, late-safety, capacity, replay, identifier, and lock-scope work. Focused local tests additionally cover full post-validation cleanup across fallible text/image setup, authenticated idempotent abandonment after lost transport, monotonic expiry of prepared-never-started leases without expiring execution, content-free terminal trace cleanup when insertion raises, and one text/image terminal-outcome precedence that keeps insertion truth authoritative when later lifecycle cleanup fails. These are candidate claims awaiting fresh independent review, not accepted behaviour. Level B PromptHistory/convergence work, combined integration, exact-head GitHub CI, and real Office, browser, Electron, rich-editor, clipboard-manager, genuine elevation/UIPI, admin/non-admin, accessibility-tool, deployment, and release evidence all remain open; the broader isolated suite and controlled fixture were deliberately not repeated for this Level A correction.</li>
   <li><span class="badge b-gated">release gate</span> Signing, publisher identity, public release notes, and a tested rollback path.</li>
 </ul>
 
@@ -62,6 +62,7 @@
 <ol>
   <li>Converge the independently accepted Issue #14, #15, and #20 histories on the latest verified main while preserving their reviewed contracts and recording every reconciliation.</li>
   <li>After independent integration review accepts the combined candidate, run the serialized Level B campaign.</li>
+  <li>Keep issue 15 open through the later Office/browser/Electron/rich-editor/clipboard-manager/elevation matrix. Local integration does not prove those physical behaviours.</li>
   <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>
