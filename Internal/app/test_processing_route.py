@@ -53,7 +53,7 @@ def settings(**overrides):
     ("email", "email"),
     ("reply", "reply"),
     ("deck", "deck_reason"),
-    ("meetings", "meeting_summary"),
+    ("meetings", "meeting_analysis"),
     ("reader", "reader_summary"),
 ])
 def test_every_named_surface_gets_the_same_complete_immutable_snapshot(feature, lane):
@@ -115,7 +115,7 @@ def test_plain_instant_dictation_is_an_explicit_local_request():
 def test_selected_local_provider_remains_available_without_a_key_or_hosted_mode():
     decision = processing_route.snapshot(
         settings(llm_provider="local", local_api_key="", pro_mode=False),
-        feature="meetings", lane="meeting_summary",
+        feature="meetings", lane="meeting_analysis",
     )
     calls = []
 
@@ -125,7 +125,7 @@ def test_selected_local_provider_remains_available_without_a_key_or_hosted_mode(
     assert decision.ready is True
     assert processing_route.call_provider(
         decision, lambda **_kwargs: calls.append("local") or "ok",
-        expected_feature="meetings", expected_lane="meeting_summary",
+        expected_feature="meetings", expected_lane="meeting_analysis",
     ) == "ok"
     assert calls == ["local"]
 
@@ -370,7 +370,7 @@ def test_meeting_final_provider_seam_never_calls_hosted_when_forbidden(monkeypat
         lambda *_args, **_kwargs: calls.append("called") or "should not happen",
     )
     context = meeting._analysis_context(
-        settings(**overrides), feature="meetings", lane="meeting_summary"
+        settings(**overrides), feature="meetings", lane="meeting_analysis"
     )
 
     with pytest.raises(processing_route.HostedRouteBlocked):
@@ -439,7 +439,7 @@ def test_ready_meeting_reader_and_deck_use_the_frozen_provider_once(monkeypatch)
         lambda *_args, **kwargs: meeting_calls.append(kwargs) or "meeting result",
     )
     meeting_context = meeting._analysis_context(
-        settings(), feature="meetings", lane="meeting_summary"
+        settings(), feature="meetings", lane="meeting_analysis"
     )
     assert meeting._analysis_call(
         meeting_context, "system", "private transcript", 100, 10
@@ -527,7 +527,7 @@ def test_settings_uses_truthful_stage_effect_and_route_disclosure_language():
     assert 'setSettingsHydrationState("ready")' in js
 
 
-def test_durable_records_keep_issue_14_and_physical_validation_open():
+def test_durable_records_keep_convergence_and_physical_validation_open():
     status = (
         APP_DIR.parent.parent / "Development Files" / "Core" / "STATUS.html"
     ).read_text(encoding="utf-8")
@@ -538,11 +538,14 @@ def test_durable_records_keep_issue_14_and_physical_validation_open():
     processing_row = status.split('<tr id="processing-truth"', 1)[1].split(
         "</tr>", 1
     )[0]
-    assert 'data-evidence-boundary="candidate-awaiting-review"' in processing_row
+    assert (
+        'data-evidence-boundary="integration-candidate-awaiting-review"'
+        in processing_row
+    )
     assert 'class="badge b-gated"' in processing_row
     assert "Issue #14 remains open" in status
-    assert "Issues #15 and #20 are separate work" in status
-    assert 'data-evidence-boundary="rejected-candidate-review"' in logs
+    assert "Issues #12 and #14 through #30 remain open" in status
+    assert 'data-evidence-boundary="integration-candidate"' in logs
     assert "No live provider request" in logs
     assert "physical Windows/macOS/Linux test" in logs
-    assert "processing route truth implemented" not in logs.lower()
+    assert "not merged to main" in logs.lower()
