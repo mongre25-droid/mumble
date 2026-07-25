@@ -238,7 +238,7 @@ def transcribe(audio, invocation_snapshot, timeout=30):
     before work starts. Raises on any failure (blocked route, network, HTTP, bad
     response) so the caller can fall back to local transcription. The adapter
     never re-reads mutable Settings."""
-    invocation_snapshot = processing_route.require_transcription(
+    invocation_snapshot = processing_route.require_speech_to_text(
         invocation_snapshot
     )
     decision = invocation_snapshot.route

@@ -191,7 +191,7 @@ def _transcribe_json(info, key, model, wav, lang, timeout, prompt=None):
 # ---- Public API --------------------------------------------------------------
 def transcribe(audio, invocation_snapshot, timeout=30):
     """Transcribe float32 mono 16 kHz numpy array via the configured cloud provider."""
-    invocation_snapshot = processing_route.require_transcription(
+    invocation_snapshot = processing_route.require_speech_to_text(
         invocation_snapshot
     )
     decision = invocation_snapshot.route

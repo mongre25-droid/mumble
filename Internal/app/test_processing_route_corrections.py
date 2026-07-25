@@ -5,10 +5,13 @@ to contact a network service.
 """
 
 from pathlib import Path
+import hashlib
+import importlib.util
 import json
 import logging
 import subprocess
 import sys
+import zipfile
 
 import pytest
 
@@ -345,6 +348,208 @@ print(json.dumps({
         "context": "frozen private context",
         "provider": "cerebras",
         "model": "frozen-model",
+    }
+
+
+@pytest.mark.parametrize(
+    ("platform_app", "module_name"),
+    ((PLATFORM_APP_DIRS[1], "mumble_mac"), (PLATFORM_APP_DIRS[2], "mumble_linux")),
+    ids=("macos", "linux"),
+)
+def test_port_processing_applies_only_the_vocabulary_captured_for_the_invocation(
+    platform_app, module_name
+):
+    script = r'''
+import importlib
+import json
+import sys
+import threading
+
+sys.path.insert(0, sys.argv[1])
+controller = importlib.import_module(sys.argv[2])
+
+class StopProbe(BaseException):
+    pass
+
+class Settings:
+    def __init__(self):
+        self.values = {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "instant_text": False,
+            "llm_provider": "cerebras",
+            "cerebras_api_key": "FROZEN_KEY_14E",
+            "cerebras_model": "FROZEN_MODEL_14E",
+            "english_only": True,
+            "foreign_mode": False,
+            "foreign_languages": [],
+            "format_enabled": True,
+            "user_name": "",
+            "prompt_prefs": {},
+            "primary_language": "en",
+            "vocabulary": {"mum bull": "Mumble"},
+            "vocabulary_terms": ["Sarah"],
+            "polish_aggressiveness": "Light",
+            "rpunct_enabled": False,
+            "modes": {},
+            "local_llm_enabled": False,
+            "local_llm_model": "",
+        }
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+settings = Settings()
+app = controller.Mumble.__new__(controller.Mumble)
+app.settings = settings
+app.lock = threading.RLock()
+app._stream_results = []
+app._stream_processed_samples = 0
+app._search_requested = False
+app._active_mode_start = "prompt"
+app.island = None
+app._set_state = lambda *_args, **_kwargs: None
+app._notify = lambda *_args, **_kwargs: None
+app._idle = lambda: None
+
+def transcribe(*_args, **_kwargs):
+    settings.values["vocabulary"] = {"mum bull": "MUTATED LIVE"}
+    settings.values["vocabulary_terms"] = ["Mutated Live Term"]
+    return "mum bull sara"
+
+captured = {}
+def generate(raw, *_args, **_kwargs):
+    captured["raw"] = raw
+    raise StopProbe()
+
+app._transcribe = transcribe
+app._generate = generate
+try:
+    app._process([0.0] * 16000, 1.0, mode_active=True)
+except StopProbe:
+    pass
+
+print(json.dumps({
+    "captured": captured,
+    "live_vocabulary": settings.values["vocabulary"],
+    "live_terms": settings.values["vocabulary_terms"],
+}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app), module_name],
+        capture_output=True, text=True, timeout=45, cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+    assert evidence == {
+        "captured": {"raw": "Mumble Sarah"},
+        "live_vocabulary": {"mum bull": "MUTATED LIVE"},
+        "live_terms": ["Mutated Live Term"],
+    }
+
+
+@pytest.mark.parametrize("provider", ("anthropic", "deepseek"))
+def test_linux_processing_route_captures_each_settings_ready_provider(provider):
+    platform_app = PLATFORM_APP_DIRS[2]
+    script = r'''
+import importlib
+import json
+import sys
+import threading
+
+sys.path.insert(0, sys.argv[1])
+controller = importlib.import_module("mumble_linux")
+provider = sys.argv[2]
+
+class StopProbe(BaseException):
+    pass
+
+class Settings:
+    def __init__(self, key):
+        self.values = {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "instant_text": False,
+            "llm_provider": provider,
+            provider + "_api_key": key,
+            provider + "_model": "FROZEN_" + provider.upper() + "_MODEL_14E",
+            "english_only": True,
+            "foreign_mode": False,
+            "foreign_languages": [],
+            "format_enabled": True,
+            "user_name": "",
+            "prompt_prefs": {},
+            "primary_language": "en",
+            "vocabulary": {},
+            "vocabulary_terms": [],
+            "polish_aggressiveness": "Light",
+            "rpunct_enabled": False,
+            "modes": {},
+            "local_llm_enabled": False,
+            "local_llm_model": "",
+        }
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+def run(key):
+    settings = Settings(key)
+    app = controller.Mumble.__new__(controller.Mumble)
+    app.settings = settings
+    app.lock = threading.RLock()
+    app._stream_results = []
+    app._stream_processed_samples = 0
+    app._search_requested = False
+    app._active_mode_start = "prompt"
+    app.island = None
+    app._set_state = lambda *_args, **_kwargs: None
+    app._notify = lambda *_args, **_kwargs: None
+    app._idle = lambda: None
+
+    def transcribe(*_args, **_kwargs):
+        settings.values[provider + "_api_key"] = "MUTATED_LIVE_KEY_14E"
+        settings.values[provider + "_model"] = "MUTATED_LIVE_MODEL_14E"
+        return "private prompt"
+
+    captured = {}
+    def generate(_raw, *_args, **kwargs):
+        decision = kwargs["route_decision"]
+        captured.update({
+            "provider": decision.provider,
+            "key": decision.api_key,
+            "model": decision.model,
+            "ready": decision.ready,
+            "reason": decision.reason,
+        })
+        raise StopProbe()
+
+    app._transcribe = transcribe
+    app._generate = generate
+    try:
+        app._process([0.0] * 16000, 1.0, mode_active=True)
+    except StopProbe:
+        pass
+    return captured
+
+print(json.dumps({"ready": run("FROZEN_" + provider.upper() + "_KEY_14E"), "missing": run("")}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app), provider],
+        capture_output=True, text=True, timeout=45, cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+    assert evidence["ready"] == {
+        "provider": provider,
+        "key": f"FROZEN_{provider.upper()}_KEY_14E",
+        "model": f"FROZEN_{provider.upper()}_MODEL_14E",
+        "ready": True,
+        "reason": "ready",
+    }
+    assert evidence["missing"] == {
+        "provider": provider,
+        "key": "",
+        "model": f"FROZEN_{provider.upper()}_MODEL_14E",
+        "ready": False,
+        "reason": "missing_key",
     }
 
 
@@ -849,6 +1054,149 @@ print(json.dumps({
 
 
 @pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
+def test_final_adapters_reject_authority_for_another_operation_or_endpoint(platform_app):
+    script = r'''
+from dataclasses import replace
+import importlib
+import json
+import sys
+
+import numpy as np
+
+sys.path.insert(0, sys.argv[1])
+route = importlib.import_module("processing_route")
+tts = importlib.import_module("ai.tts_providers")
+tx = importlib.import_module("transcription")
+
+class Settings:
+    def get(self, key, default=None):
+        return {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "instant_text": False,
+            "llm_provider": "openrouter",
+            "openrouter_api_key": "FROZEN_SHARED_KEY_14E",
+            "openrouter_model": "openai/gpt-oss-120b",
+            "reader_tts_provider": "openrouter",
+            "reader_tts_model": "google/gemini-3.1-flash-tts-preview",
+            "transcription_mode": "cloud",
+            "cloud_transcription_provider": "groq",
+            "groq_api_key": "FROZEN_STT_KEY_14E",
+            "groq_transcription_model": "FROZEN_STT_MODEL_14E",
+            "language": "en",
+            "vocabulary_terms": ["Frozen Term 14E"],
+        }.get(key, default)
+
+settings = Settings()
+speech_transport = []
+stt_transport = []
+
+def speech_recorder(_text, api_key, **kwargs):
+    speech_transport.append({
+        "key": api_key,
+        "provider": kwargs["route_decision"].provider,
+        "endpoint": kwargs["route_decision"].endpoint_class,
+    })
+    return b"audio", "audio/mpeg"
+
+def stt_recorder(_info, key, model, _wav, _language, _timeout, prompt=None):
+    stt_transport.append({"key": key, "model": model, "prompt": prompt})
+    return "transcript"
+
+tts.openrouter_tts = speech_recorder
+tx._transcribe_multipart = stt_recorder
+speech_adapter = tts.OpenRouterTTSProvider()
+
+prompt_authority = route.snapshot(settings, feature="prompt", lane="prompt")
+speech_authority = route.snapshot(
+    settings,
+    feature="reader",
+    lane="reader_speech",
+    provider_override="openrouter",
+    model_override="google/gemini-3.1-flash-tts-preview",
+)
+stt_authority = route.snapshot_inputs(
+    settings, feature="dictation", lane="speech_to_text"
+)
+wrong_endpoint_authority = replace(
+    stt_authority,
+    route=replace(stt_authority.route, endpoint_class="openai_speech_to_text"),
+)
+
+def invoke(call, transport):
+    before = len(transport)
+    error = None
+    try:
+        call()
+    except Exception as exc:
+        error = type(exc).__name__
+    return {"calls": len(transport) - before, "error": error}
+
+evidence = {
+    "prompt_at_speech": invoke(
+        lambda: speech_adapter.synthesize(
+            "private reader text",
+            "Fenrir",
+            model="google/gemini-3.1-flash-tts-preview",
+            route_decision=prompt_authority,
+        ),
+        speech_transport,
+    ),
+    "wrong_stt_endpoint": invoke(
+        lambda: tx.transcribe(np.zeros(8, dtype=np.float32), wrong_endpoint_authority),
+        stt_transport,
+    ),
+    "scoped_speech": invoke(
+        lambda: speech_adapter.synthesize(
+            "private reader text",
+            "Fenrir",
+            model="google/gemini-3.1-flash-tts-preview",
+            route_decision=speech_authority,
+        ),
+        speech_transport,
+    ),
+    "scoped_stt": invoke(
+        lambda: tx.transcribe(np.zeros(8, dtype=np.float32), stt_authority),
+        stt_transport,
+    ),
+}
+print(json.dumps({
+    "evidence": evidence,
+    "speech_transport": speech_transport,
+    "stt_transport": stt_transport,
+}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app)],
+        capture_output=True, text=True, timeout=30, cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    receipt = json.loads(result.stdout.strip().splitlines()[-1])
+    assert receipt["evidence"]["prompt_at_speech"] == {
+        "calls": 0, "error": "HostedRouteBlocked",
+    }
+    assert receipt["evidence"]["wrong_stt_endpoint"] == {
+        "calls": 0, "error": "HostedRouteBlocked",
+    }
+    assert receipt["evidence"]["scoped_speech"] == {
+        "calls": 1, "error": None,
+    }
+    assert receipt["evidence"]["scoped_stt"] == {
+        "calls": 1, "error": None,
+    }
+    assert receipt["speech_transport"] == [{
+        "key": "FROZEN_SHARED_KEY_14E",
+        "provider": "openrouter",
+        "endpoint": "openrouter_speech",
+    }]
+    assert receipt["stt_transport"] == [{
+        "key": "FROZEN_STT_KEY_14E",
+        "model": "FROZEN_STT_MODEL_14E",
+        "prompt": "Frozen Term 14E",
+    }]
+
+
+@pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
 def test_meeting_entry_point_freezes_route_preferences_and_gathered_transcript(platform_app):
     script = r'''
 import importlib
@@ -922,3 +1270,45 @@ def test_processing_route_copies_are_normalized_generated_content():
         cwd=APP_DIR.parent.parent,
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+def test_windows_package_canonicalizes_text_line_endings_and_preserves_binary(tmp_path):
+    build_tool = (
+        APP_DIR.parent.parent / "Development Files" / "Tooling" /
+        "_rebuild_zip.py"
+    )
+    spec = importlib.util.spec_from_file_location("mumble_rebuild_zip", build_tool)
+    builder = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(builder)
+
+    lf_source = tmp_path / "lf" / "sample.py"
+    crlf_source = tmp_path / "crlf" / "sample.py"
+    lf_source.parent.mkdir()
+    crlf_source.parent.mkdir()
+    lf_source.write_bytes(b"alpha\nbeta\n")
+    crlf_source.write_bytes(b"alpha\r\nbeta\r\n")
+
+    archives = []
+    entries = []
+    for index, source in enumerate((lf_source, crlf_source)):
+        archive_path = tmp_path / f"variant-{index}.zip"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            builder.write_file(archive, source, "Mumble/Internal/app/sample.py")
+        archives.append(hashlib.sha256(archive_path.read_bytes()).hexdigest())
+        with zipfile.ZipFile(archive_path) as archive:
+            entries.append(archive.read("Mumble/Internal/app/sample.py"))
+
+    assert entries == [b"alpha\nbeta\n", b"alpha\nbeta\n"]
+    assert archives[0] == archives[1]
+
+    binary_source = tmp_path / "image.png"
+    binary_bytes = b"\x89PNG\r\n\x1a\n\x00binary\r\nbytes"
+    binary_source.write_bytes(binary_bytes)
+    binary_archive = tmp_path / "binary.zip"
+    with zipfile.ZipFile(binary_archive, "w") as archive:
+        builder.write_file(
+            archive, binary_source, "Mumble/Internal/app/assets/image.png"
+        )
+    with zipfile.ZipFile(binary_archive) as archive:
+        assert archive.read("Mumble/Internal/app/assets/image.png") == binary_bytes

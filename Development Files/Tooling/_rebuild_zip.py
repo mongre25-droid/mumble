@@ -40,15 +40,33 @@ EXCLUDE_DIRS = {
 
 ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
+TEXT_EXTENSIONS = {
+    ".bat", ".cfg", ".cmd", ".css", ".csv", ".desktop", ".html",
+    ".ini", ".js", ".json", ".jsx", ".md", ".ps1", ".py", ".service",
+    ".sh", ".svg", ".toml", ".ts", ".tsx", ".txt", ".vbs", ".xml",
+    ".yaml", ".yml",
+}
+TEXT_NAMES = {"LICENSE", "NOTICE"}
+
+
+def packaged_bytes(source):
+    """Return canonical package bytes while leaving binary files untouched."""
+    with open(source, "rb") as handle:
+        data = handle.read()
+    name = os.path.basename(os.fspath(source))
+    extension = os.path.splitext(name)[1].lower()
+    if extension in TEXT_EXTENSIONS or name.upper() in TEXT_NAMES:
+        return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return data
+
 
 def write_file(archive, source, archive_name):
-    """Write one deterministic member independent of checkout timestamps."""
+    """Write one deterministic member independent of timestamps/line endings."""
     info = zipfile.ZipInfo(archive_name.replace("\\", "/"), ZIP_EPOCH)
     info.create_system = 3
     info.external_attr = (0o100644 & 0xFFFF) << 16
     info.compress_type = zipfile.ZIP_DEFLATED
-    with open(source, "rb") as handle:
-        archive.writestr(info, handle.read(), compresslevel=9)
+    archive.writestr(info, packaged_bytes(source), compresslevel=9)
 
 
 def find_repo_root(start):

@@ -245,6 +245,17 @@ def _get(settings: Any, key: str, default: Any = None) -> Any:
     return settings.get(key, default)
 
 
+def capture_text_provider_settings(settings: Any) -> dict[str, Any]:
+    """Capture every supported text-provider key/model from one registry."""
+    captured: dict[str, Any] = {}
+    for provider_info in _PROVIDERS.values():
+        key_setting = provider_info["key_setting"]
+        model_setting = provider_info["model_setting"]
+        captured[key_setting] = _get(settings, key_setting, "")
+        captured[model_setting] = _get(settings, model_setting, "")
+    return captured
+
+
 def snapshot(
     settings: Any,
     *,
@@ -415,6 +426,90 @@ def require_hosted(decision: RouteDecision) -> RouteDecision:
     return decision
 
 
+def _require_provider_identity(
+    decision: RouteDecision,
+    *,
+    providers: dict[str, dict[str, Any]],
+    expected_provider: str | None,
+) -> dict[str, Any]:
+    """Bind one decision to the exact provider and endpoint family."""
+    if not isinstance(decision, RouteDecision):
+        raise TypeError("Provider calls require an explicit RouteDecision")
+    provider_info = providers.get(decision.provider)
+    if (
+        provider_info is None
+        or (expected_provider is not None and decision.provider != expected_provider)
+        or decision.endpoint_class != provider_info["endpoint_class"]
+    ):
+        raise HostedRouteBlocked(decision)
+    return provider_info
+
+
+def _is_text_shaping_scope(decision: RouteDecision) -> bool:
+    """Return whether feature/lane names one supported text-shaping operation."""
+    if decision.feature in {"prompt", "email", "reply"}:
+        return decision.lane == decision.feature
+    if decision.feature == "reader":
+        return decision.lane == "reader_summary"
+    if decision.feature == "meetings":
+        return decision.lane in {"meeting_analysis", "meeting_summary"}
+    if decision.feature in {"dictation", "deck"}:
+        return bool(decision.lane) and decision.lane not in {
+            "speech_to_text", "reader_speech", "reader_speech_test",
+        }
+    return False
+
+
+def require_text_shaping(
+    decision: RouteDecision, *, expected_provider: str | None = None
+) -> RouteDecision:
+    """Authorize only a text-shaping route at a text provider boundary."""
+    _require_provider_identity(
+        decision, providers=_PROVIDERS, expected_provider=expected_provider
+    )
+    if not _is_text_shaping_scope(decision):
+        raise HostedRouteBlocked(decision)
+    if decision.provider == "local":
+        if (
+            decision.requested_route != LOCAL
+            or decision.effective_route != LOCAL
+            or decision.privacy_boundary != "device_only"
+            or not decision.ready
+            or not decision.provider_supported
+            or not decision.key_present
+        ):
+            raise HostedRouteBlocked(decision)
+        return decision
+    require_hosted(decision)
+    if (
+        decision.requested_route != HOSTED
+        or decision.privacy_boundary != "transcript_text_leaves_device"
+    ):
+        raise HostedRouteBlocked(decision)
+    return decision
+
+
+def require_reader_speech(
+    decision: RouteDecision, *, expected_provider: str | None = None
+) -> RouteDecision:
+    """Authorize only Reader speech or its explicit connection test."""
+    _require_provider_identity(
+        decision, providers=_SPEECH_PROVIDERS, expected_provider=expected_provider
+    )
+    if (
+        decision.feature != "reader"
+        or decision.lane not in {"reader_speech", "reader_speech_test"}
+    ):
+        raise HostedRouteBlocked(decision)
+    require_hosted(decision)
+    if (
+        decision.requested_route != HOSTED
+        or decision.privacy_boundary != "transcript_text_leaves_device"
+    ):
+        raise HostedRouteBlocked(decision)
+    return decision
+
+
 def call_hosted(
     decision: RouteDecision,
     provider_call: Callable[..., Any],
@@ -438,11 +533,19 @@ def require_provider(
     """
     if not isinstance(decision, RouteDecision):
         raise TypeError("Provider calls require an explicit RouteDecision")
-    if expected_provider and decision.provider != expected_provider:
-        raise HostedRouteBlocked(decision)
-    if decision.provider == "local" and decision.effective_route == LOCAL and decision.ready:
-        return decision
-    return require_hosted(decision)
+    if decision.feature == "reader" and decision.lane in {
+        "reader_speech", "reader_speech_test",
+    }:
+        return require_reader_speech(
+            decision, expected_provider=expected_provider
+        )
+    if decision.feature == "dictation" and decision.lane == "speech_to_text":
+        raise TypeError(
+            "Cloud transcription requires an explicit ProcessingInputSnapshot"
+        )
+    return require_text_shaping(
+        decision, expected_provider=expected_provider
+    )
 
 
 def call_provider(
@@ -458,7 +561,7 @@ def call_provider(
     return provider_call(*args, **kwargs)
 
 
-def require_transcription(
+def require_speech_to_text(
     invocation_snapshot: ProcessingInputSnapshot,
 ) -> ProcessingInputSnapshot:
     """Validate a frozen cloud speech-to-text invocation at its adapter seam."""
@@ -472,14 +575,25 @@ def require_transcription(
         or decision.lane != "speech_to_text"
     ):
         raise TypeError("Cloud transcription requires a speech-to-text route")
-    require_provider(decision, expected_provider=decision.provider)
-    if decision.endpoint_class not in {
-        "groq_speech_to_text",
-        "openai_speech_to_text",
-        "openrouter_speech_to_text",
-    }:
-        raise TypeError("Cloud transcription requires a speech-to-text route")
+    _require_provider_identity(
+        decision,
+        providers=_TRANSCRIPTION_PROVIDERS,
+        expected_provider=decision.provider,
+    )
+    require_hosted(decision)
+    if (
+        decision.requested_route != HOSTED
+        or decision.privacy_boundary != "recorded_audio_leaves_device"
+    ):
+        raise HostedRouteBlocked(decision)
     return invocation_snapshot
+
+
+def require_transcription(
+    invocation_snapshot: ProcessingInputSnapshot,
+) -> ProcessingInputSnapshot:
+    """Backward-compatible name for the speech-to-text contract."""
+    return require_speech_to_text(invocation_snapshot)
 
 
 def settings_state(settings: Any) -> dict[str, Any]:

@@ -1219,10 +1219,10 @@ class Mumble:
             # the transcript.
             try:
                 raw = formatting.apply_vocabulary(
-                    raw, self.settings.get("vocabulary", {})
+                    raw, _snap["vocabulary"]
                 )
                 raw = formatting.apply_vocabulary_terms(
-                    raw, self.settings.get("vocabulary_terms", [])
+                    raw, _snap["vocabulary_terms"]
                 )
             except Exception as e:
                 print("vocabulary error:", e)

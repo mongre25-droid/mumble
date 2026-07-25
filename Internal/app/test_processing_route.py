@@ -525,10 +525,14 @@ def test_durable_records_keep_issue_14_and_physical_validation_open():
         APP_DIR.parent.parent / "Development Files" / "Core" / "LOGS.html"
     ).read_text(encoding="utf-8")
 
-    assert "Processing truth</td><td><span class=\"badge b-gated\">corrected local candidate" in status
+    processing_row = status.split('<tr id="processing-truth"', 1)[1].split(
+        "</tr>", 1
+    )[0]
+    assert 'data-evidence-boundary="candidate-awaiting-review"' in processing_row
+    assert 'class="badge b-gated"' in processing_row
     assert "Issue #14 remains open" in status
     assert "Issues #15 and #20 are separate work" in status
-    assert "processing-route correction candidate" in logs
+    assert 'data-evidence-boundary="rejected-candidate-review"' in logs
     assert "No live provider request" in logs
-    assert "physical platform test" in logs
+    assert "physical Windows/macOS/Linux test" in logs
     assert "processing route truth implemented" not in logs.lower()

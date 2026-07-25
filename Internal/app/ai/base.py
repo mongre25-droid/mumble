@@ -19,7 +19,7 @@ def _guard_provider_method(method):
             decision = kwargs.pop("route_decision", None)
 
             def generate():
-                processing_route.require_provider(
+                processing_route.require_text_shaping(
                     decision, expected_provider=self.model_info.get("provider"))
                 yield from method(self, *args, **kwargs)
 
@@ -29,7 +29,7 @@ def _guard_provider_method(method):
     @wraps(method)
     def guarded(self, *args, **kwargs):
         decision = kwargs.pop("route_decision", None)
-        processing_route.require_provider(
+        processing_route.require_text_shaping(
             decision, expected_provider=self.model_info.get("provider"))
         return method(self, *args, **kwargs)
     return guarded

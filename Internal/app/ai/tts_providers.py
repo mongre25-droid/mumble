@@ -156,7 +156,8 @@ def _pcm_rate_from_ctype(ctype, default=_TTS_PCM_RATE):
 def openrouter_tts(text, api_key, model=None, voice=None,
                    response_format=None, timeout=60, route_decision=None):
     """Synthesize text to speech through OpenRouter's /audio/speech endpoint."""
-    processing_route.require_provider(route_decision, expected_provider="openrouter")
+    processing_route.require_reader_speech(
+        route_decision, expected_provider="openrouter")
     key = (api_key or "").strip()
     if not key:
         raise ValueError("Add your OpenRouter API key in Settings to use the Reader.")
@@ -277,7 +278,7 @@ class OpenRouterTTSProvider(TTSProvider):
 
     def synthesize(self, text, voice_id, model=None,
                    response_format=None, timeout=60, route_decision=None):
-        processing_route.require_provider(
+        processing_route.require_reader_speech(
             route_decision, expected_provider=self.provider_id)
         key = route_decision.api_key
         if not key:
@@ -326,7 +327,7 @@ class OpenAITTSProvider(TTSProvider):
 
     def synthesize(self, text, voice_id, model=None,
                    response_format=None, timeout=60, route_decision=None):
-        processing_route.require_provider(
+        processing_route.require_reader_speech(
             route_decision, expected_provider=self.provider_id)
         key = route_decision.api_key
         if not key:
@@ -340,7 +341,7 @@ class OpenAITTSProvider(TTSProvider):
         vc = voice_id or self.default_voice
         fmt = response_format or "mp3"
         payload = {"model": mid, "input": txt, "voice": vc, "response_format": fmt}
-        processing_route.require_provider(
+        processing_route.require_reader_speech(
             route_decision, expected_provider=self.provider_id)
         try:
             req = urllib.request.Request(

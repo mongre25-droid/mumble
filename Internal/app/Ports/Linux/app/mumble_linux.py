@@ -1787,14 +1787,7 @@ class Mumble:
             "modes": copy.deepcopy(self.settings.get("modes", {})),
             "local_llm_enabled": self.settings.get("local_llm_enabled", False),
             "local_llm_model": self.settings.get("local_llm_model", ""),
-            "cerebras_api_key": self.settings.get("cerebras_api_key", ""),
-            "cerebras_model": self.settings.get("cerebras_model", ""),
-            "openrouter_api_key": self.settings.get("openrouter_api_key", ""),
-            "openrouter_model": self.settings.get("openrouter_model", ""),
-            "openai_api_key": self.settings.get("openai_api_key", ""),
-            "openai_model": self.settings.get("openai_model", ""),
-            "groq_api_key": self.settings.get("groq_api_key", ""),
-            "groq_model": self.settings.get("groq_model", ""),
+            **processing_route.capture_text_provider_settings(self.settings),
         }
         try:
             self._processing = True
@@ -1867,10 +1860,10 @@ class Mumble:
             # candidates are offered to the polish AI later (annotate_vocab_terms).
             try:
                 raw = formatting.apply_vocabulary(
-                    raw, self.settings.get("vocabulary", {})
+                    raw, _snap["vocabulary"]
                 )
                 raw = formatting.apply_vocabulary_terms(
-                    raw, self.settings.get("vocabulary_terms", [])
+                    raw, _snap["vocabulary_terms"]
                 )
             except Exception as e:
                 print("vocabulary error:", e)
