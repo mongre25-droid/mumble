@@ -344,9 +344,9 @@ check("retired mode-key runtime removed from mumble_mac",
 check("_watch_mode_key removed from mumble_mac",
       "def _watch_mode_key" not in _mm_src)
 
-# Verify local_engine.route() is called
-check("local_engine.route() exists in mumble_mac",
-      "local_engine.route(" in _mm_src)
+# Verify the immutable processing decision replaced the legacy advisory route.
+check("processing_route.snapshot() exists in mumble_mac",
+      "processing_route.snapshot(" in _mm_src)
 
 # Verify foreign_boost.boost() is called
 check("foreign_boost.boost() exists in mumble_mac",

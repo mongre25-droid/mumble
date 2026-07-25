@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for ai/tts_providers.py — TTS provider abstraction, voice catalogue,
-and transparent provider fallback.
+and same-provider model fallback.
 
 Usage:
     python test_tts_providers.py
@@ -161,18 +161,9 @@ check("get_tts_defaults returns voice", isinstance(voice, str))
 
 print("\n=== synthesize_with_fallback() error path ===")
 
-# Never spend a developer's saved API credit from an offline unit test. Force
-# both providers' key lookups empty and verify the clean all-unavailable path.
-_orig_or_key = tts.OpenRouterTTSProvider._get_key
-_orig_oa_key = tts.OpenAITTSProvider._get_key
-try:
-    tts.OpenRouterTTSProvider._get_key = lambda self: ""
-    tts.OpenAITTSProvider._get_key = lambda self: ""
-    audio, ctype, meta = tts.synthesize_with_fallback(
-        "hello", provider_id="openrouter")
-finally:
-    tts.OpenRouterTTSProvider._get_key = _orig_or_key
-    tts.OpenAITTSProvider._get_key = _orig_oa_key
+# A call without a frozen decision is rejected before any provider transport.
+audio, ctype, meta = tts.synthesize_with_fallback(
+    "hello", provider_id="openrouter")
 
 check("fallback returns meta dict", isinstance(meta, dict))
 check("fallback with no key returns None audio", audio is None)

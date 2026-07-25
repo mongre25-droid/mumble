@@ -45,6 +45,7 @@ import urllib.request
 import wave
 
 import numpy as np
+import processing_route
 import recording_limits
 from ai.transport import read_error_body, read_response_limited
 
@@ -230,14 +231,18 @@ def _transcribe_json(info, key, model, wav, lang, timeout, prompt=None):
     return _post_and_extract(req, timeout)
 
 
-def transcribe(audio, settings, language=None, timeout=30):
+def transcribe(audio, invocation_snapshot, timeout=30):
     """Transcribe a float32 mono 16 kHz numpy array via the configured cloud
     provider and return the transcript text (stripped).
 
-    `settings` is the app Settings object (anything with .get). `language` may be
-    a 2-letter code or None to fall back to the saved language. Raises on any
-    failure (no key, network, HTTP, bad response) so the caller can fall back to
-    local transcription."""
+    `invocation_snapshot` is the immutable route and input decision captured
+    before work starts. Raises on any failure (blocked route, network, HTTP, bad
+    response) so the caller can fall back to local transcription. The adapter
+    never re-reads mutable Settings."""
+    invocation_snapshot = processing_route.require_speech_to_text(
+        invocation_snapshot
+    )
+    decision = invocation_snapshot.route
     try:
         sample_count = int(np.asarray(audio).size)
     except Exception:
@@ -247,20 +252,17 @@ def transcribe(audio, settings, language=None, timeout=30):
             "Cloud transcription accepts at most 10 minutes per request. "
             "Split long-form audio into bounded chunks.")
 
-    provider = (settings.get("cloud_transcription_provider", DEFAULT_PROVIDER)
-                or DEFAULT_PROVIDER).strip().lower()
+    provider = decision.provider
     if provider not in PROVIDERS:
-        provider = DEFAULT_PROVIDER
-    info = provider_info(provider)
-    key = (settings.get(info["key_setting"], "") or "").strip()
+        raise ValueError("Unsupported cloud transcription provider.")
+    info = PROVIDERS[provider]
+    key = decision.api_key
     if not key:
         raise ValueError(
             f"No API key set for cloud transcription ({provider}). Add one in "
             f"Settings → Transcription → Cloud.")
-    model = ((settings.get(info["model_setting"], "") or "").strip()
-             or info["default_model"])
-    lang = (language if language is not None
-            else settings.get("language", "en")) or None
+    model = decision.model
+    lang = invocation_snapshot.primary_language or None
     # Only forward a sane ISO-639-1 code. A blank/garbage value would otherwise
     # 400 on every utterance (then fall back to local) — wasting a round-trip
     # each time. Anything that isn't 2 alpha chars → let the provider auto-detect.
@@ -271,7 +273,7 @@ def transcribe(audio, settings, language=None, timeout=30):
     # particular, a malformed string setting must be one term rather than 50
     # one-character terms, and duplicate spellings should not waste the cap.
     from formatting import sanitize_hotwords
-    terms = sanitize_hotwords(settings.get("vocabulary_terms", []) or [])[:50]
+    terms = sanitize_hotwords(invocation_snapshot.vocabulary_terms)[:50]
     prompt = ", ".join(terms) if terms else None
     wav = pcm16_wav_bytes(audio)
     if info["shape"] == "json_base64":

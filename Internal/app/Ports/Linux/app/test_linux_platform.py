@@ -781,9 +781,9 @@ _wmk_chunk = _ml_src[_wmk_start:_wmk_start + 400]
 check("_watch_mode_key is a no-op (no polling)",
       "is_pressed" not in _wmk_chunk)
 
-# Verify local_engine.route() is called
-check("local_engine.route() exists in mumble_linux",
-      "local_engine.route(" in _ml_src)
+# Verify the immutable processing decision replaced the legacy advisory route.
+check("processing_route.snapshot() exists in mumble_linux",
+      "processing_route.snapshot(" in _ml_src)
 
 # Verify foreign_boost.boost() is called
 check("foreign_boost.boost() exists in mumble_linux",

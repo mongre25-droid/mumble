@@ -50,6 +50,7 @@ print("=== Section 1: Import and structural checks ===")
 
 check("ai.stt_providers imports cleanly", True)
 import ai.stt_providers as stt
+import processing_route
 check("stt_providers.PROVIDERS is dict", isinstance(stt.PROVIDERS, dict))
 check("stt_providers has transcribe", callable(stt.transcribe))
 check("stt_providers has provider_info", callable(stt.provider_info))
@@ -108,23 +109,29 @@ def test_2_4_transcription_mode_setting_exists():
     check("transcription_mode default is 'local'", mode == "local")
 
 def test_2_5_cloud_transcribe_requires_api_key():
-    """Cloud transcription raises ValueError when no API key is set."""
+    """Cloud transcription rejects a frozen route with no API key."""
     import numpy as np
     audio = np.zeros(16000, dtype=np.float32)
 
     class NoKeySettings:
         def get(self, key, default=None):
             return {
+                "pro_mode": True,
+                "local_only_mode": False,
+                "transcription_mode": "cloud",
                 "cloud_transcription_provider": "groq",
                 "groq_api_key": "",
             }.get(key, default)
 
     try:
-        stt.transcribe(audio, NoKeySettings())
+        invocation = processing_route.snapshot_inputs(
+            NoKeySettings(), feature="dictation", lane="speech_to_text"
+        )
+        stt.transcribe(audio, invocation)
         check("transcribe raises on missing key", False)
-    except ValueError as e:
-        check("transcribe raises ValueError on missing key",
-              "API key" in str(e) or "key" in str(e).lower())
+    except processing_route.HostedRouteBlocked as e:
+        check("transcribe rejects a frozen missing-key route",
+              e.reason == "missing_key")
 
 test_2_1_cloud_stt_providers_are_registered()
 test_2_2_cloud_stt_providers_have_urls()

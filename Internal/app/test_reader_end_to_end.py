@@ -228,7 +228,14 @@ def test_bridge_propagates_stats_failure_and_does_not_persist_fallback():
 
     class MemorySettings:
         def __init__(self):
-            self.values = {"reader_tts_provider": "openrouter"}
+            self.values = {
+                "pro_mode": True,
+                "local_only_mode": False,
+                "instant_text": False,
+                "reader_tts_provider": "openrouter",
+                "reader_tts_model": "google/gemini-3.1-flash-tts-preview",
+                "openrouter_api_key": "sk-or-test",
+            }
             self.updates = []
 
         def get(self, key, default=None):
@@ -241,8 +248,10 @@ def test_bridge_propagates_stats_failure_and_does_not_persist_fallback():
     original = webui_shell.ai.synthesize_with_fallback
     webui_shell.ai.synthesize_with_fallback = lambda *_args, **_kwargs: (
         b"audio", "audio/mpeg", {
-            "ok": True, "provider": "openai", "model": "gpt-4o-mini-tts",
-            "voice": "onyx", "fallback": True, "fallback_provider": "openai",
+            "ok": True, "provider": "openrouter",
+            "model": "mistralai/voxtral-mini-tts-2603",
+            "voice": "gb_oliver_neutral", "fallback": True,
+            "fallback_provider": "openrouter",
         })
     try:
         result = api.reader_tts("hello", provider="openrouter")
@@ -324,7 +333,7 @@ def test_reader_sync_is_opt_in_and_disclosure_names_cloud_paths():
     source = APP_JS.read_text(encoding="utf-8")
     disclosure = source[source.index("async function confirmReaderCloudUse"):
                         source.index("function readerBuildPane")]
-    assert "another configured voice provider may be tried" in disclosure
+    assert "another compatible model from that same provider may be tried" in disclosure
     assert "Reader Sync, when enabled" in disclosure
     cloud = Path(__file__).with_name("cloud_sync.py").read_text(encoding="utf-8")
     assert 'payload.pop("source_path", None)' in cloud

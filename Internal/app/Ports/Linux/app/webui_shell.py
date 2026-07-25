@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai  # noqa: E402
 import branding  # noqa: E402
 import local_engine as _local_engine  # noqa: E402
+import processing_route  # noqa: E402
 import presets as presets_mod  # noqa: E402
 import reader_store  # noqa: E402
 from clipboard import Clipboard  # noqa: E402
@@ -421,19 +422,37 @@ class Api:
             "has_key": has_any_key,
         }
 
+    def _reader_speech_decision(self, lane, provider=None, model=None):
+        return processing_route.snapshot(
+            self.settings,
+            feature="reader",
+            lane=lane,
+            provider_override=provider,
+            model_override=model,
+        )
+
     def reader_tts(self, text, model=None, voice=None, provider=None):
         """Synthesize one chunk of text through the selected TTS provider and
         return base64 audio. Never raises into the bridge. Remembers the last
         good provider/model/voice so the Reader resumes with the user's pick.
 
-        On failure, falls back transparently to the alternate provider. Only
-        surfaces a hard error if every available provider fails."""
+        On failure, may try a compatible model from the same provider. A frozen
+        decision never authorizes a different provider."""
         pid = provider or self.settings.get("reader_tts_provider", "openrouter")
+        decision = self._reader_speech_decision(
+            "reader_speech", provider=pid, model=model)
+        if not decision.ready:
+            return {"ok": False, "message": "Reader speech stayed on this device because its route is not ready.", "route": decision.public_dict()}
         try:
-            audio, ctype, meta = ai.synthesize_with_fallback(
-                text, voice_id=voice, model=model, provider_id=pid)
+            audio, ctype, meta = processing_route.call_provider(
+                decision, ai.synthesize_with_fallback, text,
+                voice_id=voice, model=decision.model, provider_id=decision.provider,
+                expected_feature="reader", expected_lane="reader_speech",
+                expected_provider=decision.provider)
             if not meta.get("ok"):
                 return {"ok": False, "message": meta.get("message", "TTS failed.")}
+            if (meta.get("provider") or decision.provider) != decision.provider:
+                return {"ok": False, "message": "Reader speech provider did not match its frozen route."}
             effective_provider = meta.get("provider") or pid
             effective_model = meta.get("model") or model
             effective_voice = meta.get("voice") or voice
@@ -462,9 +481,16 @@ class Api:
         repeated previews do not leak temporary audio files."""
         try:
             pid = provider or self.settings.get("reader_tts_provider", "openrouter")
+            decision = self._reader_speech_decision(
+                "reader_speech_test", provider=pid, model=model)
+            if not decision.ready:
+                return {"ok": False, "message": "Reader speech test stayed on this device because its route is not ready.", "route": decision.public_dict()}
             test_phrase = "Hello. This is a test of the text to speech voice."
-            audio, ctype, meta = ai.synthesize_with_fallback(
-                test_phrase, voice_id=voice, model=model, provider_id=pid)
+            audio, ctype, meta = processing_route.call_provider(
+                decision, ai.synthesize_with_fallback, test_phrase,
+                voice_id=voice, model=decision.model, provider_id=decision.provider,
+                expected_feature="reader", expected_lane="reader_speech_test",
+                expected_provider=decision.provider)
             if not meta.get("ok"):
                 return {"ok": False, "message": meta.get("message", "TTS test failed.")}
             import base64
@@ -781,15 +807,21 @@ class Api:
         text = (text or "").strip()
         if not text:
             return {"ok": False, "message": "Nothing to summarize."}
+        invocation = processing_route.snapshot_inputs(
+            self.settings, feature="reader", lane="reader_summary",
+            context=text, context_policy="reader_document",
+        )
+        decision = invocation.route
+        text = invocation.context
+        if not decision.ready:
+            return {
+                "ok": False,
+                "message": "This summary stayed on this device because the selected text-processing route is not ready.",
+                "route": decision.public_dict(),
+            }
         try:
-            provider = self.settings.get("llm_provider", "cerebras") or "cerebras"
-            info = ai.PROVIDERS.get(provider) or ai.PROVIDERS["cerebras"]
-            key = self.settings.get(info.get("key_setting", ""), "") or ""
-            model = (self.settings.get(info.get("model_setting", ""), "")
-                     or info.get("default_model", "gpt-oss-120b")).strip()
-            if not key and provider != "local":
-                return {"ok": False,
-                        "message": "Add your %s API key in Settings to summarize." % provider}
+            provider = decision.provider
+            info = ai.PROVIDERS[provider]
             # Token-limit policy: Cerebras' free tier is rate-limited (~30k
             # tokens/min), so cap the input to stay inside one request and ask
             # for a tight summary. Paid providers (OpenAI, Anthropic, OpenRouter,
@@ -805,13 +837,19 @@ class Api:
                 "information. Add nothing that isn't in the text. Output only the summary, "
                 "no preamble.")
             user = "Summarize the following:\n\n" + doc
-            summary = ai.cerebras_chat(
-                system, user, key, model=model or "gpt-oss-120b",
-                url=info.get("url"), max_tokens=out_budget, timeout=t_out)
+            summary = processing_route.call_provider(
+                decision,
+                ai.cerebras_chat,
+                system, user, decision.api_key,
+                model=decision.model, url=info.get("url"),
+                max_tokens=out_budget, timeout=t_out,
+                expected_feature="reader", expected_lane="reader_summary",
+            )
             summary = (summary or "").strip()
             if not summary:
                 return {"ok": False, "message": "The summary came back empty."}
-            return {"ok": True, "summary": summary}
+            return {"ok": True, "summary": summary,
+                    "route": decision.public_dict()}
         except Exception as e:
             return {"ok": False, "message": str(e)}
 
@@ -1306,6 +1344,81 @@ class Api:
                     "models_dir": getattr(branding, "MODELS_DIR", ""),
                     "has_binary": False, "enabled": True}
 
+    def _settings_route_state(self):
+        """Project requested and effective privacy routes from runtime inputs."""
+        requested_stt = self.settings.get("transcription_mode", "local") or "local"
+        stt_provider = (
+            self.settings.get("cloud_transcription_provider", "groq") or ""
+        ).strip().lower()
+        stt_keys = {
+            "groq": "groq_api_key",
+            "openai": "openai_api_key",
+            "openrouter": "openrouter_api_key",
+        }
+        stt_supported = stt_provider in stt_keys
+        stt_has_key = bool(stt_supported and (
+            self.settings.get(stt_keys[stt_provider], "") or ""
+        ).strip())
+        local_only = bool(self.settings.get("local_only_mode", False))
+        if local_only:
+            stt_effective, stt_reason = "local", "local_only"
+        elif requested_stt != "cloud":
+            stt_effective, stt_reason = "local", "selected"
+        elif not stt_supported:
+            stt_effective, stt_reason = "local", "unsupported_provider"
+        elif not stt_has_key:
+            stt_effective, stt_reason = "local", "no_key"
+        else:
+            stt_effective, stt_reason = "cloud", "selected"
+
+        route_facts = processing_route.settings_state(self.settings)
+        plain_decision = route_facts["plain_processing"]
+        action_decision = route_facts["action_processing"]
+        reason_compat = {
+            "device_only": "local_only",
+            "hosted_processing_off": "pro_off",
+            "missing_key": "no_key",
+            "ready": "selected",
+        }
+        processing_effective = (
+            "cloud" if action_decision["effective_route"] == "hosted" else "local"
+        )
+        return {
+            "transcription": {
+                "requested": requested_stt,
+                "provider": stt_provider,
+                "provider_supported": stt_supported,
+                "has_key": stt_has_key,
+                "effective": stt_effective,
+                "reason": stt_reason,
+                "sends_audio": stt_effective == "cloud",
+            },
+            "plain_processing": {
+                "effective": (
+                    "cloud"
+                    if plain_decision["effective_route"] == "hosted"
+                    else "local"
+                ),
+                "reason": reason_compat.get(
+                    plain_decision["reason"], plain_decision["reason"]
+                ),
+                "sends_text": plain_decision["effective_route"] == "hosted",
+                "decision": plain_decision,
+            },
+            "action_processing": {
+                "provider": action_decision["provider"],
+                "provider_supported": action_decision["provider_supported"],
+                "has_key": action_decision["key_present"],
+                "effective": processing_effective,
+                "reason": reason_compat.get(
+                    action_decision["reason"], action_decision["reason"]
+                ),
+                "sends_text": processing_effective == "cloud",
+                "decision": action_decision,
+            },
+            "local_only": local_only,
+        }
+
     def get_settings(self):
         try:
             self.settings.load()
@@ -1350,6 +1463,7 @@ class Api:
             "meeting_processing_mode",
         ]
         result = {k: self.settings.get(k) for k in keys}
+        result["_route_state"] = self._settings_route_state()
         # ITEM 7 (owner 2026-06-29): API keys must NOT leak to the JS bridge by
         # default, but the old redaction to the literal "[saved]" loaded that
         # 7-char token straight into the password field — so the key LOOKED
@@ -1980,10 +2094,19 @@ class Api:
                                   str(provider).strip().lower())
             prov = self.settings.get("cloud_transcription_provider",
                                      tx.DEFAULT_PROVIDER)
-            info = tx.provider_info(prov)
+            if prov not in tx.PROVIDERS:
+                return {"ok": False,
+                        "message": "The saved transcription provider is unavailable."}
+            info = tx.PROVIDERS[prov]
             if not (self.settings.get(info["key_setting"], "") or "").strip():
                 return {"ok": False,
                         "message": f"Add your {prov} API key first, then test."}
+            invocation_snapshot = processing_route.snapshot_inputs(
+                self.settings, feature="dictation", lane="speech_to_text"
+            )
+            if not invocation_snapshot.route.ready:
+                return {"ok": False,
+                        "message": "Cloud transcription is not authorized by the current processing route."}
             idx = self.settings.get("mic_device", None)
             idx = None if idx in (None, "", -1, "-1") else int(idx)
             sr = 16000
@@ -1994,8 +2117,7 @@ class Api:
             audio = np.asarray(rec, dtype="float32").flatten()
             import time as _t
             t0 = _t.time()
-            text = tx.transcribe(audio, self.settings,
-                                 language=self.settings.get("language", "en"))
+            text = tx.transcribe(audio, invocation_snapshot)
             dt = _t.time() - t0
             if not text:
                 return {"ok": True,

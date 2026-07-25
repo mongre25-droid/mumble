@@ -6,7 +6,7 @@ Extracted from the monolithic ai.py. Provides:
   - OpenRouterTTSProvider (wraps OpenRouter's /audio/speech endpoint)
   - OpenAITTSProvider (OpenAI's native /v1/audio/speech endpoint)
   - Voice catalogue with quality/gender/persona metadata
-  - Transparent provider fallback via synthesize_with_fallback()
+  - Same-provider model fallback via synthesize_with_fallback()
   - PCM-to-WAV framing for Gemini-class TTS
   - Male-first voice sorting for the Reader UI
 """
@@ -16,6 +16,8 @@ import json
 import urllib.error
 import urllib.request
 import wave
+
+import processing_route
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -64,7 +66,7 @@ class TTSProvider:
         raise NotImplementedError
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60):
+                   response_format=None, timeout=60, route_decision=None):
         raise NotImplementedError
 
     @property
@@ -152,7 +154,8 @@ def _pcm_rate_from_ctype(ctype, default=_TTS_PCM_RATE):
 
 # ---- OpenRouter TTS ----------------------------------------------------------
 def openrouter_tts(text, api_key, model=None, voice=None,
-                   response_format=None, timeout=60):
+                   response_format=None, timeout=60, route_decision=None,
+                   operation_lane="reader_speech"):
     """Synthesize text to speech through OpenRouter's /audio/speech endpoint."""
     key = (api_key or "").strip()
     if not key:
@@ -163,6 +166,13 @@ def openrouter_tts(text, api_key, model=None, voice=None,
     if len(txt) > 4000:
         raise ValueError(f"That passage is too long ({len(txt)} chars).")
     mid = (model or OPENROUTER_TTS_DEFAULT_MODEL).strip()
+    processing_route.require_reader_speech(
+        route_decision,
+        expected_lane=operation_lane,
+        expected_provider="openrouter",
+        api_key=key,
+        model=mid,
+    )
     if mid not in OPENROUTER_TTS_FORMATS:
         raise ValueError(f"Unknown Reader voice model '{mid}'.")
     vc = (voice or OPENROUTER_TTS_DEFAULT_VOICES.get(mid) or "").strip()
@@ -273,28 +283,32 @@ class OpenRouterTTSProvider(TTSProvider):
         return voices
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60):
-        key = (self._get_key() or "").strip()
+                   response_format=None, timeout=60, route_decision=None,
+                   operation_lane="reader_speech"):
+        processing_route.require_reader_speech(
+            route_decision, expected_lane=operation_lane,
+            expected_provider=self.provider_id)
+        key = route_decision.api_key
         if not key:
             raise ValueError("Add your OpenRouter API key in Settings to use the Reader.")
         mid = model or self.default_model
+        processing_route.require_reader_speech(
+            route_decision,
+            expected_lane=operation_lane,
+            expected_provider=self.provider_id,
+            api_key=key,
+            model=mid,
+        )
         # Voices are model-specific. Passing the provider-wide Gemini default
         # (`Fenrir`) to Voxtral or MAI makes an otherwise valid request fail.
         vc = voice_id or OPENROUTER_TTS_DEFAULT_VOICES.get(mid)
         audio, ctype = openrouter_tts(
             text, key, model=mid,
             voice=vc,
-            response_format=response_format, timeout=timeout)
+            response_format=response_format, timeout=timeout,
+            route_decision=route_decision,
+            operation_lane=operation_lane)
         return audio, ctype
-
-    def _get_key(self):
-        try:
-            from settings import Settings
-            s = Settings()
-            return s.get("openrouter_api_key", "") or ""
-        except Exception:
-            return ""
-
 
 # ---- OpenAI TTS Provider -----------------------------------------------------
 OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech"
@@ -328,8 +342,12 @@ class OpenAITTSProvider(TTSProvider):
         return voices
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60):
-        key = (self._get_key() or "").strip()
+                   response_format=None, timeout=60, route_decision=None,
+                   operation_lane="reader_speech"):
+        processing_route.require_reader_speech(
+            route_decision, expected_lane=operation_lane,
+            expected_provider=self.provider_id)
+        key = route_decision.api_key
         if not key:
             raise ValueError("Add your OpenAI API key in Settings.")
         txt = (text or "").strip()
@@ -341,6 +359,13 @@ class OpenAITTSProvider(TTSProvider):
         vc = voice_id or self.default_voice
         fmt = response_format or "mp3"
         payload = {"model": mid, "input": txt, "voice": vc, "response_format": fmt}
+        processing_route.require_reader_speech(
+            route_decision,
+            expected_lane=operation_lane,
+            expected_provider=self.provider_id,
+            api_key=key,
+            model=mid,
+        )
         try:
             req = urllib.request.Request(
                 OPENAI_TTS_URL, data=json.dumps(payload).encode("utf-8"), method="POST")
@@ -367,15 +392,6 @@ class OpenAITTSProvider(TTSProvider):
         if not ctype:
             ctype = "audio/mpeg"
         return audio, ctype
-
-    def _get_key(self):
-        try:
-            from settings import Settings
-            s = Settings()
-            return s.get("openai_api_key", "") or ""
-        except Exception:
-            return ""
-
 
 # ---- Provider registry and public API ----------------------------------------
 _TTS_PROVIDERS = {
@@ -433,19 +449,19 @@ def get_tts_defaults(provider_id=None):
     return (p.provider_id, p.default_model, p.default_voice)
 
 
-def synthesize_with_fallback(text, voice_id=None, model=None, provider_id=None):
-    """Synthesize text-to-speech with transparent provider fallback."""
+def synthesize_with_fallback(text, voice_id=None, model=None, provider_id=None,
+                             route_decision=None, expected_feature="reader",
+                             expected_lane="reader_speech"):
+    """Synthesize using exactly the provider/model frozen for this operation."""
+    if expected_feature != "reader":
+        raise processing_route.HostedRouteBlocked(route_decision)
     ALL_IDS = ["openrouter", "openai"]
     requested = provider_id if provider_id in ALL_IDS else "openrouter"
-    prov_order = [requested] + [pid for pid in ALL_IDS if pid != requested]
+    prov_order = [requested]
     attempts = []
     for i, pid in enumerate(prov_order):
         if pid == "openrouter":
-            catalogue = [m for (m, _label, _fmt) in OPENROUTER_TTS_MODELS]
-            if i == 0 and model:
-                ordered = [model] + [m for m in catalogue if m != model]
-            else:
-                ordered = catalogue
+            ordered = [model or route_decision.model]
             for j, m in enumerate(ordered):
                 primary = (i == 0 and j == 0)
                 attempts.append((pid, m, voice_id if primary else None, primary))
@@ -466,7 +482,9 @@ def synthesize_with_fallback(text, voice_id=None, model=None, provider_id=None):
             else:
                 effective_voice = getattr(p, "default_voice", None)
             audio, ctype = p.synthesize(
-                text, voice_id=effective_voice, model=effective_model)
+                text, voice_id=effective_voice, model=effective_model,
+                route_decision=route_decision,
+                operation_lane=expected_lane)
             meta = {"ok": True, "provider": pid,
                     "model": effective_model,
                     "voice": effective_voice}

@@ -10,7 +10,7 @@
 <header class="doc-head">
   <div class="kicker">Mumble 0.95 · Present state</div>
   <h1>STATUS</h1>
-  <div class="meta"><div><span class="ico">◆</span><b>Last refreshed:</b> 25 July 2026</div><div><span class="ico">◆</span><b>Release position:</b> pre-release hardening</div><div><span class="ico">◆</span><b>Companions:</b> <a href="README.html">README</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div></div>
+  <div class="meta"><div><span class="ico">◆</span><b>Last refreshed:</b> 26 July 2026</div><div><span class="ico">◆</span><b>Release position:</b> pre-release hardening</div><div><span class="ico">◆</span><b>Companions:</b> <a href="README.html">README</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div></div>
 </header>
 
 <div class="plain"><div class="tag">Current truth</div><div><p>Mumble is being treated as version <strong>0.95</strong>: the current product is implemented, but release confidence still depends on verification of packaging, clean installation, physical microphone/paste behaviour, signing, and publication.</p></div></div>
@@ -23,6 +23,7 @@
   <tr><td>Deck</td><td><span class="badge b-done">implemented</span></td><td>History, clipboard capture, favourites, search, presets, and real job execution are part of the current Web UI and controller.</td></tr>
   <tr><td>Meetings</td><td><span class="badge b-done">implemented</span></td><td>Meeting recording, transcription, storage, search, retry, and export paths are present; hardware and long-session validation remain separate gates.</td></tr>
   <tr><td>Reader</td><td><span class="badge b-done">implemented</span></td><td>Document import, parsing, progress, statistics, and optional text-to-speech are present.</td></tr>
+  <tr id="processing-truth" data-evidence-boundary="candidate-awaiting-review"><td>Processing truth</td><td><span class="badge b-gated">local correction candidate</span></td><td>Issue #14 remains under correction after independent review found that the Meetings final-call wrappers could accept authority for a different operation. The current narrow candidate declares <code>meetings / meeting_analysis</code> at the Windows, macOS, and Linux Meetings boundaries while preserving the earlier frozen transport, provider-truth, privacy, Reader, Settings, synchronization, and package foundations. This is unaccepted candidate work only; fresh independent review, Level B/integration checks, exact-head CI, physical-platform use, live-provider behaviour, release checks, and owner UI approval remain unverified.</td></tr>
   <tr><td>Search</td><td><span class="badge b-exist">supported on Windows/Linux</span></td><td>Local app, file, and folder indexing is bounded and local; macOS does not load this surface.</td></tr>
   <tr><td>Ports</td><td><span class="badge b-gated">maintained seams</span></td><td>macOS and Linux have separate launch, input, paste, overlay, storage, and packaging seams. They are not a substitute for release validation.</td></tr>
 </tbody></table>
@@ -35,7 +36,10 @@
   <li><span class="badge b-gated">development setup</span> The documented local command assumes <code>Internal/app/.venv/Scripts/python.exe</code>, but this checkout currently contains the branded <code>Mumble.exe</code> there and no Python interpreter. Reproducible development-environment setup remains open.</li>
   <li><span class="badge b-done">passed locally</span> Windows, macOS, and Linux runtime locks use Pillow 12.3.0 and all three <code>pip-audit</code> checks report no known vulnerabilities.</li>
   <li><span class="badge b-done">exact-head CI</span> Run <code>30132517967</code> preserved the PostCSS advisory-detection event at <code>473d316e</code>; run <code>30133098809</code> then passed every required independent evidence job and the aggregate result at repaired main commit <code>536e196c</code>. Promotion remained a separate manual action and was not run.</li>
-  <li><span class="badge b-done">passed locally</span> Rebuilt <code>Internal/Releases/Mumble.zip</code> from the current source: version <code>0.95</code>, 123 entries, and all package-layout checks passed.</li>
+  <li><span class="badge b-gated">retained red evidence</span> Independent review of <code>f00c2842</code> completed the Windows runner at 76/77 modules and 293 counted cases because one transient Core-wording assertion failed. The correction uses focused Level A checks only; no new broad-suite, integration, physical-platform, or CI pass is claimed.</li>
+  <li><span class="badge b-done">independently accepted Level A evidence</span> Issue #14 candidate <code>9a271501</code> passed fresh independent review for convergence after the corrected Windows/macOS/Linux Meetings wrappers rejected wrong or unavailable authority without transport and accepted only exact frozen <code>meetings / meeting_analysis</code> authority. This local merge is not Level B, exact-head CI, live-provider, physical-platform, deployment, release, or owner evidence.</li>
+  <li><span class="badge b-done">canonical candidate package</span> One canonical build produced <code>Internal/Releases/Mumble.zip</code> version <code>0.95</code> with 125 entries and SHA-256 <code>7A329458295D5FB9D72C6A0F79811BFC2ADD0BBEE7B342BD5A053370E7C9E2D9</code>. CRC, required membership, canonicalized source-byte matching for the changed Windows Meetings runtime, deterministic 1980 metadata and <code>100644</code> permissions, test/cache/port exclusions, clean temporary extraction, and isolated imports passed. A second deterministic build and installation were not attempted.</li>
+  <li><span class="badge b-exist">retained port-package evidence</span> The earlier macOS and Linux package checks remain historical candidate evidence only. Their packages are not changed or rerun in this narrow correction; signing, notarization, installation, and physical use remain unverified.</li>
   <li><span class="badge b-done">passed locally</span> Windows launcher verifier confirmed the current target, working directory, icon, entry script, shortcuts, and Flow Launcher paths.</li>
   <li><span class="badge b-done">passed locally</span> Website release hash, static build, and Astro diagnostics passed with 0 errors, warnings, or hints.</li>
   <li><span class="badge b-done">exact-head CI</span> Website clean lock installation, patched PostCSS 8.5.18 dependency audit, static build, Astro diagnostics, and release-artifact consistency passed in run <code>30133098809</code> with zero reported audit findings.</li>
@@ -56,8 +60,8 @@
 
 <h2><span class="sec">4</span>Active priorities</h2>
 <ol>
-  <li>Correct the focused blockers in issues 14 and 15, and keep issue 20 preserved as accepted for integration rather than merged behaviour.</li>
-  <li>Converge independently accepted candidates onto the latest verified main, then run the serialized Level B campaign.</li>
+  <li>Converge the independently accepted Issue #14, #15, and #20 histories on the latest verified main while preserving their reviewed contracts and recording every reconciliation.</li>
+  <li>After independent integration review accepts the combined candidate, run the serialized Level B campaign.</li>
   <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>

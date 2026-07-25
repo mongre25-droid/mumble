@@ -275,8 +275,15 @@ def test_word_aligned_transcription_keeps_timestamps_enabled():
 
 def test_cloud_empty_result_falls_back_to_local():
     app = _controller()
-    app._cloud_transcription_on = lambda: True
-    app._cloud_transcribe = lambda _audio: "  "
+    app.settings.values.update(
+        pro_mode=True,
+        local_only_mode=False,
+        transcription_mode="cloud",
+        cloud_transcription_provider="groq",
+        groq_api_key="FROZEN_TEST_KEY",
+    )
+    app._cloud_transcription_on = lambda _route: True
+    app._cloud_transcribe = lambda _audio, _snapshot: "  "
     app._local_transcribe = lambda _audio, want_words=False: "local result"
     assert app._transcribe(np.zeros(10, dtype=np.float32)) == "local result"
 

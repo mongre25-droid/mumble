@@ -20,6 +20,7 @@ import urllib.request
 import wave
 
 import numpy as np
+import processing_route
 
 SAMPLE_RATE = 16000
 
@@ -188,24 +189,25 @@ def _transcribe_json(info, key, model, wav, lang, timeout, prompt=None):
 
 
 # ---- Public API --------------------------------------------------------------
-def transcribe(audio, settings, language=None, timeout=30):
+def transcribe(audio, invocation_snapshot, timeout=30):
     """Transcribe float32 mono 16 kHz numpy array via the configured cloud provider."""
-    provider = (settings.get("cloud_transcription_provider", DEFAULT_PROVIDER)
-                or DEFAULT_PROVIDER).strip().lower()
+    invocation_snapshot = processing_route.require_speech_to_text(
+        invocation_snapshot
+    )
+    decision = invocation_snapshot.route
+    provider = decision.provider
     if provider not in PROVIDERS:
         raise ValueError(
             f"Unsupported cloud transcription provider: {provider or '(blank)'}. "
             "Choose Groq, OpenAI, or OpenRouter in Settings."
         )
     info = PROVIDERS[provider]
-    key = (settings.get(info["key_setting"], "") or "").strip()
+    key = decision.api_key
     if not key:
         raise ValueError(
             f"No API key set for cloud transcription ({provider}).")
-    model = ((settings.get(info["model_setting"], "") or "").strip()
-             or info["default_model"])
-    lang = (language if language is not None
-            else settings.get("language", "en")) or None
+    model = decision.model
+    lang = invocation_snapshot.primary_language or None
     lang = (lang or "").strip().lower() or None
     if lang and not (len(lang) == 2 and lang.isalpha()):
         lang = None
@@ -213,7 +215,7 @@ def transcribe(audio, settings, language=None, timeout=30):
     # uses as hotwords), capped to keep the prompt short. Sanitize to prevent
     # injection via special characters or excessive term length.
     from formatting import sanitize_hotwords
-    terms = sanitize_hotwords(settings.get("vocabulary_terms", []) or [])[:50]
+    terms = sanitize_hotwords(invocation_snapshot.vocabulary_terms)[:50]
     prompt = ", ".join(terms) if terms else None
     wav = pcm16_wav_bytes(audio)
     if info["shape"] == "json_base64":

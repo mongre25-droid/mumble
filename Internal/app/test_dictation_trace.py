@@ -153,7 +153,7 @@ def controller_capture_contract():
         controller._processing = False
         controller._pause_wake_word = lambda _lease: True
         controller._resume_wake_word = lambda _lease: None
-        controller._cloud_transcription_on = lambda: False
+        controller._cloud_transcription_on = lambda _route=None: False
         controller._set_state = lambda _state: None
         controller._tk_schedule = lambda fn, *args, **kwargs: fn(*args, **kwargs)
         controller._maybe_warm_ai = lambda: None
@@ -284,7 +284,7 @@ def completed_dictation_contract():
         controller._processing = False
         controller._pause_wake_word = lambda _lease: True
         controller._resume_wake_word = lambda _lease: None
-        controller._cloud_transcription_on = lambda: False
+        controller._cloud_transcription_on = lambda _route=None: False
         controller._set_state = lambda _state: None
         controller._tk_schedule = lambda fn, *args, **kwargs: fn(*args, **kwargs)
         controller._maybe_warm_ai = lambda: None
@@ -367,7 +367,11 @@ def cloud_inference_contract():
     class Settings:
         def get(self, key, default=None):
             values = {
+                "pro_mode": True,
+                "local_only_mode": False,
+                "transcription_mode": "cloud",
                 "cloud_transcription_provider": "groq",
+                "groq_api_key": "FROZEN_TRACE_KEY",
                 "language": "en",
             }
             return values.get(key, default)
