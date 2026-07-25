@@ -3060,20 +3060,62 @@ class Mumble:
                 operation_id)
             self._get_prepared_insertion_tombstones().remember(operation_id)
 
-    def _finalize_deck_insertion(self, operation_id, coordinator):
-        """Complete both Deck lifecycle registries and return any cleanup error."""
-        cleanup_error = None
-        if coordinator is not None:
-            try:
-                coordinator.abandon(operation_id)
-            except Exception as exc:
-                cleanup_error = exc
+    @staticmethod
+    def _record_insertion_cleanup_diagnostic(*, stage, category, outcome):
+        """Emit fixed, content-free lifecycle metadata only."""
+        print(
+            "insertion_cleanup",
+            "stage={}".format(stage),
+            "category={}".format(category),
+            "outcome={}".format(outcome),
+        )
+
+    def _attempt_insertion_cleanup(self, stage, action):
+        """Run one cleanup independently without changing insertion truth."""
         try:
-            self._retire_prepared_insertion(operation_id)
-        except Exception as exc:
-            if cleanup_error is None:
-                cleanup_error = exc
-        return cleanup_error
+            action()
+        except Exception:
+            try:
+                self._record_insertion_cleanup_diagnostic(
+                    stage=stage,
+                    category="lifecycle_cleanup",
+                    outcome="failed",
+                )
+            except Exception:
+                pass
+
+    def _finalize_insertion_lifecycle(
+            self, operation_id, coordinator, *, deck_operation,
+            clipboard_pause_attempted, content_kind):
+        """Apply one terminal-outcome precedence contract to text and image.
+
+        The caller's primary InsertionResult or exception is authoritative.
+        These independent cleanup attempts are diagnostic-only and never return
+        or raise insertion truth, so setup failures keep their existing meaning
+        and completed sends can never be relabelled or retried by cleanup.
+        """
+        if deck_operation:
+            if coordinator is not None:
+                self._attempt_insertion_cleanup(
+                    "coordinator_abandonment",
+                    lambda: coordinator.abandon(operation_id),
+                )
+            self._attempt_insertion_cleanup(
+                "prepared_binding_retirement",
+                lambda: self._retire_prepared_insertion(operation_id),
+            )
+        clipboard = getattr(self, "clipboard", None)
+        if clipboard is None or not clipboard_pause_attempted:
+            return
+        if content_kind == "text":
+            try:
+                clipboard._last_text = pyperclip.paste() or ""
+            except Exception:
+                pass
+        self._attempt_insertion_cleanup(
+            "clipboard_resume",
+            lambda: clipboard.resume(skip_current=True),
+        )
 
     def _abandon_prepared_insertion(self, operation_id):
         """Idempotently abandon a prepared action unless it already started."""
@@ -3171,6 +3213,7 @@ class Mumble:
         deck_operation = source in {"deck_history", "deck_image", "deck_job"}
         clipboard_pause_attempted = False
         coordinator = None
+        result = None
         try:
             self._ensure_insertion_transaction()
             lease = target_lease or self._make_insertion_lease(
@@ -3202,25 +3245,16 @@ class Mumble:
                     wait_ms=(time.perf_counter() - wait_started) * 1000.0,
                     operation_id=request.operation_id,
                 )
-                return coordinator.submit(request)
+                result = coordinator.submit(request)
         finally:
-            primary_error = sys.exc_info()[1]
-            cleanup_error = (self._finalize_deck_insertion(
-                operation_id, coordinator) if deck_operation else None)
-            if self.clipboard and clipboard_pause_attempted:
-                try:
-                    self.clipboard._last_text = pyperclip.paste() or ""
-                except Exception:
-                    pass
-                try:
-                    self.clipboard.resume(skip_current=True)
-                except Exception as exc:
-                    if cleanup_error is None:
-                        cleanup_error = exc
-            if cleanup_error is not None:
-                if primary_error is None:
-                    raise cleanup_error
-                print("insertion cleanup skipped:", type(cleanup_error).__name__)
+            self._finalize_insertion_lifecycle(
+                operation_id,
+                coordinator,
+                deck_operation=deck_operation,
+                clipboard_pause_attempted=clipboard_pause_attempted,
+                content_kind="text",
+            )
+        return result
 
     # ================================================================= hotkeys
     def on_hotkey(self):
@@ -3563,6 +3597,7 @@ class Mumble:
         deck_operation = source in {"deck_history", "deck_image", "deck_job"}
         clipboard_pause_attempted = False
         coordinator = None
+        result = None
         try:
             self._ensure_insertion_transaction()
             lease = target_lease or self._make_insertion_lease(
@@ -3588,21 +3623,16 @@ class Mumble:
                     wait_ms=(time.perf_counter() - wait_started) * 1000.0,
                     operation_id=request.operation_id,
                 )
-                return coordinator.submit(request)
+                result = coordinator.submit(request)
         finally:
-            primary_error = sys.exc_info()[1]
-            cleanup_error = (self._finalize_deck_insertion(
-                operation_id, coordinator) if deck_operation else None)
-            if self.clipboard and clipboard_pause_attempted:
-                try:
-                    self.clipboard.resume(skip_current=True)
-                except Exception as exc:
-                    if cleanup_error is None:
-                        cleanup_error = exc
-            if cleanup_error is not None:
-                if primary_error is None:
-                    raise cleanup_error
-                print("insertion cleanup skipped:", type(cleanup_error).__name__)
+            self._finalize_insertion_lifecycle(
+                operation_id,
+                coordinator,
+                deck_operation=deck_operation,
+                clipboard_pause_attempted=clipboard_pause_attempted,
+                content_kind="image",
+            )
+        return result
 
     # ---- the Mumble command channel (controller ⇄ web window) --------------
     # The web window runs as its own process; these two tiny localhost sockets

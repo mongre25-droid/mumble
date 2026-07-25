@@ -66,6 +66,104 @@ class InsertionCallerTests(unittest.TestCase):
         controller._maybe_island_tip = lambda *_args, **_kwargs: None
         return controller
 
+    def _cleanup_precedence_fixture(self, content_kind, outcome,
+                                    cleanup_seam, primary_error=None,
+                                    diagnostic_error=None):
+        """Build one controller-level text/image cleanup-failure scenario."""
+        controller, _active = self._prepared_controller()
+        current_id = operation_id(
+            "cleanup-{}-{}-{}-{}".format(
+                content_kind, outcome.value, cleanup_seam,
+                "exception" if primary_error is not None else "result"))
+        source = ("deck_history" if content_kind == "text"
+                  else "deck_image")
+        lease = controller._prepare_deck_insertion_lease(
+            current_id, source, ui_process_id=9999)
+        calls = []
+        diagnostics = []
+
+        class CleanupFailure(RuntimeError):
+            pass
+
+        cleanup_failure = CleanupFailure(
+            "PRIVATE_CALLER_CONTROLLED_CLEANUP_TEXT")
+        result = InsertionResult(
+            operation_id=current_id,
+            source=source,
+            outcome=outcome,
+            reason=outcome.value,
+            message="Authoritative insertion outcome.",
+            send_count=1,
+            native_requested=2,
+            native_accepted=(2 if outcome is InsertionOutcome.CONFIRMED
+                             else None),
+            target_lease=lease,
+        )
+
+        class Coordinator:
+            def prepare(self, _request):
+                calls.append("prepare")
+
+            def submit(self, _request):
+                calls.append("submit")
+                if primary_error is not None:
+                    raise primary_error
+                return result
+
+            def abandon(self, _operation_id):
+                calls.append("coordinator_abandonment")
+                if cleanup_seam == "coordinator_abandonment":
+                    raise cleanup_failure
+
+        class Clipboard:
+            def __init__(self):
+                self._last_text = ""
+
+            def pause(self):
+                calls.append("clipboard_pause")
+
+            def mark_own(self, _text):
+                return None
+
+            def resume(self, skip_current=False):
+                calls.append("clipboard_resume")
+                if cleanup_seam == "clipboard_resume":
+                    raise cleanup_failure
+
+        coordinator = Coordinator()
+        controller._insertion_transaction = object()
+        controller._insertion_coordinator = coordinator
+        controller._ensure_insertion_transaction = (
+            lambda: controller._insertion_transaction)
+        controller._paste_lock = threading.Lock()
+        controller._trace_mark = lambda *_args, **_kwargs: None
+        controller.clipboard = Clipboard()
+        original_retire = controller._retire_prepared_insertion
+
+        def retire(operation):
+            calls.append("prepared_binding_retirement")
+            if cleanup_seam == "prepared_binding_retirement":
+                raise cleanup_failure
+            return original_retire(operation)
+
+        def diagnostic(**fields):
+            calls.append("diagnostic")
+            if diagnostic_error is not None:
+                raise diagnostic_error
+            diagnostics.append(fields)
+
+        controller._retire_prepared_insertion = retire
+        controller._record_insertion_cleanup_diagnostic = diagnostic
+        if content_kind == "text":
+            action = lambda: controller._paste(
+                "PRIVATE_TRANSCRIPT_TEXT", source=source,
+                target_lease=lease, operation_id=current_id)
+        else:
+            action = lambda: controller._paste_image(
+                "PRIVATE_IMAGE_PATH.png", source=source,
+                target_lease=lease, operation_id=current_id)
+        return action, result, calls, diagnostics, cleanup_failure
+
     def test_delayed_finalization_keeps_the_stop_time_lease_and_operation(self):
         controller = self._delayed_controller()
         lease = TargetLease(TARGET_B, "dictation", "stop", False)
@@ -714,6 +812,140 @@ class InsertionCallerTests(unittest.TestCase):
                             current_id, source, ui_process_id=9999)
         finally:
             mumble.InsertionRequest = original_request
+
+    def test_cleanup_failures_preserve_every_sent_outcome_and_finish_other_cleanup(self):
+        outcomes = (
+            InsertionOutcome.CONFIRMED,
+            InsertionOutcome.SENT_UNCONFIRMED,
+            InsertionOutcome.UNCERTAIN,
+        )
+        cleanup_seams = (
+            "coordinator_abandonment",
+            "prepared_binding_retirement",
+            "clipboard_resume",
+        )
+        old_paste = mumble.pyperclip.paste
+        mumble.pyperclip.paste = lambda: ""
+        try:
+            for content_kind in ("text", "image"):
+                for cleanup_seam in cleanup_seams:
+                    for outcome in outcomes:
+                        with self.subTest(
+                                content_kind=content_kind,
+                                cleanup_seam=cleanup_seam,
+                                outcome=outcome.value):
+                            action, expected, calls, diagnostics, _failure = (
+                                self._cleanup_precedence_fixture(
+                                    content_kind, outcome, cleanup_seam))
+
+                            returned = action()
+                            response = returned.as_dict()
+
+                            self.assertIs(expected, returned)
+                            self.assertEqual(outcome.value, response["outcome"])
+                            self.assertEqual(
+                                outcome is InsertionOutcome.CONFIRMED,
+                                response["confirmed"])
+                            self.assertEqual(1, calls.count("submit"))
+                            for stage in cleanup_seams:
+                                self.assertEqual(1, calls.count(stage))
+                            self.assertEqual(1, calls.count("diagnostic"))
+                            self.assertEqual([{
+                                "stage": cleanup_seam,
+                                "category": "lifecycle_cleanup",
+                                "outcome": "failed",
+                            }], diagnostics)
+                            self.assertNotIn(
+                                "PRIVATE_", repr(diagnostics))
+        finally:
+            mumble.pyperclip.paste = old_paste
+
+    def test_cleanup_failures_preserve_primary_exception_identity_and_traceback(self):
+        class PrimaryFailure(RuntimeError):
+            pass
+
+        cleanup_seams = (
+            "coordinator_abandonment",
+            "prepared_binding_retirement",
+            "clipboard_resume",
+        )
+        old_paste = mumble.pyperclip.paste
+        mumble.pyperclip.paste = lambda: ""
+        try:
+            for content_kind in ("text", "image"):
+                for cleanup_seam in cleanup_seams:
+                    with self.subTest(
+                            content_kind=content_kind,
+                            cleanup_seam=cleanup_seam):
+                        primary = PrimaryFailure("PRIVATE_PRIMARY_TEXT")
+                        action, _result, calls, diagnostics, _failure = (
+                            self._cleanup_precedence_fixture(
+                                content_kind, InsertionOutcome.CONFIRMED,
+                                cleanup_seam, primary_error=primary))
+                        caught = None
+                        traceback_names = []
+
+                        try:
+                            action()
+                        except PrimaryFailure as exc:
+                            caught = exc
+                            cursor = exc.__traceback__
+                            while cursor is not None:
+                                traceback_names.append(
+                                    cursor.tb_frame.f_code.co_name)
+                                cursor = cursor.tb_next
+                        else:
+                            self.fail("primary insertion exception was lost")
+
+                        self.assertIs(primary, caught)
+                        self.assertIn("submit", traceback_names)
+                        self.assertEqual(1, calls.count("submit"))
+                        for stage in cleanup_seams:
+                            self.assertEqual(1, calls.count(stage))
+                        self.assertEqual([{
+                            "stage": cleanup_seam,
+                            "category": "lifecycle_cleanup",
+                            "outcome": "failed",
+                        }], diagnostics)
+                        self.assertNotIn("PRIVATE_", repr(diagnostics))
+        finally:
+            mumble.pyperclip.paste = old_paste
+
+    def test_cleanup_diagnostic_failure_cannot_replace_result_or_exception(self):
+        class DiagnosticFailure(RuntimeError):
+            pass
+
+        class PrimaryFailure(RuntimeError):
+            pass
+
+        old_paste = mumble.pyperclip.paste
+        mumble.pyperclip.paste = lambda: ""
+        try:
+            for content_kind in ("text", "image"):
+                for primary_kind in ("result", "exception"):
+                    with self.subTest(content_kind=content_kind,
+                                      primary_kind=primary_kind):
+                        primary = (PrimaryFailure("PRIVATE_PRIMARY_TEXT")
+                                   if primary_kind == "exception" else None)
+                        diagnostic = DiagnosticFailure(
+                            "PRIVATE_DIAGNOSTIC_TEXT")
+                        action, expected, calls, _diagnostics, _failure = (
+                            self._cleanup_precedence_fixture(
+                                content_kind, InsertionOutcome.CONFIRMED,
+                                "coordinator_abandonment",
+                                primary_error=primary,
+                                diagnostic_error=diagnostic))
+
+                        if primary is None:
+                            self.assertIs(expected, action())
+                        else:
+                            with self.assertRaises(PrimaryFailure) as caught:
+                                action()
+                            self.assertIs(primary, caught.exception)
+                        self.assertEqual(1, calls.count("submit"))
+                        self.assertEqual(1, calls.count("diagnostic"))
+        finally:
+            mumble.pyperclip.paste = old_paste
 
     def test_256_early_setup_failures_leave_capacity_recoverable(self):
         controller, _active = self._prepared_controller()
