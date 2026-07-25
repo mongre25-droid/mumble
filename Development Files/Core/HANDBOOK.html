@@ -19,7 +19,7 @@
 <div class="flow">
   <div class="flow-step"><div class="flow-node">1</div><div class="flow-body"><div class="ft">Orient</div><p>Read the current Core records and inspect the exact source and tests involved.</p></div></div>
   <div class="flow-step"><div class="flow-node">2</div><div class="flow-body"><div class="ft">Change</div><p>Make one bounded change. Keep runtime code, UI, tests, ports, and product claims consistent.</p></div></div>
-  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">Verify</div><p>Run the narrow checks first, then the isolated suite and packaging checks that match the risk.</p></div></div>
+  <div class="flow-step"><div class="flow-node">3</div><div class="flow-body"><div class="ft">Verify</div><p>Reach the evidence level required for this stage: focused confidence for an isolated candidate, combined evidence after candidates converge, and final acceptance before release.</p></div></div>
   <div class="flow-step"><div class="flow-node">4</div><div class="flow-body"><div class="ft">Record</div><p>Update STATUS for open work, HANDBOOK for procedure changes, README for product/layout changes, and LOGS for completed milestones.</p></div></div>
 </div>
 
@@ -35,8 +35,63 @@
 <h2><span class="sec">3</span>Privacy and safety boundaries</h2>
 <ul><li>Local transcription keeps recorded audio on the device unless Cloud transcription is selected.</li><li>Cloud processing receives text, not raw audio, unless the explicitly selected Cloud transcription path is being used.</li><li>Provider keys belong only in local settings and must never be committed or logged.</li><li>The local command channel is authenticated per session; do not replace it with unauthenticated control.</li><li>Paste must preserve the user's clipboard and modifier state when the operation completes or fails.</li></ul>
 
-<h2><span class="sec">4</span>Verification commands</h2>
-<p>Run these from <code>C:\Mumble</code>. They do not publish anything.</p>
+<h2><span class="sec">4</span>Risk-based evidence policy</h2>
+<p>Mumble uses three evidence levels. The aim is to run the smallest checks that can expose the likely defect during isolated work, then spend broader test time once several reviewed candidates have been brought together. Moving up a level adds evidence; it does not erase an earlier failure or turn an unavailable physical check into a pass.</p>
+
+<h3>Level A &mdash; Focused confidence</h3>
+<p>Level A is the normal target for one implementation, correction, or independent focused review. It is enough to decide whether an isolated candidate should be corrected or accepted for later convergence, but it is never full-product proof.</p>
+<ul>
+  <li>Add and run a red/green regression for the reported defect when feasible: first show that the check detects the old failure, then show that the candidate passes it.</li>
+  <li>Test the changed behaviour at its direct production boundary, plus one nearby caller or integration smoke check.</li>
+  <li>Check syntax, compilation or static validity for changed paths, inspect the candidate diff, and run clean-diff and whitespace checks.</li>
+  <li>Run one deterministic browser, native, or accessibility check only when that surface is directly relevant.</li>
+  <li><strong>Risk floor:</strong> privacy, security, credential authorization, clipboard or data-loss, migrations, installers, and destructive paths must always run their critical targeted safety checks. Small scope is not permission to omit them.</li>
+</ul>
+<blockquote><strong>Boundary:</strong> Level A can support an isolated task candidate and its independent review. It does not prove full regression safety, platform parity, packaging, physical use, exact-head CI, deployment, or release.</blockquote>
+
+<h3>Level B &mdash; Combined candidate</h3>
+<p>Level B begins after several independently accepted candidates are converged onto the latest verified <code>main</code>. It checks interactions that isolated work cannot prove.</p>
+<ul>
+  <li>Run one serialized trusted full suite per host, relevant integration/browser/native smokes, package membership and extraction checks, conflict-sensitive tests, and exact-head CI.</li>
+  <li>Never overlap two Mumble full runners on the same host.</li>
+  <li>Retain the first failure in machine-readable output. Do not rerun merely to obtain green; explain and investigate the earlier red result first.</li>
+  <li>Level B may support merge when the issue contract is satisfied. Physical use, owner acceptance, deployment, and release remain separate gates.</li>
+</ul>
+
+<h3>Level C &mdash; Final acceptance</h3>
+<p>Level C completes the feature and platform ledger before release. It covers real applications and hardware, Linux desktop matrices where available, physical macOS/signing/notarization gates where available, installers and lifecycle/update behaviour, performance, accessibility, security and licence evidence, plus deployment and release evidence.</p>
+<table><thead><tr><th>Machine</th><th>Final-campaign responsibility</th></tr></thead><tbody>
+  <tr><td>Windows PC</td><td>Focus, clipboard, hotkeys, microphone, UI, Office, Electron, real Windows applications, accessibility tools, and Windows packaging.</td></tr>
+  <tr><td>Linux VPS</td><td>Headless full suites, Linux packages, static/security/licence checks, deterministic builds, and long benchmarks.</td></tr>
+</tbody></table>
+<p>Duplicate only the highest-risk platform-neutral contracts across both machines. The Linux VPS does not prove Windows desktop behaviour, and neither machine proves physical macOS behaviour, signing, or notarization. Missing devices, owner decisions, credentials, or signing identities remain truthful blockers.</p>
+
+<h3>Evidence receipt for every issue or session handoff</h3>
+<p>Every issue or feature must keep a durable receipt so a later reviewer can see exactly what was and was not proved. Record:</p>
+<ul>
+  <li>the issue or feature name;</li>
+  <li>the exact candidate commit and its parent or base;</li>
+  <li>the evidence level achieved;</li>
+  <li>the host, platform, and relevant environment;</li>
+  <li>the exact focused checks and results;</li>
+  <li>failures, timeouts, and unavailable checks, including the retained first failure;</li>
+  <li>package, CI, and physical-test status;</li>
+  <li>untested gates and the next required evidence level; and</li>
+  <li>whether the candidate is isolated, accepted for convergence, merged to <code>main</code>, green in exact-head CI, physically accepted, deployed, or released.</li>
+</ul>
+<p>Detailed per-issue receipts belong in GitHub issue comments. <a href="STATUS.html">STATUS</a> is the compact programme ledger. <a href="LOGS.html">LOGS</a> records only meaningful completed milestones, not each test session.</p>
+
+<h3>Shared-resource scheduling</h3>
+<ul>
+  <li>Allow only one full Mumble runner per host. Before starting one, inspect running processes for another Mumble full runner and wait if one exists.</li>
+  <li>Serialize browser, native, clipboard, and focus tests on the Windows desktop because they compete for the same visible session and operating-system state.</li>
+  <li>Parallel sessions may read, inspect code, run isolated focused checks, or implement non-conflicting work.</li>
+  <li>Use test-owned temporary data. Do not connect tests to the live Mumble controller or a real provider.</li>
+  <li>Do not rerun an unexplained red check solely to obtain a green result.</li>
+</ul>
+
+<h3>Reference commands</h3>
+<p>Run only the command that matches the required evidence level. These examples run from <code>C:\Mumble</code> and do not publish anything.</p>
 <pre><code># Full isolated application suite with machine-readable evidence
 Internal\app\.venv\Scripts\python.exe Internal\app\run_tests.py --timeout 180 --json Internal\app\test-results.json --junit Internal\app\test-results.xml
 
@@ -56,7 +111,7 @@ npm run build
 npx astro check
 npm audit --audit-level=moderate</code></pre>
 <p>The runner discovers every matching module and chooses its execution protocol: pytest and unittest modules run through pytest so every collected case is counted; legacy procedural scripts run as one atomic module case because their internal checks do not expose a standard machine-readable count. A pytest/unittest module that collects zero cases fails. JSON records both module and case totals, while JUnit records each standard case for GitHub and other reporting tools.</p>
-<p>The test runner's result is evidence for the checked environment only. It does not prove physical hardware behaviour or a public release.</p>
+<p>A full runner belongs at Level B or Level C unless a critical Level A risk cannot be tested safely any other way. Every result is evidence for the checked environment only; it does not prove physical hardware behaviour or a public release.</p>
 
 <h2><span class="sec">5</span>Continuous integration evidence</h2>
 <p>The GitHub workflow runs security audits, application tests, website checks, platform packaging, and the Linux install lifecycle as independent jobs. Test JSON and JUnit are diagnostic artifacts and may be uploaded after failure. Package and website candidates are uploaded only by successful jobs. A candidate becomes <em>promotable</em> only in a manually started workflow where every required evidence job succeeds.</p>

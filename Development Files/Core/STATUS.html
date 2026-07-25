@@ -44,15 +44,26 @@
   <li><span class="badge b-gated">release gate</span> Signing, publisher identity, public release notes, and a tested rollback path.</li>
 </ul>
 
-<h2><span class="sec">3</span>Active priorities</h2>
+<h2><span class="sec">3</span>Programme evidence ledger</h2>
+<p>This compact ledger applies the three evidence levels in <a href="HANDBOOK.html">HANDBOOK</a>. GitHub issue comments contain the detailed receipts; an isolated candidate is not current product behaviour.</p>
+<table><thead><tr><th>Work item</th><th>Candidate/main state</th><th>Evidence level</th><th>Verified evidence</th><th>Remaining gate</th></tr></thead><tbody>
+  <tr><td><a href="https://github.com/mongre25-droid/mumble/issues/13">#13 CI truth</a></td><td>Merged on <code>main</code></td><td>Level B repository evidence</td><td>Exact-head CI passed for the merged work; later dependency drift was detected and repaired with another exact-head green run.</td><td>Physical and release gates remain separate.</td></tr>
+  <tr><td><a href="https://github.com/mongre25-droid/mumble/issues/14">#14 processing truth</a></td><td><code>f00c2842<wbr>7037b168<wbr>cc07e08c<wbr>7eb7f312<wbr>98ba59d2</code> isolated; independently reviewed; <strong>CORRECT FIRST</strong> and rejected for integration</td><td>Level A reviewed; correction required</td><td>Focused evidence closed the earlier device-only Cloud-STT bypass, Reader live-credential issue and device-only escapes, private snapshot leakage, Settings hydration controls, microphone ordering, route synchronization, and missing-package-module concern.</td><td>Correct authority scope across the exact feature/lane/provider/endpoint/privacy boundary; macOS/Linux mutable-vocabulary capture; Linux Anthropic/DeepSeek readiness versus captured inputs; the retained red stable-wording check and stale Core totals; and clean-checkout Windows package byte reproducibility across line endings. Level B is incomplete: one Windows run retained 76/77 modules and 293 cases with the wording assertion red, and compatibility matrices were not repeated. Run a focused third correction and fresh narrow review before convergence; physical platforms, CI, merge, deployment, and release remain open.</td></tr>
+  <tr><td><a href="https://github.com/mongre25-droid/mumble/issues/15">#15 reliable insertion</a></td><td><code>56e1d2b1<wbr>1bb5ae2b<wbr>ad5d049d<wbr>b1f6e261<wbr>ddf464cc</code> isolated; reviewed and rejected</td><td>Level A passed for prior fixes; candidate not accepted</td><td>Focused clipboard-restore, final-target, delayed-focus, Deck, trace-exclusion, compile/JavaScript/diff checks, and the 11-mode native fixture passed. Review then found target rebinding for one operation ID and caller-controlled IDs entering content-free traces.</td><td>Correct both focused blockers. Level B remains incomplete: the retained broad run was red for PromptHistory lost-writer behaviour and overlapped another runner, so investigate it during convergence rather than treating it as acceptance evidence.</td></tr>
+  <tr><td><a href="https://github.com/mongre25-droid/mumble/issues/20">#20 Focus Stage</a></td><td><code>88a73b9c<wbr>9991f671<wbr>ab7c2149<wbr>0ab59f4e<wbr>03f62050</code> independently accepted for integration</td><td>Level A accepted for convergence</td><td>Focused contracts and real-browser evidence covered 200% zoom, six-destination reflow, live-status mutation, screenshots, syntax, and package scope.</td><td>Combined full suite, physical display/accessibility, merge, exact-head CI, deployment, and release remain open.</td></tr>
+  <tr><td>Convergence baseline</td><td><code>main</code> at <code>34181f77<wbr>dbe9d8d4<wbr>0cfa3c58<wbr>8cd5387f<wbr>ba9e97ef</code> before candidate convergence</td><td>Level B not started for this combined candidate</td><td>The baseline and candidate commits are kept distinct; no unmerged candidate is described as product behaviour.</td><td>Converge only independently accepted candidates onto the latest verified main, then run one serialized Level B campaign per host.</td></tr>
+</tbody></table>
+
+<h2><span class="sec">4</span>Active priorities</h2>
 <ol>
-  <li>Work the implementation frontier in issues 14, 15, and 20: processing-route truth, target-bound insertion, and the production Focus Stage foundation.</li>
+  <li>Correct the focused blockers in issues 14 and 15, and keep issue 20 preserved as accepted for integration rather than merged behaviour.</li>
+  <li>Converge independently accepted candidates onto the latest verified main, then run the serialized Level B campaign.</li>
   <li>Keep the current Web UI, product website, campaign claims, and Core records aligned with the running source.</li>
   <li>Close the physical-device and clean-install gates before calling 0.95 ready for public release.</li>
   <li>Keep unresolved issues here with evidence and impact rather than allowing them to become invisible side notes.</li>
 </ol>
 
-<h2><span class="sec">4</span>Documentation boundary</h2>
+<h2><span class="sec">5</span>Documentation boundary</h2>
 <p>This page is the short present-state record. <a href="README.html">README</a> defines what Mumble is and how the project is organized. <a href="HANDBOOK.html">HANDBOOK</a> defines how to build and verify it. <a href="LOGS.html">LOGS</a> records completed milestones.</p>
 <blockquote><strong>Release truth:</strong> an updated source tree or a locally rebuilt ZIP is evidence of preparation, not evidence of a public release.</blockquote>
 
