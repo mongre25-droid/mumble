@@ -23,7 +23,7 @@ EXPECTED_DEFAULTS = {
 }
 
 
-def _openrouter_route():
+def _openrouter_route(model=GEMINI):
     return processing_route.snapshot(
         {
             "pro_mode": True,
@@ -34,6 +34,7 @@ def _openrouter_route():
         },
         feature="reader", lane="reader_speech",
         provider_override="openrouter",
+        model_override=model,
     )
 
 
@@ -83,7 +84,7 @@ def test_openrouter_payload_and_audio_contract(
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     audio, returned_type = impl.openrouter_tts(
         "Reader contract", "sk-or-test", model=model,
-        route_decision=_openrouter_route())
+        route_decision=_openrouter_route(model))
 
     assert captured["url"] == "https://openrouter.ai/api/v1/audio/speech"
     assert captured["payload"] == {
@@ -97,7 +98,7 @@ def test_openrouter_payload_and_audio_contract(
 
 
 @pytest.mark.parametrize("impl", IMPLEMENTATIONS)
-def test_intra_openrouter_fallback_uses_sibling_voice(monkeypatch, impl):
+def test_frozen_openrouter_model_does_not_fall_through_to_a_sibling(monkeypatch, impl):
     calls = []
 
     class OpenRouterRecorder:
@@ -129,20 +130,12 @@ def test_intra_openrouter_fallback_uses_sibling_voice(monkeypatch, impl):
         "fallback", model=GEMINI, provider_id="openrouter",
         route_decision=_openrouter_route())
 
-    assert calls[:2] == [
-        (GEMINI, "Fenrir"),
-        (VOXTRAL, "gb_oliver_neutral"),
-    ]
-    assert audio == b"sibling-audio"
-    assert content_type == "audio/mpeg"
+    assert calls == [(GEMINI, "Fenrir")]
+    assert audio is None
+    assert content_type is None
     assert meta == {
-        "ok": True,
-        "provider": "openrouter",
-        "model": VOXTRAL,
-        "voice": "gb_oliver_neutral",
-        "fallback": True,
-        "fallback_provider": "openrouter",
-        "fallback_model": VOXTRAL,
+        "ok": False,
+        "message": "preview model unavailable",
     }
 
 

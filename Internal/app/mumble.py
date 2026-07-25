@@ -98,7 +98,7 @@ from faster_whisper import WhisperModel
 print("[startup] transcription engine loaded", flush=True)
 from history import History
 from overlay import Island
-from settings import Settings, SEARCH_HOTKEY_DEFAULT
+from settings import Settings, SEARCH_HOTKEY_DEFAULT, TEXT_PROCESSING_PROVIDERS
 import meeting
 from prompt_history import PromptHistory
 from stats import Stats
@@ -2336,14 +2336,9 @@ class Mumble:
             ),
             "format_enabled": self.settings.get("format_enabled", True),
             "instant_text": self.settings.get("instant_text", True),
-            "cerebras_api_key": self.settings.get("cerebras_api_key", ""),
-            "cerebras_model": self.settings.get("cerebras_model", "gpt-oss-120b"),
-            "openrouter_api_key": self.settings.get("openrouter_api_key", ""),
-            "openrouter_model": self.settings.get(
-                "openrouter_model", "openai/gpt-oss-120b"
+            **processing_route.capture_text_provider_settings(
+                self.settings, supported_providers=TEXT_PROCESSING_PROVIDERS
             ),
-            "local_api_key": self.settings.get("local_api_key", ""),
-            "local_model": self.settings.get("local_model", "llama3"),
             "user_name": self.settings.get("user_name", ""),
             "prompt_prefs": copy.deepcopy(
                 self.settings.get("prompt_prefs", {}) or {}
@@ -3150,6 +3145,8 @@ class Mumble:
                         ai.cerebras_intent,
                         instruction, ctx_block, "", key, route_decision.model,
                         url=info["url"],
+                        expected_feature="deck",
+                        expected_lane="deck_reason",
                     )
                     raw_out = self._collect_text(gen)
                     if raw_out and raw_out.strip():
@@ -4586,7 +4583,7 @@ class Mumble:
         The key is MANDATORY and user-supplied — it lives in local settings.json only
         (never in source/git); there is no built-in/default key."""
         provider = (self.settings.get("llm_provider", "cerebras") or "").strip().lower()
-        if provider not in ("cerebras", "openrouter"):
+        if provider not in TEXT_PROCESSING_PROVIDERS:
             # Preserve an old/custom provider id on disk, but never reinterpret
             # it as Cerebras and send text with a different provider's key.
             return {
@@ -4621,7 +4618,7 @@ class Mumble:
     def set_llm_provider(self, provider, model="", key=None):
         """Switch the AI engine (Settings → AI Provider). Saves the provider,
         model and key, then returns (ok, message)."""
-        if provider not in ("cerebras", "openrouter"):
+        if provider not in TEXT_PROCESSING_PROVIDERS:
             return False, "Unknown provider."
         info = ai.PROVIDERS[provider]
         updates = {"llm_provider": provider}
@@ -4888,6 +4885,8 @@ class Mumble:
         prompt_cfg=None,
         invocation_snapshot=None,
         route_decision=None,
+        expected_feature=None,
+        expected_lane=None,
     ):
         """Send to the AI, routed by lane:
 
@@ -4920,6 +4919,12 @@ class Mumble:
             prefs = invocation_snapshot.prompt_prefs_dict()
             context = invocation_snapshot.context
             context_strict = invocation_snapshot.context_strict
+        actual_feature = (
+            mode_hint if mode_hint in {"prompt", "email", "reply"}
+            else "dictation"
+        )
+        if expected_feature != actual_feature or expected_lane != mode_hint:
+            raise processing_route.HostedRouteBlocked(route_decision)
         if cfg is None:
             cfg = self._ai_cfg()
         if prompt_cfg is None:
@@ -5228,6 +5233,11 @@ class Mumble:
                     cfg=cfg,
                     prompt_cfg=prompt_cfg,
                     invocation_snapshot=invocation_snapshot,
+                    expected_feature=(
+                        det_mode if det_mode in {"prompt", "email", "reply"}
+                        else "dictation"
+                    ),
+                    expected_lane=det_mode,
                 )
             except Exception as e:
                 print("auto mode re-run failed:", e)
@@ -5512,6 +5522,11 @@ class Mumble:
                     keyword_template=keyword_template, words=words,
                     window_words=window_words, cfg=cfg, prompt_cfg=prompt_cfg,
                     invocation_snapshot=invocation_snapshot,
+                    expected_feature=(
+                        det_mode if det_mode in {"prompt", "email", "reply"}
+                        else "dictation"
+                    ),
+                    expected_lane=det_mode,
                 )
                 if out and out.strip():
                     self._mark_llm_ok()

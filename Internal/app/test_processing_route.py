@@ -85,7 +85,12 @@ def test_final_provider_guard_proves_blocked_routes_make_zero_hosted_calls(overr
     )
 
     with pytest.raises(processing_route.HostedRouteBlocked) as exc:
-        processing_route.call_hosted(decision, lambda: calls.append("called"))
+        processing_route.call_hosted(
+            decision,
+            lambda **_kwargs: calls.append("called"),
+            expected_feature="deck",
+            expected_lane="deck_reason",
+        )
 
     assert decision.requested_route == "hosted"
     assert decision.effective_route == "local"
@@ -119,7 +124,8 @@ def test_selected_local_provider_remains_available_without_a_key_or_hosted_mode(
     assert decision.reason == "local_provider"
     assert decision.ready is True
     assert processing_route.call_provider(
-        decision, lambda **_kwargs: calls.append("local") or "ok"
+        decision, lambda **_kwargs: calls.append("local") or "ok",
+        expected_feature="meetings", expected_lane="meeting_summary",
     ) == "ok"
     assert calls == ["local"]
 
@@ -139,6 +145,8 @@ def test_snapshot_freezes_the_exact_provider_configuration_for_the_invocation():
         lambda *, provider, model, api_key, **_kwargs: calls.append(
             (provider, model, api_key)
         ) or "ok",
+        expected_feature="prompt",
+        expected_lane="prompt",
         provider=decision.provider,
         model=decision.model,
         api_key=decision.api_key,
@@ -333,6 +341,8 @@ def test_cloud_generate_uses_frozen_vocabulary_and_polish_preference(monkeypatch
         "Original User",
         mode_hint="text",
         invocation_snapshot=snapshot,
+        expected_feature="dictation",
+        expected_lane="text",
     )
 
     assert (mode, output) == ("text", "frozen polish")

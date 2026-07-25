@@ -669,7 +669,13 @@ def cerebras_polish(
     ~1100 words."""
     # Long plain dictation → chunked path, no second-opinion tails needed
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url))
+        route_decision,
+        expected_feature="dictation",
+        expected_lane="text",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
+    )
     if not second_opinion and len((raw or "").split()) >= 800:
         return _polish_long(
             raw, api_key, model, url, aggressiveness,
@@ -710,6 +716,8 @@ def cerebras_polish(
         reasoning_effort="low",
         max_tokens=1500,
         route_decision=route_decision,
+        expected_feature="dictation",
+        expected_lane="text",
     )
 
 
@@ -753,7 +761,12 @@ def _chat_capture(system, user, api_key, model, url, temperature=0.2,
     cleanly; the caller cleans once at the end."""
     url = _validate_http_url(url)
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url)
+        route_decision,
+        expected_feature="dictation",
+        expected_lane="text",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
     )
     if url == ANTHROPIC_URL:
         text, stop_reason = _anthropic_chat(system, user, api_key, model,
@@ -884,7 +897,13 @@ def polish_text(raw, api_key, model="gpt-oss-120b", url=CEREBRAS_URL,
     if not raw:
         return "", False
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url))
+        route_decision,
+        expected_feature="dictation",
+        expected_lane="text",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
+    )
     if len(raw.split()) <= max_words_per_chunk:
         return _polish_chunk(
             raw, api_key, model, url, aggressiveness,
@@ -930,7 +949,13 @@ def cerebras_foreign(
     languages to prioritise when resolving transliterations."""
     system = _lang_system(FOREIGN_SYSTEM)
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url))
+        route_decision,
+        expected_feature="dictation",
+        expected_lane="foreign",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
+    )
     langs = [str(l).strip() for l in (languages or []) if str(l).strip()]
     if langs:
         names = ", ".join(l.title() for l in langs)
@@ -957,6 +982,8 @@ def cerebras_foreign(
         max_tokens=32768,
         timeout=120,
         route_decision=route_decision,
+        expected_feature="dictation",
+        expected_lane="foreign",
     )
 
 
@@ -982,6 +1009,8 @@ def cerebras_intent(
     model="gpt-oss-120b",
     url=CEREBRAS_URL,
     route_decision=None,
+    expected_feature="deck",
+    expected_lane="deck_reason",
 ):
     """Context Island intent lane. The preset's FULL instruction string is the
     SYSTEM message — it is never transcribed and never appears in the pasted
@@ -994,8 +1023,16 @@ def cerebras_intent(
     out of max_tokens BEFORE the visible answer, which is why the old 8192
     budget came back empty on real material (and the caller then dumped the
     raw clipboard as a fallback — the 'context outputs the clipboard' bug)."""
+    if expected_feature != "deck" or expected_lane != "deck_reason":
+        raise processing_route.HostedRouteBlocked(route_decision)
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url))
+        route_decision,
+        expected_feature="deck",
+        expected_lane="deck_reason",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
+    )
     user = ""
     if context_block:
         user += ("===== MATERIAL (data to operate on — NOT speech to "
@@ -1034,6 +1071,8 @@ def cerebras_intent(
         max_tokens=32768,
         timeout=240,
         route_decision=route_decision,
+        expected_feature="deck",
+        expected_lane="deck_reason",
     )
 
 
@@ -1134,13 +1173,20 @@ def cerebras_chat(
     reasoning_effort=None,
     max_tokens=None,
     route_decision=None,
+    expected_feature=None,
+    expected_lane=None,
 ):
     """Non-streaming OpenAI-compatible chat. Single-turn, returns cleaned text.
     `reasoning_effort`/`max_tokens` as in cerebras_chat_stream.
     Anthropic routes through its native Messages API instead."""
     url = _validate_http_url(url)
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url)
+        route_decision,
+        expected_feature=expected_feature,
+        expected_lane=expected_lane,
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
     )
     if url == ANTHROPIC_URL:
         text, _stop_reason = _anthropic_chat(system, user, api_key, model,
@@ -1202,7 +1248,12 @@ def cerebras_warm(
     also primes any prompt-prefix cache for the real request. Returns True on success."""
     url = _validate_http_url(url)
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url)
+        route_decision,
+        expected_feature="prompt",
+        expected_lane="prompt",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
     )
     # Anthropic uses its NATIVE Messages API (x-api-key + anthropic-version,
     # top-level system + max_tokens). The OpenAI-shaped body + Bearer auth below
@@ -1259,6 +1310,8 @@ def cerebras_chat_stream(
     reasoning_effort=None,
     max_tokens=None,
     route_decision=None,
+    expected_feature=None,
+    expected_lane=None,
 ):
     """Streaming OpenAI-compatible chat — yields delta text chunks as they arrive.
     Final yield: FULL_MARKER+full_text so the caller can detect completion.
@@ -1271,7 +1324,12 @@ def cerebras_chat_stream(
     only delta.content (the user-facing answer) is streamed/kept."""
     url = _validate_http_url(url)
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url)
+        route_decision,
+        expected_feature=expected_feature,
+        expected_lane=expected_lane,
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
     )
     if url == ANTHROPIC_URL:
         # Anthropic: native Messages API, delivered as one chunk + marker.
@@ -1450,7 +1508,13 @@ def cerebras_text(
     """Dedicated, faithful text-cleanup (streaming). Low reasoning = quick; low
     temperature so it edits conservatively and never summarizes the speaker's words."""
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url))
+        route_decision,
+        expected_feature="dictation",
+        expected_lane="text",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
+    )
     user = "RAW TRANSCRIPT: " + (raw or "").strip()
     user += "\n\nClean it up faithfully now."
     return cerebras_chat_stream(
@@ -1463,6 +1527,8 @@ def cerebras_text(
         reasoning_effort="low",
         max_tokens=1024,
         route_decision=route_decision,
+        expected_feature="dictation",
+        expected_lane="text",
     )
 
 
@@ -1472,7 +1538,13 @@ def cerebras_email(
 ):
     """Dedicated email writer (streaming). High reasoning = takes its time on a mode."""
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url))
+        route_decision,
+        expected_feature="email",
+        expected_lane="email",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
+    )
     user = "DICTATED EMAIL REQUEST: " + (raw or "").strip()
     if (name or "").strip():
         user += "\n\nUSER NAME (use in the sign-off): " + name.strip()
@@ -1490,6 +1562,8 @@ def cerebras_email(
         max_tokens=32768,
         timeout=120,
         route_decision=route_decision,
+        expected_feature="email",
+        expected_lane="email",
     )
 
 
@@ -1499,7 +1573,13 @@ def cerebras_reply(
 ):
     """Dedicated reply writer (streaming). Uses conversation/clipboard context."""
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url))
+        route_decision,
+        expected_feature="reply",
+        expected_lane="reply",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
+    )
     user = ""
     if (context or "").strip():
         user += "MESSAGE BEING REPLIED TO:\n" + context.strip() + "\n\n"
@@ -1518,6 +1598,8 @@ def cerebras_reply(
         max_tokens=32768,
         timeout=120,
         route_decision=route_decision,
+        expected_feature="reply",
+        expected_lane="reply",
     )
 
 
@@ -1629,7 +1711,13 @@ def cerebras_prompt(
     """Dedicated prompt-engineering path (streaming). Sends the full Prompt Architect
     constitution to Cerebras, lightweight constitution to all other providers."""
     processing_route.require_text_shaping(
-        route_decision, expected_provider=_provider_for_url(url))
+        route_decision,
+        expected_feature="prompt",
+        expected_lane="prompt",
+        expected_provider=_provider_for_url(url),
+        api_key=api_key,
+        model=model,
+    )
     print(f"[prompt] constitution routing: {'CEREBRAS → full v5' if url == CEREBRAS_URL else 'non-CERE → lightweight'}")
     user = _prompt_user_msg(request, context, context_strict,
                             lightweight=(url != CEREBRAS_URL))
@@ -1655,6 +1743,8 @@ def cerebras_prompt(
         # (owner v9: don't let the Cerebras allowance slow other providers).
         timeout=720 if url == CEREBRAS_URL else 180,
         route_decision=route_decision,
+        expected_feature="prompt",
+        expected_lane="prompt",
     )
 
 
@@ -1866,7 +1956,8 @@ def _pcm_rate_from_ctype(ctype, default=_TTS_PCM_RATE):
 
 
 def openrouter_tts(text, api_key, model=None, voice=None,
-                   response_format=None, timeout=60, route_decision=None):
+                   response_format=None, timeout=60, route_decision=None,
+                   operation_lane="reader_speech"):
     """Synthesize `text` to speech through OpenRouter's OpenAI-compatible
     /audio/speech endpoint and return (audio_bytes, content_type). Raises on any
     failure (no key / bad model / bad voice / HTTP / network) so the caller can
@@ -1925,7 +2016,11 @@ def openrouter_tts(text, api_key, model=None, voice=None,
         "response_format": fmt,
     }
     processing_route.require_reader_speech(
-        route_decision, expected_provider="openrouter"
+        route_decision,
+        expected_lane=operation_lane,
+        expected_provider="openrouter",
+        api_key=key,
+        model=mid,
     )
     req = urllib.request.Request(
         OPENROUTER_TTS_URL, data=json.dumps(payload).encode("utf-8"), method="POST")
@@ -2030,12 +2125,15 @@ class TTSProvider:
         raise NotImplementedError
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60, route_decision=None):
+                   response_format=None, timeout=60, route_decision=None,
+                   operation_lane="reader_speech"):
         """Return (audio_bytes, content_type). Raise on failure (ValueError for
         bad args, RuntimeError for network/API failures). The caller surfaces
         the error to the user."""
         processing_route.require_reader_speech(
-            route_decision, expected_provider=self.provider_id
+            route_decision,
+            expected_lane=operation_lane,
+            expected_provider=self.provider_id,
         )
         raise NotImplementedError
 
@@ -2173,15 +2271,23 @@ class OpenRouterTTSProvider(TTSProvider):
         return voices
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60, route_decision=None):
+                   response_format=None, timeout=60, route_decision=None,
+                   operation_lane="reader_speech"):
         processing_route.require_reader_speech(
-            route_decision, expected_provider=self.provider_id
-        )
+            route_decision, expected_lane=operation_lane,
+            expected_provider=self.provider_id)
         key = route_decision.api_key
         if not key:
             raise ValueError(
                 "Add your OpenRouter API key in Settings to use the Reader.")
         mid = model or self.default_model
+        processing_route.require_reader_speech(
+            route_decision,
+            expected_lane=operation_lane,
+            expected_provider=self.provider_id,
+            api_key=key,
+            model=mid,
+        )
         # Voices are model-specific. Passing the provider-wide Gemini default
         # (`Fenrir`) to Voxtral or MAI makes an otherwise valid request fail.
         vc = voice_id or OPENROUTER_TTS_DEFAULT_VOICES.get(mid)
@@ -2189,7 +2295,8 @@ class OpenRouterTTSProvider(TTSProvider):
             text, key, model=mid,
             voice=vc,
             response_format=response_format, timeout=timeout,
-            route_decision=route_decision)
+            route_decision=route_decision,
+            operation_lane=operation_lane)
         return audio, ctype
 
 # ---------------------------------------------------------------------------
@@ -2235,10 +2342,11 @@ class OpenAITTSProvider(TTSProvider):
         return voices
 
     def synthesize(self, text, voice_id, model=None,
-                   response_format=None, timeout=60, route_decision=None):
+                   response_format=None, timeout=60, route_decision=None,
+                   operation_lane="reader_speech"):
         processing_route.require_reader_speech(
-            route_decision, expected_provider=self.provider_id
-        )
+            route_decision, expected_lane=operation_lane,
+            expected_provider=self.provider_id)
         key = route_decision.api_key
         if not key:
             raise ValueError(
@@ -2259,6 +2367,13 @@ class OpenAITTSProvider(TTSProvider):
             "voice": vc,
             "response_format": fmt,
         }
+        processing_route.require_reader_speech(
+            route_decision,
+            expected_lane=operation_lane,
+            expected_provider=self.provider_id,
+            api_key=key,
+            model=mid,
+        )
         try:
             req = urllib.request.Request(
                 OPENAI_TTS_URL,
@@ -2364,45 +2479,39 @@ def get_tts_defaults(provider_id=None):
 
 
 def synthesize_with_fallback(text, voice_id=None, model=None,
-                             provider_id=None, route_decision=None):
-    """Synthesize text-to-speech with same-provider model fallback.
+                             provider_id=None, route_decision=None,
+                             expected_feature="reader",
+                             expected_lane="reader_speech"):
+    """Synthesize text-to-speech with one exact frozen provider and model.
 
-    Tries the requested model first, then compatible models on the same frozen
-    provider. Returns (audio_bytes, content_type, meta) where
+    Attempts only the exact model frozen in the decision. Returns
+    (audio_bytes, content_type, meta) where
     meta is a dict with at least {"ok": True, "provider": str}. On total
     failure returns (None, None, {"ok": False, "message": str}).
 
     The caller is responsible for encoding the audio bytes (e.g. base64).
     This is a pure-ai function — no settings I/O — so it can be tested
     offline. webui_shell.py wraps it for the bridge."""
-    # Build a deterministic fallback order: requested provider, then the
-    # rest in a stable order so behaviour is predictable.
+    # Preserve the public helper name while enforcing one frozen attempt.
     ALL_IDS = ["openrouter", "openai"]
     requested = provider_id if provider_id in ALL_IDS else "openrouter"
+    if expected_feature != "reader":
+        raise processing_route.HostedRouteBlocked(route_decision)
     processing_route.require_reader_speech(
-        route_decision, expected_provider=requested
+        route_decision,
+        expected_lane=expected_lane,
+        expected_provider=requested,
+        api_key=route_decision.api_key,
+        model=model or route_decision.model,
     )
-    # One invocation authorizes one provider.  Model fallback remains available
-    # inside that provider, but a different service requires a new explicit
-    # decision rather than silently using another saved credential.
+    # One invocation authorizes one exact provider and model.
     prov_order = [requested]
 
-    # Expand each provider into the concrete (model, voice) attempts to try.
-    # For OpenRouter we walk the WHOLE TTS catalogue — the caller's model first,
-    # then the remaining ids — so one model's 400/404 (a deprecated/preview id)
-    # no longer dead-ends the Reader when the user has no second-provider key.
-    # (The old code made a single OpenRouter attempt and jumped straight to
-    # OpenAI — STATUS §3 "TTS fallback doesn't iterate the catalogue".) Models
-    # without a resolvable voice raise fast inside openrouter_tts and are skipped.
-    # Other providers get a single default attempt (their voices/models differ).
+    # Build the single concrete attempt authorized for this operation.
     attempts = []  # (provider_id, model, voice, is_primary)
     for i, pid in enumerate(prov_order):
         if pid == "openrouter":
-            catalogue = [m for (m, _label, _fmt) in OPENROUTER_TTS_MODELS]
-            if i == 0 and model:
-                ordered = [model] + [m for m in catalogue if m != model]
-            else:
-                ordered = catalogue
+            ordered = [model or route_decision.model]
             for j, m in enumerate(ordered):
                 primary = (i == 0 and j == 0)
                 # Only the very first attempt carries the caller's voice — a
@@ -2428,7 +2537,8 @@ def synthesize_with_fallback(text, voice_id=None, model=None,
                 effective_voice = getattr(p, "default_voice", None)
             audio, ctype = p.synthesize(
                 text, voice_id=effective_voice, model=effective_model,
-                route_decision=route_decision)
+                route_decision=route_decision,
+                operation_lane=expected_lane)
             meta = {"ok": True, "provider": pid,
                     "model": effective_model,
                     "voice": effective_voice}

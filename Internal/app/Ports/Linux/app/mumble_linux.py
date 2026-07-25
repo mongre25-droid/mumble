@@ -2385,7 +2385,8 @@ class Mumble:
                     gen = processing_route.call_provider(
                         route_decision, ai.cerebras_intent,
                         instruction, ctx_block, "", key, route_decision.model,
-                        url=info["url"]
+                        url=info["url"], expected_feature="deck",
+                        expected_lane="deck_reason",
                     )
                     raw_out = self._collect_text(gen)
                     if raw_out and raw_out.strip():
@@ -3687,6 +3688,8 @@ class Mumble:
         prompt_cfg=None,
         invocation_snapshot=None,
         route_decision=None,
+        expected_feature=None,
+        expected_lane=None,
     ):
         """Send to the AI, routed by lane:
 
@@ -3711,6 +3714,9 @@ class Mumble:
             prefs = invocation_snapshot.prompt_prefs_dict()
             context = invocation_snapshot.context
             context_strict = invocation_snapshot.context_strict
+        actual_feature = mode_hint if mode_hint in {"prompt", "email", "reply"} else "dictation"
+        if expected_feature != actual_feature or expected_lane != mode_hint:
+            raise processing_route.HostedRouteBlocked(route_decision)
         if cfg is None:
             cfg = self._ai_cfg()
         if prompt_cfg is None:
@@ -3960,6 +3966,10 @@ class Mumble:
                     cfg=cfg,
                     prompt_cfg=prompt_cfg,
                     invocation_snapshot=invocation_snapshot,
+                    expected_feature=(
+                        det_mode if det_mode in {"prompt", "email", "reply"}
+                        else "dictation"),
+                    expected_lane=det_mode,
                 )
             except Exception as e:
                 print("auto mode re-run failed:", e)
@@ -4459,6 +4469,10 @@ class Mumble:
                     cfg=cfg,
                     prompt_cfg=prompt_cfg,
                     invocation_snapshot=invocation_snapshot,
+                    expected_feature=(
+                        det_mode if det_mode in {"prompt", "email", "reply"}
+                        else "dictation"),
+                    expected_lane=det_mode,
                 )
                 if out and out.strip():
                     self._mark_llm_ok()

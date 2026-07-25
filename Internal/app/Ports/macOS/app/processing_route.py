@@ -13,6 +13,7 @@ from uuid import uuid4
 
 LOCAL = "local"
 HOSTED = "hosted"
+_UNSET = object()
 
 _PROVIDERS = {
     "cerebras": {
@@ -24,7 +25,7 @@ _PROVIDERS = {
     "openrouter": {
         "key_setting": "openrouter_api_key",
         "model_setting": "openrouter_model",
-        "default_model": "openai/gpt-oss-120b",
+        "default_model": "openai/gpt-5.4-mini",
         "endpoint_class": "openai_compatible",
     },
     "openai": {
@@ -42,7 +43,7 @@ _PROVIDERS = {
     "deepseek": {
         "key_setting": "deepseek_api_key",
         "model_setting": "deepseek_model",
-        "default_model": "deepseek-chat",
+        "default_model": "deepseek-v4-flash",
         "endpoint_class": "openai_compatible",
     },
     "groq": {
@@ -245,10 +246,14 @@ def _get(settings: Any, key: str, default: Any = None) -> Any:
     return settings.get(key, default)
 
 
-def capture_text_provider_settings(settings: Any) -> dict[str, Any]:
-    """Capture every supported text-provider key/model from one registry."""
-    captured: dict[str, Any] = {}
-    for provider_info in _PROVIDERS.values():
+def capture_text_provider_settings(
+    settings: Any, *, supported_providers: tuple[str, ...] | None = None
+) -> dict[str, Any]:
+    """Capture the exact provider contract used by one platform invocation."""
+    selected = tuple(supported_providers or _PROVIDERS)
+    captured: dict[str, Any] = {"_text_processing_providers": selected}
+    for provider in selected:
+        provider_info = _PROVIDERS[provider]
         key_setting = provider_info["key_setting"]
         model_setting = provider_info["model_setting"]
         captured[key_setting] = _get(settings, key_setting, "")
@@ -263,6 +268,7 @@ def snapshot(
     lane: str,
     provider_override: str | None = None,
     model_override: str | None = None,
+    supported_providers: tuple[str, ...] | None = None,
 ) -> RouteDecision:
     """Resolve and freeze the requested/effective route for one action."""
     speech_lane = feature == "reader" and lane in {
@@ -286,6 +292,11 @@ def snapshot(
             _get(settings, "llm_provider", "cerebras") or ""
         ).strip().lower()
         provider_info = _PROVIDERS.get(provider)
+        platform_contract = supported_providers
+        if platform_contract is None:
+            platform_contract = _get(settings, "_text_processing_providers", None)
+        if platform_contract is not None and provider not in platform_contract:
+            provider_info = None
     supported = provider_info is not None
     if supported:
         api_key = str(_get(settings, provider_info["key_setting"], "") or "").strip()
@@ -313,11 +324,11 @@ def snapshot(
     else:
         explicit_local = not speech_lane and (
             (feature == "dictation" and lane == "text" and instant_text)
-            or provider == "local"
+            or (provider == "local" and supported)
         )
     requested = LOCAL if explicit_local else HOSTED
 
-    if provider == "local":
+    if provider == "local" and supported:
         effective, reason, ready = LOCAL, "local_provider", True
     elif explicit_local:
         effective, reason, ready = LOCAL, (
@@ -445,30 +456,48 @@ def _require_provider_identity(
     return provider_info
 
 
-def _is_text_shaping_scope(decision: RouteDecision) -> bool:
-    """Return whether feature/lane names one supported text-shaping operation."""
-    if decision.feature in {"prompt", "email", "reply"}:
-        return decision.lane == decision.feature
-    if decision.feature == "reader":
-        return decision.lane == "reader_summary"
-    if decision.feature == "meetings":
-        return decision.lane in {"meeting_analysis", "meeting_summary"}
-    if decision.feature in {"dictation", "deck"}:
-        return bool(decision.lane) and decision.lane not in {
-            "speech_to_text", "reader_speech", "reader_speech_test",
-        }
-    return False
+def _require_exact_operation(
+    decision: RouteDecision, *, expected_feature: str, expected_lane: str
+) -> None:
+    """Bind authority to one exact product surface and operation."""
+    if (
+        not expected_feature
+        or not expected_lane
+        or decision.feature != expected_feature
+        or decision.lane != expected_lane
+    ):
+        raise HostedRouteBlocked(decision)
+
+
+def _require_frozen_transport(
+    decision: RouteDecision, *, api_key: Any = _UNSET, model: Any = _UNSET
+) -> None:
+    """Reject transport inputs that were replaced after the decision froze."""
+    if api_key is not _UNSET and str(api_key or "").strip() != decision.api_key:
+        raise HostedRouteBlocked(decision)
+    if model is not _UNSET and str(model or "").strip() != decision.model:
+        raise HostedRouteBlocked(decision)
 
 
 def require_text_shaping(
-    decision: RouteDecision, *, expected_provider: str | None = None
+    decision: RouteDecision,
+    *,
+    expected_feature: str,
+    expected_lane: str,
+    expected_provider: str | None = None,
+    api_key: Any = _UNSET,
+    model: Any = _UNSET,
 ) -> RouteDecision:
-    """Authorize only a text-shaping route at a text provider boundary."""
+    """Authorize one exact text operation with its frozen transport inputs."""
     _require_provider_identity(
         decision, providers=_PROVIDERS, expected_provider=expected_provider
     )
-    if not _is_text_shaping_scope(decision):
-        raise HostedRouteBlocked(decision)
+    _require_exact_operation(
+        decision,
+        expected_feature=expected_feature,
+        expected_lane=expected_lane,
+    )
+    _require_frozen_transport(decision, api_key=api_key, model=model)
     if decision.provider == "local":
         if (
             decision.requested_route != LOCAL
@@ -490,17 +519,23 @@ def require_text_shaping(
 
 
 def require_reader_speech(
-    decision: RouteDecision, *, expected_provider: str | None = None
+    decision: RouteDecision,
+    *,
+    expected_lane: str,
+    expected_provider: str | None = None,
+    api_key: Any = _UNSET,
+    model: Any = _UNSET,
 ) -> RouteDecision:
-    """Authorize only Reader speech or its explicit connection test."""
+    """Authorize ordinary Reader speech or its distinct connection test."""
     _require_provider_identity(
         decision, providers=_SPEECH_PROVIDERS, expected_provider=expected_provider
     )
-    if (
-        decision.feature != "reader"
-        or decision.lane not in {"reader_speech", "reader_speech_test"}
-    ):
+    if expected_lane not in {"reader_speech", "reader_speech_test"}:
         raise HostedRouteBlocked(decision)
+    _require_exact_operation(
+        decision, expected_feature="reader", expected_lane=expected_lane
+    )
+    _require_frozen_transport(decision, api_key=api_key, model=model)
     require_hosted(decision)
     if (
         decision.requested_route != HOSTED
@@ -514,16 +549,28 @@ def call_hosted(
     decision: RouteDecision,
     provider_call: Callable[..., Any],
     *args: Any,
+    expected_feature: str,
+    expected_lane: str,
     **kwargs: Any,
 ) -> Any:
-    """Guard then enter provider code without re-reading mutable settings."""
-    require_hosted(decision)
+    """Guard one exact hosted operation, then enter provider code."""
+    require_text_shaping(
+        decision,
+        expected_feature=expected_feature,
+        expected_lane=expected_lane,
+    )
     kwargs.setdefault("route_decision", decision)
+    kwargs.setdefault("expected_feature", expected_feature)
+    kwargs.setdefault("expected_lane", expected_lane)
     return provider_call(*args, **kwargs)
 
 
 def require_provider(
-    decision: RouteDecision, *, expected_provider: str | None = None
+    decision: RouteDecision,
+    *,
+    expected_feature: str,
+    expected_lane: str,
+    expected_provider: str | None = None,
 ) -> RouteDecision:
     """Authorize one frozen provider invocation at the final call seam.
 
@@ -533,18 +580,23 @@ def require_provider(
     """
     if not isinstance(decision, RouteDecision):
         raise TypeError("Provider calls require an explicit RouteDecision")
-    if decision.feature == "reader" and decision.lane in {
+    if expected_feature == "reader" and expected_lane in {
         "reader_speech", "reader_speech_test",
     }:
         return require_reader_speech(
-            decision, expected_provider=expected_provider
+            decision,
+            expected_lane=expected_lane,
+            expected_provider=expected_provider,
         )
-    if decision.feature == "dictation" and decision.lane == "speech_to_text":
+    if expected_feature == "dictation" and expected_lane == "speech_to_text":
         raise TypeError(
             "Cloud transcription requires an explicit ProcessingInputSnapshot"
         )
     return require_text_shaping(
-        decision, expected_provider=expected_provider
+        decision,
+        expected_feature=expected_feature,
+        expected_lane=expected_lane,
+        expected_provider=expected_provider,
     )
 
 
@@ -552,12 +604,21 @@ def call_provider(
     decision: RouteDecision,
     provider_call: Callable[..., Any],
     *args: Any,
+    expected_feature: str,
+    expected_lane: str,
     expected_provider: str | None = None,
     **kwargs: Any,
 ) -> Any:
     """Guard then invoke either the local endpoint or an allowed hosted one."""
-    require_provider(decision, expected_provider=expected_provider)
+    require_provider(
+        decision,
+        expected_feature=expected_feature,
+        expected_lane=expected_lane,
+        expected_provider=expected_provider,
+    )
     kwargs.setdefault("route_decision", decision)
+    kwargs.setdefault("expected_feature", expected_feature)
+    kwargs.setdefault("expected_lane", expected_lane)
     return provider_call(*args, **kwargs)
 
 
@@ -596,10 +657,18 @@ def require_transcription(
     return require_speech_to_text(invocation_snapshot)
 
 
-def settings_state(settings: Any) -> dict[str, Any]:
+def settings_state(
+    settings: Any, *, supported_providers: tuple[str, ...] | None = None
+) -> dict[str, Any]:
     """UI-safe saved/effective route facts from the same policy as actions."""
-    plain = snapshot(settings, feature="dictation", lane="text")
-    action = snapshot(settings, feature="prompt", lane="prompt")
+    plain = snapshot(
+        settings, feature="dictation", lane="text",
+        supported_providers=supported_providers,
+    )
+    action = snapshot(
+        settings, feature="prompt", lane="prompt",
+        supported_providers=supported_providers,
+    )
     return {
         "plain_processing": plain.public_dict(),
         "action_processing": action.public_dict(),

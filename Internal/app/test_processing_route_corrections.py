@@ -229,6 +229,86 @@ print(json.dumps(evidence))
             assert evidence[f"{provider}_{method}_blocked"] == "HostedRouteBlocked"
 
 
+@pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
+def test_modular_text_adapter_rejects_replaced_key_and_model_before_transport(
+    platform_app,
+):
+    script = r'''
+import importlib
+import json
+import sys
+
+sys.path.insert(0, sys.argv[1])
+ai = importlib.import_module("ai")
+route = importlib.import_module("processing_route")
+
+class Settings:
+    def get(self, key, default=None):
+        return {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "instant_text": False,
+            "llm_provider": "cerebras",
+            "cerebras_api_key": "FROZEN_MODULAR_TEXT_KEY_14F",
+            "cerebras_model": "FROZEN_MODULAR_TEXT_MODEL_14F",
+        }.get(key, default)
+
+decision = route.snapshot(Settings(), feature="prompt", lane="prompt")
+calls = []
+class Response:
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def read(self):
+        return b'{"choices":[{"message":{"content":"ok"}}]}'
+def urlopen(req, timeout=None):
+    calls.append(req.full_url)
+    return Response()
+ai.urllib.request.urlopen = urlopen
+
+def invoke(adapter, **kwargs):
+    before = len(calls)
+    error = None
+    rendered = ""
+    try:
+        adapter.chat(
+            [{"role": "user", "content": "private prompt"}],
+            route_decision=decision,
+            expected_feature="prompt",
+            expected_lane="prompt",
+            **kwargs,
+        )
+    except Exception as exc:
+        error = type(exc).__name__
+        rendered = repr(exc) + str(exc)
+    return {"calls": len(calls) - before, "error": error, "rendered": rendered}
+
+valid = invoke(ai.CerebrasProvider(
+    "FROZEN_MODULAR_TEXT_KEY_14F", model="FROZEN_MODULAR_TEXT_MODEL_14F"))
+mutated_key = invoke(ai.CerebrasProvider(
+    "MUTATED_MODULAR_TEXT_KEY_14F", model="FROZEN_MODULAR_TEXT_MODEL_14F"))
+mutated_model = invoke(ai.CerebrasProvider(
+    "FROZEN_MODULAR_TEXT_KEY_14F", model="FROZEN_MODULAR_TEXT_MODEL_14F"),
+    model="MUTATED_MODULAR_TEXT_MODEL_14F")
+print(json.dumps({
+    "valid": valid,
+    "mutated_key": mutated_key,
+    "mutated_model": mutated_model,
+}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app)],
+        capture_output=True, text=True, timeout=30, cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+    assert evidence["valid"] == {"calls": 1, "error": None, "rendered": ""}
+    for key in ("mutated_key", "mutated_model"):
+        assert evidence[key]["calls"] == 0
+        assert evidence[key]["error"] == "HostedRouteBlocked"
+        assert "FROZEN_MODULAR_TEXT_KEY_14F" not in evidence[key]["rendered"]
+        assert "MUTATED_MODULAR_TEXT_KEY_14F" not in evidence[key]["rendered"]
+
+
 @pytest.mark.parametrize(
     ("platform_app", "module_name"),
     ((PLATFORM_APP_DIRS[1], "mumble_mac"), (PLATFORM_APP_DIRS[2], "mumble_linux")),
@@ -1053,8 +1133,178 @@ print(json.dumps({
     assert "MUTATED_MODULAR_LIVE_KEY_14D" not in rendered
 
 
+def test_each_text_operation_authorizes_only_itself():
+    operations = (
+        ("dictation", "text"),
+        ("dictation", "foreign"),
+        ("prompt", "prompt"),
+        ("email", "email"),
+        ("reply", "reply"),
+        ("deck", "deck_reason"),
+        ("meetings", "meeting_analysis"),
+        ("reader", "reader_summary"),
+    )
+    decisions = {
+        operation: processing_route.snapshot(
+            MemorySettings(), feature=operation[0], lane=operation[1]
+        )
+        for operation in operations
+    }
+
+    for authority, decision in decisions.items():
+        for expected in operations:
+            if authority == expected:
+                assert processing_route.require_text_shaping(
+                    decision,
+                    expected_feature=expected[0],
+                    expected_lane=expected[1],
+                    expected_provider=decision.provider,
+                    api_key=decision.api_key,
+                    model=decision.model,
+                ) is decision
+            else:
+                with pytest.raises(processing_route.HostedRouteBlocked):
+                    processing_route.require_text_shaping(
+                        decision,
+                        expected_feature=expected[0],
+                        expected_lane=expected[1],
+                        expected_provider=decision.provider,
+                        api_key=decision.api_key,
+                        model=decision.model,
+                    )
+
+
+def test_windows_processing_provider_truth_matrix_matches_every_registry_provider(
+    monkeypatch,
+):
+    import ai
+    import mumble
+
+    supported = ("cerebras", "openrouter")
+    html = (APP_DIR / "webui" / "index.html").read_text(encoding="utf-8")
+    provider_options = html.split('id="set-provider"', 1)[1].split(
+        "</select>", 1
+    )[0]
+    selectable = {
+        provider
+        for provider in ai.PROVIDERS
+        if f'<option value="{provider}"' in provider_options
+    }
+    assert selectable == set(supported)
+    controller_source = (APP_DIR / "mumble.py").read_text(encoding="utf-8")
+    assert "capture_text_provider_settings(\n                self.settings, supported" in controller_source
+
+    calls = []
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self):
+            return b'{"choices":[{"message":{"content":"ok"}}]}'
+
+    monkeypatch.setattr(
+        ai.urllib.request,
+        "urlopen",
+        lambda req, timeout=None: calls.append(req.full_url) or Response(),
+    )
+
+    matrix = {}
+    for provider, info in ai.PROVIDERS.items():
+        frozen_key = f"FROZEN_{provider.upper()}_PROCESSING_KEY_14F"
+        frozen_model = f"FROZEN_{provider.upper()}_PROCESSING_MODEL_14F"
+        saved = MemorySettings(
+            llm_provider=provider,
+            **{
+                info["key_setting"]: frozen_key,
+                info["model_setting"]: frozen_model,
+            },
+        )
+        captured = processing_route.capture_text_provider_settings(
+            saved, supported_providers=supported
+        )
+        captured.update(saved.values)
+        invocation = processing_route.snapshot(
+            MemorySettings(**captured), feature="prompt", lane="prompt"
+        )
+        settings_fact = processing_route.settings_state(
+            saved, supported_providers=supported
+        )["action_processing"]
+
+        app = mumble.Mumble.__new__(mumble.Mumble)
+        app.settings = saved
+        controller = app._ai_cfg()
+        before = len(calls)
+        error = None
+        try:
+            ai.cerebras_chat(
+                "system", "private prompt", invocation.api_key,
+                model=invocation.model, url=info["url"],
+                route_decision=invocation,
+                expected_feature="prompt", expected_lane="prompt",
+            )
+        except Exception as exc:
+            error = type(exc).__name__
+
+        matrix[provider] = {
+            "saved": provider,
+            "selectable": provider in selectable,
+            "supported": invocation.provider_supported,
+            "ready": invocation.ready,
+            "reason": invocation.reason,
+            "key": invocation.api_key,
+            "model": invocation.model,
+            "settings_supported": settings_fact["provider_supported"],
+            "settings_ready": settings_fact["ready"],
+            "controller_supported": controller["supported"],
+            "controller_key": controller["key"],
+            "controller_model": controller["model"],
+            "calls": len(calls) - before,
+            "error": error,
+        }
+
+        missing = MemorySettings(
+            llm_provider=provider,
+            **{info["key_setting"]: "", info["model_setting"]: frozen_model},
+        )
+        missing_fact = processing_route.settings_state(
+            missing, supported_providers=supported
+        )["action_processing"]
+        if provider in supported:
+            assert missing_fact["reason"] == "missing_key"
+            assert missing_fact["ready"] is False
+        else:
+            assert missing_fact["reason"] == "unsupported_provider"
+            assert missing_fact["ready"] is False
+
+    for provider, facts in matrix.items():
+        if provider in supported:
+            assert facts == {
+                "saved": provider, "selectable": True,
+                "supported": True, "ready": True, "reason": "ready",
+                "key": f"FROZEN_{provider.upper()}_PROCESSING_KEY_14F",
+                "model": f"FROZEN_{provider.upper()}_PROCESSING_MODEL_14F",
+                "settings_supported": True, "settings_ready": True,
+                "controller_supported": True,
+                "controller_key": f"FROZEN_{provider.upper()}_PROCESSING_KEY_14F",
+                "controller_model": f"FROZEN_{provider.upper()}_PROCESSING_MODEL_14F",
+                "calls": 1, "error": None,
+            }
+        else:
+            assert facts == {
+                "saved": provider, "selectable": False,
+                "supported": False, "ready": False,
+                "reason": "unsupported_provider", "key": "", "model": "",
+                "settings_supported": False, "settings_ready": False,
+                "controller_supported": False, "controller_key": "",
+                "controller_model": "", "calls": 0,
+                "error": "HostedRouteBlocked",
+            }
+
+
 @pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
-def test_final_adapters_reject_authority_for_another_operation_or_endpoint(platform_app):
+def test_exact_operation_and_frozen_transport_authority_is_enforced_at_final_adapters(
+    platform_app,
+):
     script = r'''
 from dataclasses import replace
 import importlib
@@ -1065,6 +1315,7 @@ import numpy as np
 
 sys.path.insert(0, sys.argv[1])
 route = importlib.import_module("processing_route")
+ai = importlib.import_module("ai")
 tts = importlib.import_module("ai.tts_providers")
 tx = importlib.import_module("transcription")
 
@@ -1074,7 +1325,9 @@ class Settings:
             "pro_mode": True,
             "local_only_mode": False,
             "instant_text": False,
-            "llm_provider": "openrouter",
+            "llm_provider": "cerebras",
+            "cerebras_api_key": "FROZEN_TEXT_KEY_14F",
+            "cerebras_model": "FROZEN_TEXT_MODEL_14F",
             "openrouter_api_key": "FROZEN_SHARED_KEY_14E",
             "openrouter_model": "openai/gpt-oss-120b",
             "reader_tts_provider": "openrouter",
@@ -1088,30 +1341,63 @@ class Settings:
         }.get(key, default)
 
 settings = Settings()
+text_transport = []
 speech_transport = []
 stt_transport = []
 
-def speech_recorder(_text, api_key, **kwargs):
-    speech_transport.append({
-        "key": api_key,
-        "provider": kwargs["route_decision"].provider,
-        "endpoint": kwargs["route_decision"].endpoint_class,
-    })
-    return b"audio", "audio/mpeg"
+class Response:
+    headers = {"Content-Type": "audio/mpeg"}
+    def __init__(self, url):
+        self.url = url
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def __iter__(self):
+        yield b'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n'
+        yield b'data: [DONE]\n'
+    def read(self):
+        if "/audio/speech" in self.url:
+            return b"audio"
+        return b'{"choices":[{"message":{"content":"ok"}}]}'
+
+def urlopen(req, timeout=None):
+    url = getattr(req, "full_url", "")
+    payload = json.loads((getattr(req, "data", None) or b"{}").decode("utf-8"))
+    auth = req.get_header("Authorization") or ""
+    call = {
+        "key": auth.split(" ", 1)[1] if " " in auth else auth,
+        "model": payload.get("model"),
+        "url": url,
+    }
+    if "/audio/speech" in url:
+        speech_transport.append(call)
+    else:
+        text_transport.append(call)
+    return Response(url)
 
 def stt_recorder(_info, key, model, _wav, _language, _timeout, prompt=None):
     stt_transport.append({"key": key, "model": model, "prompt": prompt})
     return "transcript"
 
-tts.openrouter_tts = speech_recorder
+ai.urllib.request.urlopen = urlopen
+tts.urllib.request.urlopen = urlopen
 tx._transcribe_multipart = stt_recorder
 speech_adapter = tts.OpenRouterTTSProvider()
 
 prompt_authority = route.snapshot(settings, feature="prompt", lane="prompt")
+email_authority = route.snapshot(settings, feature="email", lane="email")
+reply_authority = route.snapshot(settings, feature="reply", lane="reply")
+deck_authority = route.snapshot(settings, feature="deck", lane="deck_reason")
 speech_authority = route.snapshot(
     settings,
     feature="reader",
     lane="reader_speech",
+    provider_override="openrouter",
+    model_override="google/gemini-3.1-flash-tts-preview",
+)
+speech_test_authority = route.snapshot(
+    settings,
+    feature="reader",
+    lane="reader_speech_test",
     provider_override="openrouter",
     model_override="google/gemini-3.1-flash-tts-preview",
 )
@@ -1126,13 +1412,105 @@ wrong_endpoint_authority = replace(
 def invoke(call, transport):
     before = len(transport)
     error = None
+    rendered = ""
     try:
         call()
     except Exception as exc:
         error = type(exc).__name__
-    return {"calls": len(transport) - before, "error": error}
+        rendered = repr(exc) + str(exc)
+    return {"calls": len(transport) - before, "error": error, "rendered": rendered}
+
+def collect(generator):
+    return list(generator)
 
 evidence = {
+    "prompt_at_email": invoke(
+        lambda: collect(ai.cerebras_email(
+            "private email", "", prompt_authority.api_key,
+            model=prompt_authority.model, url=ai.CEREBRAS_URL,
+            route_decision=prompt_authority,
+        )),
+        text_transport,
+    ),
+    "prompt_at_reply": invoke(
+        lambda: collect(ai.cerebras_reply(
+            "private reply", "", prompt_authority.api_key,
+            model=prompt_authority.model, url=ai.CEREBRAS_URL,
+            route_decision=prompt_authority,
+        )),
+        text_transport,
+    ),
+    "prompt_at_deck": invoke(
+        lambda: collect(ai.cerebras_intent(
+            "summarize", "private deck material", "",
+            prompt_authority.api_key, prompt_authority.model,
+            url=ai.CEREBRAS_URL, route_decision=prompt_authority,
+            expected_feature="prompt", expected_lane="prompt",
+        )),
+        text_transport,
+    ),
+    "scoped_email": invoke(
+        lambda: collect(ai.cerebras_email(
+            "private email", "", email_authority.api_key,
+            model=email_authority.model, url=ai.CEREBRAS_URL,
+            route_decision=email_authority,
+        )),
+        text_transport,
+    ),
+    "scoped_reply": invoke(
+        lambda: collect(ai.cerebras_reply(
+            "private reply", "", reply_authority.api_key,
+            model=reply_authority.model, url=ai.CEREBRAS_URL,
+            route_decision=reply_authority,
+        )),
+        text_transport,
+    ),
+    "scoped_deck": invoke(
+        lambda: collect(ai.cerebras_intent(
+            "summarize", "private deck material", "",
+            deck_authority.api_key, deck_authority.model,
+            url=ai.CEREBRAS_URL, route_decision=deck_authority,
+        )),
+        text_transport,
+    ),
+    "mutated_text_inputs": invoke(
+        lambda: ai.cerebras_chat(
+            "system", "private prompt", "MUTATED_TEXT_KEY_14F",
+            model="MUTATED_TEXT_MODEL_14F", url=ai.CEREBRAS_URL,
+            route_decision=prompt_authority,
+            expected_feature="prompt", expected_lane="prompt",
+        ),
+        text_transport,
+    ),
+    "speech_test_at_ordinary_speech": invoke(
+        lambda: speech_adapter.synthesize(
+            "private reader text",
+            "Fenrir",
+            model="google/gemini-3.1-flash-tts-preview",
+            route_decision=speech_test_authority,
+        ),
+        speech_transport,
+    ),
+    "ordinary_speech_at_speech_test": invoke(
+        lambda: speech_adapter.synthesize(
+            "private reader test text",
+            "Fenrir",
+            model="google/gemini-3.1-flash-tts-preview",
+            route_decision=speech_authority,
+            operation_lane="reader_speech_test",
+        ),
+        speech_transport,
+    ),
+    "mutated_speech_inputs": invoke(
+        lambda: tts.openrouter_tts(
+            "private reader text",
+            "MUTATED_READER_KEY_14F",
+            model="mistralai/voxtral-mini-tts-2603",
+            voice="gb_oliver_neutral",
+            route_decision=speech_authority,
+        ),
+        speech_transport,
+    ),
     "prompt_at_speech": invoke(
         lambda: speech_adapter.synthesize(
             "private reader text",
@@ -1155,6 +1533,16 @@ evidence = {
         ),
         speech_transport,
     ),
+    "scoped_speech_test": invoke(
+        lambda: speech_adapter.synthesize(
+            "non-private test phrase",
+            "Fenrir",
+            model="google/gemini-3.1-flash-tts-preview",
+            route_decision=speech_test_authority,
+            operation_lane="reader_speech_test",
+        ),
+        speech_transport,
+    ),
     "scoped_stt": invoke(
         lambda: tx.transcribe(np.zeros(8, dtype=np.float32), stt_authority),
         stt_transport,
@@ -1162,6 +1550,7 @@ evidence = {
 }
 print(json.dumps({
     "evidence": evidence,
+    "text_transport": text_transport,
     "speech_transport": speech_transport,
     "stt_transport": stt_transport,
 }))
@@ -1172,28 +1561,48 @@ print(json.dumps({
     )
     assert result.returncode == 0, result.stderr or result.stdout
     receipt = json.loads(result.stdout.strip().splitlines()[-1])
-    assert receipt["evidence"]["prompt_at_speech"] == {
-        "calls": 0, "error": "HostedRouteBlocked",
-    }
-    assert receipt["evidence"]["wrong_stt_endpoint"] == {
-        "calls": 0, "error": "HostedRouteBlocked",
-    }
+    for key in (
+        "prompt_at_email", "prompt_at_reply", "prompt_at_deck",
+        "mutated_text_inputs", "speech_test_at_ordinary_speech",
+        "ordinary_speech_at_speech_test",
+        "mutated_speech_inputs", "prompt_at_speech", "wrong_stt_endpoint",
+    ):
+        assert receipt["evidence"][key]["calls"] == 0, (key, receipt)
+        assert receipt["evidence"][key]["error"] == "HostedRouteBlocked", (
+            key, receipt
+        )
+    for key in ("scoped_email", "scoped_reply", "scoped_deck"):
+        assert receipt["evidence"][key] == {
+            "calls": 1, "error": None, "rendered": "",
+        }
     assert receipt["evidence"]["scoped_speech"] == {
-        "calls": 1, "error": None,
+        "calls": 1, "error": None, "rendered": "",
+    }
+    assert receipt["evidence"]["scoped_speech_test"] == {
+        "calls": 1, "error": None, "rendered": "",
     }
     assert receipt["evidence"]["scoped_stt"] == {
-        "calls": 1, "error": None,
+        "calls": 1, "error": None, "rendered": "",
     }
-    assert receipt["speech_transport"] == [{
-        "key": "FROZEN_SHARED_KEY_14E",
-        "provider": "openrouter",
-        "endpoint": "openrouter_speech",
-    }]
+    assert len(receipt["text_transport"]) == 3
+    assert len(receipt["speech_transport"]) == 2
+    assert receipt["speech_transport"][0]["key"] == "FROZEN_SHARED_KEY_14E"
+    assert receipt["speech_transport"][0]["model"] == "google/gemini-3.1-flash-tts-preview"
+    assert receipt["speech_transport"][1] == receipt["speech_transport"][0]
     assert receipt["stt_transport"] == [{
         "key": "FROZEN_STT_KEY_14E",
         "model": "FROZEN_STT_MODEL_14E",
         "prompt": "Frozen Term 14E",
     }]
+    rendered = json.dumps(receipt["evidence"])
+    for private_value in (
+        "FROZEN_TEXT_KEY_14F", "MUTATED_TEXT_KEY_14F",
+        "FROZEN_TEXT_MODEL_14F", "MUTATED_TEXT_MODEL_14F",
+        "FROZEN_SHARED_KEY_14E", "MUTATED_READER_KEY_14F",
+        "mistralai/voxtral-mini-tts-2603",
+        "FROZEN_STT_KEY_14E",
+    ):
+        assert private_value not in rendered
 
 
 @pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))

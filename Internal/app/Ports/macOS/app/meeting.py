@@ -877,7 +877,8 @@ def _analysis_call(context, system, user, max_tokens, timeout):
     return processing_route.call_provider(
         decision, ai_module.cerebras_chat,
         system, user, decision.api_key, model=decision.model, url=info.get("url"),
-        max_tokens=max_tokens, timeout=timeout)
+        max_tokens=max_tokens, timeout=timeout,
+        expected_feature=decision.feature, expected_lane=decision.lane)
 
 
 def _dedupe_strings(items):

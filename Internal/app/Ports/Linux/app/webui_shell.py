@@ -447,6 +447,7 @@ class Api:
             audio, ctype, meta = processing_route.call_provider(
                 decision, ai.synthesize_with_fallback, text,
                 voice_id=voice, model=decision.model, provider_id=decision.provider,
+                expected_feature="reader", expected_lane="reader_speech",
                 expected_provider=decision.provider)
             if not meta.get("ok"):
                 return {"ok": False, "message": meta.get("message", "TTS failed.")}
@@ -488,6 +489,7 @@ class Api:
             audio, ctype, meta = processing_route.call_provider(
                 decision, ai.synthesize_with_fallback, test_phrase,
                 voice_id=voice, model=decision.model, provider_id=decision.provider,
+                expected_feature="reader", expected_lane="reader_speech_test",
                 expected_provider=decision.provider)
             if not meta.get("ok"):
                 return {"ok": False, "message": meta.get("message", "TTS test failed.")}
@@ -841,6 +843,7 @@ class Api:
                 system, user, decision.api_key,
                 model=decision.model, url=info.get("url"),
                 max_tokens=out_budget, timeout=t_out,
+                expected_feature="reader", expected_lane="reader_summary",
             )
             summary = (summary or "").strip()
             if not summary:

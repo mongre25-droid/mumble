@@ -1017,6 +1017,8 @@ def _analysis_call(context, system, user, max_tokens, timeout):
         system, user, decision.api_key,
         model=decision.model, url=info.get("url"),
         max_tokens=max_tokens, timeout=timeout,
+        expected_feature=decision.feature,
+        expected_lane=decision.lane,
     )
 
 

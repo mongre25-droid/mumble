@@ -17,10 +17,17 @@ def _guard_provider_method(method):
         @wraps(method)
         def guarded_stream(self, *args, **kwargs):
             decision = kwargs.pop("route_decision", None)
+            expected_feature = kwargs.pop("expected_feature", None)
+            expected_lane = kwargs.pop("expected_lane", None)
 
             def generate():
+                info = self.model_info
                 processing_route.require_text_shaping(
-                    decision, expected_provider=self.model_info.get("provider"))
+                    decision, expected_feature=expected_feature,
+                    expected_lane=expected_lane,
+                    expected_provider=info.get("provider"),
+                    api_key=getattr(self, "_api_key", ""),
+                    model=kwargs.get("model", info.get("model")))
                 yield from method(self, *args, **kwargs)
 
             return generate()
@@ -29,8 +36,15 @@ def _guard_provider_method(method):
     @wraps(method)
     def guarded(self, *args, **kwargs):
         decision = kwargs.pop("route_decision", None)
+        expected_feature = kwargs.pop("expected_feature", None)
+        expected_lane = kwargs.pop("expected_lane", None)
+        info = self.model_info
         processing_route.require_text_shaping(
-            decision, expected_provider=self.model_info.get("provider"))
+            decision, expected_feature=expected_feature,
+            expected_lane=expected_lane,
+            expected_provider=info.get("provider"),
+            api_key=getattr(self, "_api_key", ""),
+            model=kwargs.get("model", info.get("model")))
         return method(self, *args, **kwargs)
     return guarded
 

@@ -46,6 +46,7 @@ from prompt_history import PromptHistory  # noqa: E402
 from settings import (  # noqa: E402
     SEARCH_HOTKEY_DEFAULT,
     Settings,
+    TEXT_PROCESSING_PROVIDERS,
     validate_setting_value,
 )
 from stats import Stats  # noqa: E402
@@ -397,7 +398,7 @@ class Api:
         it, so the Settings UI can offer a dropdown instead of free-text entry
         (owner v9). Returns {ok, models, message}; never raises into the bridge."""
         provider = (provider or "").strip().lower()
-        if provider not in ("cerebras", "openrouter"):
+        if provider not in TEXT_PROCESSING_PROVIDERS:
             return {"ok": False, "models": [], "message": "Unsupported processing provider."}
         prov = ai.PROVIDERS.get(provider)
         key_setting = prov.get("key_setting") if prov else None
@@ -530,6 +531,7 @@ class Api:
             audio, ctype, meta = processing_route.call_provider(
                 decision, ai.synthesize_with_fallback, text,
                 voice_id=voice, model=decision.model, provider_id=decision.provider,
+                expected_feature="reader", expected_lane="reader_speech",
                 expected_provider=decision.provider)
             if not meta.get("ok"):
                 return {"ok": False, "message": meta.get("message", "TTS failed.")}
@@ -575,6 +577,7 @@ class Api:
             audio, ctype, meta = processing_route.call_provider(
                 decision, ai.synthesize_with_fallback, test_phrase,
                 voice_id=voice, model=decision.model, provider_id=decision.provider,
+                expected_feature="reader", expected_lane="reader_speech_test",
                 expected_provider=decision.provider)
             if not meta.get("ok"):
                 return {"ok": False, "message": meta.get("message", "TTS test failed.")}
@@ -940,6 +943,8 @@ class Api:
                 system, user, decision.api_key,
                 model=decision.model, url=info.get("url"),
                 max_tokens=out_budget, timeout=t_out,
+                expected_feature="reader",
+                expected_lane="reader_summary",
             )
             summary = (summary or "").strip()
             if not summary:
@@ -1382,7 +1387,7 @@ class Api:
         }
 
     def _provider_key_ok(self, provider):
-        if provider not in ("cerebras", "openrouter"):
+        if provider not in TEXT_PROCESSING_PROVIDERS:
             return False
         try:
             import ai
@@ -1604,7 +1609,9 @@ class Api:
         else:
             stt_effective, stt_reason = "cloud", "selected"
 
-        route_facts = processing_route.settings_state(self.settings)
+        route_facts = processing_route.settings_state(
+            self.settings, supported_providers=TEXT_PROCESSING_PROVIDERS
+        )
         plain_decision = route_facts["plain_processing"]
         action_decision = route_facts["action_processing"]
         reason_compat = {
@@ -2442,7 +2449,7 @@ class Api:
         import ai
         provider = (provider or "cerebras").lower()
         info = ai.PROVIDERS.get(provider)
-        if not info or provider not in ("cerebras", "openrouter"):
+        if not info or provider not in TEXT_PROCESSING_PROVIDERS:
             return {"ok": False, "message": "Choose a supported provider first."}
         key = (key or "").strip()
         # get_settings() deliberately exposes only a masked preview. The
