@@ -388,6 +388,17 @@ class Api:
         values.setdefault("reason", "")
         return values
 
+    @staticmethod
+    def _abandon_insertion(operation_id):
+        """Best-effort authenticated cleanup after prepared transport is lost."""
+        try:
+            return _ctrl_send({
+                "cmd": "abandon_insertion",
+                "operation_id": operation_id,
+            }, timeout=1.0)
+        except Exception:
+            return None
+
     def _submit_insertion(self, command):
         """Submit once, then poll only that immutable operation to a safe bound."""
         operation_id = str(command.get("operation_id") or "")
@@ -428,6 +439,7 @@ class Api:
                 timeout=1.0,
             )
         if reply is None or reply.get("state") == "pending":
+            self._abandon_insertion(operation_id)
             reply = unknown_reply()
         return self._insertion_reply(reply, operation_id)
 
@@ -2702,6 +2714,7 @@ class Api:
         if r and r.get("ok"):
             return {"ok": True, "live": True,
                     "message": "Working—the result will be saved, then Mumble will attempt the selected field."}
+        self._abandon_insertion(operation_id)
         self._restore_after_failed_paste()
         # A stale or differently authenticated controller is not usable by this
         # window. Present the same actionable tray guidance as an absent

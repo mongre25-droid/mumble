@@ -660,6 +660,122 @@ class InsertionTransactionTests(unittest.TestCase):
         self.assertEqual("terminal", coordinator.status(
             request.operation_id)["state"])
 
+    def test_explicit_abandonment_is_idempotent_replay_protected_and_never_sends(self):
+        target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
+        coordinator = InsertionCoordinator(InsertionTransaction(
+            target, clipboard, native, settle_delay=lambda _seconds: None))
+        request = self.make_request("explicit-abandonment")
+        coordinator.prepare(request)
+
+        first = coordinator.abandon(request.operation_id)
+        second = coordinator.abandon(request.operation_id)
+
+        self.assertEqual("expired", first["state"])
+        self.assertEqual(first, second)
+        with self.assertRaises(InsertionOperationExpired):
+            coordinator.submit(request)
+        self.assertEqual("expired", coordinator.prepare(request)["state"])
+        self.assertEqual(0, native.send_calls)
+
+    def test_abandonment_and_expiry_never_interrupt_an_executing_operation(self):
+        entered = threading.Event()
+        release = threading.Event()
+        calls = []
+        now = {"value": 10.0}
+
+        class BlockingTransaction:
+            def insert(_self, request):
+                calls.append(request.operation_id)
+                entered.set()
+                release.wait(2)
+                return InsertionResult(
+                    request.operation_id, request.source,
+                    InsertionOutcome.CONFIRMED, "confirmed", "Pasted.", 1)
+
+        coordinator = InsertionCoordinator(
+            BlockingTransaction(), clock=lambda: now["value"],
+            prepared_ttl_s=1.0, pending_ttl_s=1.0)
+        request = self.make_request("slow-valid-operation")
+        worker = threading.Thread(target=lambda: coordinator.submit(request))
+        worker.start()
+        self.assertTrue(entered.wait(1))
+
+        self.assertEqual("pending", coordinator.abandon(
+            request.operation_id)["state"])
+        now["value"] = 100.0
+        self.assertEqual("unknown", coordinator.status(
+            request.operation_id)["state"])
+        release.set()
+        worker.join(2)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual([request.operation_id], calls)
+        self.assertEqual("terminal", coordinator.status(
+            request.operation_id)["state"])
+
+    def test_execute_exception_emits_one_content_free_finish_and_keeps_traceback(self):
+        events = []
+        transaction = InsertionTransaction(
+            FakeTarget(), FakeClipboard(), FakeNativeInput(),
+            trace=lambda name, **fields: events.append((name, fields)))
+        request = self.make_request(
+            "terminal-exception", text="PRIVATE_CALLER_TEXT")
+
+        class OriginalFailure(RuntimeError):
+            pass
+
+        failure = OriginalFailure("PRIVATE_EXCEPTION_TEXT")
+
+        def forced_execute(_request):
+            raise failure
+
+        transaction._execute = forced_execute
+        caught_exception = None
+        traceback_names = []
+        try:
+            transaction.insert(request)
+        except OriginalFailure as caught:
+            caught_exception = caught
+            cursor = caught.__traceback__
+            while cursor is not None:
+                traceback_names.append(cursor.tb_frame.f_code.co_name)
+                cursor = cursor.tb_next
+        else:
+            self.fail("original insertion exception was not raised")
+        serialized = repr(events)
+        self.assertIs(failure, caught_exception)
+        self.assertIn("forced_execute", traceback_names)
+        self.assertEqual(1, sum(name == "insertion_finished"
+                                for name, _fields in events))
+        self.assertNotIn("PRIVATE_CALLER_TEXT", serialized)
+        self.assertNotIn("PRIVATE_EXCEPTION_TEXT", serialized)
+        with self.assertRaises(InsertionOperationExpired):
+            transaction.insert(request)
+        self.assertEqual(1, sum(name == "insertion_finished"
+                                for name, _fields in events))
+
+    def test_trace_failures_never_replace_the_insertion_result_or_primary_exception(self):
+        def broken_trace(_name, **_fields):
+            raise RuntimeError("trace sink failed")
+
+        successful = InsertionTransaction(
+            FakeTarget(), FakeClipboard(), FakeNativeInput(),
+            settle_delay=lambda _seconds: None, trace=broken_trace)
+        result = successful.insert(self.make_request("trace-failed-success"))
+        self.assertEqual(InsertionOutcome.CONFIRMED, result.outcome)
+
+        failed = InsertionTransaction(
+            FakeTarget(), FakeClipboard(), FakeNativeInput(), trace=broken_trace)
+
+        class OriginalFailure(RuntimeError):
+            pass
+
+        primary = OriginalFailure("original transaction failure")
+        failed._execute = lambda _request: (_ for _ in ()).throw(primary)
+        with self.assertRaises(OriginalFailure) as caught:
+            failed.insert(self.make_request("trace-failed-exception"))
+        self.assertIs(primary, caught.exception)
+
     def test_invalid_identifier_is_rejected_content_free_at_all_coordinator_boundaries(self):
         transaction = InsertionTransaction(
             FakeTarget(), FakeClipboard(), FakeNativeInput(),

@@ -502,6 +502,40 @@ class InsertionCoordinator:
                 self._retired.move_to_end(operation_id)
             return self._status_locked(entry)
 
+    def abandon(self, operation_id):
+        """Retire a not-yet-started identity without authorising later reuse.
+
+        An executing transaction is never interrupted. Repeated abandonment is
+        idempotent, including after the exact retired record has been trimmed.
+        """
+        operation_id = self._require_operation_id(operation_id)
+        with self._lock:
+            self._expire_locked(self._clock())
+            entry = (self._entries.get(operation_id)
+                     or self._retired.get(operation_id))
+            if entry is None:
+                self._seen_operation_ids.remember(operation_id)
+                return {
+                    "state": "expired",
+                    "operation_id": operation_id,
+                    "outcome": "unknown",
+                    "confirmed": False,
+                    "reason": "operation_identity_retired",
+                    "message": (
+                        "This paste operation is no longer reusable. Begin "
+                        "a new Deck action instead of retrying it."),
+                }
+            if entry.state == "prepared":
+                entry.state = "expired"
+                entry.state_changed_at = self._clock()
+                entry.event.set()
+                self._entries.pop(operation_id, None)
+                self._retired[operation_id] = entry
+                self._retired.move_to_end(operation_id)
+                while len(self._retired) > self._retention:
+                    self._retired.popitem(last=False)
+            return self._status_locked(entry)
+
     def _status_locked(self, entry):
         if entry.state == "terminal" and entry.result is not None:
             values = entry.result.as_dict()
@@ -617,7 +651,7 @@ class InsertionTransaction:
             target = ((request.target_lease.target
                        if request.target_lease is not None else None)
                       or request.activation_target)
-            self._trace(
+            self._trace_safely(
                 "insertion_started",
                 operation_id=request.operation_id,
                 source=request.source,
@@ -633,31 +667,55 @@ class InsertionTransaction:
                 input_api="SendInput",
                 payload_size_bucket=self._payload_size_bucket(request),
             )
-            result = self._execute(request)
-            self._completed[request.operation_id] = result
-            while len(self._completed) > self._cache_size:
-                self._completed.popitem(last=False)
-            confirmation = {
-                InsertionOutcome.CONFIRMED: "confirmed",
-                InsertionOutcome.SENT_UNCONFIRMED: "unavailable",
-                InsertionOutcome.NOT_SENT: "not_sent",
-                InsertionOutcome.UNCERTAIN: "uncertain",
-                InsertionOutcome.SAVED_ONLY: "not_sent",
-            }[result.outcome]
-            self._trace(
-                "insertion_finished",
-                operation_id=request.operation_id,
-                source=request.source,
-                content_kind=request.content_kind,
-                requested_count=result.native_requested,
-                accepted_count=result.native_accepted,
-                send_count=result.send_count,
-                outcome=result.outcome.value,
-                confirmation=confirmation,
-                fallback_reason=result.reason,
-                cleanup_warning=bool(result.cleanup_warning),
-            )
-            return result
+            result = None
+            try:
+                result = self._execute(request)
+                self._completed[request.operation_id] = result
+                while len(self._completed) > self._cache_size:
+                    self._completed.popitem(last=False)
+                return result
+            finally:
+                if result is None:
+                    terminal_fields = {
+                        "requested_count": None,
+                        "accepted_count": None,
+                        "send_count": 0,
+                        "outcome": "unknown",
+                        "confirmation": "uncertain",
+                        "fallback_reason": "internal_error",
+                        "cleanup_warning": False,
+                    }
+                else:
+                    confirmation = {
+                        InsertionOutcome.CONFIRMED: "confirmed",
+                        InsertionOutcome.SENT_UNCONFIRMED: "unavailable",
+                        InsertionOutcome.NOT_SENT: "not_sent",
+                        InsertionOutcome.UNCERTAIN: "uncertain",
+                        InsertionOutcome.SAVED_ONLY: "not_sent",
+                    }[result.outcome]
+                    terminal_fields = {
+                        "requested_count": result.native_requested,
+                        "accepted_count": result.native_accepted,
+                        "send_count": result.send_count,
+                        "outcome": result.outcome.value,
+                        "confirmation": confirmation,
+                        "fallback_reason": result.reason,
+                        "cleanup_warning": bool(result.cleanup_warning),
+                    }
+                self._trace_safely(
+                    "insertion_finished",
+                    operation_id=request.operation_id,
+                    source=request.source,
+                    content_kind=request.content_kind,
+                    **terminal_fields,
+                )
+
+    def _trace_safely(self, name, **fields):
+        """Diagnostics must never change insertion results or exceptions."""
+        try:
+            return self._trace(name, **fields)
+        except Exception:
+            return None
 
     @staticmethod
     def _payload_size_bucket(request):
@@ -783,8 +841,9 @@ class InsertionTransaction:
                     exc, "clipboard_changed_externally", False)),
                 cleanup_warning=str(getattr(exc, "cleanup_warning", "") or ""),
             )
-        self._trace("clipboard_ready", operation_id=request.operation_id,
-                    source=request.source, content_kind=request.content_kind)
+        self._trace_safely(
+            "clipboard_ready", operation_id=request.operation_id,
+            source=request.source, content_kind=request.content_kind)
 
         outcome = InsertionOutcome.NOT_SENT
         reason = InsertionReason.ZERO_INPUT
@@ -901,10 +960,11 @@ class InsertionTransaction:
                     outcome = InsertionOutcome.NOT_SENT
                     reason = InsertionReason.ZERO_INPUT
 
-            self._trace("paste_sent", operation_id=request.operation_id,
-                        source=request.source,
-                        accepted_count=accepted, requested_count=requested,
-                        send_count=send_count)
+            self._trace_safely(
+                "paste_sent", operation_id=request.operation_id,
+                source=request.source,
+                accepted_count=accepted, requested_count=requested,
+                send_count=send_count)
             if outcome in {
                 InsertionOutcome.CONFIRMED,
                 InsertionOutcome.SENT_UNCONFIRMED,

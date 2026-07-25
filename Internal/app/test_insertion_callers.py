@@ -635,6 +635,190 @@ class InsertionCallerTests(unittest.TestCase):
                             for worker in (preparing, looking_up)))
         self.assertEqual([existing], lookup_result)
 
+    def test_every_fallible_text_and_image_setup_seam_retires_the_binding(self):
+        class OriginalFailure(RuntimeError):
+            pass
+
+        class Clipboard:
+            def __init__(self, pause_failure=None):
+                self.pause_failure = pause_failure
+                self.pause_calls = 0
+                self.resume_calls = 0
+
+            def pause(self):
+                self.pause_calls += 1
+                if self.pause_failure is not None:
+                    raise self.pause_failure
+
+            def mark_own(self, _text):
+                return None
+
+            def resume(self, skip_current=False):
+                self.resume_calls += 1
+
+        original_request = mumble.InsertionRequest
+        cases = []
+        for content_kind in ("text", "image"):
+            for seam in ("transaction", "request", "clipboard_pause"):
+                cases.append((content_kind, seam))
+
+        try:
+            for content_kind, seam in cases:
+                with self.subTest(content_kind=content_kind, seam=seam):
+                    controller, _active = self._prepared_controller()
+                    current_id = operation_id(
+                        "early-{}-{}".format(content_kind, seam))
+                    source = ("deck_history" if content_kind == "text"
+                              else "deck_image")
+                    lease = controller._prepare_deck_insertion_lease(
+                        current_id, source, ui_process_id=9999)
+                    failure = OriginalFailure(
+                        "{}-{}".format(content_kind, seam))
+                    clipboard = Clipboard(
+                        failure if seam == "clipboard_pause" else None)
+                    controller.clipboard = clipboard
+                    controller._paste_lock = threading.Lock()
+                    controller._trace_mark = lambda *_args, **_kwargs: None
+                    controller._insertion_transaction = object()
+                    controller._insertion_coordinator = object()
+                    if seam == "transaction":
+                        controller._ensure_insertion_transaction = (
+                            lambda failure=failure: (_ for _ in ()).throw(failure))
+                    else:
+                        controller._ensure_insertion_transaction = (
+                            lambda: controller._insertion_transaction)
+                    if seam == "request":
+                        mumble.InsertionRequest = (
+                            lambda **_kwargs: (_ for _ in ()).throw(failure))
+                    else:
+                        mumble.InsertionRequest = original_request
+
+                    if content_kind == "text":
+                        action = lambda: controller._paste(
+                            "content-free fixture", source=source,
+                            target_lease=lease, operation_id=current_id)
+                    else:
+                        action = lambda: controller._paste_image(
+                            "content-free-fixture.png", source=source,
+                            target_lease=lease, operation_id=current_id)
+                    with self.assertRaises(OriginalFailure) as caught:
+                        action()
+
+                    self.assertIs(failure, caught.exception)
+                    self.assertNotIn(
+                        current_id, controller._prepared_insertion_leases)
+                    with self.assertRaises(InsertionOperationExpired):
+                        controller._prepared_insertion_lease(current_id, source)
+                    with self.assertRaises(InsertionOperationExpired):
+                        controller._prepare_deck_insertion_lease(
+                            current_id, source, ui_process_id=9999)
+        finally:
+            mumble.InsertionRequest = original_request
+
+    def test_256_early_setup_failures_leave_capacity_recoverable(self):
+        controller, _active = self._prepared_controller()
+        controller.clipboard = None
+        controller._ensure_insertion_transaction = lambda: (_ for _ in ()).throw(
+            RuntimeError("fixture setup failure"))
+
+        for index in range(256):
+            current_id = "{:032x}".format(index + 10000)
+            lease = controller._prepare_deck_insertion_lease(
+                current_id, "deck_history", ui_process_id=9999)
+            with self.assertRaises(RuntimeError):
+                controller._paste(
+                    "content-free fixture", source="deck_history",
+                    target_lease=lease, operation_id=current_id)
+
+        next_id = "f" * 32
+        recovered = controller._prepare_deck_insertion_lease(
+            next_id, "deck_history", ui_process_id=9999)
+        self.assertEqual(TARGET_A, recovered.target)
+        self.assertEqual([next_id], list(controller._prepared_insertion_leases))
+
+    def test_prepared_lease_expiry_uses_monotonic_time_and_never_expires_execution(self):
+        controller, active = self._prepared_controller()
+        now = {"value": 10.0}
+        controller._prepared_insertion_clock = lambda: now["value"]
+        controller._prepared_insertion_ttl_s = 5.0
+        expired_id = operation_id("transport-lost-prepared")
+        controller._prepare_deck_insertion_lease(
+            expired_id, "deck_history", ui_process_id=9999)
+
+        now["value"] = 16.0
+        expired = controller._cleanup_prepared_insertions()
+
+        self.assertEqual([expired_id], expired)
+        self.assertNotIn(expired_id, controller._prepared_insertion_leases)
+        with self.assertRaises(InsertionOperationExpired):
+            controller._prepared_insertion_lease(expired_id, "deck_history")
+        active["target"] = TARGET_B
+        with self.assertRaises(InsertionOperationExpired):
+            controller._prepare_deck_insertion_lease(
+                expired_id, "deck_history", ui_process_id=9999)
+
+        active["target"] = TARGET_A
+        executing_id = operation_id("slow-executing-prepared")
+        original = controller._prepare_deck_insertion_lease(
+            executing_id, "deck_history", ui_process_id=9999)
+        self.assertIs(original, controller._prepared_insertion_lease(
+            executing_id, "deck_history"))
+        now["value"] = 100.0
+
+        self.assertEqual([], controller._cleanup_prepared_insertions())
+        self.assertIs(original, controller._prepared_insertion_leases[executing_id])
+        self.assertEqual(
+            {"abandoned": False, "state": "pending"},
+            controller._abandon_prepared_insertion(executing_id))
+        self.assertIs(original, controller._prepared_insertion_leases[executing_id])
+        active["target"] = TARGET_B
+        with self.assertRaises(InsertionRequestConflict):
+            controller._prepare_deck_insertion_lease(
+                executing_id, "deck_history", ui_process_id=9999)
+        controller._retire_prepared_insertion(executing_id)
+
+    def test_expired_capacity_is_cleaned_without_evicting_a_live_target(self):
+        controller, _active = self._prepared_controller()
+        now = {"value": 0.0}
+        controller._prepared_insertion_clock = lambda: now["value"]
+        controller._prepared_insertion_ttl_s = 5.0
+        live_id = operation_id("live-target-at-capacity")
+        live = controller._prepare_deck_insertion_lease(
+            live_id, "deck_history", ui_process_id=9999)
+        controller._prepared_insertion_lease(live_id, "deck_history")
+        for index in range(255):
+            controller._prepare_deck_insertion_lease(
+                "{:032x}".format(index + 20000),
+                "deck_history", ui_process_id=9999)
+
+        now["value"] = 6.0
+        replacement_id = operation_id("capacity-after-expiry")
+        replacement = controller._prepare_deck_insertion_lease(
+            replacement_id, "deck_history", ui_process_id=9999)
+
+        self.assertIs(live, controller._prepared_insertion_leases[live_id])
+        self.assertIs(replacement,
+                      controller._prepared_insertion_leases[replacement_id])
+        self.assertEqual(2, len(controller._prepared_insertion_leases))
+
+    def test_controller_abandonment_is_idempotent_and_late_submit_fails_closed(self):
+        controller, _active = self._prepared_controller()
+        current_id = operation_id("controller-abandonment")
+        controller._prepare_deck_insertion_lease(
+            current_id, "deck_history", ui_process_id=9999)
+
+        first = controller._abandon_prepared_insertion(current_id)
+        second = controller._abandon_prepared_insertion(current_id)
+
+        self.assertTrue(first["abandoned"])
+        self.assertEqual(first, second)
+        self.assertNotIn(current_id, controller._prepared_insertion_leases)
+        with self.assertRaises(InsertionOperationExpired):
+            controller._prepared_insertion_lease(current_id, "deck_history")
+        with self.assertRaises(InsertionOperationExpired):
+            controller._prepare_deck_insertion_lease(
+                current_id, "deck_history", ui_process_id=9999)
+
 
 if __name__ == "__main__":
     unittest.main()

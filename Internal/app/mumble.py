@@ -282,6 +282,10 @@ class Mumble:
         self._deck_displacement_confirmed = False
         self._prepared_insertion_leases = OrderedDict()
         self._prepared_insertion_tombstones = OperationIdReplayGuard()
+        self._prepared_insertion_created_at = {}
+        self._prepared_insertion_executing = set()
+        self._prepared_insertion_clock = time.monotonic
+        self._prepared_insertion_ttl_s = 30.0
         self._prepared_insertion_lock = threading.Lock()
         self._deck_job_lock = threading.Lock()  # in-flight guard for Deck/History jobs
         self._deck_job_active = False           # True while a Deck job is running
@@ -310,6 +314,7 @@ class Mumble:
         self._dictation_trace_lock = threading.Lock()
         self._dictation_inference_ordinal = 0
         self._insertion_trace_sessions = {}
+        self._finished_insertion_trace_ids = OperationIdReplayGuard()
         self._insertion_trace_lock = threading.Lock()
 
         # --- thread-safe Tkinter dispatch queue ---
@@ -2909,6 +2914,47 @@ class Mumble:
             self._prepared_insertion_tombstones = guard
         return guard
 
+    def _prepared_insertion_now(self):
+        return getattr(self, "_prepared_insertion_clock", time.monotonic)()
+
+    def _cleanup_prepared_insertions_locked(self, now=None):
+        """Expire only prepared-never-started leases using monotonic time."""
+        now = self._prepared_insertion_now() if now is None else float(now)
+        leases = getattr(self, "_prepared_insertion_leases", None)
+        if leases is None:
+            leases = OrderedDict()
+            self._prepared_insertion_leases = leases
+        created = getattr(self, "_prepared_insertion_created_at", None)
+        if created is None:
+            created = {}
+            self._prepared_insertion_created_at = created
+        executing = getattr(self, "_prepared_insertion_executing", None)
+        if executing is None:
+            executing = set()
+            self._prepared_insertion_executing = executing
+        ttl_s = max(0.0, float(getattr(
+            self, "_prepared_insertion_ttl_s", 30.0)))
+        expired = []
+        for operation_id in list(leases):
+            if operation_id in executing:
+                continue
+            started_at = created.get(operation_id)
+            if started_at is None:
+                created[operation_id] = now
+                continue
+            if max(0.0, now - started_at) < ttl_s:
+                continue
+            leases.pop(operation_id, None)
+            created.pop(operation_id, None)
+            self._get_prepared_insertion_tombstones().remember(operation_id)
+            expired.append(operation_id)
+        return expired
+
+    def _cleanup_prepared_insertions(self):
+        """Run the monotonic prepared-lease backstop without registration pressure."""
+        with self._get_prepared_insertion_lock():
+            return self._cleanup_prepared_insertions_locked()
+
     def _prepare_deck_insertion_lease(self, operation_id, source,
                                       ui_process_id=None):
         """Freeze the external destination before the Deck is dismissed."""
@@ -2923,6 +2969,7 @@ class Mumble:
         # needed by an already-prepared operation's final lookup.
         current = self._capture_insertion_target()
         with self._get_prepared_insertion_lock():
+            self._cleanup_prepared_insertions_locked()
             tombstones = self._get_prepared_insertion_tombstones()
             if operation_id in tombstones:
                 raise InsertionOperationExpired(
@@ -2965,6 +3012,8 @@ class Mumble:
                 raise InsertionCoordinatorCapacityError(
                     "prepared insertion capacity is occupied by active operations")
             leases[operation_id] = lease
+            self._prepared_insertion_created_at[operation_id] = (
+                self._prepared_insertion_now())
             leases.move_to_end(operation_id)
             return lease
 
@@ -2985,6 +3034,7 @@ class Mumble:
         if source not in {"deck_history", "deck_image", "deck_job"}:
             raise ValueError("invalid_insertion_source")
         with self._get_prepared_insertion_lock():
+            self._cleanup_prepared_insertions_locked()
             if operation_id in self._get_prepared_insertion_tombstones():
                 raise InsertionOperationExpired(
                     "operation identity is no longer reusable")
@@ -2993,6 +3043,8 @@ class Mumble:
             if lease is not None and lease.source != source:
                 raise InsertionRequestConflict(
                     "prepared_operation_binding_conflict")
+            if lease is not None:
+                self._prepared_insertion_executing.add(operation_id)
             return lease or TargetLease(
                 None, source, "before_deck_dismiss", False)
 
@@ -3002,7 +3054,57 @@ class Mumble:
         with self._get_prepared_insertion_lock():
             leases = getattr(self, "_prepared_insertion_leases", {})
             leases.pop(operation_id, None)
+            getattr(self, "_prepared_insertion_created_at", {}).pop(
+                operation_id, None)
+            getattr(self, "_prepared_insertion_executing", set()).discard(
+                operation_id)
             self._get_prepared_insertion_tombstones().remember(operation_id)
+
+    def _finalize_deck_insertion(self, operation_id, coordinator):
+        """Complete both Deck lifecycle registries and return any cleanup error."""
+        cleanup_error = None
+        if coordinator is not None:
+            try:
+                coordinator.abandon(operation_id)
+            except Exception as exc:
+                cleanup_error = exc
+        try:
+            self._retire_prepared_insertion(operation_id)
+        except Exception as exc:
+            if cleanup_error is None:
+                cleanup_error = exc
+        return cleanup_error
+
+    def _abandon_prepared_insertion(self, operation_id):
+        """Idempotently abandon a prepared action unless it already started."""
+        operation_id = self._require_operation_id(operation_id)
+        with self._get_prepared_insertion_lock():
+            self._cleanup_prepared_insertions_locked()
+            tombstones = self._get_prepared_insertion_tombstones()
+            if operation_id in tombstones:
+                return {"abandoned": True, "state": "retired"}
+            executing = getattr(self, "_prepared_insertion_executing", set())
+            if operation_id in executing:
+                return {"abandoned": False, "state": "pending"}
+            getattr(self, "_prepared_insertion_leases", {}).pop(
+                operation_id, None)
+            getattr(self, "_prepared_insertion_created_at", {}).pop(
+                operation_id, None)
+            tombstones.remember(operation_id)
+        coordinator = getattr(self, "_insertion_coordinator", None)
+        if coordinator is not None:
+            try:
+                coordinator.abandon(operation_id)
+            except Exception:
+                pass
+        return {"abandoned": True, "state": "retired"}
+
+    def _get_finished_insertion_trace_ids(self):
+        guard = getattr(self, "_finished_insertion_trace_ids", None)
+        if guard is None:
+            guard = OperationIdReplayGuard()
+            self._finished_insertion_trace_ids = guard
+        return guard
 
     def _insertion_trace(self, name, **fields):
         operation_id = dictation_trace.validated_operation_id(
@@ -3024,6 +3126,9 @@ class Mumble:
             sessions = {}
             self._insertion_trace_sessions = sessions
         with lock:
+            finished = self._get_finished_insertion_trace_ids()
+            if operation_id in finished:
+                return None
             session = sessions.get(operation_id)
             if session is None:
                 sink = getattr(self, "_dictation_trace_sink", None)
@@ -3039,6 +3144,7 @@ class Mumble:
                 sessions[operation_id] = session
             if name == "insertion_finished":
                 sessions.pop(operation_id, None)
+                finished.remember(operation_id)
         try:
             if name == "insertion_finished":
                 session.mark(name, **fields)
@@ -3062,29 +3168,33 @@ class Mumble:
         self._last_paste_sent_at = None
         operation_id = self._require_operation_id(
             operation_id or uuid.uuid4().hex)
-        transaction = self._ensure_insertion_transaction()
-        lease = target_lease or self._make_insertion_lease(
-            source, "invocation", target=activation_target)
-        request = InsertionRequest(
-            operation_id=operation_id,
-            source=source,
-            content_kind="text",
-            text=text,
-            activation_target=lease.target,
-            target_lease=lease,
-            restore_clipboard=not keep_on_clipboard,
-            settle_seconds=min(1.2, 0.18 + len(text) / 20000.0),
-            undo_before_paste=bool(undo_before_paste),
-        )
-        if self.clipboard:
-            self.clipboard.pause()
-            try:
-                self.clipboard.mark_own(text)
-            except Exception:
-                pass
-        wait_started = time.perf_counter()
-        coordinator = self._insertion_coordinator
+        deck_operation = source in {"deck_history", "deck_image", "deck_job"}
+        clipboard_pause_attempted = False
+        coordinator = None
         try:
+            self._ensure_insertion_transaction()
+            lease = target_lease or self._make_insertion_lease(
+                source, "invocation", target=activation_target)
+            request = InsertionRequest(
+                operation_id=operation_id,
+                source=source,
+                content_kind="text",
+                text=text,
+                activation_target=lease.target,
+                target_lease=lease,
+                restore_clipboard=not keep_on_clipboard,
+                settle_seconds=min(1.2, 0.18 + len(text) / 20000.0),
+                undo_before_paste=bool(undo_before_paste),
+            )
+            if self.clipboard:
+                clipboard_pause_attempted = True
+                self.clipboard.pause()
+                try:
+                    self.clipboard.mark_own(text)
+                except Exception:
+                    pass
+            wait_started = time.perf_counter()
+            coordinator = self._insertion_coordinator
             coordinator.prepare(request)
             with self._paste_lock:
                 self._trace_mark(
@@ -3094,14 +3204,23 @@ class Mumble:
                 )
                 return coordinator.submit(request)
         finally:
-            if source in {"deck_history", "deck_image", "deck_job"}:
-                self._retire_prepared_insertion(operation_id)
-            if self.clipboard:
+            primary_error = sys.exc_info()[1]
+            cleanup_error = (self._finalize_deck_insertion(
+                operation_id, coordinator) if deck_operation else None)
+            if self.clipboard and clipboard_pause_attempted:
                 try:
                     self.clipboard._last_text = pyperclip.paste() or ""
                 except Exception:
                     pass
-                self.clipboard.resume(skip_current=True)
+                try:
+                    self.clipboard.resume(skip_current=True)
+                except Exception as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+            if cleanup_error is not None:
+                if primary_error is None:
+                    raise cleanup_error
+                print("insertion cleanup skipped:", type(cleanup_error).__name__)
 
     # ================================================================= hotkeys
     def on_hotkey(self):
@@ -3441,23 +3560,27 @@ class Mumble:
         self._last_paste_sent_at = None
         operation_id = self._require_operation_id(
             operation_id or uuid.uuid4().hex)
-        transaction = self._ensure_insertion_transaction()
-        lease = target_lease or self._make_insertion_lease(
-            source, "invocation", target=activation_target)
-        request = InsertionRequest(
-            operation_id=operation_id,
-            source=source,
-            content_kind="image",
-            image_path=path or "",
-            activation_target=lease.target,
-            target_lease=lease,
-            settle_seconds=0.30,
-        )
-        wait_started = time.perf_counter()
-        coordinator = self._insertion_coordinator
-        if self.clipboard:
-            self.clipboard.pause()
+        deck_operation = source in {"deck_history", "deck_image", "deck_job"}
+        clipboard_pause_attempted = False
+        coordinator = None
         try:
+            self._ensure_insertion_transaction()
+            lease = target_lease or self._make_insertion_lease(
+                source, "invocation", target=activation_target)
+            request = InsertionRequest(
+                operation_id=operation_id,
+                source=source,
+                content_kind="image",
+                image_path=path or "",
+                activation_target=lease.target,
+                target_lease=lease,
+                settle_seconds=0.30,
+            )
+            wait_started = time.perf_counter()
+            coordinator = self._insertion_coordinator
+            if self.clipboard:
+                clipboard_pause_attempted = True
+                self.clipboard.pause()
             coordinator.prepare(request)
             with self._paste_lock:
                 self._trace_mark(
@@ -3467,10 +3590,19 @@ class Mumble:
                 )
                 return coordinator.submit(request)
         finally:
-            if source in {"deck_history", "deck_image", "deck_job"}:
-                self._retire_prepared_insertion(operation_id)
-            if self.clipboard:
-                self.clipboard.resume(skip_current=True)
+            primary_error = sys.exc_info()[1]
+            cleanup_error = (self._finalize_deck_insertion(
+                operation_id, coordinator) if deck_operation else None)
+            if self.clipboard and clipboard_pause_attempted:
+                try:
+                    self.clipboard.resume(skip_current=True)
+                except Exception as exc:
+                    if cleanup_error is None:
+                        cleanup_error = exc
+            if cleanup_error is not None:
+                if primary_error is None:
+                    raise cleanup_error
+                print("insertion cleanup skipped:", type(cleanup_error).__name__)
 
     # ---- the Mumble command channel (controller ⇄ web window) --------------
     # The web window runs as its own process; these two tiny localhost sockets
@@ -3563,7 +3695,7 @@ class Mumble:
                     return
                 insertion_commands = {
                     "prepare_insertion", "paste", "paste_image",
-                    "insertion_status", "deck_job",
+                    "insertion_status", "abandon_insertion", "deck_job",
                 }
                 operation_id = (self._validated_external_operation_id(
                     req.get("operation_id")) if cmd in insertion_commands else None)
@@ -3639,11 +3771,12 @@ class Mumble:
                 elif cmd == "paste":
                     text = req.get("text") or ""
                     try:
+                        prepared_lease = self._prepared_insertion_lease(
+                            operation_id, "deck_history")
                         time.sleep(0.25)  # let focus return to the target
                         result = self._paste(
                             text, source="deck_history",
-                            target_lease=self._prepared_insertion_lease(
-                                operation_id, "deck_history"),
+                            target_lease=prepared_lease,
                             operation_id=operation_id,
                         )
                         pasted = bool(result.confirmed)
@@ -3663,11 +3796,12 @@ class Mumble:
                 elif cmd == "paste_image":
                     path = req.get("path") or ""
                     try:
+                        prepared_lease = self._prepared_insertion_lease(
+                            operation_id, "deck_image")
                         time.sleep(0.25)
                         result = self._paste_image(
                             path, source="deck_image",
-                            target_lease=self._prepared_insertion_lease(
-                                operation_id, "deck_image"),
+                            target_lease=prepared_lease,
                             operation_id=operation_id,
                         )
                         pasted = bool(result.confirmed)
@@ -3693,6 +3827,8 @@ class Mumble:
                         resp = {"ok": False, "state": "rejected",
                                 "reason": "operation_id_conflict",
                                 "message": "This paste request no longer matches its operation."}
+                elif cmd == "abandon_insertion":
+                    resp.update(self._abandon_prepared_insertion(operation_id))
                 elif cmd == "rebind":
                     # Hotkeys are a transaction owned by the controller: validate,
                     # register the new hook, persist it, then retire only the old
@@ -3897,6 +4033,11 @@ class Mumble:
                 srv.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
                 srv.bind(("127.0.0.1", self.CMD_PORT))
                 srv.listen(4)
+                # Reuse the existing command-server loop as the prepared-lease
+                # backstop. Cleanup therefore follows monotonic age even when
+                # paste/status transport is completely absent, without adding a
+                # second background worker or depending on capacity pressure.
+                srv.settimeout(1.0)
             except Exception as e:
                 print("cmd server unavailable:", e)
                 return
@@ -3905,6 +4046,12 @@ class Mumble:
                     conn, _ = srv.accept()
                     threading.Thread(target=_handle, args=(conn,),
                                      daemon=True).start()
+                except _socket.timeout:
+                    try:
+                        self._cleanup_prepared_insertions()
+                    except Exception as exc:
+                        print("prepared insertion cleanup skipped:",
+                              type(exc).__name__)
                 except Exception:
                     return
 

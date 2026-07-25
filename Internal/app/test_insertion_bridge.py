@@ -96,6 +96,8 @@ class InsertionBridgeTests(unittest.TestCase):
         self.assertEqual("unknown", result["outcome"])
         self.assertFalse(result["confirmed"])
         self.assertIn("do not retry", result["message"].lower())
+        self.assertEqual(1, sum(call["cmd"] == "abandon_insertion"
+                                for call in calls))
 
     def test_deck_job_producer_uses_the_same_canonical_operation_identity(self):
         api = webui_shell.Api.__new__(webui_shell.Api)
@@ -139,10 +141,37 @@ class InsertionBridgeTests(unittest.TestCase):
             webui_shell._ctrl_send = old_send
 
         self.assertEqual(1, sum(call["cmd"] == "paste" for call in calls))
+        self.assertEqual(1, sum(call["cmd"] == "abandon_insertion"
+                                for call in calls))
+        self.assertEqual(1, len({call["operation_id"] for call in calls}))
         self.assertEqual("unknown", result["state"])
         self.assertEqual("unknown", result["outcome"])
         self.assertFalse(result["confirmed"])
         self.assertIn("do not retry", result["message"].lower())
+
+    def test_lost_deck_job_transport_attempts_authenticated_abandonment(self):
+        api = webui_shell.Api.__new__(webui_shell.Api)
+        api._window = Window()
+        calls = []
+        old_send = webui_shell._ctrl_send
+
+        def send(command, timeout=2.0, _retry=True):
+            calls.append(dict(command))
+            if command["cmd"] == "prepare_insertion":
+                return {"ok": True, "operation_id": command["operation_id"]}
+            return None
+
+        webui_shell._ctrl_send = send
+        try:
+            result = api.run_deck_job(items=[])
+        finally:
+            webui_shell._ctrl_send = old_send
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            ["prepare_insertion", "deck_job", "abandon_insertion"],
+            [call["cmd"] for call in calls])
+        self.assertEqual(1, len({call["operation_id"] for call in calls}))
 
     def test_timeout_queries_the_same_operation_instead_of_resubmitting(self):
         api = webui_shell.Api.__new__(webui_shell.Api)
