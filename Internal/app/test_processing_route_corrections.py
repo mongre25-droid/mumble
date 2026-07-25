@@ -429,7 +429,6 @@ def recorder(*_args, **kwargs):
     return b"audio", "audio/mpeg"
 ai.openrouter_tts = recorder
 provider = ai.OpenRouterTTSProvider()
-provider._get_key = lambda: "test-only-key"
 error = None
 try:
     provider.synthesize(
@@ -447,6 +446,406 @@ print(json.dumps({"error": error, "seen": seen}))
     assert result.returncode == 0, result.stderr or result.stdout
     evidence = json.loads(result.stdout.strip().splitlines()[-1])
     assert evidence == {"error": None, "seen": [True]}
+
+
+@pytest.mark.parametrize(
+    ("platform_app", "module_name"),
+    (
+        (PLATFORM_APP_DIRS[0], "mumble"),
+        (PLATFORM_APP_DIRS[1], "mumble_mac"),
+        (PLATFORM_APP_DIRS[2], "mumble_linux"),
+    ),
+    ids=("windows", "macos", "linux"),
+)
+def test_cloud_stt_entry_points_fail_closed_and_pass_one_frozen_snapshot(
+    platform_app, module_name
+):
+    script = r'''
+import importlib
+import json
+import sys
+
+sys.path.insert(0, sys.argv[1])
+controller = importlib.import_module(sys.argv[2])
+
+class Settings:
+    def __init__(self, **overrides):
+        self.values = {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "transcription_mode": "cloud",
+            "cloud_transcription_provider": "groq",
+            "groq_api_key": "FROZEN_STT_KEY_14D",
+            "groq_transcription_model": "FROZEN_STT_MODEL_14D",
+            "language": "fr",
+            "vocabulary_terms": ["FROZEN_STT_TERM_14D"],
+        }
+        self.values.update(overrides)
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+def run(**overrides):
+    settings = Settings(**overrides)
+    app = controller.Mumble.__new__(controller.Mumble)
+    app.settings = settings
+    app._cloud_stt_failed = False
+    app._notify = lambda *_args, **_kwargs: None
+    app._local_transcribe = lambda *_args, **_kwargs: "local"
+    calls = []
+    def recorder(_audio, invocation_snapshot, **_kwargs):
+        settings.values["cloud_transcription_provider"] = "openai"
+        settings.values["groq_api_key"] = "MUTATED_LIVE_KEY_14D"
+        settings.values["groq_transcription_model"] = "MUTATED_LIVE_MODEL_14D"
+        settings.values["language"] = "de"
+        settings.values["vocabulary_terms"].append("MUTATED_LIVE_TERM_14D")
+        calls.append({
+            "provider": invocation_snapshot.route.provider,
+            "key": invocation_snapshot.route.api_key,
+            "model": invocation_snapshot.route.model,
+            "language": invocation_snapshot.primary_language,
+            "terms": list(invocation_snapshot.vocabulary_terms),
+        })
+        return "cloud"
+    controller.transcription.transcribe = recorder
+    return {"result": app._transcribe([0.0]), "calls": calls}
+
+evidence = {
+    "device_only": run(local_only_mode=True),
+    "hosted_off": run(pro_mode=False),
+    "missing_key": run(groq_api_key=""),
+    "unsupported": run(cloud_transcription_provider="unsupported"),
+    "allowed": run(),
+}
+print(json.dumps(evidence))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app), module_name],
+        capture_output=True, text=True, timeout=45, cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+    for scenario in ("device_only", "hosted_off", "missing_key", "unsupported"):
+        assert evidence[scenario] == {"result": "local", "calls": []}
+    assert evidence["allowed"] == {
+        "result": "cloud",
+        "calls": [{
+            "provider": "groq",
+            "key": "FROZEN_STT_KEY_14D",
+            "model": "FROZEN_STT_MODEL_14D",
+            "language": "fr",
+            "terms": ["FROZEN_STT_TERM_14D"],
+        }],
+    }
+
+
+@pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
+def test_final_cloud_stt_adapter_requires_and_uses_the_frozen_snapshot(platform_app):
+    script = r'''
+import importlib
+import json
+import sys
+
+import numpy as np
+
+sys.path.insert(0, sys.argv[1])
+route = importlib.import_module("processing_route")
+tx = importlib.import_module("transcription")
+
+class Settings:
+    def __init__(self, local_only=False):
+        self.values = {
+            "pro_mode": True,
+            "local_only_mode": local_only,
+            "transcription_mode": "cloud",
+            "cloud_transcription_provider": "groq",
+            "groq_api_key": "DISTINCTIVE_FROZEN_STT_KEY_14D",
+            "groq_transcription_model": "frozen-stt-model",
+            "language": "fr",
+            "vocabulary_terms": ["Frozen Proper Noun"],
+        }
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+transport = []
+def recorder(_info, key, model, _wav, language, _timeout, prompt=None):
+    transport.append({
+        "key": key, "model": model, "language": language, "prompt": prompt,
+    })
+    return "adapter-result"
+tx._transcribe_multipart = recorder
+
+def invoke(value):
+    before = len(transport)
+    error = None
+    rendered = ""
+    result = None
+    try:
+        result = tx.transcribe(np.zeros(8, dtype=np.float32), value)
+    except Exception as exc:
+        error = type(exc).__name__
+        rendered = repr(exc) + str(exc)
+    return {
+        "calls": len(transport) - before,
+        "error": error,
+        "rendered": rendered,
+        "result": result,
+    }
+
+missing = invoke(Settings())
+blocked_settings = Settings(local_only=True)
+blocked_snapshot = route.snapshot_inputs(
+    blocked_settings, feature="dictation", lane="speech_to_text"
+)
+blocked = invoke(blocked_snapshot)
+allowed_settings = Settings()
+allowed_snapshot = route.snapshot_inputs(
+    allowed_settings, feature="dictation", lane="speech_to_text"
+)
+allowed_settings.values.update({
+    "cloud_transcription_provider": "openai",
+    "groq_api_key": "MUTATED_LIVE_KEY_14D",
+    "groq_transcription_model": "mutated-model",
+    "language": "de",
+    "vocabulary_terms": ["Mutated Term"],
+})
+allowed = invoke(allowed_snapshot)
+print(json.dumps({
+    "missing": missing,
+    "blocked": blocked,
+    "allowed": allowed,
+    "transport": transport,
+    "allowed_repr": repr(allowed_snapshot),
+}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app)],
+        capture_output=True, text=True, timeout=30, cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+    assert evidence["missing"] == {
+        "calls": 0, "error": "TypeError",
+        "rendered": (
+            "TypeError('Cloud transcription requires an explicit "
+            "ProcessingInputSnapshot')Cloud transcription requires an explicit "
+            "ProcessingInputSnapshot"
+        ),
+        "result": None,
+    }
+    assert evidence["blocked"]["calls"] == 0
+    assert evidence["blocked"]["error"] == "HostedRouteBlocked"
+    assert evidence["allowed"] == {
+        "calls": 1, "error": None, "rendered": "", "result": "adapter-result",
+    }
+    assert evidence["transport"] == [{
+        "key": "DISTINCTIVE_FROZEN_STT_KEY_14D",
+        "model": "frozen-stt-model",
+        "language": "fr",
+        "prompt": "Frozen Proper Noun",
+    }]
+    rendered = evidence["blocked"]["rendered"] + evidence["allowed_repr"]
+    assert "DISTINCTIVE_FROZEN_STT_KEY_14D" not in rendered
+    assert "MUTATED_LIVE_KEY_14D" not in rendered
+
+
+@pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
+@pytest.mark.parametrize("provider", ("openrouter", "openai"))
+@pytest.mark.parametrize("method", ("reader_tts", "reader_tts_test"))
+def test_reader_speech_entry_points_use_only_the_frozen_credential(
+    platform_app, provider, method
+):
+    script = r'''
+import importlib
+import json
+import sys
+
+sys.path.insert(0, sys.argv[1])
+shell = importlib.import_module("webui_shell")
+provider = sys.argv[2]
+method = sys.argv[3]
+
+class Settings:
+    def __init__(self):
+        self.values = {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "reader_tts_provider": provider,
+            "reader_tts_model": (
+                "google/gemini-3.1-flash-tts-preview"
+                if provider == "openrouter" else "gpt-4o-mini-tts"
+            ),
+            "reader_voice": "Fenrir" if provider == "openrouter" else "onyx",
+            provider + "_api_key": "FROZEN_READER_KEY_14D",
+        }
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+    def set(self, key, value):
+        self.values[key] = value
+        return True
+    def update(self, values=None, **kwargs):
+        self.values.update(values or {})
+        self.values.update(kwargs)
+        return True
+
+settings = Settings()
+api = shell.Api.__new__(shell.Api)
+api.settings = settings
+import settings as settings_module
+settings_module.Settings = lambda: settings
+seen = []
+original = shell.ai.synthesize_with_fallback
+
+def mutate_then_synthesize(*args, **kwargs):
+    settings.values[provider + "_api_key"] = "MUTATED_LIVE_KEY_14D"
+    return original(*args, **kwargs)
+
+shell.ai.synthesize_with_fallback = mutate_then_synthesize
+if provider == "openrouter":
+    def transport(_text, api_key, **kwargs):
+        seen.append({
+            "key": api_key,
+            "provider": kwargs["route_decision"].provider,
+            "model": kwargs["model"],
+            "voice": kwargs["voice"],
+        })
+        return b"audio", "audio/mpeg"
+    shell.ai.openrouter_tts = transport
+else:
+    class Response:
+        headers = {"Content-Type": "audio/mpeg"}
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self): return b"audio"
+    def urlopen(req, timeout=None):
+        seen.append({
+            "key": req.get_header("Authorization").split(" ", 1)[1],
+            "provider": provider,
+            "model": json.loads(req.data.decode("utf-8"))["model"],
+            "voice": json.loads(req.data.decode("utf-8"))["voice"],
+        })
+        return Response()
+    shell.ai.urllib.request.urlopen = urlopen
+
+result = getattr(api, method)("private reader text") if method == "reader_tts" else getattr(api, method)()
+print(json.dumps({"result": result, "seen": seen}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app), provider, method],
+        capture_output=True, text=True, timeout=45, cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+    assert evidence["result"]["ok"] is True
+    assert len(evidence["seen"]) == 1
+    assert evidence["seen"][0]["key"] == "FROZEN_READER_KEY_14D"
+    assert evidence["seen"][0]["provider"] == provider
+    assert evidence["seen"][0]["model"] == (
+        "google/gemini-3.1-flash-tts-preview"
+        if provider == "openrouter" else "gpt-4o-mini-tts"
+    )
+    assert evidence["seen"][0]["voice"] == (
+        "Fenrir" if provider == "openrouter" else "onyx"
+    )
+
+
+@pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
+@pytest.mark.parametrize("provider", ("openrouter", "openai"))
+def test_modular_reader_adapters_require_and_use_only_the_frozen_credential(
+    platform_app, provider
+):
+    script = r'''
+import importlib
+import json
+import sys
+
+sys.path.insert(0, sys.argv[1])
+route = importlib.import_module("processing_route")
+tts = importlib.import_module("ai.tts_providers")
+provider = sys.argv[2]
+model = (
+    "google/gemini-3.1-flash-tts-preview"
+    if provider == "openrouter" else "gpt-4o-mini-tts"
+)
+voice = "Fenrir" if provider == "openrouter" else "onyx"
+
+class Settings:
+    def __init__(self, local_only=False):
+        self.values = {
+            "pro_mode": True, "local_only_mode": local_only,
+            "reader_tts_provider": provider, "reader_tts_model": model,
+            provider + "_api_key": "FROZEN_MODULAR_READER_KEY_14D",
+        }
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+source = Settings()
+decision = route.snapshot(
+    source, feature="reader", lane="reader_speech",
+    provider_override=provider, model_override=model,
+)
+source.values[provider + "_api_key"] = "MUTATED_MODULAR_LIVE_KEY_14D"
+seen = []
+if provider == "openrouter":
+    def transport(_text, api_key, **kwargs):
+        seen.append(api_key)
+        return b"audio", "audio/mpeg"
+    tts.openrouter_tts = transport
+    adapter = tts.OpenRouterTTSProvider()
+else:
+    class Response:
+        headers = {"Content-Type": "audio/mpeg"}
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self): return b"audio"
+    def urlopen(req, timeout=None):
+        seen.append(req.get_header("Authorization").split(" ", 1)[1])
+        return Response()
+    tts.urllib.request.urlopen = urlopen
+    adapter = tts.OpenAITTSProvider()
+
+def invoke(marker):
+    before = len(seen)
+    error = None
+    rendered = ""
+    try:
+        adapter.synthesize(
+            "private reader text", voice, model=model, route_decision=marker
+        )
+    except Exception as exc:
+        error = type(exc).__name__
+        rendered = repr(exc) + str(exc)
+    return {"calls": len(seen) - before, "error": error, "rendered": rendered}
+
+missing = invoke(None)
+blocked = route.snapshot(
+    Settings(local_only=True), feature="reader", lane="reader_speech",
+    provider_override=provider, model_override=model,
+)
+blocked_result = invoke(blocked)
+allowed = invoke(decision)
+print(json.dumps({
+    "missing": missing, "blocked": blocked_result, "allowed": allowed,
+    "seen": seen, "decision_repr": repr(decision),
+}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app), provider],
+        capture_output=True, text=True, timeout=30, cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+    assert evidence["missing"]["calls"] == 0
+    assert evidence["missing"]["error"] == "TypeError"
+    assert evidence["blocked"]["calls"] == 0
+    assert evidence["blocked"]["error"] == "HostedRouteBlocked"
+    assert evidence["allowed"] == {"calls": 1, "error": None, "rendered": ""}
+    assert evidence["seen"] == ["FROZEN_MODULAR_READER_KEY_14D"]
+    rendered = (
+        evidence["missing"]["rendered"] + evidence["blocked"]["rendered"]
+        + evidence["decision_repr"]
+    )
+    assert "FROZEN_MODULAR_READER_KEY_14D" not in rendered
+    assert "MUTATED_MODULAR_LIVE_KEY_14D" not in rendered
 
 
 @pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))

@@ -80,6 +80,27 @@ _SPEECH_PROVIDERS = {
     },
 }
 
+_TRANSCRIPTION_PROVIDERS = {
+    "groq": {
+        "key_setting": "groq_api_key",
+        "model_setting": "groq_transcription_model",
+        "default_model": "whisper-large-v3-turbo",
+        "endpoint_class": "groq_speech_to_text",
+    },
+    "openai": {
+        "key_setting": "openai_api_key",
+        "model_setting": "openai_transcription_model",
+        "default_model": "gpt-4o-mini-transcribe",
+        "endpoint_class": "openai_speech_to_text",
+    },
+    "openrouter": {
+        "key_setting": "openrouter_api_key",
+        "model_setting": "openrouter_transcription_model",
+        "default_model": "groq/whisper-large-v3-turbo",
+        "endpoint_class": "openrouter_speech_to_text",
+    },
+}
+
 
 class HostedRouteBlocked(RuntimeError):
     """Raised before provider code runs when a snapshot forbids egress."""
@@ -175,6 +196,13 @@ def _freeze_mapping(value: Any) -> _FrozenMapping:
     return frozen if isinstance(frozen, _FrozenMapping) else _FrozenMapping(())
 
 
+def _string_tuple(value: Any) -> tuple[str, ...]:
+    """Freeze a string-or-sequence setting without splitting one string."""
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(item) for item in (value or []))
+
+
 @dataclass(frozen=True, slots=True)
 class ProcessingInputSnapshot:
     """All mutable text-shaping inputs captured once for one invocation.
@@ -229,7 +257,13 @@ def snapshot(
     speech_lane = feature == "reader" and lane in {
         "reader_speech", "reader_speech_test"
     }
-    if speech_lane:
+    transcription_lane = feature == "dictation" and lane == "speech_to_text"
+    if transcription_lane:
+        provider = str(
+            _get(settings, "cloud_transcription_provider", "groq") or ""
+        ).strip().lower()
+        provider_info = _TRANSCRIPTION_PROVIDERS.get(provider)
+    elif speech_lane:
         provider = str(
             provider_override
             if provider_override is not None
@@ -261,16 +295,23 @@ def snapshot(
     pro_mode = bool(_get(settings, "pro_mode", True))
     device_only = bool(_get(settings, "local_only_mode", False))
     instant_text = bool(_get(settings, "instant_text", True))
-    explicit_local = not speech_lane and (
-        (feature == "dictation" and lane == "text" and instant_text)
-        or provider == "local"
-    )
+    if transcription_lane:
+        explicit_local = str(
+            _get(settings, "transcription_mode", "local") or "local"
+        ).strip().lower() != "cloud"
+    else:
+        explicit_local = not speech_lane and (
+            (feature == "dictation" and lane == "text" and instant_text)
+            or provider == "local"
+        )
     requested = LOCAL if explicit_local else HOSTED
 
     if provider == "local":
         effective, reason, ready = LOCAL, "local_provider", True
     elif explicit_local:
-        effective, reason, ready = LOCAL, "instant_text", True
+        effective, reason, ready = LOCAL, (
+            "local_transcription" if transcription_lane else "instant_text"
+        ), True
     elif device_only:
         effective, reason, ready = LOCAL, "device_only", False
     elif not pro_mode:
@@ -283,7 +324,12 @@ def snapshot(
         effective, reason, ready = HOSTED, "ready", True
 
     privacy = (
-        "transcript_text_leaves_device" if effective == HOSTED else "device_only"
+        "recorded_audio_leaves_device"
+        if transcription_lane and effective == HOSTED
+        else (
+            "transcript_text_leaves_device"
+            if effective == HOSTED else "device_only"
+        )
     )
     return RouteDecision(
         invocation_id=uuid4().hex,
@@ -324,18 +370,20 @@ def snapshot_inputs(
             _get(settings, "prompt_prefs", {}) or {}
         ),
         primary_language=str(
-            _get(settings, "primary_language", "") or ""
+            _get(
+                settings,
+                "primary_language",
+                _get(settings, "language", ""),
+            ) or ""
         ).strip().lower(),
         english_only=bool(_get(settings, "english_only", True)),
         foreign_mode=bool(_get(settings, "foreign_mode", False)),
-        foreign_languages=tuple(
-            str(language) for language in (
-                _get(settings, "foreign_languages", []) or []
-            )
+        foreign_languages=_string_tuple(
+            _get(settings, "foreign_languages", [])
         ),
         vocabulary=_freeze_mapping(_get(settings, "vocabulary", {}) or {}),
-        vocabulary_terms=tuple(
-            str(term) for term in (_get(settings, "vocabulary_terms", []) or [])
+        vocabulary_terms=_string_tuple(
+            _get(settings, "vocabulary_terms", [])
         ),
         format_enabled=bool(_get(settings, "format_enabled", True)),
         polish_aggressiveness=str(
@@ -408,6 +456,30 @@ def call_provider(
     require_provider(decision, expected_provider=expected_provider)
     kwargs.setdefault("route_decision", decision)
     return provider_call(*args, **kwargs)
+
+
+def require_transcription(
+    invocation_snapshot: ProcessingInputSnapshot,
+) -> ProcessingInputSnapshot:
+    """Validate a frozen cloud speech-to-text invocation at its adapter seam."""
+    if not isinstance(invocation_snapshot, ProcessingInputSnapshot):
+        raise TypeError(
+            "Cloud transcription requires an explicit ProcessingInputSnapshot"
+        )
+    decision = invocation_snapshot.route
+    if (
+        decision.feature != "dictation"
+        or decision.lane != "speech_to_text"
+    ):
+        raise TypeError("Cloud transcription requires a speech-to-text route")
+    require_provider(decision, expected_provider=decision.provider)
+    if decision.endpoint_class not in {
+        "groq_speech_to_text",
+        "openai_speech_to_text",
+        "openrouter_speech_to_text",
+    }:
+        raise TypeError("Cloud transcription requires a speech-to-text route")
+    return invocation_snapshot
 
 
 def settings_state(settings: Any) -> dict[str, Any]:

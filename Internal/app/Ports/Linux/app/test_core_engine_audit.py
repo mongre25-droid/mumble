@@ -39,11 +39,16 @@ def test_hotword_sanitizer_treats_string_as_one_term():
 
 
 def test_cloud_transcription_uses_shared_hotword_sanitizer(monkeypatch):
+    import processing_route
     import transcription
 
     class Settings:
         def get(self, key, default=None):
             return {
+                "pro_mode": True,
+                "local_only_mode": False,
+                "transcription_mode": "cloud",
+                "cloud_transcription_provider": "groq",
                 "groq_api_key": "key",
                 "vocabulary_terms": "Alice Smith",
             }.get(key, default)
@@ -55,7 +60,10 @@ def test_cloud_transcription_uses_shared_hotword_sanitizer(monkeypatch):
         return "ok"
 
     monkeypatch.setattr(transcription, "_transcribe_multipart", fake_send)
-    assert transcription.transcribe(np.zeros(8), Settings()) == "ok"
+    invocation = processing_route.snapshot_inputs(
+        Settings(), feature="dictation", lane="speech_to_text"
+    )
+    assert transcription.transcribe(np.zeros(8), invocation) == "ok"
     assert captured["prompt"] == "Alice Smith"
 
 

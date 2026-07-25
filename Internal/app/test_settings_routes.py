@@ -16,6 +16,7 @@ _pil.ImageGrab = types.SimpleNamespace(grabclipboard=lambda: None)
 sys.modules.setdefault("PIL", _pil)
 
 import transcription
+import processing_route
 import webui_shell
 
 
@@ -157,14 +158,20 @@ def main():
 
     print("== VAL-ROUTE-006: runtime STT never guesses a provider ==")
     unsupported = MemorySettings(
+        pro_mode=True,
+        local_only_mode=False,
+        transcription_mode="cloud",
         cloud_transcription_provider="retired-provider",
         groq_api_key="gsk-must-not-be-used",
     )
+    unsupported_invocation = processing_route.snapshot_inputs(
+        unsupported, feature="dictation", lane="speech_to_text"
+    )
     try:
-        transcription.transcribe([0.0], unsupported)
+        transcription.transcribe([0.0], unsupported_invocation)
         rejected = False
-    except ValueError as exc:
-        rejected = "Unsupported cloud transcription provider" in str(exc)
+    except processing_route.HostedRouteBlocked as exc:
+        rejected = exc.reason == "unsupported_provider"
     check("unknown runtime STT provider is rejected before any upload",
           rejected)
 

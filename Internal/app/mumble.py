@@ -2032,8 +2032,11 @@ class Mumble:
         mode-key feature needs per-word timestamps to map the button window onto the
         spoken keyword, which the cloud path doesn't provide. Returns a plain string
         normally, or (text, words) when want_words=True."""
-        if not want_words and self._cloud_transcription_on():
-            text = self._cloud_transcribe(audio)
+        invocation_snapshot = self._transcription_snapshot()
+        if not want_words and self._cloud_transcription_on(
+            invocation_snapshot.route
+        ):
+            text = self._cloud_transcribe(audio, invocation_snapshot)
             # Treat an empty/whitespace cloud result as a non-result, not success:
             # a provider that returns {"text": ""} on a real utterance would
             # otherwise short-circuit the local fallback and silently drop the
@@ -2044,18 +2047,20 @@ class Mumble:
             # cloud failed/empty → fall through to local so the dictation still lands
         return self._local_transcribe(audio, want_words=want_words)
 
-    def _cloud_transcription_on(self):
+    def _transcription_snapshot(self):
+        """Freeze permission and every cloud speech-to-text input once."""
+        return processing_route.snapshot_inputs(
+            self.settings,
+            feature="dictation",
+            lane="speech_to_text",
+            local_model_ready=getattr(self, "model", None) is not None,
+        )
+
+    def _cloud_transcription_on(self, route_decision=None):
         """True only when the user has explicitly switched to Cloud mode AND a key
         is present for a supported chosen provider (otherwise stay on-device)."""
-        if self.settings.get("local_only_mode", False):
-            return False
-        if (self.settings.get("transcription_mode", "local") or "local") != "cloud":
-            return False
-        provider = (self.settings.get("cloud_transcription_provider", "") or "").strip().lower()
-        if provider not in transcription.PROVIDERS:
-            return False
-        info = transcription.PROVIDERS[provider]
-        return bool((self.settings.get(info["key_setting"], "") or "").strip())
+        decision = route_decision or self._transcription_snapshot().route
+        return bool(decision.ready and decision.cloud_augmented)
 
     def _transcription_ready(self):
         """SINGLE SOURCE OF TRUTH for 'can Mumble turn speech into text right now?'
@@ -2069,11 +2074,14 @@ class Mumble:
         (the v0.9 control-window regression). Keep both callers on this method."""
         return self.model is not None or self._cloud_transcription_on()
 
-    def _cloud_transcribe(self, audio):
+    def _cloud_transcribe(self, audio, invocation_snapshot=None):
         """Run one cloud transcription. Returns the text, or None on any failure
         (logged) so the caller falls back to local. On the first failure per session
         the user gets a one-time toast so they know cloud STT is degraded."""
-        provider = self.settings.get("cloud_transcription_provider", "unknown")
+        invocation_snapshot = (
+            invocation_snapshot or self._transcription_snapshot()
+        )
+        provider = invocation_snapshot.route.provider
         ordinal = self._trace_next_inference_ordinal()
         self._trace_mark(
             "inference_started",
@@ -2084,10 +2092,9 @@ class Mumble:
         )
         try:
             t0 = time.time()
-            text = transcription.transcribe(
-                audio, self.settings, language=self.settings.get("language", "en"))
+            text = transcription.transcribe(audio, invocation_snapshot)
             print(f"[cloud-stt] {time.time() - t0:.2f}s "
-                  f"({self.settings.get('cloud_transcription_provider', 'groq')})")
+                  f"({provider})")
             self._trace_mark(
                 "inference_finished",
                 inference_ordinal=ordinal,

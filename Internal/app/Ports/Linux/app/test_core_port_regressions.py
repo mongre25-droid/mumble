@@ -32,6 +32,7 @@ def test_model_free_preserves_paragraphs_and_measurement_units():
 
 
 def test_transcription_sanitizes_audio_and_string_hotwords(monkeypatch):
+    import processing_route
     import transcription
 
     with pytest.raises(ValueError):
@@ -43,6 +44,10 @@ def test_transcription_sanitizes_audio_and_string_hotwords(monkeypatch):
     class Settings:
         def get(self, key, default=None):
             return {
+                "pro_mode": True,
+                "local_only_mode": False,
+                "transcription_mode": "cloud",
+                "cloud_transcription_provider": "groq",
                 "groq_api_key": "key",
                 "vocabulary_terms": "Alice Smith",
             }.get(key, default)
@@ -54,7 +59,10 @@ def test_transcription_sanitizes_audio_and_string_hotwords(monkeypatch):
         return "ok"
 
     monkeypatch.setattr(transcription, "_transcribe_multipart", send)
-    assert transcription.transcribe(np.zeros(8), Settings()) == "ok"
+    invocation = processing_route.snapshot_inputs(
+        Settings(), feature="dictation", lane="speech_to_text"
+    )
+    assert transcription.transcribe(np.zeros(8), invocation) == "ok"
     assert captured["prompt"] == "Alice Smith"
 
 

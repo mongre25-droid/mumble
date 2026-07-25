@@ -2091,10 +2091,19 @@ class Api:
                                   str(provider).strip().lower())
             prov = self.settings.get("cloud_transcription_provider",
                                      tx.DEFAULT_PROVIDER)
-            info = tx.provider_info(prov)
+            if prov not in tx.PROVIDERS:
+                return {"ok": False,
+                        "message": "The saved transcription provider is unavailable."}
+            info = tx.PROVIDERS[prov]
             if not (self.settings.get(info["key_setting"], "") or "").strip():
                 return {"ok": False,
                         "message": f"Add your {prov} API key first, then test."}
+            invocation_snapshot = processing_route.snapshot_inputs(
+                self.settings, feature="dictation", lane="speech_to_text"
+            )
+            if not invocation_snapshot.route.ready:
+                return {"ok": False,
+                        "message": "Cloud transcription is not authorized by the current processing route."}
             idx = self.settings.get("mic_device", None)
             idx = None if idx in (None, "", -1, "-1") else int(idx)
             sr = 16000
@@ -2105,8 +2114,7 @@ class Api:
             audio = np.asarray(rec, dtype="float32").flatten()
             import time as _t
             t0 = _t.time()
-            text = tx.transcribe(audio, self.settings,
-                                 language=self.settings.get("language", "en"))
+            text = tx.transcribe(audio, invocation_snapshot)
             dt = _t.time() - t0
             if not text:
                 return {"ok": True,

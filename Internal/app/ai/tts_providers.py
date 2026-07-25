@@ -277,7 +277,9 @@ class OpenRouterTTSProvider(TTSProvider):
 
     def synthesize(self, text, voice_id, model=None,
                    response_format=None, timeout=60, route_decision=None):
-        key = (self._get_key() or "").strip()
+        processing_route.require_provider(
+            route_decision, expected_provider=self.provider_id)
+        key = route_decision.api_key
         if not key:
             raise ValueError("Add your OpenRouter API key in Settings to use the Reader.")
         mid = model or self.default_model
@@ -290,15 +292,6 @@ class OpenRouterTTSProvider(TTSProvider):
             response_format=response_format, timeout=timeout,
             route_decision=route_decision)
         return audio, ctype
-
-    def _get_key(self):
-        try:
-            from settings import Settings
-            s = Settings()
-            return s.get("openrouter_api_key", "") or ""
-        except Exception:
-            return ""
-
 
 # ---- OpenAI TTS Provider -----------------------------------------------------
 OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech"
@@ -333,7 +326,9 @@ class OpenAITTSProvider(TTSProvider):
 
     def synthesize(self, text, voice_id, model=None,
                    response_format=None, timeout=60, route_decision=None):
-        key = (self._get_key() or "").strip()
+        processing_route.require_provider(
+            route_decision, expected_provider=self.provider_id)
+        key = route_decision.api_key
         if not key:
             raise ValueError("Add your OpenAI API key in Settings.")
         txt = (text or "").strip()
@@ -373,15 +368,6 @@ class OpenAITTSProvider(TTSProvider):
         if not ctype:
             ctype = "audio/mpeg"
         return audio, ctype
-
-    def _get_key(self):
-        try:
-            from settings import Settings
-            s = Settings()
-            return s.get("openai_api_key", "") or ""
-        except Exception:
-            return ""
-
 
 # ---- Provider registry and public API ----------------------------------------
 _TTS_PROVIDERS = {

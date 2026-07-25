@@ -2159,7 +2159,7 @@ class OpenRouterTTSProvider(TTSProvider):
     def synthesize(self, text, voice_id, model=None,
                    response_format=None, timeout=60, route_decision=None):
         processing_route.require_provider(route_decision, expected_provider=self.provider_id)
-        key = (self._get_key() or "").strip()
+        key = route_decision.api_key
         if not key:
             raise ValueError(
                 "Add your OpenRouter API key in Settings to use the Reader.")
@@ -2173,16 +2173,6 @@ class OpenRouterTTSProvider(TTSProvider):
             response_format=response_format, timeout=timeout,
             route_decision=route_decision)
         return audio, ctype
-
-    def _get_key(self):
-        """Read the OpenRouter key from the live settings file."""
-        try:
-            from settings import Settings
-            s = Settings()
-            return s.get("openrouter_api_key", "") or ""
-        except Exception:
-            return ""
-
 
 # ---------------------------------------------------------------------------
 # OpenAI direct TTS provider
@@ -2229,7 +2219,7 @@ class OpenAITTSProvider(TTSProvider):
     def synthesize(self, text, voice_id, model=None,
                    response_format=None, timeout=60, route_decision=None):
         processing_route.require_provider(route_decision, expected_provider=self.provider_id)
-        key = (self._get_key() or "").strip()
+        key = route_decision.api_key
         if not key:
             raise ValueError(
                 "Add your OpenAI API key in Settings to use the Reader with OpenAI TTS.")
@@ -2278,15 +2268,6 @@ class OpenAITTSProvider(TTSProvider):
         if not ctype:
             ctype = "audio/mpeg"
         return audio, ctype
-
-    def _get_key(self):
-        try:
-            from settings import Settings
-            s = Settings()
-            return s.get("openai_api_key", "") or ""
-        except Exception:
-            return ""
-
 
 # ---------------------------------------------------------------------------
 # Provider registry
