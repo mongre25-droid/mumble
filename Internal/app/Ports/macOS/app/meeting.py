@@ -861,10 +861,16 @@ def _chunk_transcript_lines(lines, max_chars=ANALYSIS_CHUNK_CHARS):
     return chunks
 
 
+_MEETINGS_ANALYSIS_FEATURE = "meetings"
+_MEETINGS_ANALYSIS_LANE = "meeting_analysis"
+
+
 def _analysis_context(settings, context=""):
     """Resolve the configured LLM call context, or None when unavailable."""
     invocation = processing_route.snapshot_inputs(
-        settings, feature="meetings", lane="meeting_analysis",
+        settings,
+        feature=_MEETINGS_ANALYSIS_FEATURE,
+        lane=_MEETINGS_ANALYSIS_LANE,
         context=context, context_policy="meeting_transcript",
     )
     info = ai.PROVIDERS.get(invocation.route.provider) or {}
@@ -878,7 +884,8 @@ def _analysis_call(context, system, user, max_tokens, timeout):
         decision, ai_module.cerebras_chat,
         system, user, decision.api_key, model=decision.model, url=info.get("url"),
         max_tokens=max_tokens, timeout=timeout,
-        expected_feature=decision.feature, expected_lane=decision.lane)
+        expected_feature=_MEETINGS_ANALYSIS_FEATURE,
+        expected_lane=_MEETINGS_ANALYSIS_LANE)
 
 
 def _dedupe_strings(items):

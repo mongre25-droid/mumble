@@ -996,8 +996,15 @@ def _chunk_transcript_lines(lines, max_chars=ANALYSIS_CHUNK_CHARS):
     return chunks
 
 
+_MEETINGS_ANALYSIS_FEATURE = "meetings"
+_MEETINGS_ANALYSIS_LANE = "meeting_analysis"
+
+
 def _analysis_context(
-    settings, feature="meetings", lane="meeting_analysis", context="",
+    settings,
+    feature=_MEETINGS_ANALYSIS_FEATURE,
+    lane=_MEETINGS_ANALYSIS_LANE,
+    context="",
 ):
     """Freeze the route and provider facts for one meeting action."""
     invocation = processing_route.snapshot_inputs(
@@ -1017,8 +1024,8 @@ def _analysis_call(context, system, user, max_tokens, timeout):
         system, user, decision.api_key,
         model=decision.model, url=info.get("url"),
         max_tokens=max_tokens, timeout=timeout,
-        expected_feature=decision.feature,
-        expected_lane=decision.lane,
+        expected_feature=_MEETINGS_ANALYSIS_FEATURE,
+        expected_lane=_MEETINGS_ANALYSIS_LANE,
     )
 
 

@@ -1606,6 +1606,197 @@ print(json.dumps({
 
 
 @pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
+def test_real_meetings_wrapper_declares_its_operation_at_final_boundary(platform_app):
+    script = r'''
+from dataclasses import replace
+import importlib
+import json
+import sys
+
+sys.path.insert(0, sys.argv[1])
+ai = importlib.import_module("ai")
+meeting = importlib.import_module("meeting")
+route = importlib.import_module("processing_route")
+
+class Settings:
+    def __init__(self, **overrides):
+        self.values = {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "instant_text": False,
+            "llm_provider": "cerebras",
+            "cerebras_api_key": "FROZEN_MEETING_KEY_14G",
+            "cerebras_model": "FROZEN_MEETING_MODEL_14G",
+        }
+        self.values.update(overrides)
+
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+transport = []
+
+class Response:
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def read(self):
+        return b'{"choices":[{"message":{"content":"transport-entered"}}]}'
+
+def urlopen(req, timeout=None):
+    payload = json.loads((getattr(req, "data", None) or b"{}").decode("utf-8"))
+    auth = req.get_header("Authorization") or ""
+    messages = payload.get("messages") or [{}, {}]
+    transport.append({
+        "url": getattr(req, "full_url", ""),
+        "key": auth.split(" ", 1)[1] if " " in auth else auth,
+        "model": payload.get("model"),
+        "system": messages[0].get("content"),
+        "user": messages[1].get("content"),
+        "max_tokens": payload.get(
+            "max_tokens", payload.get("max_completion_tokens")
+        ),
+        "timeout": timeout,
+    })
+    return Response()
+
+ai.urllib.request.urlopen = urlopen
+settings = Settings()
+
+def snapshot(feature, lane, source=settings):
+    return route.snapshot_inputs(
+        source,
+        feature=feature,
+        lane=lane,
+        context="FROZEN MEETING TRANSCRIPT 14G",
+        context_policy="meeting_transcript",
+    )
+
+exact = snapshot("meetings", "meeting_analysis")
+wrong_operations = (
+    ("dictation", "text"),
+    ("dictation", "foreign"),
+    ("prompt", "prompt"),
+    ("email", "email"),
+    ("reply", "reply"),
+    ("deck", "deck_reason"),
+    ("reader", "reader_summary"),
+    ("meetings", "meeting_follow_up"),
+)
+wrong = {
+    f"{feature}/{lane}": snapshot(feature, lane)
+    for feature, lane in wrong_operations
+}
+device_only = snapshot(
+    "meetings", "meeting_analysis", Settings(local_only_mode=True)
+)
+hosted_off = snapshot(
+    "meetings", "meeting_analysis", Settings(pro_mode=False)
+)
+missing_key = snapshot(
+    "meetings", "meeting_analysis", Settings(cerebras_api_key="")
+)
+unavailable = snapshot(
+    "meetings", "meeting_analysis", Settings(llm_provider="unsupported")
+)
+wrong_endpoint = replace(
+    exact,
+    route=replace(exact.route, endpoint_class="openai_compatible"),
+)
+
+# A later Settings mutation must not replace this invocation's frozen inputs.
+settings.values["llm_provider"] = "openrouter"
+settings.values["cerebras_api_key"] = "MUTATED_MEETING_KEY_14G"
+settings.values["cerebras_model"] = "MUTATED_MEETING_MODEL_14G"
+
+def invoke(invocation, info=None):
+    before = len(transport)
+    error = None
+    rendered = ""
+    result = None
+    try:
+        if info is None:
+            info = ai.PROVIDERS.get(invocation.route.provider) or {}
+        result = meeting._analysis_call(
+            (ai, info, invocation),
+            "FROZEN MEETING SYSTEM 14G",
+            "FROZEN MEETING USER TEXT 14G",
+            321,
+            37,
+        )
+    except Exception as exc:
+        error = type(exc).__name__
+        rendered = repr(exc) + str(exc)
+    return {
+        "calls": len(transport) - before,
+        "error": error,
+        "rendered": rendered,
+        "result": result,
+    }
+
+evidence = {
+    "wrong_operations": {
+        operation: invoke(invocation)
+        for operation, invocation in wrong.items()
+    },
+    "wrong_provider": invoke(exact, ai.PROVIDERS["openrouter"]),
+    "wrong_endpoint": invoke(wrong_endpoint),
+    "device_only": invoke(device_only),
+    "hosted_off": invoke(hosted_off),
+    "missing_key": invoke(missing_key),
+    "unavailable": invoke(unavailable),
+    "exact": invoke(exact),
+}
+print(json.dumps({"evidence": evidence, "transport": transport}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    receipt = json.loads(result.stdout.strip().splitlines()[-1])
+
+    blocked = list(receipt["evidence"]["wrong_operations"].values()) + [
+        receipt["evidence"][key]
+        for key in (
+            "wrong_provider", "wrong_endpoint", "device_only",
+            "hosted_off", "missing_key", "unavailable",
+        )
+    ]
+    for item in blocked:
+        assert item["calls"] == 0, receipt
+        assert item["error"] == "HostedRouteBlocked", receipt
+
+    assert receipt["evidence"]["exact"] == {
+        "calls": 1,
+        "error": None,
+        "rendered": "",
+        "result": "transport-entered",
+    }
+    assert receipt["transport"] == [{
+        "url": "https://api.cerebras.ai/v1/chat/completions",
+        "key": "FROZEN_MEETING_KEY_14G",
+        "model": "FROZEN_MEETING_MODEL_14G",
+        "system": "FROZEN MEETING SYSTEM 14G",
+        "user": "FROZEN MEETING USER TEXT 14G",
+        "max_tokens": 321,
+        "timeout": 37,
+    }]
+
+    rendered = json.dumps(receipt["evidence"])
+    for private_value in (
+        "FROZEN_MEETING_KEY_14G",
+        "MUTATED_MEETING_KEY_14G",
+        "FROZEN_MEETING_MODEL_14G",
+        "MUTATED_MEETING_MODEL_14G",
+        "FROZEN MEETING TRANSCRIPT 14G",
+        "FROZEN MEETING USER TEXT 14G",
+    ):
+        assert private_value not in rendered
+
+
+@pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
 def test_meeting_entry_point_freezes_route_preferences_and_gathered_transcript(platform_app):
     script = r'''
 import importlib
