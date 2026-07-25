@@ -31,11 +31,18 @@ class TargetEditability(str, Enum):
     UNKNOWN = "unknown"
 
 
+class ClipboardRestoreState(str, Enum):
+    RESTORED = "restored"
+    NEWER_EXTERNAL = "newer_external"
+    FAILED = "failed"
+
+
 class InsertionReason(str, Enum):
     CONFIRMED = "confirmed"
     CONFIRMATION_UNAVAILABLE = "confirmation_unavailable"
     NO_TARGET = "no_target"
     TARGET_CHANGED = "target_changed"
+    TARGET_SAFETY_CHANGED = "target_safety_changed"
     NO_FOCUS = "no_focus"
     NOT_EDITABLE = "not_editable"
     READ_ONLY = "read_only"
@@ -77,6 +84,7 @@ class TargetContext:
         return (
             self.window == other.window
             and self.process_id == other.process_id
+            and self.thread_id == other.thread_id
             and self.focused_child == other.focused_child
         )
 
@@ -104,6 +112,22 @@ class ClipboardOwnership:
     sequence: int
     fingerprint: str
     format_id: int = 0
+
+
+@dataclass(frozen=True)
+class ClipboardRestoreResult:
+    state: ClipboardRestoreState
+
+    @property
+    def restored(self) -> bool:
+        return self.state is ClipboardRestoreState.RESTORED
+
+    @property
+    def changed_externally(self) -> bool:
+        return self.state is ClipboardRestoreState.NEWER_EXTERNAL
+
+    def __bool__(self) -> bool:
+        return self.restored
 
 
 @dataclass(frozen=True)
@@ -167,6 +191,8 @@ _REASON_MESSAGES = {
         "Saved in Deck and History. Click an editable field, then use Paste latest.",
     InsertionReason.TARGET_CHANGED.value:
         "Not sent because the selected field changed. The result is saved in Deck and History.",
+    InsertionReason.TARGET_SAFETY_CHANGED.value:
+        "Not sent because the selected field's safety state changed. The result is saved in Deck and History.",
     InsertionReason.NO_FOCUS.value:
         "Not sent because no editable field is focused. The result is saved in Deck and History.",
     InsertionReason.NOT_EDITABLE.value:
@@ -593,6 +619,51 @@ class InsertionTransaction:
             **cleanup,
         )
 
+    def _target_safety_reason(self, target):
+        """Return the first fail-closed reason from one fresh target snapshot."""
+        if target is None or not target.window:
+            return InsertionReason.NO_TARGET
+        if not target.focused_child:
+            return InsertionReason.NO_FOCUS
+        if target.protected:
+            return InsertionReason.PROTECTED_FIELD
+        if target.read_only:
+            return InsertionReason.READ_ONLY
+        if target.editability is TargetEditability.NOT_EDITABLE:
+            return InsertionReason.NOT_EDITABLE
+        if target.editability is not TargetEditability.EDITABLE:
+            return InsertionReason.EDITABILITY_UNKNOWN
+        injectable = self._target.can_inject(target)
+        if injectable is False:
+            return InsertionReason.HIGHER_INTEGRITY
+        if injectable is None:
+            return InsertionReason.UNKNOWN_INTEGRITY
+        return None
+
+    def _fresh_target_reason(self, activation):
+        current = self._target.current()
+        if not activation.same_destination(current):
+            return current, InsertionReason.TARGET_CHANGED
+        reason = self._target_safety_reason(current)
+        if reason is not None:
+            return current, reason
+        if self._target_safety_signature(activation) != self._target_safety_signature(
+                current):
+            return current, InsertionReason.TARGET_SAFETY_CHANGED
+        return current, None
+
+    @staticmethod
+    def _target_safety_signature(target):
+        return (
+            str(target.control_class or "").casefold(),
+            bool(target.has_caret),
+            target.editability,
+            bool(target.read_only),
+            bool(target.protected),
+            str(target.integrity or "unknown"),
+            str(target.integrity_relation or "unknown"),
+        )
+
     def _execute(self, request):
         lease = request.target_lease
         activation = ((lease.target if lease is not None else None)
@@ -612,29 +683,14 @@ class InsertionTransaction:
                 return self._result(request, InsertionOutcome.SAVED_ONLY,
                                     InsertionReason.TARGET_CHANGED)
 
-        if not activation.focused_child:
+        safety_reason = self._target_safety_reason(current)
+        if (safety_reason is None
+                and self._target_safety_signature(activation)
+                != self._target_safety_signature(current)):
+            safety_reason = InsertionReason.TARGET_SAFETY_CHANGED
+        if safety_reason is not None:
             return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.NO_FOCUS)
-        if activation.protected:
-            return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.PROTECTED_FIELD)
-        if activation.read_only:
-            return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.READ_ONLY)
-        if activation.editability is TargetEditability.NOT_EDITABLE:
-            return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.NOT_EDITABLE)
-        if activation.editability is not TargetEditability.EDITABLE:
-            return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.EDITABILITY_UNKNOWN)
-
-        injectable = self._target.can_inject(activation)
-        if injectable is False:
-            return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.HIGHER_INTEGRITY)
-        if injectable is None:
-            return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.UNKNOWN_INTEGRITY)
+                                safety_reason)
 
         try:
             snapshot = self._clipboard.snapshot()
@@ -669,36 +725,47 @@ class InsertionTransaction:
         clipboard_restored = False
         clipboard_changed = False
         cleanup_warning = ""
+        clipboard_cleanup_done = False
+
+        def finish_early(result):
+            nonlocal clipboard_cleanup_done
+            clipboard_cleanup_done = True
+            return self._finish_clipboard(
+                request, snapshot, ownership, result)
+
         try:
             # The target check is deliberately after the clipboard write and
             # immediately before native input.  A late focus switch therefore
             # cannot redirect the user's dictation to another field.
-            current = self._target.current()
-            if not activation.same_destination(current):
-                return self._finish_clipboard(
-                    request, snapshot, ownership,
-                    self._result(request, InsertionOutcome.SAVED_ONLY,
-                                 InsertionReason.TARGET_CHANGED))
+            current, safety_reason = self._fresh_target_reason(activation)
+            if safety_reason is not None:
+                return finish_early(self._result(
+                    request, InsertionOutcome.SAVED_ONLY, safety_reason))
 
             ready, _ready_reason = self._native.ready(request.modifier_timeout_s)
             if not ready:
-                return self._finish_clipboard(
-                    request, snapshot, ownership,
-                    self._result(request, InsertionOutcome.NOT_SENT,
-                                 InsertionReason.HELD_MODIFIER))
+                return finish_early(self._result(
+                    request, InsertionOutcome.NOT_SENT,
+                    InsertionReason.HELD_MODIFIER))
+
+            # Modifier release can itself consume the focus window. The last
+            # authorization therefore uses a new complete target snapshot at
+            # the native-input boundary, not facts retained from activation.
+            current, safety_reason = self._fresh_target_reason(activation)
+            if safety_reason is not None:
+                return finish_early(self._result(
+                    request, InsertionOutcome.SAVED_ONLY, safety_reason))
 
             if request.undo_before_paste:
                 send_count = 1
                 try:
                     undo = self._native.send_undo()
                 except Exception:
-                    return self._finish_clipboard(
-                        request, snapshot, ownership,
-                        self._result(
-                            request, InsertionOutcome.UNCERTAIN,
-                            InsertionReason.UNDO_RESULT_UNKNOWN,
-                            send_count=send_count,
-                            native_requested=4, native_accepted=None))
+                    return finish_early(self._result(
+                        request, InsertionOutcome.UNCERTAIN,
+                        InsertionReason.UNDO_RESULT_UNKNOWN,
+                        send_count=send_count,
+                        native_requested=4, native_accepted=None))
                 undo_requested = max(0, int(undo.requested))
                 undo_accepted = undo.accepted
                 if (not undo.submitted or undo_accepted != undo_requested
@@ -706,25 +773,23 @@ class InsertionTransaction:
                     undo_outcome = (InsertionOutcome.UNCERTAIN
                                     if undo.submitted or (undo_accepted or 0) > 0
                                     else InsertionOutcome.NOT_SENT)
-                    return self._finish_clipboard(
-                        request, snapshot, ownership,
-                        self._result(
-                            request, undo_outcome,
-                            InsertionReason.UNDO_NOT_FULLY_ACCEPTED,
-                            send_count=send_count,
-                            native_requested=undo_requested,
-                            native_accepted=undo_accepted))
+                    return finish_early(self._result(
+                        request, undo_outcome,
+                        InsertionReason.UNDO_NOT_FULLY_ACCEPTED,
+                        send_count=send_count,
+                        native_requested=undo_requested,
+                        native_accepted=undo_accepted))
                 requested += undo_requested
                 accepted += undo_accepted
-                if not activation.same_destination(self._target.current()):
-                    return self._finish_clipboard(
-                        request, snapshot, ownership,
-                        self._result(
-                            request, InsertionOutcome.UNCERTAIN,
-                            InsertionReason.TARGET_CHANGED_AFTER_UNDO,
-                            send_count=send_count,
-                            native_requested=requested,
-                            native_accepted=accepted))
+                _after_undo, after_undo_reason = self._fresh_target_reason(
+                    activation)
+                if after_undo_reason is not None:
+                    return finish_early(self._result(
+                        request, InsertionOutcome.UNCERTAIN,
+                        InsertionReason.TARGET_CHANGED_AFTER_UNDO,
+                        send_count=send_count,
+                        native_requested=requested,
+                        native_accepted=accepted))
 
             send_count += 1
             try:
@@ -778,20 +843,14 @@ class InsertionTransaction:
             }:
                 self._settle_delay(max(0.0, request.settle_seconds))
         finally:
-            if request.restore_clipboard:
-                try:
-                    if self._clipboard.still_owns(ownership):
-                        clipboard_restored = bool(
-                            self._clipboard.restore(snapshot, ownership))
-                        if not clipboard_restored:
-                            cleanup_warning = "The previous clipboard could not be restored."
-                    else:
-                        clipboard_changed = True
-                        cleanup_warning = (
-                            "The clipboard changed after Mumble wrote to it, so the newer "
-                            "clipboard was left untouched.")
-                except Exception:
-                    cleanup_warning = "The previous clipboard could not be restored."
+            if request.restore_clipboard and not clipboard_cleanup_done:
+                restore_state = self._restore_clipboard_state(
+                    snapshot, ownership)
+                clipboard_restored = (
+                    restore_state is ClipboardRestoreState.RESTORED)
+                clipboard_changed = (
+                    restore_state is ClipboardRestoreState.NEWER_EXTERNAL)
+                cleanup_warning = self._restore_warning(restore_state)
 
         return self._result(
             request, outcome, reason, send_count=send_count,
@@ -804,25 +863,36 @@ class InsertionTransaction:
     def _finish_clipboard(self, request, snapshot, ownership, result):
         if not request.restore_clipboard:
             return result
+        state = self._restore_clipboard_state(snapshot, ownership)
+        values = result.__dict__.copy()
+        values.update(
+            clipboard_restored=(state is ClipboardRestoreState.RESTORED),
+            clipboard_changed_externally=(
+                state is ClipboardRestoreState.NEWER_EXTERNAL),
+            cleanup_warning=self._restore_warning(state),
+        )
+        return InsertionResult(**values)
+
+    def _restore_clipboard_state(self, snapshot, ownership):
         try:
-            if not self._clipboard.still_owns(ownership):
-                values = result.__dict__.copy()
-                values.update(
-                    clipboard_changed_externally=True,
-                    cleanup_warning=(
-                        "The clipboard changed after Mumble wrote to it, so the newer "
-                        "clipboard was left untouched."),
-                )
-                return InsertionResult(**values)
-            restored = bool(self._clipboard.restore(snapshot, ownership))
-            values = result.__dict__.copy()
-            values.update(
-                clipboard_restored=restored,
-                cleanup_warning="" if restored else
-                    "The previous clipboard could not be restored.",
-            )
-            return InsertionResult(**values)
+            restored = self._clipboard.restore(snapshot, ownership)
         except Exception:
-            values = result.__dict__.copy()
-            values["cleanup_warning"] = "The previous clipboard could not be restored."
-            return InsertionResult(**values)
+            return ClipboardRestoreState.FAILED
+        state = getattr(restored, "state", None)
+        if isinstance(state, ClipboardRestoreState):
+            return state
+        try:
+            return ClipboardRestoreState(state)
+        except (TypeError, ValueError):
+            return (ClipboardRestoreState.RESTORED if restored else
+                    ClipboardRestoreState.FAILED)
+
+    @staticmethod
+    def _restore_warning(state):
+        if state is ClipboardRestoreState.RESTORED:
+            return ""
+        if state is ClipboardRestoreState.NEWER_EXTERNAL:
+            return (
+                "The clipboard changed after Mumble wrote to it, so the newer "
+                "clipboard was left untouched.")
+        return "The previous clipboard could not be restored."

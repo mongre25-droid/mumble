@@ -3,9 +3,12 @@
 
 import threading
 import unittest
+from dataclasses import replace
 
 from insertion import (
     ClipboardOwnership,
+    ClipboardRestoreResult,
+    ClipboardRestoreState,
     ClipboardSnapshot,
     ClipboardWriteFailure,
     InsertionOutcome,
@@ -52,6 +55,7 @@ class FakeTarget:
         self.active = TARGET
         self.current_values = []
         self.injectable = True
+        self.injectable_values = []
         self.restore_calls = 0
         self.restore_result = True
 
@@ -67,6 +71,8 @@ class FakeTarget:
         return self.restore_result
 
     def can_inject(self, target):
+        if self.injectable_values:
+            return self.injectable_values.pop(0)
         return self.injectable
 
 
@@ -83,6 +89,8 @@ class FakeClipboard:
         self.write_calls = 0
         self.snapshot_calls = 0
         self.fail_write = False
+        self.restore_result = None
+        self.still_owns_calls = 0
 
     def snapshot(self):
         self.snapshot_calls += 1
@@ -97,12 +105,18 @@ class FakeClipboard:
         return self.owner
 
     def still_owns(self, ownership):
+        self.still_owns_calls += 1
         return ownership == self.owner and self.sequence == ownership.sequence
 
     def restore(self, snapshot, ownership):
         self.restore_calls += 1
+        if self.restore_result is not None:
+            return self.restore_result
+        if ownership != self.owner or self.sequence != ownership.sequence:
+            return ClipboardRestoreResult(
+                ClipboardRestoreState.NEWER_EXTERNAL)
         self.sequence += 1
-        return True
+        return ClipboardRestoreResult(ClipboardRestoreState.RESTORED)
 
 
 class FakeNativeInput:
@@ -295,6 +309,49 @@ class InsertionTransactionTests(unittest.TestCase):
         self.assertEqual(0, native.send_calls)
         self.assertEqual(1, clipboard.restore_calls)
 
+    def test_same_control_late_safety_mutations_fail_closed_before_native_input(self):
+        cases = [
+            ("read-only", replace(
+                TARGET, read_only=True,
+                editability=TargetEditability.NOT_EDITABLE),
+             [True, True], InsertionReason.READ_ONLY),
+            ("protected", replace(
+                TARGET, protected=True,
+                editability=TargetEditability.NOT_EDITABLE),
+             [True, True], InsertionReason.PROTECTED_FIELD),
+            ("unsupported", replace(
+                TARGET, control_class="Button", has_caret=False,
+                editability=TargetEditability.NOT_EDITABLE),
+             [True, True], InsertionReason.NOT_EDITABLE),
+            ("supported-control-changed", replace(
+                TARGET, control_class="RichEdit50W"),
+             [True, True], InsertionReason.TARGET_SAFETY_CHANGED),
+            ("higher-integrity", replace(
+                TARGET, integrity="high", integrity_relation="higher"),
+             [True, False], InsertionReason.HIGHER_INTEGRITY),
+            ("unknown-integrity", replace(
+                TARGET, integrity="unknown", integrity_relation="unknown"),
+             [True, None], InsertionReason.UNKNOWN_INTEGRITY),
+        ]
+        for name, late_context, injectable, expected_reason in cases:
+            with self.subTest(name=name):
+                target, clipboard, native = (
+                    FakeTarget(), FakeClipboard(), FakeNativeInput())
+                target.current_values = [TARGET, late_context]
+                target.injectable_values = list(injectable)
+                transaction = InsertionTransaction(
+                    target, clipboard, native,
+                    settle_delay=lambda _seconds: None)
+
+                result = transaction.insert(self.make_request("late-" + name))
+
+                self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
+                self.assertEqual(expected_reason.value, result.reason)
+                self.assertEqual(1, clipboard.write_calls)
+                self.assertEqual(1, clipboard.restore_calls)
+                self.assertEqual(0, native.send_calls)
+                self.assertNotIn("Pasted", result.message)
+
     def test_elevation_mismatch_never_touches_clipboard_or_input(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
         target.injectable = False
@@ -364,6 +421,24 @@ class InsertionTransactionTests(unittest.TestCase):
                 self.assertEqual(changed, result.clipboard_changed_externally)
                 self.assertIn(warning, result.cleanup_warning)
                 self.assertEqual(0, native.send_calls)
+
+    def test_incomplete_image_clipboard_write_is_saved_only_and_never_sent(self):
+        target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
+        failure = ClipboardWriteFailure(
+            "image format failed", clipboard_restored=True)
+        clipboard.write = lambda *_args: (
+            (_ for _ in ()).throw(failure))
+        transaction = InsertionTransaction(target, clipboard, native)
+
+        result = transaction.insert(self.make_request(
+            "image-write-failed", source="deck_image", content_kind="image",
+            text="", image_path=r"C:\fixture.png"))
+
+        self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
+        self.assertEqual(InsertionReason.CLIPBOARD_WRITE_FAILED.value,
+                         result.reason)
+        self.assertTrue(result.clipboard_restored)
+        self.assertEqual(0, native.send_calls)
 
     def test_physical_modifier_timeout_is_not_sent(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
@@ -444,7 +519,37 @@ class InsertionTransactionTests(unittest.TestCase):
         self.assertEqual(InsertionOutcome.CONFIRMED, result.outcome)
         self.assertFalse(result.clipboard_restored)
         self.assertTrue(result.clipboard_changed_externally)
-        self.assertEqual(0, clipboard.restore_calls)
+        self.assertEqual(1, clipboard.restore_calls)
+
+    def test_normal_and_early_exit_restore_use_one_authoritative_adapter_result(self):
+        for kind in ("text", "image"):
+            for path in ("normal", "early-exit"):
+                with self.subTest(kind=kind, path=path):
+                    target, clipboard, native = (
+                        FakeTarget(), FakeClipboard(), FakeNativeInput())
+                    clipboard.restore_result = ClipboardRestoreResult(
+                        ClipboardRestoreState.NEWER_EXTERNAL)
+                    if path == "early-exit":
+                        target.current_values = [TARGET, OTHER_TARGET]
+                    transaction = InsertionTransaction(
+                        target, clipboard, native,
+                        settle_delay=lambda _seconds: None)
+                    request = self.make_request(
+                        "atomic-{}-{}".format(kind, path),
+                        content_kind=kind,
+                        text="payload" if kind == "text" else "",
+                        image_path=(r"C:\fixture.png"
+                                    if kind == "image" else ""))
+
+                    result = transaction.insert(request)
+
+                    self.assertEqual(1, clipboard.restore_calls)
+                    self.assertEqual(0, clipboard.still_owns_calls)
+                    self.assertTrue(result.clipboard_changed_externally)
+                    self.assertFalse(result.clipboard_restored)
+                    self.assertIn("left untouched", result.cleanup_warning)
+                    self.assertEqual(0 if path == "early-exit" else 1,
+                                     native.send_calls)
 
     def test_image_request_uses_the_same_terminal_contract(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput(

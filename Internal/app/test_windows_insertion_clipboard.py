@@ -6,8 +6,13 @@ from contextlib import contextmanager
 import struct
 import unittest
 
-from insertion import InsertionRequest, TargetContext
+from insertion import (
+    ClipboardRestoreState,
+    InsertionRequest,
+    TargetContext,
+)
 from windows_insertion import (
+    _ClipboardOwnershipChanged,
     _INPUT,
     CF_DIB,
     CF_HDROP,
@@ -36,7 +41,16 @@ class MemoryWindowsClipboard(WindowsClipboardAdapter):
     def _read_format_bytes(self, format_id):
         return self.formats.get(format_id)
 
-    def _replace_formats(self, formats):
+    @contextmanager
+    def _opened(self):
+        yield self
+
+    def _read_format_bytes_open(self, format_id):
+        return self._read_format_bytes(format_id)
+
+    def _replace_formats(self, formats, *, before_clear=None):
+        if before_clear is not None and not before_clear():
+            raise _ClipboardOwnershipChanged("clipboard ownership changed")
         self.formats = {format_id: bytes(data) for format_id, data in formats}
         if self.corrupt_restore and self.formats:
             first = next(iter(self.formats))
@@ -71,8 +85,9 @@ class TransactionalClipboard(WindowsClipboardAdapter):
             return True
 
     def __init__(self, formats, *, fail_calls=(), corrupt_readback=False,
-                 external_mutation=False, empty_success=True,
-                 external_mutation_during_recovery=False):
+                  external_mutation=False, empty_success=True,
+                  external_mutation_during_recovery=False,
+                  restore_gap_mutation=None):
         self.formats = dict(formats)
         self.sequence = 20
         self.max_formats = 64
@@ -86,7 +101,10 @@ class TransactionalClipboard(WindowsClipboardAdapter):
         self.external_mutation = external_mutation
         self.external_mutation_during_recovery = (
             external_mutation_during_recovery)
+        self.restore_gap_mutation = restore_gap_mutation
         self.recovery_mutation_done = False
+        self.fail_open = False
+        self.fail_ownership_read = False
         self.empty_success = empty_success
         self.set_calls = 0
         self.open_count = 0
@@ -98,6 +116,8 @@ class TransactionalClipboard(WindowsClipboardAdapter):
 
     @contextmanager
     def _opened(self):
+        if self.fail_open:
+            raise RuntimeError("injected OpenClipboard failure")
         self.open_count += 1
         try:
             yield self
@@ -122,12 +142,24 @@ class TransactionalClipboard(WindowsClipboardAdapter):
             self.formats = {CF_UNICODETEXT: b"external recovery\x00\x00"}
             self.sequence += 1
             self.recovery_mutation_done = True
+        elif (self.restore_gap_mutation and self._replacement_finished
+              and not self.recovery_mutation_done):
+            mutation = self.restore_gap_mutation
+            if mutation in {"fingerprint", "both"}:
+                primary = (CF_DIB if CF_DIB in self.formats else
+                           CF_UNICODETEXT)
+                self.formats[primary] = b"external-owner-bytes"
+            if mutation in {"sequence", "both"}:
+                self.sequence += 1
+            self.recovery_mutation_done = True
         try:
             return super()._replace_formats(formats, **kwargs)
         finally:
             self._replacement_finished = True
 
     def _read_format_bytes_open(self, format_id):
+        if self.fail_ownership_read and self._replacement_finished:
+            return None
         return self._read_format_bytes(format_id)
 
     def _set_format(self, format_id, data):
@@ -152,6 +184,9 @@ class TransactionalClipboard(WindowsClipboardAdapter):
     def _format_name(self, format_id):
         return "CF_UNICODETEXT" if format_id == CF_UNICODETEXT else str(format_id)
 
+    def _image_dib(self, _path):
+        return b"fixture-dib-bytes"
+
 
 def text_request(text="private dictation"):
     return InsertionRequest(
@@ -163,7 +198,90 @@ def text_request(text="private dictation"):
     )
 
 
+def image_request():
+    return InsertionRequest(
+        operation_id="clipboard-image-test",
+        source="deck_image",
+        content_kind="image",
+        activation_target=TargetContext(1, 2, 3, 4, "medium"),
+        image_path=r"C:\fixture.png",
+    )
+
+
 class WindowsClipboardTests(unittest.TestCase):
+    def test_normal_restore_checks_ownership_atomically_before_clear_for_text_and_image(self):
+        prior = {CF_UNICODETEXT: b"prior\x00\x00"}
+        for request in (text_request(), image_request()):
+            with self.subTest(content_kind=request.content_kind):
+                clipboard = TransactionalClipboard(
+                    prior, external_mutation_during_recovery=True)
+                snapshot = clipboard.snapshot()
+                ownership = clipboard.write(request, snapshot)
+
+                # Reproduce the rejected candidate's exact gap: an earlier
+                # ownership check succeeds, then an external owner changes the
+                # clipboard inside the adapter path immediately before clear.
+                self.assertTrue(clipboard.still_owns(ownership))
+                result = clipboard.restore(snapshot, ownership)
+
+                self.assertEqual("newer_external", result.state)
+                self.assertEqual(
+                    {CF_UNICODETEXT: b"external recovery\x00\x00"},
+                    clipboard.formats)
+                self.assertEqual(clipboard.open_count, clipboard.close_count)
+
+    def test_atomic_restore_rejects_sequence_fingerprint_and_combined_changes(self):
+        prior = {CF_UNICODETEXT: b"prior\x00\x00"}
+        for request in (text_request(), image_request()):
+            for mutation in ("sequence", "fingerprint", "both"):
+                with self.subTest(content_kind=request.content_kind,
+                                  mutation=mutation):
+                    clipboard = TransactionalClipboard(
+                        prior, restore_gap_mutation=mutation)
+                    snapshot = clipboard.snapshot()
+                    ownership = clipboard.write(request, snapshot)
+                    before_restore = dict(clipboard.formats)
+
+                    self.assertTrue(clipboard.still_owns(ownership))
+                    result = clipboard.restore(snapshot, ownership)
+
+                    self.assertEqual(ClipboardRestoreState.NEWER_EXTERNAL,
+                                     result.state)
+                    self.assertNotEqual(prior, clipboard.formats)
+                    if mutation == "sequence":
+                        self.assertEqual(before_restore, clipboard.formats)
+                    else:
+                        self.assertIn(b"external-owner-bytes",
+                                      clipboard.formats.values())
+                    self.assertEqual(clipboard.open_count,
+                                     clipboard.close_count)
+
+    def test_restore_open_lock_clear_and_write_failures_are_explicit_and_closed(self):
+        prior = {CF_UNICODETEXT: b"prior\x00\x00"}
+        for failure in ("open", "lock", "clear", "write"):
+            with self.subTest(failure=failure):
+                clipboard = TransactionalClipboard(prior)
+                snapshot = clipboard.snapshot()
+                ownership = clipboard.write(text_request(), snapshot)
+                temporary = dict(clipboard.formats)
+                if failure == "open":
+                    clipboard.fail_open = True
+                elif failure == "lock":
+                    clipboard.fail_ownership_read = True
+                elif failure == "clear":
+                    clipboard.empty_success = False
+                else:
+                    clipboard.fail_calls.add(clipboard.set_calls + 1)
+
+                result = clipboard.restore(snapshot, ownership)
+
+                self.assertEqual(ClipboardRestoreState.FAILED, result.state)
+                self.assertFalse(result.restored)
+                if failure in {"open", "lock", "clear"}:
+                    self.assertEqual(temporary, clipboard.formats)
+                self.assertEqual(clipboard.open_count,
+                                 clipboard.close_count)
+
     def test_pre_replacement_failure_does_not_run_destructive_recovery(self):
         prior = {CF_UNICODETEXT: b"prior\x00\x00"}
         clipboard = TransactionalClipboard(prior, empty_success=False)
@@ -198,6 +316,20 @@ class WindowsClipboardTests(unittest.TestCase):
                 self.assertEqual(clipboard.open_count, clipboard.close_count)
                 self.assertEqual(len(clipboard.allocated),
                                  len(clipboard.transferred) + len(clipboard.freed))
+
+    def test_image_first_format_failure_recovers_the_snapshot_and_frees_its_handle(self):
+        prior = {CF_UNICODETEXT: b"prior\x00\x00"}
+        clipboard = TransactionalClipboard(prior, fail_calls={1})
+        snapshot = clipboard.snapshot()
+
+        with self.assertRaises(RuntimeError) as caught:
+            clipboard.write(image_request(), snapshot)
+
+        self.assertEqual(prior, clipboard.formats)
+        self.assertTrue(getattr(caught.exception, "clipboard_restored", False))
+        self.assertEqual(clipboard.open_count, clipboard.close_count)
+        self.assertEqual(len(clipboard.allocated),
+                         len(clipboard.transferred) + len(clipboard.freed))
 
     def test_readback_mismatch_restores_the_previous_clipboard(self):
         prior = {CF_UNICODETEXT: b"prior\x00\x00"}
@@ -284,7 +416,8 @@ class WindowsClipboardTests(unittest.TestCase):
         ownership = clipboard.write(text_request(), snapshot)
         clipboard.corrupt_restore = True
 
-        self.assertFalse(clipboard.restore(snapshot, ownership))
+        result = clipboard.restore(snapshot, ownership)
+        self.assertEqual(ClipboardRestoreState.FAILED, result.state)
 
     def test_supported_rich_image_and_file_formats_fit_inside_budgets(self):
         formats = {

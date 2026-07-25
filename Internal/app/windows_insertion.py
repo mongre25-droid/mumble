@@ -12,6 +12,8 @@ import time
 
 from insertion import (
     ClipboardOwnership,
+    ClipboardRestoreResult,
+    ClipboardRestoreState,
     ClipboardSnapshot,
     ClipboardWriteFailure,
     NativeAcceptance,
@@ -43,14 +45,18 @@ ES_READONLY = 0x0800
 
 
 class _PartialClipboardReplacement(RuntimeError):
-    def __init__(self, reason, sequence, written, *, sequence_proves_ownership=False):
+    def __init__(self, reason, sequence, written, *, ownership_verifiable=True):
         super().__init__(str(reason))
         self.sequence = int(sequence)
         self.written = tuple(written)
-        self.sequence_proves_ownership = bool(sequence_proves_ownership)
+        self.ownership_verifiable = bool(ownership_verifiable)
 
 
 class _ClipboardOwnershipChanged(RuntimeError):
+    pass
+
+
+class _ClipboardOwnershipUnverifiable(RuntimeError):
     pass
 
 
@@ -401,9 +407,14 @@ class WindowsClipboardAdapter:
             raise self._recover_failed_write(snapshot, exc) from exc
         for payload_id, payload_data in payloads:
             if self._read_format_bytes(payload_id) != payload_data:
+                observed = tuple(
+                    (observed_id, observed_data)
+                    for observed_id, _expected in payloads
+                    for observed_data in (self._read_format_bytes(observed_id),)
+                    if observed_data is not None)
                 failure = _PartialClipboardReplacement(
-                    "clipboard_readback_mismatch", sequence, payloads,
-                    sequence_proves_ownership=True)
+                    "clipboard_readback_mismatch", sequence, observed,
+                    ownership_verifiable=bool(observed))
                 raise self._recover_failed_write(snapshot, failure)
         return ClipboardOwnership(
             sequence, hashlib.sha256(data).hexdigest(), format_id)
@@ -423,6 +434,13 @@ class WindowsClipboardAdapter:
                     "The clipboard changed during Mumble's failed write, so the "
                     "newer clipboard was left untouched."),
             )
+        except _ClipboardOwnershipUnverifiable:
+            return ClipboardWriteFailure(
+                str(failure),
+                cleanup_warning=(
+                    "Mumble could not verify clipboard ownership after its "
+                    "failed write, so it did not clear the clipboard again."),
+            )
         except Exception:
             restored = False
         else:
@@ -440,27 +458,62 @@ class WindowsClipboardAdapter:
         """Called while the clipboard is open, before any recovery clear."""
         if self._sequence() != failure.sequence:
             return False
-        if failure.sequence_proves_ownership:
-            return True
-        return all(
-            self._read_format_bytes_open(format_id) == data
-            for format_id, data in failure.written)
+        if not failure.ownership_verifiable:
+            raise _ClipboardOwnershipUnverifiable(
+                "clipboard ownership could not be verified")
+        for format_id, data in failure.written:
+            current = self._read_format_bytes_open(format_id)
+            if current is None:
+                raise _ClipboardOwnershipUnverifiable(
+                    "clipboard payload could not be read")
+            if current != data:
+                return False
+        return True
 
     def still_owns(self, ownership):
+        with self._opened():
+            return self._still_owns_open(ownership)
+
+    def _still_owns_open(self, ownership):
         if self._sequence() != ownership.sequence:
             return False
-        data = self._read_format_bytes(ownership.format_id)
+        data = self._read_format_bytes_open(ownership.format_id)
         return bool(data is not None and
                     hashlib.sha256(data).hexdigest() == ownership.fingerprint)
 
-    def restore(self, snapshot, ownership=None):
-        if ownership is not None and not self.still_owns(ownership):
+    def _restore_still_owned_open(self, ownership):
+        if self._sequence() != ownership.sequence:
             return False
-        self._replace_formats(
-            (format_id, data) for format_id, _name, data in snapshot.formats)
-        return all(
-            self._read_format_bytes(format_id) == data
-            for format_id, _name, data in snapshot.formats)
+        data = self._read_format_bytes_open(ownership.format_id)
+        if data is None:
+            raise _ClipboardOwnershipUnverifiable(
+                "clipboard payload could not be read")
+        return hashlib.sha256(data).hexdigest() == ownership.fingerprint
+
+    def restore(self, snapshot, ownership=None):
+        try:
+            self._replace_formats(
+                ((format_id, data)
+                 for format_id, _name, data in snapshot.formats),
+                before_clear=(None if ownership is None else
+                              lambda: self._restore_still_owned_open(ownership)),
+            )
+        except _ClipboardOwnershipChanged:
+            return ClipboardRestoreResult(
+                ClipboardRestoreState.NEWER_EXTERNAL)
+        except _ClipboardOwnershipUnverifiable:
+            return ClipboardRestoreResult(ClipboardRestoreState.FAILED)
+        except Exception:
+            return ClipboardRestoreResult(ClipboardRestoreState.FAILED)
+        try:
+            restored = all(
+                self._read_format_bytes(format_id) == data
+                for format_id, _name, data in snapshot.formats)
+        except Exception:
+            restored = False
+        return ClipboardRestoreResult(
+            ClipboardRestoreState.RESTORED if restored else
+            ClipboardRestoreState.FAILED)
 
     def _format_supported(self, format_id, name):
         if 1 <= format_id < 0x0200:

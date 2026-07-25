@@ -34,6 +34,7 @@ from insertion import (  # noqa: E402
     TargetEditability,
 )
 from windows_insertion import (  # noqa: E402
+    CF_UNICODETEXT,
     WindowsClipboardAdapter,
     WindowsNativeInputAdapter,
     WindowsTargetAdapter,
@@ -43,6 +44,8 @@ from windows_insertion import (  # noqa: E402
 PAYLOAD = "Mumble exact-once fixture 7d98b2"
 PRIOR_CLIPBOARD = "Mumble fixture prior clipboard"
 EXTERNAL_CLIPBOARD = "Mumble fixture external mutation"
+LOGICAL_TARGET_A = 0xF15A
+LOGICAL_TARGET_B = 0xF15B
 MODES = (
     "normal", "delayed-focus", "swallowed-input", "clipboard-mutation",
     "delayed-read", "zero-count", "partial-count", "restore-failure",
@@ -51,20 +54,24 @@ MODES = (
 
 
 class FixtureTargetAdapter(WindowsTargetAdapter):
-    def __init__(self, mode, focus_state):
+    def __init__(self, mode, logical_focus, focus_request, focus_ack):
         super().__init__()
         self.mode = mode
-        self.focus_state = focus_state
+        self.logical_focus = logical_focus
+        self.focus_request = focus_request
+        self.focus_ack = focus_ack
 
     def current(self):
-        target = super().current()
-        if target is None:
+        native = super().current()
+        if native is None:
             return None
+        # Tk Entries are logical controls inside one native Tk window. These
+        # fixture-only IDs drive the two-field oracle; they are deliberately
+        # distinct from the real HWND/process/thread evidence returned above.
+        logical_child = int(self.logical_focus.get("child") or 0)
         return replace(
-            target,
-            focused_child=int(self.focus_state.get("child") or 0),
-            has_caret=bool(self.focus_state.get("child")),
-        )
+            native, focused_child=logical_child,
+            has_caret=bool(logical_child))
 
     def can_inject(self, target):
         if self.mode == "privilege-higher":
@@ -76,11 +83,9 @@ class FixtureTargetAdapter(WindowsTargetAdapter):
     def restore(self, target, timeout_s):
         if self.mode != "delayed-focus":
             return super().restore(target, timeout_s)
-        deadline = time.monotonic() + max(0.0, timeout_s)
-        while time.monotonic() < deadline:
-            if target.same_destination(self.current()):
-                return True
-            time.sleep(0.01)
+        self.focus_request.set()
+        if not self.focus_ack.wait(max(0.0, timeout_s)):
+            return False
         return target.same_destination(self.current())
 
 
@@ -120,6 +125,12 @@ def _clipboard_text(root):
         return ""
 
 
+def _set_controlled_clipboard_text(value):
+    WindowsClipboardAdapter()._replace_formats((
+        (CF_UNICODETEXT, str(value).encode("utf-16-le") + b"\x00\x00"),
+    ))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=MODES, default="normal")
@@ -144,14 +155,19 @@ def main(argv=None):
                             justify="left", wraplength=640)
     result_label.pack(padx=18, pady=(14, 0), fill="x")
     state = {"terminal": None, "failed": False, "worker": None,
-             "prior": PRIOR_CLIPBOARD}
-    focus_state = {"child": 0}
-    target_a.bind("<FocusIn>", lambda _event: focus_state.update(child=1))
-    target_b.bind("<FocusIn>", lambda _event: focus_state.update(child=2))
+             "prior": PRIOR_CLIPBOARD,
+             "capture_deadline": time.monotonic() + 2.0}
+    focus_request = threading.Event()
+    focus_ack = threading.Event()
+    logical_focus = {"child": 0}
+    target_a.bind(
+        "<FocusIn>",
+        lambda _event: logical_focus.update(child=LOGICAL_TARGET_A))
+    target_b.bind(
+        "<FocusIn>",
+        lambda _event: logical_focus.update(child=LOGICAL_TARGET_B))
 
-    root.clipboard_clear()
-    root.clipboard_append(PRIOR_CLIPBOARD)
-    root.update()
+    _set_controlled_clipboard_text(PRIOR_CLIPBOARD)
 
     def receive_native_paste(event):
         if args.mode == "swallowed-input":
@@ -161,8 +177,8 @@ def main(argv=None):
         except tk.TclError:
             pass
         if args.mode == "clipboard-mutation":
-            root.after(20, lambda: (
-                root.clipboard_clear(), root.clipboard_append(EXTERNAL_CLIPBOARD)))
+            root.after(
+                20, lambda: _set_controlled_clipboard_text(EXTERNAL_CLIPBOARD))
         return "break"
 
     target_a.bind("<Control-v>", receive_native_paste)
@@ -284,9 +300,13 @@ def main(argv=None):
         root.lift()
         target_a.focus_force()
         root.update()
-        target_adapter = FixtureTargetAdapter(args.mode, focus_state)
+        target_adapter = FixtureTargetAdapter(
+            args.mode, logical_focus, focus_request, focus_ack)
         captured = target_adapter.current()
         if captured is None or captured.window != top_hwnd:
+            if time.monotonic() < state["capture_deadline"]:
+                root.after(25, capture_on_tk_thread)
+                return
             state["failed"] = True
             result_label.config(
                 text="FAIL — Windows did not grant the fixture foreground focus; no input was sent.",
@@ -303,9 +323,41 @@ def main(argv=None):
             args.mode == "delayed-focus")
         if args.mode in {"unintended-field", "delayed-focus"}:
             target_b.focus_force()
-            root.update_idletasks()
+            # Process B's FocusIn completely before the worker is allowed to
+            # request restoration. update_idletasks() does not drain focus
+            # events and was the remaining source of nondeterministic ordering.
+            root.update()
         if args.mode == "delayed-focus":
-            root.after(180, target_a.focus_force)
+            focus_probe = {"stable_turns": 0}
+
+            def service_focus_request():
+                if not focus_request.is_set():
+                    root.after(5, service_focus_request)
+                    return
+                if focus_ack.is_set():
+                    return
+                user32.ShowWindow(top_hwnd, 9)
+                user32.BringWindowToTop(top_hwnd)
+                user32.SetForegroundWindow(top_hwnd)
+                root.lift()
+                target_a.focus_force()
+                if (root.focus_get() is target_a
+                        and logical_focus.get("child") == LOGICAL_TARGET_A):
+                    focus_probe["stable_turns"] += 1
+                else:
+                    focus_probe["stable_turns"] = 0
+                # Three separate Tk event-loop turns must observe A before the
+                # worker is released. This is an acknowledged focus transition,
+                # not an assumed fixed delay.
+                if focus_probe["stable_turns"] >= 3:
+                    focus_ack.set()
+                    return
+                # A foreground transition can be temporarily refused by Windows.
+                # Retry only until the observable focus barrier acknowledges A;
+                # the production transaction's original timeout remains decisive.
+                root.after(5, service_focus_request)
+
+            root.after(5, service_focus_request)
 
         def worker():
             transaction = InsertionTransaction(

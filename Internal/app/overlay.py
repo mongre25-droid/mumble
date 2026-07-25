@@ -776,7 +776,6 @@ class Island:
         self.flash_reason = ""
         self.flash_message = ""
         self.flash_cleanup_warning = ""
-        self.flash_outcome = "confirmed"
         self.hint_text = ""
         self.hint_left = 0
         self._mx = self._my = 0  # last placed canvas-island top-left (Tk coords)
