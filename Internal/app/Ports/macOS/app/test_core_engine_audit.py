@@ -417,7 +417,8 @@ def test_anthropic_provider_preserves_assistant_turns(monkeypatch):
         {"role": "user", "content": "first"},
         {"role": "assistant", "content": "answer"},
         {"role": "user", "content": "follow-up"},
-    ], route_decision=decision) == "ok"
+    ], route_decision=decision,
+       expected_feature="prompt", expected_lane="prompt") == "ok"
     assert [m["role"] for m in captured["conversation"]] == [
         "user", "assistant", "user",
     ]

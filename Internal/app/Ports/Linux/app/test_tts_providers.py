@@ -161,24 +161,24 @@ check("get_tts_defaults returns voice", isinstance(voice, str))
 
 print("\n=== synthesize_with_fallback() error path ===")
 
-# synthesize_with_fallback may succeed if a real API key is present.
-# Test both paths: the function should handle errors gracefully.
-audio, ctype, meta = tts.synthesize_with_fallback(
-    "hello", provider_id="openrouter")
-check("fallback returns meta dict", isinstance(meta, dict))
+# A call without a frozen decision is rejected before any provider transport.
+provider_attempts = []
+_orig_get_provider = tts.get_tts_provider
+tts.get_tts_provider = lambda provider_id: provider_attempts.append(provider_id)
+try:
+    audio, ctype, meta = tts.synthesize_with_fallback(
+        "hello", provider_id="openrouter")
+finally:
+    tts.get_tts_provider = _orig_get_provider
 
-if meta.get("ok"):
-    # API key was present — call succeeded (which is fine)
-    check("fallback with key returns audio", isinstance(audio, bytes))
-    check("fallback with key returns ctype", isinstance(ctype, str))
-    check("fallback with key ok=True", meta.get("ok") is True)
-    print("  (OpenRouter key was available — live TTS test passed)")
-else:
-    # No API key — should return clean failure
-    check("fallback with no key returns None audio", audio is None)
-    check("fallback with no key returns None ctype", ctype is None)
-    check("fallback with no key ok=False", meta.get("ok") is False)
-    check("fallback with no key has message", isinstance(meta.get("message"), str))
+check("fallback returns meta dict", isinstance(meta, dict))
+check("missing route returns None audio", audio is None)
+check("missing route returns None ctype", ctype is None)
+check("missing route returns the deliberate fail-closed result", meta == {
+    "ok": False,
+    "message": "Reader speech requires an explicit frozen route decision.",
+})
+check("missing route makes zero provider attempts", provider_attempts == [])
 
 # Empty text should always fail fast
 audio, ctype, meta = tts.synthesize_with_fallback("", provider_id="openrouter")

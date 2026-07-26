@@ -343,9 +343,11 @@ def test_home_shortcuts_are_in_the_hero_and_deck_reflows_without_a_slider():
     js = (webui / "app.js").read_text(encoding="utf-8")
     css = (webui / "remaster.css").read_text(encoding="utf-8")
 
-    hero = html[html.index('<div class="hero">'):
-                html.index('<!-- value badges -->')]
-    assert 'class="home-shortcuts-panel"' in hero
+    hero_marker = re.search(r'<div\s+class="[^"]*\bhero\b[^"]*">', html)
+    assert hero_marker is not None
+    hero = html[hero_marker.start():
+                html.index('<!-- value badges -->', hero_marker.end())]
+    assert re.search(r'class="[^"]*\bhome-shortcuts-panel\b[^"]*"', hero)
     assert 'id="home-shortcuts-title">First word to finished work.' in hero
     for hotkey_id in ("hk-record", "hk-paste-latest", "hk-history", "hk-search"):
         assert html.count(f'id="{hotkey_id}"') == 1

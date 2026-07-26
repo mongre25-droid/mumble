@@ -435,10 +435,25 @@ def synthesize_with_fallback(text, voice_id=None, model=None, provider_id=None,
                              route_decision=None, expected_feature="reader",
                              expected_lane="reader_speech"):
     """Synthesize using exactly the provider/model frozen for this operation."""
+    if route_decision is None:
+        return None, None, {
+            "ok": False,
+            "message": "Reader speech requires an explicit frozen route decision.",
+        }
     if expected_feature != "reader":
         raise processing_route.HostedRouteBlocked(route_decision)
     ALL_IDS = ["openrouter", "openai"]
     requested = provider_id if provider_id in ALL_IDS else "openrouter"
+    try:
+        processing_route.require_reader_speech(
+            route_decision,
+            expected_lane=expected_lane,
+            expected_provider=requested,
+            api_key=route_decision.api_key,
+            model=model or route_decision.model,
+        )
+    except Exception as e:
+        return None, None, {"ok": False, "message": str(e)}
     prov_order = [requested]
     attempts = []
     for i, pid in enumerate(prov_order):
