@@ -1,0 +1,73 @@
+{
+  "schema": "mumble.local-ai-corpus.v1",
+  "version": "issue19-synthetic-v1",
+  "privacy": {
+    "allowed_sources": ["public", "consented", "synthetic"],
+    "owner_private_recordings_allowed": false,
+    "result_content_policy": "fixture_ids_and_metrics_only"
+  },
+  "normalisation": {
+    "name": "mumble-wer-v1",
+    "unicode": "NFKC",
+    "casefold": true,
+    "punctuation": "strip_except_apostrophes",
+    "numbers": "literal_no_spoken_number_expansion"
+  },
+  "items": [
+    {
+      "id": "speech-short-command-001",
+      "lane": "speech",
+      "source": {"kind": "synthetic", "generator": "scripted-human-readable-text-v1"},
+      "reference": "open the deck",
+      "audio": null,
+      "availability": {"status": "not_materialized", "reason": "No approved reproducible speech synthesizer or consented audio corpus is present in this clean checkout."}
+    },
+    {
+      "id": "speech-dictation-001",
+      "lane": "speech",
+      "source": {"kind": "synthetic", "generator": "scripted-human-readable-text-v1"},
+      "reference": "Please send the revised report by Friday at three thirty.",
+      "audio": null,
+      "availability": {"status": "not_materialized", "reason": "No approved reproducible speech synthesizer or consented audio corpus is present in this clean checkout."}
+    },
+    {
+      "id": "prompt-001",
+      "lane": "prompt",
+      "source": {"kind": "synthetic", "generator": "issue19-text-fixture-v1"},
+      "input": "write a safe step by step plan to archive my photos",
+      "required_literals": ["# Task", "# Instructions", "archive my photos"],
+      "forbidden_literals": ["http://", "https://"]
+    },
+    {
+      "id": "email-001",
+      "lane": "email",
+      "source": {"kind": "synthetic", "generator": "issue19-text-fixture-v1"},
+      "input": "to Amina about project update, the draft is ready for review",
+      "required_literals": ["Subject: Project update", "Hi Amina,", "draft is ready for review", "Best regards,"],
+      "forbidden_literals": []
+    },
+    {
+      "id": "reply-001",
+      "lane": "reply",
+      "source": {"kind": "synthetic", "generator": "issue19-text-fixture-v1"},
+      "input": "thanks for the update i will review it tomorrow",
+      "required_literals": ["Thanks for the update", "tomorrow"],
+      "forbidden_literals": ["Subject:"]
+    },
+    {
+      "id": "classification-command-001",
+      "lane": "classification",
+      "source": {"kind": "synthetic", "generator": "issue19-text-fixture-v1"},
+      "input": "open the deck",
+      "expected": {"intent": "deck", "value": ""}
+    },
+    {
+      "id": "classification-not-command-001",
+      "lane": "classification",
+      "source": {"kind": "synthetic", "generator": "issue19-text-fixture-v1"},
+      "input": "the deck outside is wet after the rain",
+      "expected": {"intent": "control", "value": "the deck outside is wet after the rain"},
+      "safety_note": "The deterministic baseline returns a plan-only control request; execution authority remains outside the classifier."
+    }
+  ]
+}

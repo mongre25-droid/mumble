@@ -1,0 +1,75 @@
+{
+  "schema": "mumble.local-ai-benchmark-run-receipt.v1",
+  "observed_at": "2026-07-26",
+  "source_parent": "65f27576f093553418540abe58501043971e8b1f",
+  "contract_root": "../../v1",
+  "hardware_record": "hardware.json",
+  "availability_record": "availability.json",
+  "preliminary_speech_record": "preliminary-faster-whisper-small.en.json",
+  "content_policy": "fixture_ids_hashes_and_metrics_only",
+  "validation": {
+    "contract_candidates": 9,
+    "contract_fixtures": 7,
+    "focused_tests": 11
+  },
+  "deterministic_text": {
+    "schema": "mumble.local-ai-benchmark-result.v1",
+    "candidate_id": "deterministic-text",
+    "evidence_level": "harness_smoke_only",
+    "adoption_gate_status": "not_evaluated",
+    "status": "completed",
+    "lanes": {
+      "classification": {
+        "fixture_ids": ["classification-command-001", "classification-not-command-001"],
+        "runs": 2,
+        "task_success_rate": 1.0,
+        "latency_p50_ms": 0.105,
+        "latency_p95_ms": 0.189,
+        "latency_max_ms": 0.199,
+        "false_action_count": 0,
+        "execution_authority": false,
+        "failure_recovery": "not_run"
+      },
+      "email": {
+        "fixture_ids": ["email-001"],
+        "runs": 1,
+        "task_success_rate": 1.0,
+        "latency_p50_ms": 4.688,
+        "latency_p95_ms": 4.688,
+        "latency_max_ms": 4.688,
+        "failure_recovery": "not_run"
+      },
+      "prompt": {
+        "fixture_ids": ["prompt-001"],
+        "runs": 1,
+        "task_success_rate": 1.0,
+        "latency_p50_ms": 0.348,
+        "latency_p95_ms": 0.348,
+        "latency_max_ms": 0.348,
+        "failure_recovery": "not_run"
+      },
+      "reply": {
+        "fixture_ids": ["reply-001"],
+        "runs": 1,
+        "task_success_rate": 1.0,
+        "latency_p50_ms": 0.19,
+        "latency_p95_ms": 0.19,
+        "latency_max_ms": 0.19,
+        "failure_recovery": "not_run"
+      }
+    }
+  },
+  "formal_candidate_statuses": [
+    {"candidate_id": "faster-whisper", "status": "not_run", "preliminary_result_file": "preliminary-faster-whisper-small.en.json"},
+    {"candidate_id": "moonshine-small-streaming", "status": "not_run"},
+    {"candidate_id": "sherpa-zipformer-streaming-en", "status": "not_run"},
+    {"candidate_id": "parakeet-tdt-0.6b-v3", "status": "not_run"},
+    {"candidate_id": "qwen3-0.6b-q8", "status": "not_run"},
+    {"candidate_id": "qwen2.5-1.5b-q4-k-m", "status": "not_run"},
+    {"candidate_id": "granite-3.3-2b-q4-k-m", "status": "not_run"},
+    {"candidate_id": "model2vec-potion-base-8m", "status": "not_run"}
+  ],
+  "eligible_candidates": [],
+  "adoption": "no_candidate_adopted",
+  "retained_baselines": ["deterministic-text", "faster-whisper"]
+}

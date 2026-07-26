@@ -21,6 +21,26 @@ discovery, bounded indexing, keyboard navigation, recent/favourite ranking and
 explicit result actions — informed the design. They are not runtime
 dependencies and their source was not copied.
 
+## Issue #19 local-AI benchmark inventory
+
+The versioned inventory under
+`Development Files/Research/local-ai-benchmark/v1/` is research and benchmark
+metadata only. It does not add Moonshine, Parakeet, Qwen, Granite, Model2Vec,
+`llama.cpp`, or any new model weights/runtime to the distributed Mumble
+application. The retained faster-whisper, CTranslate2, ONNX Runtime, and
+sherpa-onnx notices remain governed by the existing dependency records.
+
+Each candidate inventory entry keeps source code, runtime dependencies, model
+weights, tokenizer, dataset/conversion provenance, redistribution, attribution,
+access gating, and branding as separate checks. Official source links and exact
+artifact hashes are supply-chain evidence, not permission to redistribute or a
+claim that a candidate passed Windows, packaging, quality, or adoption gates.
+No GPL implementation code from the researched dictation projects was copied;
+only compatible high-level architecture was adapted through Mumble-owned test
+and cache seams. Before any future integration or distribution, retain the exact
+licence and NOTICE texts for the selected runtime and artifacts and complete the
+owner/legal packaging decision recorded by the benchmark gate.
+
 ## Runtime components with notices retained here
 
 ### comtypes 1.4.16
