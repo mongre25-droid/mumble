@@ -4,6 +4,9 @@ node_modules/
 # Astro build output
 dist/
 
+# Astro-generated metadata and declarations
+.astro/
+
 # Environment
 .env
 .env.*
