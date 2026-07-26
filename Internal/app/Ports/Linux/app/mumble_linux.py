@@ -3967,9 +3967,9 @@ class Mumble:
                     prompt_cfg=prompt_cfg,
                     invocation_snapshot=invocation_snapshot,
                     expected_feature=(
-                        det_mode if det_mode in {"prompt", "email", "reply"}
+                        ai_mode if ai_mode in {"prompt", "email", "reply"}
                         else "dictation"),
-                    expected_lane=det_mode,
+                    expected_lane=ai_mode,
                 )
             except Exception as e:
                 print("auto mode re-run failed:", e)

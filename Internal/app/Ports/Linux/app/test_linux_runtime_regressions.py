@@ -13,9 +13,90 @@ from unittest import mock
 from PIL import Image
 
 import mumble_linux as linux
+import processing_route
+
+
+def _processing_snapshot(feature, lane):
+    settings = {
+        "pro_mode": True,
+        "local_only_mode": False,
+        "llm_provider": "cerebras",
+        "cerebras_api_key": "frozen-test-key",
+        "cerebras_model": "frozen-test-model",
+        "user_name": "Frozen Test User",
+        "prompt_prefs": {"tone": "frozen"},
+        "primary_language": "en",
+        "english_only": True,
+        "foreign_languages": [],
+        "vocabulary": {},
+        "vocabulary_terms": [],
+        "modes": {},
+        "format_enabled": True,
+        "polish_aggressiveness": "Light",
+        "instant_text": False,
+    }
+    return processing_route.snapshot_inputs(
+        settings,
+        feature=feature,
+        lane=lane,
+        context="frozen context",
+        context_policy="dictation",
+        context_strict=False,
+        local_model_ready=False,
+    )
 
 
 class LinuxRuntimeRegressions(unittest.TestCase):
+    def test_high_confidence_second_opinion_forwards_frozen_email_authority(self):
+        snapshot = _processing_snapshot("email", "email")
+        app = linux.Mumble.__new__(linux.Mumble)
+        captured = {}
+
+        def cloud_generate(*args, **kwargs):
+            captured.update(args=args, kwargs=kwargs)
+            return "email", "rerouted result"
+
+        app._cloud_generate = cloud_generate
+        cfg = {
+            "key": snapshot.route.api_key,
+            "model": snapshot.route.model,
+            "url": linux.ai.CEREBRAS_URL,
+            "provider": snapshot.route.provider,
+        }
+
+        result = app._handle_second_opinion(
+            "clean words", "email", "high", False,
+            "raw words", "Frozen Test User", "frozen context", {}, False,
+            cfg=cfg, prompt_cfg=cfg, invocation_snapshot=snapshot,
+        )
+
+        self.assertEqual(result, ("email", "rerouted result"))
+        self.assertEqual(captured["args"][3], "email")
+        self.assertIs(captured["kwargs"]["invocation_snapshot"], snapshot)
+        self.assertEqual(captured["kwargs"]["expected_feature"], "email")
+        self.assertEqual(captured["kwargs"]["expected_lane"], "email")
+
+    def test_high_confidence_second_opinion_wrong_authority_has_zero_transport(self):
+        snapshot = _processing_snapshot("dictation", "text")
+        app = linux.Mumble.__new__(linux.Mumble)
+        cfg = {
+            "key": snapshot.route.api_key,
+            "model": snapshot.route.model,
+            "url": linux.ai.CEREBRAS_URL,
+            "provider": snapshot.route.provider,
+        }
+
+        with mock.patch.object(
+                linux.ai, "cerebras_chat_stream") as transport:
+            result = app._handle_second_opinion(
+                "clean words", "email", "high", False,
+                "raw words", "Frozen Test User", "frozen context", {}, False,
+                cfg=cfg, prompt_cfg=cfg, invocation_snapshot=snapshot,
+            )
+
+        self.assertEqual(result, ("text", "clean words"))
+        transport.assert_not_called()
+
     def test_controller_keyboard_calls_exist_on_bindings_facade(self):
         with open(linux.__file__, "r", encoding="utf-8") as handle:
             source = handle.read()

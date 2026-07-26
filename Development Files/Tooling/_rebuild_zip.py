@@ -29,6 +29,7 @@ import re
 import shutil
 import sys
 import zipfile
+from pathlib import Path
 
 APP_REL = os.path.join("Internal", "app")
 
@@ -103,6 +104,31 @@ def add_tree(z, src_dir, arc_prefix):
     return n
 
 
+def website_archive_path(root):
+    """Return the maintained website's release-download destination."""
+    return (
+        Path(root) / "Development Files" / "Marketing" / "Website" /
+        "public" / "Mumble.zip"
+    )
+
+
+def sync_website_archive(root, canonical_archive):
+    """Synchronize the validated archive without inventing missing structure."""
+    destination = website_archive_path(root)
+    if not destination.parent.is_dir():
+        raise FileNotFoundError(
+            "Expected maintained website release directory is missing: "
+            f"{destination.parent}"
+        )
+    shutil.copy2(canonical_archive, destination)
+    if destination.read_bytes() != Path(canonical_archive).read_bytes():
+        raise RuntimeError(
+            "Maintained website release archive did not match the canonical "
+            f"artifact after synchronization: {destination}"
+        )
+    return destination
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else find_repo_root(__file__)
     if not root or not os.path.isfile(os.path.join(root, APP_REL, "mumble.py")):
@@ -111,6 +137,13 @@ def main():
         sys.exit(1)
 
     out = os.path.join(root, "Internal", "Releases", "Mumble.zip")
+    website_zip = website_archive_path(root)
+    if not website_zip.parent.is_dir():
+        print(
+            "ERROR: expected maintained website release directory is missing: "
+            f"{website_zip.parent}"
+        )
+        sys.exit(1)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     tmp = out + ".new"
     internal = os.path.join(root, "Internal")
@@ -210,12 +243,8 @@ def main():
         # The marketing site serves its own public/ copy. Keep the user-facing
         # download byte-for-byte aligned with the validated root artifact;
         # previously a rebuilt root ZIP left the website serving an older build.
-        website_zip = os.path.join(
-            root, "Development Files", "Other", "website", "public",
-            "Mumble.zip")
-        if os.path.isdir(os.path.dirname(website_zip)):
-            shutil.copy2(out, website_zip)
-            print("  [ok ] website/public/Mumble.zip synced")
+        sync_website_archive(root, out)
+        print(f"  [ok ] maintained website archive synced: {website_zip}")
     sys.exit(0 if ok else 2)
 
 
