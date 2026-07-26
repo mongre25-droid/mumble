@@ -122,10 +122,19 @@
   <li><span class="badge b-gated">candidate boundary</span> This is a local correction candidate only. Fresh independent review, full Level B, exact-head CI, live-provider and physical use, installation, signing/notarisation, merge, deployment, release, rollback, and owner acceptance remain open; Issues #12 and #14 through #30 remain open.</li>
 </ul>
 
-<h2><span class="sec">13</span>Current product snapshot</h2>
+<h2 data-evidence-boundary="linux-cloud-stt-snapshot-fixture-candidate"><span class="sec">13</span>26 July 2026 &mdash; stale Linux cloud-STT fixture corrected locally</h2>
+<ul>
+  <li><span class="badge b-exist">retained exact-head rejection</span> Push run <code>30185023361</code> and pull-request run <code>30185024201</code> rejected exact source head <code>74a94c36</code> at one maintained Linux edge-case fixture. The adapter correctly rejected its missing <code>ProcessingInputSnapshot</code>; all other required jobs passed.</li>
+  <li><span class="badge b-done">narrow test correction</span> Updated only the stale Linux fixture to use the real <code>snapshot_inputs</code> helper with exact <code>dictation / speech_to_text</code>, Groq, model, and cloud-setting authority. The production fail-closed route and provider implementations were not changed.</li>
+  <li><span class="badge b-done">focused evidence</span> Retained the exact red <code>TypeError</code>; the corrected file then passed 128/128 checks, the maintained Linux runner passed its one selected module, and 13 adjacent snapshot/privacy/final-adapter tests passed. Explicit probes proved missing authority still raises before transport and the frozen missing-key route reaches <code>missing_key</code>, with zero provider calls.</li>
+  <li><span class="badge b-done">carried evidence boundary</span> No production, package, website, or workflow source changed and no package was rebuilt. The two tracked Windows ZIPs remain byte-identical at SHA-256 <code>5FA067D3BC6F60976348BB8BC03AD15676E3C076A2442AAD3280FB07FEB0A2E4</code>; prior local Level B and deterministic package evidence is carried forward only for the unchanged bytes and original campaign.</li>
+  <li><span class="badge b-gated">candidate boundary</span> This is a local test-correction candidate only. Fresh independent review, a newly authorized exact-head CI retry, live-provider and physical-platform evidence, installation, signing/notarisation, merge, deployment, release, rollback, and owner acceptance remain open.</li>
+</ul>
+
+<h2><span class="sec">14</span>Current product snapshot</h2>
 <p>At this baseline Mumble is a local-first desktop voice workspace with hotkey dictation, local faster-whisper transcription, optional cloud transcription, optional local/cloud text shaping, clipboard-safe paste, the Deck, meetings, Reader, statistics, and supported-platform local search. The golden-black liquid-glass Web UI and floating Island are the current interface surfaces.</p>
 
-<h2><span class="sec">14</span>How to keep this log useful</h2>
+<h2><span class="sec">15</span>How to keep this log useful</h2>
 <ul><li>Use one dated entry for a meaningful completed milestone.</li><li>State what changed and where, without copying a full investigation into this page.</li><li>Put current risks, unfinished tasks, and release gates in <a href="STATUS.html">STATUS</a>.</li><li>Put stable procedures and architecture changes in <a href="HANDBOOK.html">HANDBOOK</a>.</li><li>Keep README focused on the stable product and working agreement.</li></ul>
 
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
