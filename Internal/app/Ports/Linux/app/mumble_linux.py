@@ -2762,27 +2762,18 @@ class Mumble:
         k = (key or "").split(".", 1)[0]
         try:
             if k == "hotkey":
-                self.hotkey = self.settings.get("hotkey", self.hotkey)
                 self._register_hotkey()
                 print(f"[live-apply] record hotkey → {self.hotkey!r}")
             elif k == "quick_paste_hotkey":
-                self.quick_hotkey = self.settings.get(
-                    "quick_paste_hotkey", self.quick_hotkey)
                 self._register_quick()
                 print(f"[live-apply] paste-latest hotkey → {self.quick_hotkey!r}")
             elif k == "history_hotkey":
-                self.history_hotkey = self.settings.get(
-                    "history_hotkey", self.history_hotkey)
                 self._register_history()
                 print(f"[live-apply] History hotkey → {self.history_hotkey!r}")
             elif k == "search_hotkey":
-                self.search_hotkey = self.settings.get(
-                    "search_hotkey", self.search_hotkey)
                 self._register_search()
                 print(f"[live-apply] search hotkey → {self.search_hotkey!r}")
             elif k == "web_search_hotkey":
-                self.web_search_hotkey = self.settings.get(
-                    "web_search_hotkey", self.web_search_hotkey)
                 self._register_web_search()
                 print(f"[live-apply] Web Search hotkey → {self.web_search_hotkey!r}")
             elif k == "prompt_mode_enabled":
@@ -3099,9 +3090,17 @@ class Mumble:
         template = self.SEARCH_ENGINES[prepared["engine"]]
         url = template.format(q=urllib.parse.quote(prepared["query"]))
         try:
-            self.open_in_browser(url)
+            opened = self.open_in_browser(url)
         except Exception as exc:
             return {"ok": False, "message": f"The browser could not open: {exc}"}
+        if opened is not True:
+            return {
+                "ok": False,
+                "message": (
+                    "The browser could not open Web Search. Your consent was "
+                    "used once; try again after checking the default browser."
+                ),
+            }
         return {"ok": True, "message": "Web Search opened."}
 
     def cancel_web_search(self, request_id):
@@ -3142,11 +3141,57 @@ class Mumble:
                     import subprocess
 
                     subprocess.Popen([exe, url], env=_external_child_env())
-                    return
+                    return True
                 except Exception as e:
                     print("browser launch failed, using default:", e)
                     break
-        self._xdg_open(url)
+        return self._xdg_open(url)
+
+    _PRESS_BINDING_LABELS = {
+        "hotkey": "Dictate",
+        "quick_paste_hotkey": "Paste latest",
+        "history_hotkey": "Open Deck",
+        "search_hotkey": "Mumble Find",
+        "web_search_hotkey": "Web Search",
+    }
+
+    def _press_binding_values(self):
+        return {
+            "hotkey": self.settings.get("hotkey", "ctrl+windows"),
+            "quick_paste_hotkey": self.settings.get(
+                "quick_paste_hotkey", "ctrl+alt+v"
+            ),
+            "history_hotkey": self.settings.get(
+                "history_hotkey", "ctrl+alt+d"
+            ),
+            "search_hotkey": self.settings.get(
+                "search_hotkey", "ctrl+alt+f"
+            ),
+            "web_search_hotkey": self.settings.get(
+                "web_search_hotkey", "ctrl+alt+s"
+            ),
+        }
+
+    def _active_binding_conflict(self, key, spec):
+        for other_key, attr, handle_attr in (
+            ("hotkey", "hotkey", "_hk_main"),
+            ("quick_paste_hotkey", "quick_hotkey", "_hk_quick"),
+            ("history_hotkey", "history_hotkey", "_hk_history"),
+            ("search_hotkey", "search_hotkey", "_hk_search"),
+            ("web_search_hotkey", "web_search_hotkey", "_hk_web_search"),
+        ):
+            if other_key == key or getattr(self, handle_attr, None) is None:
+                continue
+            other_spec = getattr(self, attr, "")
+            if bindings.conflicts(spec, other_spec):
+                return (
+                    f"{self._PRESS_BINDING_LABELS.get(key, key)} overlaps "
+                    f"{self._PRESS_BINDING_LABELS.get(other_key, other_key)} "
+                    f"({bindings.pretty(other_spec)}). The existing command "
+                    "was preserved and the conflicting command was left "
+                    "unregistered; choose a free shortcut in Settings."
+                )
+        return None
 
     def _sane_press_hotkey(self, key, default):
         """Read a SINGLE-PRESS hotkey from settings and refuse a bare modifier.
@@ -3170,59 +3215,84 @@ class Mumble:
         return spec
 
     def _register_hotkey(self):
-        self.hotkey = self._sane_press_hotkey("hotkey", "ctrl+windows")
-        bindings.unregister(self._hk_main)
-        self._hk_main = bindings.register_hotkey(self.hotkey, self.on_hotkey)
+        spec = self._sane_press_hotkey("hotkey", "ctrl+windows")
+        conflict = self._active_binding_conflict("hotkey", spec)
+        if conflict:
+            raise ValueError(conflict)
+        new_handle = bindings.register_hotkey(spec, self.on_hotkey)
+        old_handle = self._hk_main
+        if not bindings.unregister(old_handle):
+            bindings.unregister(new_handle)
+            raise RuntimeError("the previous dictation shortcut could not be released")
+        self.hotkey, self._hk_main = spec, new_handle
 
     def _register_quick(self):
-        self.quick_hotkey = self._sane_press_hotkey(
-            "quick_paste_hotkey", "ctrl+alt+v")
-        bindings.unregister(self._hk_quick)
-        self._hk_quick = None
+        spec = self._sane_press_hotkey("quick_paste_hotkey", "ctrl+alt+v")
         try:
-            self._hk_quick = bindings.register_hotkey(
-                self.quick_hotkey, self.on_quick_paste
-            )
+            conflict = self._active_binding_conflict("quick_paste_hotkey", spec)
+            if conflict:
+                raise ValueError(conflict)
+            new_handle = bindings.register_hotkey(spec, self.on_quick_paste)
+            old_handle = self._hk_quick
+            if not bindings.unregister(old_handle):
+                bindings.unregister(new_handle)
+                raise RuntimeError("the previous paste shortcut could not be released")
+            self.quick_hotkey, self._hk_quick = spec, new_handle
         except Exception as e:
             print("quick-paste hotkey error:", e)
             raise  # let _apply_settings_change log the failure with context — don't
                    # swallow it (the UI was reporting "active now" for a dead key)
 
     def _register_history(self):
-        self.history_hotkey = self._sane_press_hotkey(
-            "history_hotkey", "ctrl+alt+d")
-        bindings.unregister(self._hk_history)
-        self._hk_history = None
+        spec = self._sane_press_hotkey("history_hotkey", "ctrl+alt+d")
         try:
-            self._hk_history = bindings.register_hotkey(
-                self.history_hotkey, self.on_open_history
-            )
+            conflict = self._active_binding_conflict("history_hotkey", spec)
+            if conflict:
+                raise ValueError(conflict)
+            new_handle = bindings.register_hotkey(spec, self.on_open_history)
+            old_handle = self._hk_history
+            if not bindings.unregister(old_handle):
+                bindings.unregister(new_handle)
+                raise RuntimeError("the previous Deck shortcut could not be released")
+            self.history_hotkey, self._hk_history = spec, new_handle
         except Exception as e:
             print("history hotkey error:", e)
             raise  # surface the failure (see _register_quick)
 
     def _register_search(self):
-        self.search_hotkey = self._sane_press_hotkey(
-            "search_hotkey", "ctrl+alt+f")
-        bindings.unregister(self._hk_search)
-        self._hk_search = None
+        spec = self._sane_press_hotkey("search_hotkey", "ctrl+alt+f")
         try:
-            self._hk_search = bindings.register_hotkey(
-                self.search_hotkey, self.on_search_hotkey
-            )
+            conflict = self._active_binding_conflict("search_hotkey", spec)
+            if conflict:
+                raise ValueError(conflict)
+            new_handle = bindings.register_hotkey(spec, self.on_search_hotkey)
+            old_handle = self._hk_search
+            if not bindings.unregister(old_handle):
+                bindings.unregister(new_handle)
+                raise RuntimeError("the previous Search shortcut could not be released")
+            self.search_hotkey, self._hk_search = spec, new_handle
         except Exception as e:
             print("search hotkey error:", e)
             raise  # surface the failure (see _register_quick)
 
     def _register_web_search(self):
-        self.web_search_hotkey = self._sane_press_hotkey(
-            "web_search_hotkey", "ctrl+alt+s")
-        bindings.unregister(self._hk_web_search)
-        self._hk_web_search = None
+        spec = self._sane_press_hotkey("web_search_hotkey", "ctrl+alt+s")
         try:
-            self._hk_web_search = bindings.register_hotkey(
-                self.web_search_hotkey, self.on_web_search_hotkey
-            )
+            conflict = self._active_binding_conflict("web_search_hotkey", spec)
+            if conflict:
+                try:
+                    self._notify("Web Search shortcut conflict", conflict)
+                except Exception:
+                    pass
+                raise ValueError(conflict)
+            new_handle = bindings.register_hotkey(spec, self.on_web_search_hotkey)
+            old_handle = self._hk_web_search
+            if not bindings.unregister(old_handle):
+                bindings.unregister(new_handle)
+                raise RuntimeError(
+                    "the previous Web Search shortcut could not be released"
+                )
+            self.web_search_hotkey, self._hk_web_search = spec, new_handle
         except Exception as e:
             print("Web Search hotkey error:", e)
             raise

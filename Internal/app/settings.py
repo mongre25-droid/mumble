@@ -14,7 +14,6 @@ import branding
 SEARCH_HOTKEY_DEFAULT = "ctrl+alt+f"
 SEARCH_HOTKEY_LEGACY_DEFAULT = "ctrl+alt+s"
 WEB_SEARCH_HOTKEY_DEFAULT = "ctrl+alt+s"
-WEB_SEARCH_HOTKEY_CONFLICT_FALLBACK = "ctrl+alt+w"
 
 
 # --- Cross-process file lock (portable) ------------------------------------
@@ -588,11 +587,39 @@ class Settings:
 
         if not self.data.get("web_search_hotkey_default_applied"):
             if "web_search_hotkey" not in loaded:
+                import bindings
+
                 candidate = WEB_SEARCH_HOTKEY_DEFAULT
-                if self.data.get("search_hotkey") == candidate:
-                    candidate = WEB_SEARCH_HOTKEY_CONFLICT_FALLBACK
-                self.data["web_search_hotkey"] = candidate
-            self.data["web_search_hotkey_default_applied"] = True
+                existing = {
+                    key: self.data.get(key, "")
+                    for key in (
+                        "hotkey",
+                        "quick_paste_hotkey",
+                        "history_hotkey",
+                        "search_hotkey",
+                    )
+                }
+                conflict = bindings.find_conflict(candidate, existing)
+                if conflict:
+                    other_key, other_spec = conflict
+                    label = {
+                        "hotkey": "Dictate",
+                        "quick_paste_hotkey": "Paste latest",
+                        "history_hotkey": "Open Deck",
+                        "search_hotkey": "Mumble Find",
+                    }.get(other_key, other_key)
+                    self.web_search_migration_notice = (
+                        f"Web Search was left unregistered because {label} "
+                        f"already uses {bindings.pretty(other_spec)}. Your "
+                        "existing shortcut was preserved; choose a free Web "
+                        "Search shortcut in Settings."
+                    )
+                    print("[hotkey-migration]", self.web_search_migration_notice)
+                else:
+                    self.data["web_search_hotkey"] = candidate
+                    self.data["web_search_hotkey_default_applied"] = True
+            else:
+                self.data["web_search_hotkey_default_applied"] = True
 
         # Repair only the known incompatible legacy pair: ``onyx`` is an
         # OpenAI voice and cannot be sent to Gemini. Deliberately preserve every
@@ -622,7 +649,6 @@ class Settings:
             "stt_tts_dead_default_healed",
             "reader_tts_voice_contract_applied",
             "search_hotkey_find_default_applied",
-            "web_search_hotkey_default_applied",
         }
         for key in guards:
             self.data[key] = True

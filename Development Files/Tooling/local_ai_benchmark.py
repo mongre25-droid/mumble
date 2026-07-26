@@ -54,6 +54,13 @@ REQUIRED_LICENCE_FIELDS = frozenset(
         "branding",
     }
 )
+CANONICAL_GATES_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "Research"
+    / "local-ai-benchmark"
+    / "v1"
+    / "gates-v1.json"
+)
 
 
 class ContractError(ValueError):
@@ -298,6 +305,221 @@ def _traceable_proof(evidence, gate, *, candidate_id, evidence_root):
     return ("pass" if structurally_valid else "fail"), {
         "source": "traceable_proof",
         "references": verified_references,
+    }
+
+
+def _open_hashed_json_reference(reference, *, evidence_root, error_prefix):
+    if not isinstance(reference, dict) or set(reference) != {"record", "sha256"}:
+        raise ContractError(f"{error_prefix}_reference_invalid")
+    relative = Path(str(reference.get("record", "")))
+    expected_sha = str(reference.get("sha256", "")).casefold()
+    if (
+        not str(relative)
+        or relative.is_absolute()
+        or re.fullmatch(r"[0-9a-f]{64}", expected_sha) is None
+    ):
+        raise ContractError(f"{error_prefix}_reference_invalid")
+    root = Path(evidence_root).resolve()
+    resolved = (root / relative).resolve()
+    if not resolved.is_relative_to(root) or not resolved.is_file():
+        raise ContractError(f"{error_prefix}_record_missing")
+    try:
+        payload = resolved.read_bytes()
+    except OSError as exc:
+        raise ContractError(f"{error_prefix}_record_invalid") from exc
+    if hashlib.sha256(payload).hexdigest() != expected_sha:
+        raise ContractError(f"{error_prefix}_hash_mismatch")
+    try:
+        record = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractError(f"{error_prefix}_record_invalid") from exc
+    if not isinstance(record, dict):
+        raise ContractError(f"{error_prefix}_record_invalid")
+    return record, {"record": str(relative), "sha256": expected_sha}
+
+
+def _approved_run_evidence(
+    *,
+    candidate,
+    source_commit,
+    hardware_id,
+    corpus_version,
+    evidence,
+    evidence_root,
+):
+    """Open one approved run and every immutable record behind its gates.
+
+    The caller supplies only a hash reference. Eligibility authority comes from
+    the committed approval registry, never from a caller-provided pass label.
+    Manual/owner evidence remains visible but cannot grant automated eligibility.
+    """
+    reference = evidence.get("run_receipt")
+    if reference is None:
+        return None
+    run, verified_run_ref = _open_hashed_json_reference(
+        reference, evidence_root=evidence_root, error_prefix="run_receipt"
+    )
+    required_run_fields = {
+        "schema",
+        "run_id",
+        "candidate_id",
+        "lane_id",
+        "source_commit",
+        "corpus_version",
+        "hardware_id",
+        "repetitions",
+        "runner",
+        "source_receipt",
+        "corpus_receipt",
+        "hardware_receipt",
+        "metrics_receipt",
+        "gate_receipts",
+    }
+    if set(run) != required_run_fields or run.get("schema") != (
+        "mumble.local-ai-run-receipt.v2"
+    ):
+        raise ContractError("invalid_run_receipt_schema")
+    run_id = str(run.get("run_id", ""))
+    runner = run.get("runner") or {}
+    repetitions = run.get("repetitions")
+    if (
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{7,127}", run_id) is None
+        or run.get("candidate_id") != candidate["id"]
+        or run.get("lane_id") != candidate["lane"]
+        or run.get("source_commit") != str(source_commit)
+        or run.get("corpus_version") != str(corpus_version)
+        or run.get("hardware_id") != str(hardware_id)
+        or not isinstance(repetitions, dict)
+        or not repetitions
+        or not all(
+            isinstance(key, str)
+            and key
+            and _is_nonnegative_int(value)
+            and value > 0
+            for key, value in repetitions.items()
+        )
+        or set(runner) != {"id", "tool_version"}
+        or not str(runner.get("id", "")).strip()
+        or not str(runner.get("tool_version", "")).strip()
+    ):
+        raise ContractError("run_receipt_provenance_mismatch")
+
+    canonical_gates = _read_json(CANONICAL_GATES_PATH)
+    provenance_policy = canonical_gates.get("evidence_contract") or {}
+    if provenance_policy.get("schema") != "mumble.local-ai-evidence-contract.v2":
+        raise ContractError("canonical_evidence_contract_missing")
+    approvals = provenance_policy.get("approved_runner_receipts") or []
+    approval = next(
+        (
+            item
+            for item in approvals
+            if item.get("sha256") == verified_run_ref["sha256"]
+            and item.get("runner_id") == runner["id"]
+            and item.get("tool_version") == runner["tool_version"]
+        ),
+        None,
+    )
+
+    source, source_ref = _open_hashed_json_reference(
+        run["source_receipt"],
+        evidence_root=evidence_root,
+        error_prefix="source_receipt",
+    )
+    corpus, corpus_ref = _open_hashed_json_reference(
+        run["corpus_receipt"],
+        evidence_root=evidence_root,
+        error_prefix="corpus_receipt",
+    )
+    hardware, hardware_ref = _open_hashed_json_reference(
+        run["hardware_receipt"],
+        evidence_root=evidence_root,
+        error_prefix="hardware_receipt",
+    )
+    metrics_record, metrics_ref = _open_hashed_json_reference(
+        run["metrics_receipt"],
+        evidence_root=evidence_root,
+        error_prefix="metrics_receipt",
+    )
+    if (
+        source.get("schema") != "mumble.local-ai-source-receipt.v2"
+        or source.get("candidate_id") != candidate["id"]
+        or source.get("source_commit") != str(source_commit)
+        or re.fullmatch(
+            r"[0-9a-f]{64}", str(source.get("immutable_tree_sha256", ""))
+        )
+        is None
+        or corpus.get("schema") != "mumble.local-ai-corpus-receipt.v2"
+        or corpus.get("version") != str(corpus_version)
+        or re.fullmatch(
+            r"[0-9a-f]{64}", str(corpus.get("manifest_sha256", ""))
+        )
+        is None
+        or hardware.get("schema") != "mumble.local-ai-hardware.v1"
+        or hardware.get("id") != str(hardware_id)
+        or metrics_record.get("schema") != "mumble.local-ai-metrics-receipt.v2"
+        or metrics_record.get("run_id") != run_id
+        or metrics_record.get("candidate_id") != candidate["id"]
+        or metrics_record.get("source_commit") != str(source_commit)
+        or metrics_record.get("corpus_version") != str(corpus_version)
+        or metrics_record.get("hardware_id") != str(hardware_id)
+        or metrics_record.get("runner") != runner
+        or metrics_record.get("repetitions") != repetitions
+        or not isinstance(metrics_record.get("metrics"), dict)
+    ):
+        raise ContractError("underlying_run_provenance_mismatch")
+
+    gate_references = run.get("gate_receipts")
+    if not isinstance(gate_references, dict) or set(gate_references) != (
+        REQUIRED_GATE_NAMES
+    ):
+        raise ContractError("incomplete_gate_receipts")
+    gate_outcomes = {}
+    gate_evidence = {}
+    automated_only = True
+    for gate in sorted(REQUIRED_GATE_NAMES):
+        gate_record, gate_ref = _open_hashed_json_reference(
+            gate_references[gate],
+            evidence_root=evidence_root,
+            error_prefix=f"{gate}_gate_receipt",
+        )
+        if (
+            gate_record.get("schema") != "mumble.local-ai-gate-evidence.v2"
+            or gate_record.get("run_id") != run_id
+            or gate_record.get("candidate_id") != candidate["id"]
+            or gate_record.get("gate") != gate
+            or gate_record.get("runner") != runner
+            or gate_record.get("evidence_kind")
+            not in {"approved_runner", "manual_owner"}
+            or gate_record.get("outcome") not in {"pass", "fail"}
+            or not isinstance(gate_record.get("observations"), list)
+            or not gate_record["observations"]
+        ):
+            raise ContractError(f"invalid_{gate}_gate_evidence")
+        if gate_record["evidence_kind"] != "approved_runner":
+            automated_only = False
+        gate_outcomes[gate] = gate_record["outcome"]
+        gate_evidence[gate] = {
+            "source": gate_record["evidence_kind"],
+            "run_id": run_id,
+            "reference": gate_ref,
+        }
+
+    return {
+        "grantable": bool(approval) and automated_only,
+        "metrics": metrics_record["metrics"],
+        "gate_outcomes": gate_outcomes,
+        "gate_evidence": gate_evidence,
+        "provenance": {
+            "approved": bool(approval),
+            "run_id": run_id,
+            "runner": runner,
+            "repetitions": repetitions,
+            "run_receipt": verified_run_ref,
+            "source_receipt": source_ref,
+            "corpus_receipt": corpus_ref,
+            "hardware_receipt": hardware_ref,
+            "metrics_receipt": metrics_ref,
+        },
     }
 
 
@@ -600,21 +822,92 @@ def evaluate_candidate_evidence(*, candidate, lane, evidence, evidence_root):
 
 
 def completed_candidate_result(
-    *, candidate, lane, source_commit, hardware_id, evidence, evidence_root
+    *,
+    candidate,
+    lane,
+    source_commit,
+    hardware_id,
+    evidence,
+    evidence_root,
+    corpus_version="",
 ):
-    """Build a completed result whose gates are derived, never asserted."""
+    """Build a completed result from provenance-bound evidence.
+
+    Legacy caller-supplied metrics remain parseable for diagnostic continuity,
+    but can never grant eligibility. Only a committed, approved run receipt with
+    opened and hash-verified source, corpus, hardware, metrics, and per-gate
+    evidence may advance a candidate.
+    """
     if evidence.get("status") != "completed":
         raise ContractError("completed_candidate_status_required")
-    if set(evidence) != {"status", "metrics", "proofs"} or set(
-        evidence.get("proofs") or {}
-    ) != {"language", "safety", "licence", "windows", "packaging"}:
-        raise ContractError("invalid_completed_evidence_schema")
-    gate_results, gate_evidence = evaluate_candidate_evidence(
+    approved = _approved_run_evidence(
         candidate=candidate,
-        lane=lane,
+        source_commit=source_commit,
+        hardware_id=hardware_id,
+        corpus_version=corpus_version,
         evidence=evidence,
         evidence_root=evidence_root,
     )
+    if approved is not None:
+        metrics = approved["metrics"]
+        diagnostic_evidence = {
+            "metrics": metrics,
+            "proofs": {
+                gate: {"status": "not_asserted", "evidence": []}
+                for gate in ("language", "safety", "licence", "windows", "packaging")
+            },
+        }
+        gate_results, metric_evidence = evaluate_candidate_evidence(
+            candidate=candidate,
+            lane=lane,
+            evidence=diagnostic_evidence,
+            evidence_root=evidence_root,
+        )
+        for gate in REQUIRED_GATE_NAMES:
+            underlying = approved["gate_outcomes"][gate]
+            if gate in {"accuracy", "latency", "resource"}:
+                gate_results[gate] = (
+                    "pass"
+                    if gate_results[gate] == "pass" and underlying == "pass"
+                    else "fail"
+                )
+            else:
+                gate_results[gate] = underlying
+        gate_evidence = dict(approved["gate_evidence"])
+        for gate in ("accuracy", "latency", "resource"):
+            gate_evidence[gate]["derived_metrics"] = metric_evidence[gate]
+        provenance = approved["provenance"]
+        grantable = approved["grantable"]
+    else:
+        if set(evidence) not in (
+            {"status", "metrics", "proofs"},
+            {"status", "metrics", "proofs", "evidence_kind"},
+        ) or set(evidence.get("proofs") or {}) != {
+            "language", "safety", "licence", "windows", "packaging"
+        }:
+            raise ContractError("invalid_completed_evidence_schema")
+        metrics = evidence["metrics"]
+        gate_results, gate_evidence = evaluate_candidate_evidence(
+            candidate=candidate,
+            lane=lane,
+            evidence=evidence,
+            evidence_root=evidence_root,
+        )
+        provenance = {
+            "approved": False,
+            "evidence_kind": evidence.get("evidence_kind", "caller_supplied"),
+            "reason": "missing_approved_run_receipt",
+        }
+        grantable = False
+
+    if not grantable:
+        for gate, result in list(gate_results.items()):
+            if result == "pass":
+                gate_results[gate] = "unverified"
+            gate_evidence[gate] = {
+                **gate_evidence.get(gate, {}),
+                "eligibility_authority": "none",
+            }
     decision = _decision_from_gate_results(
         candidate_id=candidate["id"],
         baseline_id=lane["baseline"],
@@ -627,11 +920,12 @@ def completed_candidate_result(
         "source_commit": str(source_commit),
         "hardware_id": str(hardware_id),
         "status": "completed",
-        "metrics": evidence["metrics"],
+        "metrics": metrics,
+        "provenance": provenance,
         "gate_results": gate_results,
         "gate_evidence": gate_evidence,
         "decision": decision,
-        "content_policy": "fixture_ids_and_metrics_only",
+        "content_policy": "immutable_receipts_fixture_ids_and_metrics_only",
     }
 
 
@@ -945,6 +1239,7 @@ def build_ledger(
                 hardware_id=hardware["id"],
                 evidence=evidence,
                 evidence_root=evidence_root,
+                corpus_version=contract["corpus"]["version"],
             )
         else:
             result = not_run_result(
@@ -1311,6 +1606,38 @@ def load_contract(root):
             "classification",
         }:
             raise ContractError("incomplete_instruction_modes")
+
+    evidence_contract = gates.get("evidence_contract")
+    if (
+        not isinstance(evidence_contract, dict)
+        or evidence_contract.get("schema")
+        != "mumble.local-ai-evidence-contract.v2"
+        or evidence_contract.get(
+            "manual_owner_evidence_can_grant_automated_eligibility"
+        )
+        is not False
+        or not isinstance(evidence_contract.get("approved_runner_receipts"), list)
+    ):
+        raise ContractError("invalid_evidence_contract")
+    approval_keys = set()
+    for approval in evidence_contract["approved_runner_receipts"]:
+        if (
+            not isinstance(approval, dict)
+            or set(approval) != {"sha256", "runner_id", "tool_version"}
+            or re.fullmatch(r"[0-9a-f]{64}", str(approval.get("sha256", "")))
+            is None
+            or not str(approval.get("runner_id", "")).strip()
+            or not str(approval.get("tool_version", "")).strip()
+        ):
+            raise ContractError("invalid_approved_runner_receipt")
+        key = (
+            approval["sha256"],
+            approval["runner_id"],
+            approval["tool_version"],
+        )
+        if key in approval_keys:
+            raise ContractError("duplicate_approved_runner_receipt")
+        approval_keys.add(key)
 
     inventory = candidates.get("candidates")
     if not isinstance(inventory, list) or not inventory:

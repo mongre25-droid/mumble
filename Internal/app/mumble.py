@@ -5489,9 +5489,17 @@ class Mumble:
         template = self.SEARCH_ENGINES[prepared["engine"]]
         url = template.format(q=urllib.parse.quote(prepared["query"]))
         try:
-            self.open_in_browser(url)
+            opened = self.open_in_browser(url)
         except Exception as exc:
             return {"ok": False, "message": f"The browser could not open: {exc}"}
+        if opened is not True:
+            return {
+                "ok": False,
+                "message": (
+                    "The browser could not open Web Search. Your consent was "
+                    "used once; try again after checking the default browser."
+                ),
+            }
         return {"ok": True, "message": "Web Search opened."}
 
     def cancel_web_search(self, request_id):
@@ -5548,11 +5556,11 @@ class Mumble:
                     import subprocess
 
                     subprocess.Popen([exe, url])
-                    return
+                    return True
                 except Exception as e:
                     print("browser launch failed, using default:", e)
                     break
-        webbrowser.open_new_tab(url)
+        return bool(webbrowser.open_new_tab(url))
 
     def _sane_press_hotkey(self, key, default):
         """Read a SINGLE-PRESS hotkey from settings and refuse a bare modifier.
@@ -5633,7 +5641,9 @@ class Mumble:
         other_key, other_spec = found
         return (f"{self._PRESS_BINDING_LABELS.get(key, key)} overlaps "
                 f"{self._PRESS_BINDING_LABELS.get(other_key, other_key)} "
-                f"({bindings.pretty(other_spec)}).")
+                f"({bindings.pretty(other_spec)}). The existing command was "
+                "preserved and the conflicting command was left unregistered; "
+                "choose a free shortcut in Settings.")
 
     def _register_hotkey(self):
         spec = self._sane_press_hotkey("hotkey", "ctrl+windows")
@@ -5719,6 +5729,10 @@ class Mumble:
             "web_search_hotkey", WEB_SEARCH_HOTKEY_DEFAULT)
         conflict = self._active_binding_conflict("web_search_hotkey", spec)
         if conflict:
+            try:
+                self._notify("Web Search shortcut conflict", conflict)
+            except Exception:
+                pass
             raise ValueError(conflict)
         new_handle = bindings.register_hotkey(spec, self.on_web_search_hotkey)
         old_handle = self._hk_web_search

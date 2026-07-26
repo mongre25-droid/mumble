@@ -31,6 +31,32 @@ def _load_tool():
     return module
 
 
+def test_hash_verified_receipt_parses_the_exact_hashed_bytes(
+    tmp_path, monkeypatch
+):
+    benchmark = _load_tool()
+    receipt = tmp_path / "receipt.json"
+    original = {"value": "original"}
+    swapped = {"value": "swapped-after-hash"}
+    original_bytes = json.dumps(original, sort_keys=True).encode("utf-8")
+    receipt.write_bytes(original_bytes)
+    expected_sha = hashlib.sha256(original_bytes).hexdigest()
+
+    def swap_after_hash(path):
+        hashed = Path(path).read_bytes()
+        Path(path).write_text(json.dumps(swapped), encoding="utf-8")
+        return hashlib.sha256(hashed).hexdigest()
+
+    monkeypatch.setattr(benchmark, "_sha256_file", swap_after_hash)
+    opened, _reference = benchmark._open_hashed_json_reference(
+        {"record": receipt.name, "sha256": expected_sha},
+        evidence_root=tmp_path,
+        error_prefix="receipt",
+    )
+
+    assert opened == original
+
+
 def _passing_instruction_evidence(proof_root, candidate_id="qwen3-0.6b-q8"):
     modes = {}
     for mode in ("prompt", "email", "reply", "classification"):
@@ -74,6 +100,84 @@ def _passing_instruction_evidence(proof_root, candidate_id="qwen3-0.6b-q8"):
     }
 
 
+def _self_authored_run_evidence(proof_root, contract, candidate, metrics):
+    run_id = "self-authored-run-0001"
+    runner = {"id": "unapproved-local-runner", "tool_version": "test-v2"}
+    source_commit = "65f27576f093553418540abe58501043971e8b1f"
+    corpus_version = contract["corpus"]["version"]
+    hardware_id = "windows-z1-extreme-2026-07-26"
+    repetitions = {
+        mode: values["corpus_runs"] for mode, values in metrics["modes"].items()
+    }
+
+    def write_record(name, payload):
+        path = proof_root / name
+        path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        return {
+            "record": path.name,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+
+    source_receipt = write_record("source-v2.json", {
+        "schema": "mumble.local-ai-source-receipt.v2",
+        "candidate_id": candidate["id"],
+        "source_commit": source_commit,
+        "immutable_tree_sha256": "1" * 64,
+    })
+    corpus_receipt = write_record("corpus-v2.json", {
+        "schema": "mumble.local-ai-corpus-receipt.v2",
+        "version": corpus_version,
+        "manifest_sha256": "2" * 64,
+    })
+    hardware_receipt = write_record("hardware-v2.json", {
+        "schema": "mumble.local-ai-hardware.v1",
+        "id": hardware_id,
+    })
+    metrics_receipt = write_record("metrics-v2.json", {
+        "schema": "mumble.local-ai-metrics-receipt.v2",
+        "run_id": run_id,
+        "candidate_id": candidate["id"],
+        "source_commit": source_commit,
+        "corpus_version": corpus_version,
+        "hardware_id": hardware_id,
+        "runner": runner,
+        "repetitions": repetitions,
+        "metrics": metrics,
+    })
+    gate_receipts = {}
+    for gate in sorted({
+        "accuracy", "latency", "resource", "language", "safety",
+        "licence", "windows", "packaging",
+    }):
+        gate_receipts[gate] = write_record(f"{gate}-v2.json", {
+            "schema": "mumble.local-ai-gate-evidence.v2",
+            "run_id": run_id,
+            "candidate_id": candidate["id"],
+            "gate": gate,
+            "runner": runner,
+            "evidence_kind": "approved_runner",
+            "outcome": "pass",
+            "observations": [f"self-authored-{gate}"],
+        })
+    run_receipt = write_record("run-v2.json", {
+        "schema": "mumble.local-ai-run-receipt.v2",
+        "run_id": run_id,
+        "candidate_id": candidate["id"],
+        "lane_id": candidate["lane"],
+        "source_commit": source_commit,
+        "corpus_version": corpus_version,
+        "hardware_id": hardware_id,
+        "repetitions": repetitions,
+        "runner": runner,
+        "source_receipt": source_receipt,
+        "corpus_receipt": corpus_receipt,
+        "hardware_receipt": hardware_receipt,
+        "metrics_receipt": metrics_receipt,
+        "gate_receipts": gate_receipts,
+    })
+    return {"status": "completed", "run_receipt": run_receipt}
+
+
 def test_contract_is_versioned_consent_safe_and_predeclared():
     benchmark = _load_tool()
     contract = benchmark.load_contract(CONTRACT_ROOT)
@@ -81,6 +185,13 @@ def test_contract_is_versioned_consent_safe_and_predeclared():
     assert contract["corpus"]["schema"] == "mumble.local-ai-corpus.v1"
     assert contract["gates"]["schema"] == "mumble.local-ai-gates.v1"
     assert contract["candidates"]["schema"] == "mumble.local-ai-candidates.v1"
+    evidence_contract = contract["gates"]["evidence_contract"]
+    assert evidence_contract["schema"] == "mumble.local-ai-evidence-contract.v2"
+    assert evidence_contract["approved_runner_receipts"] == []
+    assert evidence_contract[
+        "manual_owner_evidence_can_grant_automated_eligibility"
+    ] is False
+    assert "Every eligible run receipt hash" in evidence_contract["approval_rule"]
 
     source_kinds = {
         item["source"]["kind"] for item in contract["corpus"]["items"]
@@ -217,7 +328,7 @@ def test_preliminary_offline_speech_record_is_content_free_and_non_adopting():
     assert faster_whisper["preliminary_result_file"] == PRELIMINARY_SPEECH_RESULT.name
 
 
-def test_candidate_advances_only_from_measured_metrics_and_traceable_proofs(tmp_path):
+def test_candidate_metrics_require_approved_run_provenance(tmp_path):
     benchmark = _load_tool()
     contract = benchmark.load_contract(CONTRACT_ROOT)
     candidate = next(
@@ -234,7 +345,13 @@ def test_candidate_advances_only_from_measured_metrics_and_traceable_proofs(tmp_
         evidence=evidence,
         evidence_root=tmp_path,
     )
-    assert result["decision"]["decision"] == "eligible_for_integration_review"
+    assert result["decision"]["decision"] == "retain_baseline"
+    assert set(result["gate_results"].values()) == {"unverified"}
+    assert result["provenance"] == {
+        "approved": False,
+        "evidence_kind": "caller_supplied",
+        "reason": "missing_approved_run_receipt",
+    }
     assert set(result["gate_evidence"]) == benchmark.REQUIRED_GATE_NAMES
 
     missing_reply = copy.deepcopy(evidence)
@@ -302,6 +419,45 @@ def test_candidate_advances_only_from_measured_metrics_and_traceable_proofs(tmp_
             evidence=content_bearing,
             evidence_root=tmp_path,
         )
+
+
+def test_self_authored_metrics_and_placeholder_proofs_cannot_grant_eligibility(
+    tmp_path,
+):
+    benchmark = _load_tool()
+    contract = benchmark.load_contract(CONTRACT_ROOT)
+    candidate = next(
+        item
+        for item in contract["candidates"]["candidates"]
+        if item["id"] == "qwen3-0.6b-q8"
+    )
+
+    result = benchmark.completed_candidate_result(
+        candidate=candidate,
+        lane=contract["gates"]["lanes"][candidate["lane"]],
+        source_commit="65f27576f093553418540abe58501043971e8b1f",
+        hardware_id="windows-z1-extreme-2026-07-26",
+        evidence=_passing_instruction_evidence(tmp_path),
+        evidence_root=tmp_path,
+    )
+
+    assert result["decision"]["decision"] == "retain_baseline"
+    assert result["decision"]["blocking_gates"]
+
+    self_authored_run = benchmark.completed_candidate_result(
+        candidate=candidate,
+        lane=contract["gates"]["lanes"][candidate["lane"]],
+        source_commit="65f27576f093553418540abe58501043971e8b1f",
+        hardware_id="windows-z1-extreme-2026-07-26",
+        evidence=_self_authored_run_evidence(
+            tmp_path, contract, candidate, result["metrics"]
+        ),
+        evidence_root=tmp_path,
+        corpus_version=contract["corpus"]["version"],
+    )
+    assert self_authored_run["decision"]["decision"] == "retain_baseline"
+    assert set(self_authored_run["gate_results"].values()) == {"unverified"}
+    assert self_authored_run["provenance"]["approved"] is False
 
 
 def test_artifact_cache_is_hash_verified_offline_safe_and_recovers_corruption(tmp_path):
@@ -593,8 +749,8 @@ def test_ledger_accounts_for_every_candidate_and_keeps_unrun_lanes_on_baseline(t
         availability_record=completed_availability,
         evidence_root=tmp_path,
     )
-    assert completed_ledger["eligible_candidates"] == ["qwen3-0.6b-q8"]
-    assert completed_ledger["adoption"] == "candidate_review_required"
+    assert completed_ledger["eligible_candidates"] == []
+    assert completed_ledger["adoption"] == "no_candidate_adopted"
 
 
 def test_cli_exposes_reproducible_cached_only_sapi_baseline():

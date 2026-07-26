@@ -383,11 +383,44 @@ class Settings:
         # deliberate "brave"/already-"perplexity" choice is left untouched.
         if not self.data.get("web_search_hotkey_default_applied"):
             if "web_search_hotkey" not in self._loaded_keys:
-                self.data["web_search_hotkey"] = (
-                    legacy_search_hotkey or "ctrl+option+s"
+                import bindings
+
+                candidate = legacy_search_hotkey or "ctrl+option+s"
+                existing = {
+                    key: self.data.get(key, "")
+                    for key in (
+                        "hotkey", "quick_paste_hotkey", "history_hotkey"
+                    )
+                }
+                conflict = next(
+                    (
+                        (key, value)
+                        for key, value in existing.items()
+                        if bindings.conflicts(candidate, value)
+                    ),
+                    None,
                 )
-            self.data["web_search_hotkey_default_applied"] = True
-            changed = True
+                if conflict:
+                    other_key, other_spec = conflict
+                    label = {
+                        "hotkey": "Dictate",
+                        "quick_paste_hotkey": "Paste latest",
+                        "history_hotkey": "Open Deck",
+                    }.get(other_key, other_key)
+                    self.web_search_migration_notice = (
+                        f"Web Search was left unregistered because {label} "
+                        f"already uses {bindings.pretty(other_spec)}. Your "
+                        "existing shortcut was preserved; choose a free Web "
+                        "Search shortcut in Settings."
+                    )
+                    print("[hotkey-migration]", self.web_search_migration_notice)
+                else:
+                    self.data["web_search_hotkey"] = candidate
+                    self.data["web_search_hotkey_default_applied"] = True
+                    changed = True
+            else:
+                self.data["web_search_hotkey_default_applied"] = True
+                changed = True
         if "search_hotkey" in self.data:
             self.data.pop("search_hotkey", None)
             self._dirty.add("search_hotkey")

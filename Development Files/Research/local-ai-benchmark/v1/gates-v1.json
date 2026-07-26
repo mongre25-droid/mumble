@@ -1,11 +1,17 @@
 {
   "schema": "mumble.local-ai-gates.v1",
-  "version": "issue19-gates-v1",
+  "version": "issue19-gates-v2-provenance",
   "decision_rule": "A candidate advances only when every required gate is pass. Fail, not_run, blocked, unknown, or missing retains the lane baseline.",
   "required_metrics": {
     "speech": ["wer", "first_stable_partial_ms", "stop_to_final_ms", "real_time_factor", "peak_ram_mb", "peak_vram_mb", "model_size_bytes", "idle_cpu_percent", "failure_recovery"],
     "instruction": ["per_mode_corpus_runs", "task_success_rate", "semantic_preservation_rate", "unsupported_additions", "first_token_ms", "completion_p95_ms", "peak_ram_mb", "peak_vram_mb", "model_size_bytes", "idle_cpu_percent", "failure_recovery_rate"],
     "classification": ["macro_f1", "false_action_count", "abstention_accuracy", "latency_p95_ms", "peak_ram_mb", "peak_vram_mb", "model_size_bytes", "idle_cpu_percent", "failure_recovery_rate"]
+  },
+  "evidence_contract": {
+    "schema": "mumble.local-ai-evidence-contract.v2",
+    "approved_runner_receipts": [],
+    "manual_owner_evidence_can_grant_automated_eligibility": false,
+    "approval_rule": "Every eligible run receipt hash, runner id, and tool version must be added here by a reviewed source change after its source, corpus, hardware, metrics, repetitions, and eight gate-specific records have been opened and verified. The empty registry keeps every current candidate non-eligible."
   },
   "lanes": {
     "speech-baseline": {
