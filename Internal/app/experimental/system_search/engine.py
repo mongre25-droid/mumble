@@ -125,7 +125,8 @@ class SystemSearchEngine:
 
     def __init__(self, settings=None, data_dir=None, platform=None, home=None,
                   file_roots=None, app_roots=None, max_items=None,
-                  start_background=True, url_opener=None, file_provider=None):
+                  start_background=True, url_opener=None, file_provider=None,
+                  native_drag_starter=None):
         self.settings = settings
         self.platform = self._platform_name(platform)
         self.home = Path(home or Path.home()).expanduser()
@@ -142,6 +143,7 @@ class SystemSearchEngine:
         self._file_roots_override = file_roots
         self._app_roots_override = app_roots
         self._url_opener = url_opener
+        self._native_drag_starter = native_drag_starter
         self._lock = threading.RLock()
         self._items = {}
         self._ephemeral = {}
@@ -688,11 +690,12 @@ class SystemSearchEngine:
             age_hours = 9999.0
         return min(22.0, math.log1p(count) * 7.5) + max(0.0, 14.0 - age_hours / 12)
 
-    @staticmethod
-    def _actions_for(item):
+    def _actions_for(self, item):
         actions = ["open", "favorite"]
-        if item.kind in {"file", "app"} and item.source not in {"start-apps"}:
+        if item.kind in {"file", "folder", "app"} and item.source not in {"start-apps"}:
             actions.append("reveal")
+        if self.platform == "windows" and item.kind in {"file", "folder"}:
+            actions.append("drag")
         if item.source not in {"start-apps"}:
             actions.append("copy_path")
         return actions
@@ -1488,6 +1491,19 @@ class SystemSearchEngine:
             if action == "copy_path":
                 import pyperclip
                 pyperclip.copy(item.target)
+            elif action == "drag":
+                starter = self._native_drag_starter
+                if starter is None:
+                    from .native_drag import start_windows_shell_drag
+                    starter = start_windows_shell_drag
+                result = starter(item.target)
+                if not isinstance(result, dict):
+                    result = {"ok": bool(result)}
+                return {
+                    **result,
+                    "id": item.id,
+                    "action": "drag",
+                }
             elif action == "reveal":
                 self._reveal(item)
             else:
@@ -1539,13 +1555,10 @@ class SystemSearchEngine:
         if not target.exists():
             raise FileNotFoundError("That item has moved. Refresh the search index.")
         if self.platform == "windows":
-            if target.is_dir():
-                os.startfile(str(target))
-            else:
-                subprocess.Popen(
-                    ["explorer.exe", "/select,", str(target)],
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
+            subprocess.Popen(
+                ["explorer.exe", "/select,", str(target)],
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
             return
         opener = shutil.which("xdg-open")
         if not opener:

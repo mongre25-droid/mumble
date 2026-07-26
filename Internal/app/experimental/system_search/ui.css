@@ -238,6 +238,8 @@
 .ss-result:focus-within .ss-result-actions { opacity: 1; }
 .ss-result-actions .btn-icon { width: 28px; height: 28px; }
 .ss-result-actions .on { color: var(--gold); }
+.ss-drag-grip { cursor: grab; -webkit-app-region: no-drag; touch-action: none; }
+.ss-drag-grip.dragging { cursor: grabbing; color: var(--gold); }
 
 .ss-empty { display: grid; place-items: center; min-height: 235px; padding: 26px; text-align: center; }
 .ss-empty-icon { display: inline-flex; width: 31px; height: 31px; margin-bottom: 9px; color: var(--text-mute); }

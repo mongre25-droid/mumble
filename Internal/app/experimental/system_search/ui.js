@@ -92,7 +92,7 @@
         subtitle: "Folder",
         source: "files",
         favorite: false,
-        actions: ["open", "favorite", "copy_path"],
+        actions: ["open", "favorite", "copy_path", "drag"],
       },
       {
         id: "preview-notes",
@@ -101,7 +101,7 @@
         subtitle: "Markdown document",
         source: "files",
         favorite: false,
-        actions: ["open", "favorite", "reveal", "copy_path"],
+        actions: ["open", "favorite", "reveal", "copy_path", "drag"],
       },
     ];
     const q = String(query || "").toLowerCase();
@@ -136,6 +136,8 @@
       return { ok: true, refreshing: true };
     if (name === "system_search_execute")
       return { ok: true, action: args[1] || "open", favorite: true };
+    if (name === "system_search_drag")
+      return { ok: true, action: "drag", dropped: false, effect: "none" };
     if (name === "system_search_icons") return { ok: true, icons: {} };
     if (name === "system_search_hide" || name === "system_search_show" ||
         name === "system_search_toggle")
@@ -549,6 +551,9 @@
         const favorite = actions.includes("favorite")
           ? `<button type="button" class="btn-icon btn-ghost ${item.favorite ? "on" : ""}" data-ss-action="favorite" title="${item.favorite ? "Remove from favourites" : "Add to favourites"}" aria-label="${item.favorite ? "Remove" : "Add"} ${escapeHtml(item.name)} ${item.favorite ? "from" : "to"} favourites"><span data-icon="star"></span></button>`
           : "";
+        const drag = actions.includes("drag")
+          ? `<button type="button" class="btn-icon btn-ghost ss-drag-grip" data-ss-drag title="Drag to another app" aria-label="Drag ${escapeHtml(item.name)} to another app"><span aria-hidden="true">â‹®â‹®</span></button>`
+          : "";
         const icon = item.kind === "app"
           ? `<span class="ss-kind-icon" data-ss-app-icon="${escapeHtml(item.id)}"><span class="ss-app-icon-pending" aria-hidden="true"></span></span>`
           : `<span class="ss-kind-icon" data-icon="${iconFor(item.kind)}"></span>`;
@@ -556,7 +561,7 @@
           <button type="button" class="ss-result-main" data-ss-action="open">
             ${icon}
             <span class="ss-copy"><span class="ss-name"><span>${escapeHtml(item.name)}</span>${item.favorite ? '<span class="ss-fav-mark" data-icon="star"></span>' : ""}</span><span class="ss-meta">${escapeHtml(item.meta || item.subtitle || "Local")}</span></span>
-          </button><span class="ss-result-actions">${favorite}${reveal}</span></div>`;
+          </button><span class="ss-result-actions">${drag}${favorite}${reveal}</span></div>`;
       })
       .join("");
     $$s(".ss-result", host).forEach((row) => {
@@ -570,9 +575,50 @@
           executeSelected(button.dataset.ssAction || "open");
         }),
       );
+      const dragGrip = $s("[data-ss-drag]", row);
+      if (dragGrip) wireNativeDrag(dragGrip, row);
     });
     paint(host);
     scheduleIconHydration();
+  }
+
+  function wireNativeDrag(grip, row) {
+    let origin = null;
+    let started = false;
+    grip.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      origin = { x: event.clientX, y: event.clientY, id: event.pointerId };
+      grip.setPointerCapture?.(event.pointerId);
+    });
+    grip.addEventListener("pointermove", async (event) => {
+      if (!origin || started || !(event.buttons & 1)) return;
+      if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) < 5) return;
+      started = true;
+      const item = SS.results[Number(row.dataset.index)];
+      if (!item) return;
+      selectIndex(Number(row.dataset.index));
+      grip.classList.add("dragging");
+      try {
+        const result = await api("system_search_drag", item.id);
+        if (!result || result.ok === false) {
+          const message = (result && result.message) || "That item could not be dragged.";
+          if (typeof window.toast === "function") window.toast(message, "err", 3000);
+          announce(message);
+        } else if (result.dropped) {
+          announce(`Dropped ${item.name}`);
+        }
+      } catch (error) {
+        announce("That item could not be dragged.");
+      } finally {
+        grip.classList.remove("dragging");
+        origin = null;
+      }
+    });
+    const clear = () => { origin = null; started = false; };
+    grip.addEventListener("pointerup", clear);
+    grip.addEventListener("pointercancel", clear);
   }
 
   function scheduleIconHydration() {
