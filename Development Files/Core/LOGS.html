@@ -217,10 +217,18 @@
   <li><span class="badge b-gated">boundary</span> This is one local direct-child correction candidate requiring fresh independent review. Broader Chromium, Electron, native, Office, rich-editor and clipboard contention; the installed authenticated/signed elevated helper; exact-head integrated CI; packaging, installation, merge, deployment, release, rollback, and owner acceptance remain open.</li>
 </ul>
 
-<h2><span class="sec">24</span>Current product snapshot</h2>
+<h2 data-evidence-boundary="owner-local-main-update"><span class="sec">24</span>26 July 2026 &mdash; owner-directed local main update and restart</h2>
+<ul>
+  <li><span class="badge b-done">test activity stopped</span> Stopped the two remaining <code>verify-stage-a-ui.cjs</code> processes and started no replacement Mumble test run.</li>
+  <li><span class="badge b-done">history-preserving local integration</span> Verified a clean <code>C:\Mumble</code> checkout and fast-forwarded local <code>main</code> from <code>276619e15320f016af6576425fc0e563c299e0b4</code> to descendant <code>5d9767322735b28c3514569c20c41acf7203fa67</code>. No rebase, squash, force update, or conflict resolution occurred.</li>
+  <li><span class="badge b-done">owner runtime restarted</span> Closed the two prior Mumble processes and restarted the canonical <code>Internal/app/.venv/Scripts/Mumble.exe Internal/app/mumble.py</code> path. The controller and Web UI shell remained alive from the updated checkout.</li>
+  <li><span class="badge b-gated">truthful boundary</span> Local main is twelve commits ahead of <code>origin/main</code>. No push, new exact-head CI, package rebuild, packaged installation, deployment, release, rollback proof, or formal owner acceptance occurred. Ordinary owner use is the next paste evidence; broad automated investigation is paused.</li>
+</ul>
+
+<h2><span class="sec">25</span>Current product snapshot</h2>
 <p>At this baseline Mumble is a local-first desktop voice workspace with hotkey dictation, local faster-whisper transcription, optional cloud transcription, optional local/cloud text shaping, clipboard-safe paste, the Deck, meetings, Reader, statistics, and supported-platform local search. The golden-black liquid-glass Web UI and floating Island are the current interface surfaces.</p>
 
-<h2><span class="sec">25</span>How to keep this log useful</h2>
+<h2><span class="sec">26</span>How to keep this log useful</h2>
 <ul><li>Use one dated entry for a meaningful completed milestone.</li><li>State what changed and where, without copying a full investigation into this page.</li><li>Put current risks, unfinished tasks, and release gates in <a href="STATUS.html">STATUS</a>.</li><li>Put stable procedures and architecture changes in <a href="HANDBOOK.html">HANDBOOK</a>.</li><li>Keep README focused on the stable product and working agreement.</li></ul>
 
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
