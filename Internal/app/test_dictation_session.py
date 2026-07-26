@@ -92,7 +92,7 @@ def test_session_seals_one_contiguous_immutable_pcm16_segment(tmp_path):
     assert not list((tmp_path / SESSION_ID).glob("*.tmp"))
 
 
-def test_recovery_reclaims_a_range_crashed_after_segment_reservation(tmp_path):
+def test_recovery_preserves_reserved_range_and_blocks_all_finalization(tmp_path):
     session = DurableDictationSession.create(
         tmp_path,
         session_id=SESSION_ID,
@@ -112,13 +112,32 @@ def test_recovery_reclaims_a_range_crashed_after_segment_reservation(tmp_path):
     assert reserved["next_sample"] == 2
     assert reserved["segments"][0]["state"] == "writing"
 
-    recovered = DurableDictationSession.open(tmp_path, SESSION_ID)
-    assert recovered.read_manifest()["segments"] == []
-    assert recovered.read_manifest()["next_sample"] == 0
+    session.fault_injector = None
+    with pytest.raises(DictationSessionError, match="segment_unsealed"):
+        session.claim_finalization(OWNER_ID, OPERATION_ID)
 
-    sealed = recovered.append_pcm16(pcm)
-    assert sealed["sample_start"] == 0
-    assert sealed["sample_end"] == 2
+    for _ in range(3):
+        recovered = DurableDictationSession.open(tmp_path, SESSION_ID)
+        unresolved = recovered.read_manifest()
+        assert unresolved["segments"] == reserved["segments"]
+        assert unresolved["next_sample"] == 2
+
+    with pytest.raises(DictationSessionError, match="segment_unresolved"):
+        recovered.append_pcm16(b"\x03\x00")
+
+    advances = (
+        lambda: recovered.claim_finalization(OWNER_ID, OPERATION_ID),
+        lambda: recovered.mark_history_committed(OWNER_ID, OPERATION_ID),
+        lambda: recovered.claim_final_insertion(OWNER_ID, OPERATION_ID),
+        lambda: recovered.complete_finalization(
+            OWNER_ID, OPERATION_ID, insertion_outcome="confirmed"
+        ),
+    )
+    for advance in advances:
+        with pytest.raises(DictationSessionError):
+            advance()
+
+    assert recovered.read_manifest() == reserved
 
 
 def test_finalization_rejects_reserved_unverified_audio(tmp_path):
@@ -140,6 +159,114 @@ def test_finalization_rejects_reserved_unverified_audio(tmp_path):
     with pytest.raises(DictationSessionError, match="segment_unsealed"):
         session.claim_finalization(OWNER_ID, OPERATION_ID)
     assert _manifest(tmp_path)["state"] == "capturing"
+
+
+def test_exact_reconciliation_seals_original_range_once_and_can_finalize(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=4,
+    )
+    pcm = b"\x01\x00\x02\x00"
+    session.fault_injector = DeterministicFaultInjector(
+        "after:segment_reserved"
+    )
+    with pytest.raises(InjectedCrash, match="after:segment_reserved"):
+        session.append_pcm16(pcm)
+
+    recovered = DurableDictationSession.open(tmp_path, SESSION_ID)
+    repaired = recovered.reconcile_unresolved_pcm16(pcm, channels=1)
+
+    assert repaired["number"] == 0
+    assert (repaired["sample_start"], repaired["sample_end"]) == (0, 2)
+    assert repaired["state"] == "sealed"
+    assert recovered.verify()["next_sample"] == 2
+    with pytest.raises(DictationSessionError, match="no_unresolved_segment"):
+        recovered.reconcile_unresolved_pcm16(pcm, channels=1)
+
+    recovered.claim_finalization(OWNER_ID, OPERATION_ID)
+    assert recovered.mark_history_committed(OWNER_ID, OPERATION_ID) is True
+    assert recovered.claim_final_insertion(OWNER_ID, OPERATION_ID) is True
+    assert recovered.claim_final_insertion(OWNER_ID, OPERATION_ID) is False
+    completed = recovered.complete_finalization(
+        OWNER_ID, OPERATION_ID, insertion_outcome="confirmed"
+    )
+    assert completed["state"] == "complete"
+    assert recovered.verify()["next_sample"] == 2
+
+
+@pytest.mark.parametrize(
+    ("payload", "channels", "error"),
+    (
+        (b"\x09\x00\x02\x00", 1, "reconciliation_checksum_mismatch"),
+        (b"\x01\x00", 1, "reconciliation_length_mismatch"),
+        (b"\x01\x00\x02\x00", 2, "reconciliation_channels_mismatch"),
+    ),
+)
+def test_reconciliation_rejects_mismatch_without_mutating_reservation(
+        tmp_path, payload, channels, error):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=4,
+    )
+    session.fault_injector = DeterministicFaultInjector(
+        "after:segment_reserved"
+    )
+    with pytest.raises(InjectedCrash, match="after:segment_reserved"):
+        session.append_pcm16(b"\x01\x00\x02\x00")
+    recovered = DurableDictationSession.open(tmp_path, SESSION_ID)
+    manifest_before = recovered.manifest_path.read_bytes()
+    files_before = sorted(path.name for path in recovered.path.iterdir())
+
+    with pytest.raises(DictationSessionError, match=error):
+        recovered.reconcile_unresolved_pcm16(payload, channels=channels)
+
+    assert recovered.manifest_path.read_bytes() == manifest_before
+    assert sorted(path.name for path in recovered.path.iterdir()) == files_before
+    assert recovered.read_manifest()["next_sample"] == 2
+    assert recovered.read_manifest()["segments"][0]["state"] == "writing"
+
+
+@pytest.mark.parametrize("point", ("before:segment_sealed", "after:segment_sealed"))
+def test_exact_reconciliation_is_idempotent_across_sealing_crashes(
+        tmp_path, point):
+    pcm = b"\x01\x00\x02\x00"
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=4,
+    )
+    session.fault_injector = DeterministicFaultInjector(
+        "after:segment_reserved"
+    )
+    with pytest.raises(InjectedCrash, match="after:segment_reserved"):
+        session.append_pcm16(pcm)
+    recovered = DurableDictationSession.open(
+        tmp_path,
+        SESSION_ID,
+        fault_injector=DeterministicFaultInjector(point),
+    )
+
+    with pytest.raises(InjectedCrash, match=point):
+        recovered.reconcile_unresolved_pcm16(pcm, channels=1)
+
+    reopened = DurableDictationSession.open(tmp_path, SESSION_ID)
+    verified = reopened.verify()
+    assert verified["next_sample"] == 2
+    assert len(verified["segments"]) == 1
+    assert verified["segments"][0]["state"] == "sealed"
+    with pytest.raises(DictationSessionError, match="no_unresolved_segment"):
+        reopened.reconcile_unresolved_pcm16(pcm, channels=1)
+    assert sorted(path.name for path in reopened.path.glob("*.pcm")) == [
+        "segment-00000000.pcm"
+    ]
 
 
 def test_one_finalization_owner_and_operation_prevent_duplicate_insertion(tmp_path):
@@ -240,8 +367,13 @@ def test_every_state_transition_recovers_idempotently(tmp_path, transition, side
         with pytest.raises(InjectedCrash, match=point):
             session.append_pcm16(b"\x01\x00\x02\x00")
         recovered = DurableDictationSession.open(tmp_path, SESSION_ID)
-        if not recovered.read_manifest()["segments"]:
+        recovered_manifest = recovered.read_manifest()
+        if not recovered_manifest["segments"]:
             recovered.append_pcm16(b"\x01\x00\x02\x00")
+        elif recovered_manifest["segments"][-1]["state"] == "writing":
+            recovered.reconcile_unresolved_pcm16(
+                b"\x01\x00\x02\x00", channels=1
+            )
         assert recovered.verify()["next_sample"] == 2
         return
 
@@ -585,6 +717,47 @@ def test_restart_discovers_only_valid_private_session_directories(tmp_path):
 
     assert [item.session_id for item in discovered] == [SESSION_ID]
     assert discovered[0].verify()["next_sample"] == 2
+
+
+def test_discovery_reports_unresolved_session_without_deleting_recovery_bytes(
+        tmp_path):
+    healthy_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    healthy = DurableDictationSession.create(
+        tmp_path,
+        session_id=healthy_id,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=4,
+    )
+    healthy.append_pcm16(b"\x01\x00")
+    unresolved = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=4,
+    )
+    unresolved.fault_injector = DeterministicFaultInjector(
+        "after:segment_reserved"
+    )
+    with pytest.raises(InjectedCrash, match="after:segment_reserved"):
+        unresolved.append_pcm16(b"\x02\x00\x03\x00")
+    partial = unresolved.path / "segment-00000000.pcm.tmp"
+    partial.write_bytes(b"\x02\x00")
+    reserved = _manifest(tmp_path)
+    issues = []
+
+    discovered = DurableDictationSession.discover(
+        tmp_path, on_error=issues.append
+    )
+
+    assert [item.session_id for item in discovered] == [healthy_id]
+    assert issues == [{
+        "session_id": SESSION_ID,
+        "error": "segment_unresolved",
+    }]
+    assert _manifest(tmp_path) == reserved
+    assert partial.read_bytes() == b"\x02\x00"
 
 
 @pytest.mark.parametrize(

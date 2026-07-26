@@ -187,10 +187,19 @@ def _fsync_directory(path: Path) -> None:
 
 def _atomic_write(path: Path, payload: bytes) -> None:
     temporary = path.with_name(path.name + ".tmp")
-    with open(temporary, "wb") as handle:
-        handle.write(payload)
-        handle.flush()
-        os.fsync(handle.fileno())
+    try:
+        temporary.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        raise DictationSessionError("temporary_prepare_failed") from error
+    try:
+        with open(temporary, "xb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError as error:
+        raise DictationSessionError("temporary_write_failed") from error
     branding.protect_private_path(str(temporary))
     os.replace(temporary, path)
     branding.protect_private_path(str(path))
@@ -343,7 +352,18 @@ class DurableDictationSession:
                     or OPAQUE_ID.fullmatch(path.name) is None):
                 continue
             try:
-                recovered.append(cls.open(root, path.name))
+                session = cls.open(root, path.name)
+                manifest = session.read_manifest()
+                if any(
+                        segment.get("state") != "sealed"
+                        for segment in manifest["segments"]):
+                    if on_error is not None:
+                        on_error({
+                            "session_id": path.name,
+                            "error": "segment_unresolved",
+                        })
+                    continue
+                recovered.append(session)
             except DictationSessionError as error:
                 if on_error is not None:
                     on_error({
@@ -498,6 +518,10 @@ class DurableDictationSession:
             manifest = self._read_manifest_unlocked()
             if manifest.get("state") != "capturing":
                 raise DictationSessionError("session_not_capturing")
+            if any(
+                    segment.get("state") != "sealed"
+                    for segment in manifest["segments"]):
+                raise DictationSessionError("segment_unresolved")
             channels = int(manifest["audio"]["channels"])
             frame_bytes = channels * 2
             if not payload or len(payload) % frame_bytes:
@@ -537,6 +561,58 @@ class DurableDictationSession:
             def seal(updated):
                 current = updated.get("segments", [])
                 if number >= len(current) or current[number] != segment:
+                    raise DictationSessionError(
+                        "segment_reservation_changed")
+                current[number]["state"] = "sealed"
+
+            self._fault("before:segment_sealed")
+            updated = self._transition_locked("segment_sealed", seal)
+            return copy.deepcopy(updated["segments"][number])
+
+    def reconcile_unresolved_pcm16(self, payload: bytes, *, channels: int):
+        """Seal the existing unresolved range only when its PCM16 bytes match."""
+        if not isinstance(payload, bytes):
+            raise TypeError("pcm16_payload_must_be_bytes")
+        if (not isinstance(channels, int) or isinstance(channels, bool)
+                or channels <= 0):
+            raise ValueError("invalid_channels")
+        with self._locked():
+            manifest = self._read_manifest_unlocked()
+            if manifest.get("state") != "capturing":
+                raise DictationSessionError("session_not_capturing")
+            segments = manifest.get("segments")
+            if (not isinstance(segments, list) or not segments
+                    or segments[-1].get("state") != "writing"):
+                raise DictationSessionError("no_unresolved_segment")
+
+            segment = copy.deepcopy(segments[-1])
+            expected_channels = int(manifest["audio"]["channels"])
+            if channels != expected_channels:
+                raise DictationSessionError(
+                    "reconciliation_channels_mismatch")
+            if len(payload) != int(segment["byte_count"]):
+                raise DictationSessionError("reconciliation_length_mismatch")
+            frame_bytes = expected_channels * 2
+            if (not payload or len(payload) % frame_bytes
+                    or len(payload) // frame_bytes
+                    != int(segment["sample_count"])):
+                raise DictationSessionError("reconciliation_length_mismatch")
+            if hashlib.sha256(payload).hexdigest() != segment["sha256"]:
+                raise DictationSessionError(
+                    "reconciliation_checksum_mismatch")
+
+            number = int(segment["number"])
+            target = self._segment_path(segment, number)
+            if target.exists():
+                self._validate_segment_file(segment, target)
+            else:
+                _atomic_write(target, payload)
+
+            def seal(updated):
+                current = updated.get("segments", [])
+                if (number >= len(current)
+                        or current[number] != segment
+                        or current[number].get("state") != "writing"):
                     raise DictationSessionError(
                         "segment_reservation_changed")
                 current[number]["state"] = "sealed"
@@ -743,7 +819,14 @@ class DurableDictationSession:
 
     def _recover_unlocked(self):
         manifest = self._read_manifest_unlocked()
+        protected_temporaries = {
+            f'{segment["filename"]}.tmp'
+            for segment in manifest["segments"]
+            if segment["state"] == "writing"
+        }
         for temporary in self.path.glob("*.tmp"):
+            if temporary.name in protected_temporaries:
+                continue
             try:
                 temporary.unlink()
             except OSError as error:
@@ -769,8 +852,9 @@ class DurableDictationSession:
             if state == "writing" and not target.is_file():
                 if index != len(segments) - 1:
                     raise DictationSessionError("missing_nonfinal_segment")
-                changed = True
-                break
+                recovered.append(segment)
+                expected_start = int(segment["sample_end"])
+                continue
             if state not in ("writing", "sealed"):
                 raise DictationSessionError("segment_state_invalid")
             self._validate_segment_file(segment, target)
@@ -782,7 +866,7 @@ class DurableDictationSession:
 
         if int(manifest.get("next_sample", -1)) != expected_start:
             changed = True
-        self._require_exact_segment_files(recovered)
+        self._require_no_unaccounted_segment_files(recovered)
         if changed:
             manifest["segments"] = recovered
             manifest["next_sample"] = expected_start
@@ -796,6 +880,16 @@ class DurableDictationSession:
             and entry.name.endswith(".pcm")
         }
         if actual != expected:
+            raise DictationSessionError("unexpected_segment_file")
+
+    def _require_no_unaccounted_segment_files(self, segments):
+        expected = {segment["filename"] for segment in segments}
+        actual = {
+            entry.name for entry in self.path.iterdir()
+            if entry.name.startswith("segment-")
+            and entry.name.endswith(".pcm")
+        }
+        if not actual.issubset(expected):
             raise DictationSessionError("unexpected_segment_file")
 
     @staticmethod
