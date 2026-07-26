@@ -1060,6 +1060,15 @@
                 <h1 id="stats-title" class="sr-only">Stats</h1>
                 <p class="stats-refresh-status" id="stats-refresh-status"
                    role="status" aria-live="polite" hidden></p>
+                <div class="stats-context" aria-label="Statistics period and definitions">
+                    <p class="stats-data-period" id="stats-data-period">
+                        Waiting for a complete saved snapshot.
+                    </p>
+                    <p class="stats-definitions" id="stats-definitions">
+                        Output words are final words from dictation. An active day has at least one dictation.
+                        WPM is measured from plain Text samples. Hours saved is an estimate at 45 WPM.
+                    </p>
+                </div>
 
                 <section class="stats-snapshot" aria-label="Mumble activity snapshot">
                     <div class="tiles" id="stat-tiles"></div>
@@ -1204,7 +1213,8 @@
                  through OpenRouter text-to-speech models (AI voices) — no system
                  voices. Keeps a library of opened documents and resumes where you
                  left off. Word-level highlighting synced to the audio. -->
-            <div class="view" data-view="reader" hidden>
+            <div class="view" data-view="reader" aria-labelledby="reader-page-title" hidden>
+                <h1 id="reader-page-title" class="sr-only">Reader</h1>
 
                 <!-- NO-KEY notice: the Reader is strictly OpenRouter TTS. The key
                      can be pasted right here (it's the same openrouter_api_key the
@@ -1246,10 +1256,10 @@
                     <div id="reader-voice-settings" class="reader-voice-card mumble-subpanel mumble-subpanel--primary">
                         <div class="flex items-center gap8 mb8">
                             <div class="icon-tile"><span data-icon="volume"></span></div>
-                            <h3 class="fs13 fw6">AI voice</h3>
+                            <h2 class="fs13 fw6" id="reader-voice-title">Reading voice</h2>
                             <span class="t-mute fs11 ml-auto" id="reader-voice-count"></span>
                         </div>
-                        <div class="flex items-center gap10 wrap">
+                        <div class="reader-voice-primary flex items-center gap10 wrap" id="reader-voice-primary">
                             <div class="field" style="margin: 0; min-width: 140px">
                                 <label class="label" for="reader-provider">Provider</label>
                                 <select class="select" id="reader-provider"
@@ -1287,6 +1297,10 @@
                             <span class="tag tag-quality fs10" hidden></span>
                             <span class="tag tag-persona fs10" hidden></span>
                         </div>
+                        <details class="reader-voice-technical" id="reader-voice-technical">
+                            <summary>Voice service details <span>Provider and model</span></summary>
+                            <div class="reader-voice-technical-fields flex items-center gap10 wrap"></div>
+                        </details>
                     </div>
                     <div id="reader-main">
                     <!-- LIBRARY: previously opened documents + resume -->
@@ -1428,24 +1442,26 @@
                                 <span data-icon="chevronDown" aria-hidden="true"></span>
                             </button>
                             <button class="btn-icon btn-ghost" id="reader-find-clear"
-                                    title="Clear search" aria-label="Clear document search">
+                                    title="Close find" aria-label="Close find in document and return to reading">
                                 <span data-icon="x" aria-hidden="true"></span>
                             </button>
                         </div>
                         <div class="reader-bm-list" id="reader-bm-list" hidden></div>
-                        <div class="reader-summary" id="reader-summary" hidden>
+                        <div class="reader-summary" id="reader-summary" role="region"
+                             aria-labelledby="reader-summary-title" hidden>
                             <div class="reader-summary-head">
                                 <span data-icon="sparkle"></span>
-                                <span class="fs12 fw6">AI summary</span>
+                                <span class="fs12 fw6" id="reader-summary-title">AI summary</span>
                                 <button class="btn btn-sm btn-gold ml-auto" id="reader-summary-read">
                                     <span data-icon="volume"></span>Read summary
                                 </button>
                                 <button class="btn-icon btn-ghost" id="reader-summary-close"
-                                        title="Close summary" aria-label="Close">
+                                        title="Close summary" aria-label="Close summary and return to Reader controls">
                                     <span data-icon="x"></span>
                                 </button>
                             </div>
-                            <div class="reader-summary-text selectable" id="reader-summary-text"></div>
+                            <div class="reader-summary-text selectable" id="reader-summary-text"
+                                 role="status" aria-live="polite"></div>
                         </div>
                         <div class="reader-pane selectable" id="reader-pane" role="region" aria-label="Document content" tabindex="0"></div>
                         <p class="help mt8" id="reader-status"></p>

@@ -3495,6 +3495,21 @@ function setStatsStatus(message, isError) {
   el.classList.toggle("is-error", !!isError);
 }
 
+function setStatsPeriod(payload, fallback) {
+  const target = $("#stats-data-period");
+  if (!target) return;
+  const generatedAt = payload && Number(payload.generated_at);
+  const generated = generatedAt ? new Date(generatedAt * 1000) : null;
+  if (generated && !isNaN(generated.getTime())) {
+    target.textContent = `Snapshot through ${new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(generated)}. Where available, totals cover all tracked activity and dictation daily history covers the latest 98 days.`;
+  } else {
+    target.textContent = fallback || "The saved activity period is unavailable.";
+  }
+}
+
 function wireStatsReset() {
   const resetBtn = $("#stats-reset");
   if (!resetBtn || resetBtn.dataset.wired) return;
@@ -3531,6 +3546,18 @@ async function renderStats() {
   const root = document.querySelector('[data-view="stats"]');
   const epoch = ++STATS_RENDER_EPOCH;
   if (root) root.setAttribute("aria-busy", "true");
+  setStatsStatus(
+    STATS_SNAPSHOT
+      ? "Refreshing statistics. The last loaded values remain on screen."
+      : "Loading saved activity...",
+    false,
+  );
+  setStatsPeriod(
+    STATS_SNAPSHOT,
+    STATS_SNAPSHOT
+      ? "Refreshing the last loaded snapshot."
+      : "Waiting for a complete saved snapshot.",
+  );
   try {
     const payload = await call("get_stats_dashboard");
     if (epoch !== STATS_RENDER_EPOCH || CURRENT !== "stats") return;
@@ -3541,22 +3568,28 @@ async function renderStats() {
       payload.reader || {},
       payload.meetings || {},
     );
+    setStatsPeriod(payload);
     renderReaderActivity(payload.reader || {});
     renderMeetingActivity(payload.meetings || {});
     const statParts = [payload.dictation, payload.reader];
     const repaired = statParts.some((part) => part && part.health === "repaired");
     const recovered = statParts.some((part) => part && part.health === "recovered");
     const meetingRecovered = payload.meetings && payload.meetings.health === "recovered";
-    setStatsStatus(
-      repaired
-        ? "Some invalid statistics values were ignored; valid tracked activity is still shown."
-        : recovered
-          ? "Statistics were restored from the last good backup."
-          : meetingRecovered
-            ? "Saved Meeting activity was restored from the last good backup."
-            : "",
-      false,
-    );
+    const unavailable = [
+      !payload.dictation || payload.dictation.available !== true ? "Dictation" : "",
+      !payload.reader || payload.reader.available !== true ? "Reader" : "",
+      !payload.meetings || payload.meetings.available !== true ? "Meetings" : "",
+    ].filter(Boolean);
+    const statusParts = [];
+    if (unavailable.length)
+      statusParts.push(`Partial snapshot: ${unavailable.join(" and ")} data is unavailable; available sections remain on screen without invented zeroes.`);
+    if (repaired)
+      statusParts.push("Some invalid statistics values were ignored; valid tracked activity is still shown.");
+    else if (recovered)
+      statusParts.push("Statistics were restored from the last good backup.");
+    if (meetingRecovered)
+      statusParts.push("Saved Meeting activity was restored from the last good backup.");
+    setStatsStatus(statusParts.join(" "), false);
     syncShimmer();
   } catch (e) {
     if (epoch !== STATS_RENDER_EPOCH || CURRENT !== "stats") return;
@@ -3567,6 +3600,7 @@ async function renderStats() {
       true,
     );
     if (!STATS_SNAPSHOT) {
+      setStatsPeriod(null, "The saved activity period could not be loaded.");
       renderDictationStats(
         { available: false },
         { available: false },
@@ -5679,6 +5713,9 @@ const READER = {
   findQuery: "", // current in-document search
   findMatches: [], // [{wStart,wEnd}] word ranges
   findCursor: -1,
+  findOrigin: null, // focus + scroll position restored when Find closes
+  summaryInvoker: null, // control that receives focus when Summary closes
+  pendingSummaryFocus: null, // disabled Summary control awaiting focus restoration
   collectionsCache: null, // cached collection list
   historyCache: null, // cached reading history
   continueDoc: null, // continue-reading doc
@@ -5902,7 +5939,12 @@ function readerPaintFindMatches(scroll) {
   if (scroll && READER.findCursor >= 0) {
     var active = READER.findMatches[READER.findCursor];
     var target = pane.querySelector('.rw[data-wi="' + active.wStart + '"]');
-    if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (target) target.scrollIntoView({
+      block: "center",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
   }
 }
 
@@ -5940,6 +5982,44 @@ function readerFindClear() {
   var input = $("#reader-find-input");
   if (input) input.value = "";
   readerFindUpdate("");
+}
+
+function readerRememberFindOrigin(origin) {
+  if (READER.findOrigin) return;
+  const pane = $("#reader-pane");
+  if (pane) pane.scrollTo(0, pane.scrollTop);
+  READER.findOrigin = {
+    focus: origin && origin instanceof HTMLElement ? origin : pane,
+    scrollTop: pane ? pane.scrollTop : 0,
+  };
+}
+
+function readerOpenFind(origin) {
+  readerRememberFindOrigin(origin || document.activeElement);
+  const input = $("#reader-find-input");
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+function readerCloseFind() {
+  const origin = READER.findOrigin;
+  READER.findOrigin = null;
+  const pane = $("#reader-pane");
+  if (pane) pane.scrollTo({ top: pane.scrollTop, behavior: "auto" });
+  readerFindClear();
+  const target = origin && origin.focus && origin.focus.isConnected
+    ? origin.focus
+    : pane;
+  if (target) target.focus({ preventScroll: true });
+  if (pane && origin) {
+    const scrollBehavior = pane.style.scrollBehavior;
+    pane.style.scrollBehavior = "auto";
+    pane.scrollTo(0, origin.scrollTop);
+    void pane.offsetHeight;
+    pane.style.scrollBehavior = scrollBehavior;
+  }
 }
 
 function readerBuildChunks() {
@@ -6000,7 +6080,12 @@ function readerHighlight(wi) {
     const band = pane.clientHeight;
     const rel = elRect.top - paneRect.top;
     if (rel < band * 0.15 || rel > band * 0.78)
-      pane.scrollTo({ top: Math.max(0, top - band / 2), behavior: "smooth" });
+      pane.scrollTo({
+        top: Math.max(0, top - band / 2),
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
   }
   READER.idx = wi;
   readerUpdateProgress();
@@ -6845,6 +6930,7 @@ async function readerOpenDoc(id) {
   READER.docFormat = doc.format || "txt";
   READER.docBlocks = doc.blocks || null;
   readerFindClear();
+  READER.findOrigin = null;
   // If the document has structured blocks (parsed document), render them
   // instead of building a plain-text pane. Table blocks render as HTML tables.
   if (doc.blocks && doc.blocks.length > 0) {
@@ -6945,6 +7031,9 @@ async function readerSummarize() {
   const panel = $("#reader-summary");
   const out = $("#reader-summary-text");
   const btn = $("#reader-summarize");
+  READER.summaryInvoker = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : btn;
   if (panel) panel.hidden = false;
   if (out) out.textContent = "Summarizing…";
   if (btn) btn.disabled = true;
@@ -6959,7 +7048,34 @@ async function readerSummarize() {
   } catch (e) {
     if (out) out.textContent = "Couldn't summarize this document.";
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      if (READER.pendingSummaryFocus === btn) {
+        READER.pendingSummaryFocus = null;
+        if (CURRENT === "reader" && document.activeElement === $("#reader-pane")) {
+          btn.focus({ preventScroll: true });
+          requestAnimationFrame(() => btn.focus({ preventScroll: true }));
+        }
+      }
+    }
+  }
+}
+
+function readerCloseSummary() {
+  const panel = $("#reader-summary");
+  if (panel) panel.hidden = true;
+  const target = READER.summaryInvoker && READER.summaryInvoker.isConnected
+    ? READER.summaryInvoker
+    : $("#reader-summarize");
+  READER.summaryInvoker = null;
+  if (target) {
+    if (target.disabled) {
+      READER.pendingSummaryFocus = target;
+      $("#reader-pane")?.focus({ preventScroll: true });
+    } else {
+      target.focus({ preventScroll: true });
+      requestAnimationFrame(() => target.focus({ preventScroll: true }));
+    }
   }
 }
 
@@ -7994,7 +8110,27 @@ async function meetingExport() {
   }
 }
 
+function readerArrangeLibraryFirstControls() {
+  const voiceCard = $("#reader-voice-settings");
+  const library = $("#reader-library");
+  const primary = $("#reader-voice-primary");
+  const technical = $("#reader-voice-technical .reader-voice-technical-fields");
+  if (!voiceCard || !library || !primary || !technical || voiceCard.dataset.arranged)
+    return;
+  voiceCard.dataset.arranged = "1";
+  library.insertAdjacentElement("afterend", voiceCard);
+  ["#reader-voice", "#reader-speed"].forEach(selector => {
+    const field = $(selector)?.closest(".field");
+    if (field) primary.append(field);
+  });
+  ["#reader-provider", "#reader-model"].forEach(selector => {
+    const field = $(selector)?.closest(".field");
+    if (field) technical.append(field);
+  });
+}
+
 async function initReader() {
+  readerArrangeLibraryFirstControls();
   const info = (await call("reader_tts_models")) || {};
   READER.hasKey = !!info.has_key;
   // Capture the model catalogue + default ONCE. initReader runs on every Reader
@@ -8098,26 +8234,27 @@ async function initReader() {
   $("#reader-find-input")?.addEventListener("input", debounce((e) => {
     readerFindUpdate(e.target.value);
   }, 90));
+  $("#reader-find-input")?.addEventListener("focus", (e) => {
+    readerRememberFindOrigin(e.relatedTarget);
+  });
   $("#reader-find-input")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       readerFindMove(e.shiftKey ? -1 : 1);
     } else if (e.key === "Escape") {
       e.preventDefault();
-      readerFindClear();
-      $("#reader-pane")?.focus();
+      readerCloseFind();
     }
   });
   $("#reader-find-prev")?.addEventListener("click", () => readerFindMove(-1));
   $("#reader-find-next")?.addEventListener("click", () => readerFindMove(1));
-  $("#reader-find-clear")?.addEventListener("click", readerFindClear);
+  $("#reader-find-clear")?.addEventListener("click", readerCloseFind);
   document.addEventListener("keydown", (e) => {
     var readerView = document.querySelector('[data-view="reader"]');
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" &&
         readerView && !readerView.hidden && READER.playerOpen) {
       e.preventDefault();
-      $("#reader-find-input")?.focus();
-      $("#reader-find-input")?.select();
+      readerOpenFind(document.activeElement);
     }
   });
   $("#reader-lib-search")?.addEventListener(
@@ -8164,10 +8301,7 @@ async function initReader() {
   $("#reader-summary-read")?.addEventListener("click", () => {
     if (READER.lastSummary) sendToReader(READER.lastSummary);
   });
-  $("#reader-summary-close")?.addEventListener("click", () => {
-    const p = $("#reader-summary");
-    if (p) p.hidden = true;
-  });
+  $("#reader-summary-close")?.addEventListener("click", readerCloseSummary);
   $("#reader-file")?.addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;

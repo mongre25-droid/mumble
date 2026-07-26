@@ -357,6 +357,197 @@ async function testKeyboard(browser) {
   await page.close();
 }
 
+async function testStatsReader(browser) {
+  const partial = await openProductionPage(browser);
+  assert.equal(partial.browserErrors.length, 0, partial.browserErrors.join(" | "));
+  await partial.page.evaluate(() => {
+    window.pywebview = {
+      api: {
+        get_stats_dashboard: () => new Promise(resolve => { window.__resolveStats = resolve; }),
+      },
+    };
+  });
+  await partial.page.getByRole("button", { name: "Stats", exact: true }).click();
+  const statsView = partial.page.locator('[data-view="stats"]');
+  assert.equal(await statsView.getByRole("heading", { name: "Stats", exact: true }).count(), 1);
+  await partial.page.waitForFunction(() => typeof window.__resolveStats === "function");
+  assert.equal(await statsView.getAttribute("aria-busy"), "true");
+  assert.match(
+    await partial.page.locator("#stats-refresh-status").innerText(),
+    /loading|refreshing/i,
+    "Stats must expose a visible loading state",
+  );
+  await partial.page.evaluate(() => window.__resolveStats({
+    ok: true,
+    generated_at: Date.UTC(2026, 6, 26, 12) / 1000,
+    dictation: { available: false, health: "error", has_activity: null },
+    reader: {
+      available: true, health: "ok", has_activity: true,
+      total_reading_seconds: 120, total_reading_display: "2m",
+      words_read: 55, total_sessions: 2, avg_session_sec: 60,
+      avg_session_display: "1m", current_streak: 1, best_streak: 2,
+    },
+    meetings: {
+      available: false, health: "error", has_activity: null,
+      saved_count: null, saved_duration_seconds: null,
+      duration_complete: false, latest_created: null,
+      processing_count: null, attention_count: null,
+    },
+  }));
+  await partial.page.waitForFunction(() => document.querySelector('[data-view="stats"]').getAttribute("aria-busy") === "false");
+  assert.match(
+    await partial.page.locator("#stats-data-period").innerText(),
+    /snapshot through.*where available.*latest 98 days/i,
+    "Stats period wording must not imply unavailable totals are complete",
+  );
+  assert.match(await partial.page.locator("#stats-refresh-status").innerText(), /partial/i);
+  const partialTiles = await partial.page.locator("#stat-tiles .tile").evaluateAll(nodes => Object.fromEntries(nodes.map(node => [
+    node.querySelector(".tile-lab")?.textContent.trim(),
+    node.querySelector(".num")?.textContent.trim(),
+  ])));
+  assert.equal(partialTiles["Output words"], "\u2014", "unavailable dictation must not be rendered as zero");
+  assert.equal(partialTiles["Reader time"], "2m", "available Reader activity must survive a partial snapshot");
+  assert.equal(partialTiles["Meetings"], "\u2014", "unavailable Meetings must not be rendered as zero");
+  assert.match(await partial.page.locator("#stats-definitions").innerText(), /output words.*active day.*WPM.*estimate/is);
+  assert.equal(await partial.page.locator("#stat-chart").getAttribute("role"), "img");
+  assert.equal(await partial.page.locator("#stat-table table").count(), 0);
+  assert.match(await partial.page.locator("#stat-table").textContent(), /unavailable/i);
+  await partial.page.close();
+
+  const empty = await openProductionPage(browser);
+  assert.equal(empty.browserErrors.length, 0, empty.browserErrors.join(" | "));
+  await empty.page.evaluate(() => {
+    window.pywebview = { api: { get_stats_dashboard: async () => ({
+      ok: true, generated_at: Date.UTC(2026, 6, 26, 12) / 1000,
+      dictation: {
+        available: true, health: "ok", has_activity: false,
+        summary: { total_words: 0, total_transcripts: 0, typing_hours_saved: 0 },
+        current_streak: 0, best_streak: 0,
+        daily: Array.from({ length: 98 }, (_, index) => ({
+          day: new Date(Date.UTC(2026, 3, index + 1)).toISOString().slice(0, 10),
+          words: 0,
+          transcripts: 0,
+        })),
+        modes: [], insights: { tod_hours: Array(24).fill(0), weekday_words: Array(7).fill(0), weekday_names: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], this_week: 0, prev_week: 0, month_this: 0, month_prev: 0, today_words: 0 },
+      },
+      reader: { available: true, health: "ok", has_activity: false, total_reading_seconds: 0, words_read: 0, total_sessions: 0 },
+      meetings: { available: true, health: "ok", has_activity: false, saved_count: 0, saved_duration_seconds: 0, duration_complete: true, processing_count: 0, attention_count: 0 },
+    }) } };
+  });
+  await empty.page.getByRole("button", { name: "Stats", exact: true }).click();
+  await empty.page.waitForFunction(() => document.querySelector('[data-view="stats"]').getAttribute("aria-busy") === "false");
+  assert.match(await empty.page.locator("#stat-chart").innerText(), /no output words/i);
+  assert.match(await empty.page.locator("#reader-activity-state").innerText(), /no Reader listening/i);
+  assert.match(await empty.page.locator("#meeting-activity-state").innerText(), /no meetings are saved/i);
+  await empty.page.close();
+
+  const reader = await openProductionPage(browser);
+  assert.equal(reader.browserErrors.length, 0, reader.browserErrors.join(" | "));
+  await reader.page.evaluate(() => {
+    MOCK.readerLib[0].text = Array.from({ length: 1400 }, (_, index) => `word${index}`).join(" ");
+    MOCK.readerLib[0].position = 240;
+    READER.disclosure.summary = true;
+  });
+  await reader.page.getByRole("button", { name: "Reader", exact: true }).click();
+  assert.equal(await reader.page.getByRole("heading", { name: "Reader", exact: true }).count(), 1);
+  await reader.page.locator("#reader-lib-list .rl-item").first().waitFor();
+  const readerOrder = await reader.page.evaluate(() => {
+    const library = document.querySelector("#reader-library");
+    const voice = document.querySelector("#reader-voice-settings");
+    return {
+      libraryBeforeVoice: Boolean(library.compareDocumentPosition(voice) & Node.DOCUMENT_POSITION_FOLLOWING),
+      voiceVisible: !document.querySelector("#reader-voice-primary").hidden,
+      technicalCollapsed: !document.querySelector("#reader-voice-technical").open,
+      providerInsideTechnical: document.querySelector("#reader-voice-technical").contains(document.querySelector("#reader-provider")),
+      modelInsideTechnical: document.querySelector("#reader-voice-technical").contains(document.querySelector("#reader-model")),
+    };
+  });
+  assert.deepEqual(readerOrder, {
+    libraryBeforeVoice: true,
+    voiceVisible: true,
+    technicalCollapsed: true,
+    providerInsideTechnical: true,
+    modelInsideTechnical: true,
+  }, "Reader must remain library-first while keeping human voice choice ahead of technical details");
+
+  await reader.page.locator("#reader-lib-list .rl-item").first().click();
+  await reader.page.locator("#reader-player").waitFor({ state: "visible" });
+  const disclosure = reader.page.getByRole("dialog", { name: "Send document text?" });
+  await disclosure.waitFor();
+  await reader.page.keyboard.press("Escape");
+  await disclosure.waitFor({ state: "detached" });
+  await reader.page.waitForTimeout(550);
+  const beforeFind = await reader.page.locator("#reader-pane").evaluate(node => {
+    node.scrollTop = Math.min(220, node.scrollHeight - node.clientHeight);
+    node.focus();
+    return node.scrollTop;
+  });
+  await reader.page.keyboard.press("Control+f");
+  await reader.page.locator("#reader-find-input").fill("word1200");
+  await reader.page.waitForTimeout(160);
+  const capturedFind = await reader.page.evaluate(() => ({
+    scrollTop: READER.findOrigin && READER.findOrigin.scrollTop,
+    focusId: READER.findOrigin && READER.findOrigin.focus && READER.findOrigin.focus.id,
+    behavior: getComputedStyle(document.querySelector("#reader-pane")).scrollBehavior,
+    inlineBehavior: document.querySelector("#reader-pane").style.scrollBehavior,
+  }));
+  await reader.page.keyboard.press("Escape");
+  await reader.page.waitForTimeout(80);
+  const afterFind = await reader.page.locator("#reader-pane").evaluate(node => ({
+    focused: document.activeElement === node,
+    scrollTop: node.scrollTop,
+  }));
+  assert.equal(afterFind.focused, true, "closing Find must restore focus to the reading pane");
+  assert.ok(
+    Math.abs(afterFind.scrollTop - beforeFind) <= 2,
+    `closing Find must restore the prior reading position: ${JSON.stringify({ beforeFind, capturedFind, afterFind })}`,
+  );
+
+  const beforeSummary = await reader.page.locator("#reader-pane").evaluate(node => node.scrollTop);
+  await reader.page.locator("#reader-summarize").click();
+  await reader.page.locator("#reader-summary").waitFor({ state: "visible" });
+  assert.equal(await reader.page.getByRole("region", { name: "AI summary" }).count(), 1);
+  await reader.page.locator("#reader-summary-close").click();
+  await reader.page.waitForTimeout(80);
+  const summaryFocus = await reader.page.locator("#reader-summarize").evaluate(node => ({
+    restored: document.activeElement === node,
+    activeId: document.activeElement && document.activeElement.id,
+    invokerId: READER.summaryInvoker && READER.summaryInvoker.id,
+  }));
+  assert.equal(summaryFocus.restored, true,
+    `closing Summary must restore its invoking focus: ${JSON.stringify(summaryFocus)}`);
+  const afterSummary = await reader.page.locator("#reader-pane").evaluate(node => node.scrollTop);
+  assert.ok(Math.abs(afterSummary - beforeSummary) <= 2,
+    `closing Summary must preserve reading position: ${JSON.stringify({ beforeSummary, afterSummary })}`);
+
+  await reader.page.addStyleTag({ content: "*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}" });
+  const readerFirst = await reader.page.screenshot();
+  const readerSecond = await reader.page.screenshot();
+  assert.ok(readerFirst.equals(readerSecond), "Reader screenshot must be deterministic");
+  await reader.page.close();
+
+  const narrow = await openProductionPage(browser, { viewport: { width: 430, height: 900 }, reducedMotion: "reduce" });
+  assert.equal(narrow.browserErrors.length, 0, narrow.browserErrors.join(" | "));
+  for (const destination of ["Stats", "Reader"]) {
+    await narrow.page.getByRole("button", { name: destination, exact: true }).click();
+    await narrow.page.waitForTimeout(180);
+    const overflow = await narrow.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(overflow <= 1, `${destination} must not scroll horizontally at 430px`);
+  }
+  await narrow.page.getByRole("button", { name: "Stats", exact: true }).click();
+  await narrow.page.waitForTimeout(180);
+  assert.equal(
+    await narrow.page.locator(".modebar-row .fill").first().evaluate(node => getComputedStyle(node).animationName),
+    "none",
+    "Stats chart growth must be removed when reduced motion is requested",
+  );
+  const statsFirst = await narrow.page.screenshot();
+  const statsSecond = await narrow.page.screenshot();
+  assert.ok(statsFirst.equals(statsSecond), "Stats screenshot must be deterministic");
+  await narrow.page.close();
+  record("Stats and Reader truth, focus, reflow, reduced motion, and deterministic screenshots");
+}
+
 function contrastRatio(first, second) {
   const linear = value => {
     const channel = value / 255;
@@ -499,6 +690,18 @@ async function testBrowserZoom() {
       assert.equal(geometry.visible, true, `${selector} must remain visible at 200% browser zoom`);
       assert.equal(geometry.clippedHorizontally, false, `${selector} must not be horizontally clipped at 200% browser zoom`);
     }
+    for (const destination of ["Stats", "Reader"]) {
+      await page.getByRole("button", { name: destination, exact: true }).click();
+      await page.waitForTimeout(180);
+      const destinationGeometry = await page.locator('.view:not([hidden])').evaluate(node => ({
+        destination: node.dataset.view,
+        visible: node.getBoundingClientRect().width > 0,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }));
+      assert.equal(destinationGeometry.visible, true, `${destination} must remain visible at 200% browser zoom`);
+      assert.ok(destinationGeometry.overflow <= 1, `${destination} must not overflow at 200% browser zoom`);
+    }
+    await page.getByRole("button", { name: "Home", exact: true }).click();
     const coreControls = await page.locator(".nav-btn, #record-btn, #open-history-btn").evaluateAll(nodes =>
       nodes.filter(node => !node.hidden).map(node => ({
         label: node.innerText.trim().replace(/\s+/g, " "),
@@ -778,6 +981,7 @@ async function testVisual(browser) {
     if (requestedCase === "all" || requestedCase === "shell") await testShell(browser);
     if (requestedCase === "all" || requestedCase === "states") await testStates(browser);
     if (requestedCase === "all" || requestedCase === "keyboard") await testKeyboard(browser);
+    if (requestedCase === "all" || requestedCase === "stats-reader") await testStatsReader(browser);
     if (requestedCase === "all" || requestedCase === "reflow") await testReflow(browser);
     if (requestedCase === "zoom") record("genuine 200% browser zoom probe", await testBrowserZoom());
     if (requestedCase === "all" || requestedCase === "visual") await testVisual(browser);
