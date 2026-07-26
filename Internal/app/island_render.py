@@ -709,9 +709,22 @@ def bar_layout(snap):
     show_foreign = bool(snap.get("show_foreign"))
     correction_available = bool(snap.get("correction_available"))
     control_review = bool(snap.get("control_review_available"))
+    stop_enabled = bool(snap.get("stop_enabled"))
 
     def w(txt):
         return _text_w(_MEASURE, txt, bf) / s   # logical text width
+
+    if stop_enabled:
+        stop_label = str(snap.get("stop_label") or "Stop")[:64]
+        stop_w = w(stop_label) + 2 * BAR_CHIP_PAD + 10
+        pill_w = max(BAR_MIN_W, stop_w + 2 * BAR_PAD_X)
+        px0 = (BAR_WIN_W - pill_w) / 2.0
+        stop = (px0 + BAR_PAD_X, px0 + BAR_PAD_X + stop_w)
+        return {"pill": (px0, px0 + pill_w), "chips": [], "caret": None,
+                "sep_x": None, "deck": None, "correction": None,
+                "correction_dismiss": None, "foreign": None,
+                "control_review": None, "control_cancel": None,
+                "stop": stop, "stop_label": stop_label, "expanded": False}
 
     if control_review:
         review_w = w("Review plan") + 2 * BAR_CHIP_PAD
@@ -916,6 +929,14 @@ def render_bar(snap):
         cx0, cx1 = layout["control_cancel"]
         _chip(rx0, rx1, C.gold, True, "Review plan", _rgba(_TEXT_DIM, 205))
         _chip(cx0, cx1, "#DF655D", False, "Cancel", _rgba("#FFAAA4", 230))
+        return _finish_bar(img, snap)
+
+    if layout.get("stop"):
+        sx0, sx1 = layout["stop"]
+        _chip(
+            sx0, sx1, "#DF655D", True, layout["stop_label"],
+            _rgba("#FFAAA4", 230)
+        )
         return _finish_bar(img, snap)
 
     if correction_available and layout.get("correction"):

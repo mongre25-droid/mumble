@@ -5,6 +5,7 @@ ever lost) and the source for the Stats screen."""
 import json
 import math
 import os
+import re
 import threading
 from collections import deque
 from datetime import date, datetime
@@ -112,7 +113,7 @@ class History:
             pass
 
     def add(self, text, mode="text", duration=0.0, raw=None, quality=None,
-            via=None):
+            via=None, record_id=None):
         # Reconcile with disk first so a deletion made in the webui window isn't
         # resurrected by writing back our stale in-memory list (the resurrection
         # bug: the controller never reloaded, so deleted transcripts reappeared
@@ -123,9 +124,21 @@ class History:
                 if not acquired:
                     return None
                 self._sync_from_disk()
+                if record_id is not None:
+                    record_id = str(record_id)
+                    if re.fullmatch(r"[0-9a-f]{32}", record_id) is None:
+                        raise ValueError("invalid_history_record_id")
+                    for existing in self.items:
+                        if existing.get("record_id") == record_id:
+                            if (existing.get("text") != (text or "")
+                                    or existing.get("mode", "text") != mode):
+                                raise ValueError("history_record_id_conflict")
+                            return dict(existing)
                 previous_items = deque(self.items, maxlen=self.maxlen)
                 previous_cumulative = dict(self._cumulative)
-                entry = self._build_entry(text, mode, duration, raw, quality, via)
+                entry = self._build_entry(
+                    text, mode, duration, raw, quality, via, record_id
+                )
                 self.items.append(entry)
                 # Update cumulative stats (persist independently of history clearing)
                 self._cumulative["total_words"] += entry["words"]
@@ -138,10 +151,11 @@ class History:
                 self._save_cumulative()
                 return entry
 
-    def _build_entry(self, text, mode, duration, raw, quality, via):
+    def _build_entry(self, text, mode, duration, raw, quality, via,
+                     record_id=None):
         now = datetime.now()
         text = text or ""
-        return {
+        entry = {
             "time": now.strftime("%H:%M"),
             "stamp": now.strftime("%Y-%m-%d %H:%M:%S"),
             "mode": mode,
@@ -164,6 +178,9 @@ class History:
             # mode's category with a small via-label.
             "via": via,
         }
+        if record_id is not None:
+            entry["record_id"] = record_id
+        return entry
 
     def recent(self, n=10):
         with self._lock:
@@ -175,6 +192,18 @@ class History:
         if n <= 0:
             return []
         return items[-n:][::-1]
+
+    def find_record(self, record_id):
+        """Return one durable logical-session record without changing History."""
+        record_id = str(record_id or "")
+        if re.fullmatch(r"[0-9a-f]{32}", record_id) is None:
+            return None
+        with self._lock:
+            self._sync_from_disk()
+            for entry in reversed(self.items):
+                if entry.get("record_id") == record_id:
+                    return dict(entry)
+        return None
 
     def all_newest_first(self):
         with self._lock:

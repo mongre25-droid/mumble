@@ -774,6 +774,25 @@ class DurableDictationSession:
         with self._locked():
             return self._verify_unlocked()
 
+    def discard_unfinalized(self):
+        """Remove a verified session only before any finalisation owner exists."""
+        with self._locked():
+            manifest = self._verify_unlocked()
+            finalization = manifest["finalization"]
+            if (manifest["state"] != "capturing"
+                    or finalization["state"] != "unclaimed"):
+                raise DictationSessionError("session_discard_not_allowed")
+            for segment in manifest["segments"]:
+                (self.path / segment["filename"]).unlink()
+            self.manifest_path.unlink()
+            self.path.rmdir()
+            _fsync_directory(self.root)
+        try:
+            self.lock_path.unlink()
+        except FileNotFoundError:
+            pass
+        _fsync_directory(self.root)
+
     def _verify_unlocked(self):
         manifest = self._read_manifest_unlocked()
         segments = manifest.get("segments")

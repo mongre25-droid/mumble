@@ -80,6 +80,7 @@ import ai
 import autostart
 import bindings  # unified keyboard+mouse binding layer (record/re-paste/search/mode key)
 import dictation_trace
+from dictation_session import DEFAULT_SEGMENT_SECONDS, DurableDictationSession
 import foreign_boost  # local (offline) Foreign-Mode phonetic term correction
 import formatting
 import islamic_terms  # Foreign mode: slash-candidate annotation for Arabic/Islamic terms
@@ -265,6 +266,37 @@ class Mumble:
         self.frames = []
         self._recorded_samples = 0
         self._dictation_limit_triggered = False
+        self._dictation_session_root = os.path.join(
+            branding.DATA_DIR, "dictation-sessions"
+        )
+        self._dictation_segment_max_samples = (
+            SAMPLE_RATE * DEFAULT_SEGMENT_SECONDS
+        )
+        self._dictation_inference_overlap_samples = SAMPLE_RATE // 2
+        self._dictation_capture_queue_blocks = 4
+        self._dictation_finalizer_id = uuid.uuid4().hex
+        self._dictation_session = None
+        self._dictation_durable_samples = 0
+        self._dictation_capture_queue = None
+        self._dictation_capture_writer = None
+        self._dictation_capture_error = None
+        self._dictation_failed_pcm = None
+        self._dictation_writer_buffered_samples = 0
+        self._dictation_segment_count = 0
+        self._dictation_buffer_lock = threading.Lock()
+        self._dictation_queued_samples = 0
+        self._dictation_emergency_payload = None
+        self._dictation_capture_stop_requested = False
+        self._dictation_capture_stop_thread = None
+        self._dictation_transcribed_segments = 0
+        self._dictation_stable_transcript = ""
+        self._dictation_committed_words = []
+        self._dictation_tentative_words = []
+        self._dictation_partial_wakeup = threading.Event()
+        self._dictation_partial_stop = threading.Event()
+        self._dictation_partial_thread = None
+        self._last_dictation_progress_samples = 0
+        self._last_dictation_progress_segments = 0
         self.stream = None
         self.lock = threading.Lock()
         self.state = "loading"
@@ -1151,6 +1183,591 @@ class Mumble:
             pass
 
     # =================================================================== audio
+    def _discard_empty_durable_start(self):
+        """Tear down a durable session when the microphone never opened."""
+        writer = getattr(self, "_dictation_capture_writer", None)
+        capture_queue = getattr(self, "_dictation_capture_queue", None)
+        if writer is not None and writer.is_alive() and capture_queue is not None:
+            capture_queue.put(None)
+            writer.join(timeout=STREAM_DRAIN_TIMEOUT)
+        session = getattr(self, "_dictation_session", None)
+        if session is not None:
+            session.discard_unfinalized()
+        self._dictation_session = None
+        self._dictation_capture_writer = None
+        self._dictation_capture_queue = None
+
+    def _start_durable_dictation(self):
+        """Create the accepted Stage A session for the real live-capture path."""
+        root = getattr(self, "_dictation_session_root", None)
+        if not root:
+            self._dictation_session = None
+            return None
+        bound = max(1, int(getattr(
+            self, "_dictation_segment_max_samples", SAMPLE_RATE * 30
+        )))
+        self._dictation_session = DurableDictationSession.create(
+            root,
+            session_id=uuid.uuid4().hex,
+            sample_rate=SAMPLE_RATE,
+            channels=1,
+            segment_max_samples=bound,
+        )
+        self._dictation_durable_samples = 0
+        self._dictation_capture_error = None
+        self._dictation_failed_pcm = None
+        self._dictation_writer_buffered_samples = 0
+        self._dictation_segment_count = 0
+        self._dictation_buffer_lock = threading.Lock()
+        self._dictation_queued_samples = 0
+        self._dictation_emergency_payload = None
+        self._dictation_capture_stop_requested = False
+        self._dictation_capture_stop_thread = None
+        self._dictation_transcribed_segments = 0
+        self._dictation_stable_transcript = ""
+        self._dictation_committed_words = []
+        self._dictation_tentative_words = []
+        self._dictation_partial_wakeup = threading.Event()
+        self._dictation_partial_stop = threading.Event()
+        self._dictation_partial_thread = None
+        self._dictation_capture_queue = queue.Queue(maxsize=max(
+            1, int(getattr(self, "_dictation_capture_queue_blocks", 4))
+        ))
+        self._dictation_capture_writer = threading.Thread(
+            target=self._durable_capture_worker,
+            name="mumble-dictation-capture",
+            daemon=True,
+        )
+        self._dictation_capture_writer.start()
+        return self._dictation_session
+
+    def _durable_capture_worker(self):
+        """Drain the bounded capture queue into immutable Stage A segments."""
+        capture_queue = self._dictation_capture_queue
+        session = self._dictation_session
+        segment_samples = int(self._dictation_segment_max_samples)
+        segment_bytes = segment_samples * 2
+        pending = bytearray()
+        try:
+            while True:
+                item = capture_queue.get()
+                try:
+                    if item is None:
+                        break
+                    payload, sample_count = item
+                    with self._dictation_buffer_lock:
+                        self._dictation_queued_samples -= sample_count
+                    pending.extend(payload)
+                    while len(pending) >= segment_bytes:
+                        sealed = bytes(pending[:segment_bytes])
+                        session.append_pcm16(sealed)
+                        del pending[:segment_bytes]
+                        self._dictation_segment_count += 1
+                        self._dictation_partial_wakeup.set()
+                    self._dictation_writer_buffered_samples = len(pending) // 2
+                finally:
+                    capture_queue.task_done()
+            if pending:
+                session.append_pcm16(bytes(pending))
+                self._dictation_segment_count += 1
+                self._dictation_partial_wakeup.set()
+                pending.clear()
+            self._dictation_writer_buffered_samples = 0
+        except Exception as error:
+            with self._dictation_buffer_lock:
+                self._dictation_capture_error = error
+                self._dictation_failed_pcm = bytes(pending)
+                self._dictation_writer_buffered_samples = len(pending) // 2
+                self._dictation_capture_stop_requested = True
+            self._request_storage_guard_stop()
+
+    def _request_storage_guard_stop(self):
+        thread = getattr(self, "_dictation_capture_stop_thread", None)
+        if thread is not None and thread.is_alive():
+            return
+        thread = threading.Thread(
+            target=self._stop_after_capture_pressure,
+            name="mumble-dictation-storage-guard",
+            daemon=True,
+        )
+        self._dictation_capture_stop_thread = thread
+        thread.start()
+
+    def _append_durable_audio(self, block):
+        """Accept one callback without blocking the real-time audio thread."""
+        session = getattr(self, "_dictation_session", None)
+        if session is None:
+            return 0
+        if getattr(self, "_dictation_capture_stop_requested", False):
+            return 0
+        pcm = np.rint(np.clip(np.asarray(block).reshape(-1), -1.0, 1.0)
+                      * 32767.0).astype("<i2").tobytes()
+        segment_bytes = int(self._dictation_segment_max_samples) * 2
+        accepted_samples = 0
+        request_stop = False
+        for offset in range(0, len(pcm), segment_bytes):
+            payload = pcm[offset:offset + segment_bytes]
+            sample_count = len(payload) // 2
+            if self._dictation_capture_error is not None:
+                self._request_storage_guard_stop()
+                break
+            with self._dictation_buffer_lock:
+                try:
+                    self._dictation_capture_queue.put_nowait(
+                        (payload, sample_count)
+                    )
+                    self._dictation_queued_samples += sample_count
+                except queue.Full:
+                    if self._dictation_emergency_payload is None:
+                        # One reserved slot accepts the callback that encounters
+                        # pressure. Capture then ends at this exact sample; later
+                        # callbacks are outside the logical session and return.
+                        self._dictation_emergency_payload = (
+                            payload, sample_count
+                        )
+                        self._dictation_capture_stop_requested = True
+                        request_stop = True
+                    else:
+                        break
+            accepted_samples += sample_count
+            self._dictation_durable_samples += sample_count
+            if request_stop:
+                break
+        if request_stop:
+            self._request_storage_guard_stop()
+        return accepted_samples
+
+    def _stop_after_capture_pressure(self):
+        self._notify(
+            "Recording stopped safely",
+            "Storage could not keep up. Mumble preserved the accepted audio "
+            "and is transcribing it now.",
+        )
+        self.stop_recording()
+
+    def _seal_durable_audio(self):
+        session = getattr(self, "_dictation_session", None)
+        writer = getattr(self, "_dictation_capture_writer", None)
+        if session is None or writer is None:
+            return
+        with self._dictation_buffer_lock:
+            emergency = self._dictation_emergency_payload
+            self._dictation_emergency_payload = None
+            capture_error = self._dictation_capture_error
+        if capture_error is not None:
+            writer.join(timeout=STREAM_DRAIN_TIMEOUT)
+            if writer.is_alive():
+                raise RuntimeError("durable_capture_drain_timeout")
+            pending = bytearray(getattr(self, "_dictation_failed_pcm", b"") or b"")
+            while True:
+                try:
+                    item = self._dictation_capture_queue.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    if item is not None:
+                        payload, sample_count = item
+                        pending.extend(payload)
+                        with self._dictation_buffer_lock:
+                            self._dictation_queued_samples -= sample_count
+                finally:
+                    self._dictation_capture_queue.task_done()
+            if emergency is not None:
+                pending.extend(emergency[0])
+            segment_bytes = int(self._dictation_segment_max_samples) * 2
+            manifest = session.read_manifest()
+            segments = manifest.get("segments") or []
+            if segments and segments[-1].get("state") == "writing":
+                unresolved_bytes = int(segments[-1]["byte_count"])
+                if len(pending) < unresolved_bytes:
+                    raise RuntimeError("durable_capture_retry_incomplete")
+                session.reconcile_unresolved_pcm16(
+                    bytes(pending[:unresolved_bytes]),
+                    channels=int(manifest["audio"]["channels"]),
+                )
+                del pending[:unresolved_bytes]
+                self._dictation_segment_count += 1
+            elif len(segments) > self._dictation_segment_count:
+                # A fault after Stage A's sealed transition means append raised
+                # even though the immutable range is already authoritative.
+                # Consume only exact matching durable prefixes; never append
+                # those retained bytes a second time.
+                for segment in segments[self._dictation_segment_count:]:
+                    durable = (
+                        session.path / segment["filename"]
+                    ).read_bytes()
+                    if bytes(pending[:len(durable)]) != durable:
+                        raise RuntimeError("durable_capture_retry_mismatch")
+                    del pending[:len(durable)]
+                self._dictation_segment_count = len(segments)
+            for offset in range(0, len(pending), segment_bytes):
+                session.append_pcm16(bytes(pending[offset:offset + segment_bytes]))
+                self._dictation_segment_count += 1
+            self._dictation_capture_error = None
+            self._dictation_failed_pcm = None
+            self._dictation_writer_buffered_samples = 0
+            self._dictation_capture_writer = None
+            partial = getattr(self, "_dictation_partial_thread", None)
+            if partial is not None:
+                self._dictation_partial_stop.set()
+                self._dictation_partial_wakeup.set()
+                partial.join(timeout=STREAM_DRAIN_TIMEOUT)
+                if partial.is_alive():
+                    raise RuntimeError("durable_partial_drain_timeout")
+                self._dictation_partial_thread = None
+            return
+        if emergency is not None:
+            payload, sample_count = emergency
+            with self._dictation_buffer_lock:
+                self._dictation_capture_queue.put((payload, sample_count))
+                self._dictation_queued_samples += sample_count
+        self._dictation_capture_queue.put(None)
+        writer.join(timeout=STREAM_DRAIN_TIMEOUT)
+        if writer.is_alive():
+            raise RuntimeError("durable_capture_drain_timeout")
+        if self._dictation_capture_error is not None:
+            # The writer may fail only while flushing its final sub-segment
+            # after the sentinel. Re-enter once with the now-visible error so
+            # the same exact-byte reconciliation path owns that tail.
+            self._seal_durable_audio()
+            return
+        self._dictation_capture_writer = None
+        partial = getattr(self, "_dictation_partial_thread", None)
+        if partial is not None:
+            self._dictation_partial_stop.set()
+            self._dictation_partial_wakeup.set()
+            partial.join(timeout=STREAM_DRAIN_TIMEOUT)
+            if partial.is_alive():
+                raise RuntimeError("durable_partial_drain_timeout")
+            self._dictation_partial_thread = None
+
+    @staticmethod
+    def _merge_stable_prefix(existing, update):
+        """Compatibility merge for decoders that omit requested timestamps."""
+        left = str(existing or "").split()
+        right = str(update or "").split()
+        if not left:
+            return " ".join(right)
+        if not right:
+            return " ".join(left)
+        for width in range(min(len(left), len(right)), 0, -1):
+            if ([word.casefold() for word in left[-width:]]
+                    == [word.casefold() for word in right[:width]]):
+                return " ".join(left + right[width:])
+        return " ".join(left + right)
+
+    @staticmethod
+    def _reconcile_timestamped_segment(
+            committed, tentative, words, *, index, segment_samples,
+            overlap_samples, sample_rate):
+        """Assign overlap words to the newer decode by their audio midpoint."""
+        parsed = []
+        for word in words:
+            if not isinstance(word, dict):
+                continue
+            value = str(word.get("word") or "").strip()
+            start = word.get("start")
+            end = word.get("end")
+            if (not value or not isinstance(start, (int, float))
+                    or not isinstance(end, (int, float)) or end < start):
+                continue
+            parsed.append((value, (float(start) + float(end)) / 2.0))
+        if not parsed:
+            return None
+
+        overlap_seconds = overlap_samples / float(sample_rate)
+        segment_seconds = segment_samples / float(sample_rate)
+        if index:
+            revised = [value for value, mid in parsed if mid < overlap_seconds]
+            committed = list(committed) + (
+                revised if revised else list(tentative)
+            )
+            owned = [(value, mid) for value, mid in parsed
+                     if mid >= overlap_seconds]
+            tail_starts = overlap_seconds + max(
+                0.0, segment_seconds - overlap_seconds
+            )
+        else:
+            committed = list(committed)
+            owned = parsed
+            tail_starts = max(0.0, segment_seconds - overlap_seconds)
+        stable_owned = [value for value, mid in owned if mid < tail_starts]
+        tentative = [value for value, mid in owned if mid >= tail_starts]
+        committed.extend(stable_owned)
+        return committed, tentative
+
+    def _durable_inference_audio(self, session, manifest, index):
+        """Read one owned segment plus a bounded prior-audio overlap."""
+        segment = manifest["segments"][index]
+        payload = (session.path / segment["filename"]).read_bytes()
+        owned = np.frombuffer(payload, dtype="<i2").astype(np.float32)
+        if index <= 0:
+            return owned / 32767.0
+        previous = manifest["segments"][index - 1]
+        previous_payload = (
+            session.path / previous["filename"]
+        ).read_bytes()
+        previous_audio = np.frombuffer(previous_payload, dtype="<i2")
+        overlap = min(
+            len(previous_audio),
+            max(0, int(getattr(
+                self, "_dictation_inference_overlap_samples", SAMPLE_RATE // 2
+            ))),
+        )
+        if overlap:
+            owned = np.concatenate((previous_audio[-overlap:], owned))
+        return owned.astype(np.float32) / 32767.0
+
+    def _transcribe_durable_segments(self, *, final=False):
+        """Decode every not-yet-covered immutable segment in sample order."""
+        session = getattr(self, "_dictation_session", None)
+        if session is None:
+            return False
+        manifest = session.verify()
+        start = max(0, int(getattr(
+            self, "_dictation_transcribed_segments", 0
+        )))
+        merged = str(getattr(self, "_dictation_stable_transcript", "") or "")
+        committed = list(getattr(self, "_dictation_committed_words", []) or [])
+        tentative = list(getattr(self, "_dictation_tentative_words", []) or [])
+        for index in range(start, len(manifest["segments"])):
+            segment = manifest["segments"][index]
+            self._trace_mark("conversion_started")
+            audio = self._durable_inference_audio(
+                session, manifest, index
+            )
+            self._trace_mark("conversion_finished")
+            # faster-whisper exposes VAD, inference, and token decoding as one
+            # fused call. Keep separate named boundaries for corpus reporting,
+            # while their equal wall time truthfully records that they cannot be
+            # split further at this public library seam.
+            self._trace_mark("vad_started")
+            self._trace_mark("decoding_started")
+            want_words = not (final and len(manifest["segments"]) == 1)
+            result = self._transcribe(audio, want_words=want_words)
+            self._trace_mark("decoding_finished")
+            self._trace_mark("vad_finished")
+            text = result[0] if isinstance(result, tuple) else result
+            words = result[1] if isinstance(result, tuple) else []
+            timestamped = self._reconcile_timestamped_segment(
+                committed,
+                tentative,
+                words,
+                index=index,
+                segment_samples=int(segment["sample_count"]),
+                overlap_samples=min(
+                    int(segment["sample_count"]),
+                    int(manifest["segments"][index - 1]["sample_count"])
+                    if index else int(segment["sample_count"]),
+                    max(0, int(getattr(
+                        self, "_dictation_inference_overlap_samples",
+                        SAMPLE_RATE // 2,
+                    ))),
+                ),
+                sample_rate=int(manifest["audio"]["sample_rate"]),
+            ) if want_words else None
+            if timestamped is not None:
+                committed, tentative = timestamped
+                merged = " ".join(committed)
+            else:
+                merged = self._merge_stable_prefix(merged, text)
+            self._dictation_transcribed_segments = index + 1
+            self._dictation_committed_words = committed
+            self._dictation_tentative_words = tentative
+            self._dictation_stable_transcript = merged
+            self._stream_results = [merged] if merged else []
+            self._stream_processed_samples = int(segment["sample_end"])
+            self._trace_mark(
+                "stable_partial_ready",
+                stream_chunks=index + 1,
+                processed_samples=int(segment["sample_end"]),
+            )
+        if final and (committed or tentative):
+            merged = " ".join(committed + tentative)
+            self._dictation_stable_transcript = merged
+            self._stream_results = [merged] if merged else []
+        return True
+
+    def _durable_partial_worker(self):
+        """Decode sealed ranges opportunistically; capture never waits for it."""
+        while True:
+            self._dictation_partial_wakeup.wait(0.2)
+            self._dictation_partial_wakeup.clear()
+            try:
+                self._transcribe_durable_segments()
+            except Exception as error:
+                print("durable partial paused:", type(error).__name__)
+            if (self._dictation_partial_stop.is_set()
+                    and self._dictation_transcribed_segments
+                    >= self._dictation_segment_count):
+                return
+
+    def dictation_progress(self):
+        """Return content-free live progress for the Island and command API."""
+        lock = getattr(self, "_dictation_buffer_lock", None)
+        if lock is None:
+            queued_samples = emergency_samples = 0
+        else:
+            with lock:
+                queued_samples = max(0, int(getattr(
+                    self, "_dictation_queued_samples", 0
+                )))
+                emergency = getattr(self, "_dictation_emergency_payload", None)
+                emergency_samples = 0 if emergency is None else int(emergency[1])
+        buffered = queued_samples + emergency_samples + max(0, int(getattr(
+            self, "_dictation_writer_buffered_samples", 0
+        )))
+        samples = max(0, int(getattr(self, "_dictation_durable_samples", 0)))
+        return {
+            "captured_samples": samples,
+            "duration_seconds": round(samples / float(SAMPLE_RATE), 3),
+            "segments_persisted": max(0, int(getattr(
+                self, "_dictation_segment_count", 0
+            ))),
+            "segments_transcribed": max(0, int(getattr(
+                self, "_dictation_transcribed_segments", 0
+            ))),
+            "buffered_samples": buffered,
+            "readiness": (
+                "warm" if getattr(self, "model", None) is not None else "cold"
+            ),
+            "stop_action": {
+                "label": "Stop",
+                "enabled": bool(getattr(self, "recording", False)),
+            },
+        }
+
+    def _publish_dictation_progress(self, *, force=False):
+        """Send a throttled, content-free progress snapshot to the Island."""
+        island = getattr(self, "island", None)
+        setter = getattr(island, "set_dictation_progress", None)
+        if not callable(setter):
+            return
+        progress = self.dictation_progress()
+        samples = progress["captured_samples"]
+        segments = progress["segments_persisted"]
+        last_samples = max(0, int(getattr(
+            self, "_last_dictation_progress_samples", 0
+        )))
+        last_segments = max(0, int(getattr(
+            self, "_last_dictation_progress_segments", 0
+        )))
+        if (not force and samples - last_samples < SAMPLE_RATE
+                and segments == last_segments):
+            return
+        self._last_dictation_progress_samples = samples
+        self._last_dictation_progress_segments = segments
+        self._tk_schedule(setter, progress)
+
+    def recover_durable_dictations(self):
+        """Recover interrupted sessions to History without replaying insertion."""
+        root = getattr(self, "_dictation_session_root", None)
+        if not root:
+            return {"recovered": 0, "errors": 0}
+        discovery_errors = []
+        sessions = DurableDictationSession.discover(
+            root, on_error=discovery_errors.append
+        )
+        recovered = 0
+        errors = len(discovery_errors)
+        for session in sessions:
+            try:
+                manifest = session.read_manifest()
+                finalization = manifest["finalization"]
+                if finalization["state"] == "complete":
+                    continue
+                if finalization["state"] == "unclaimed":
+                    owner_id = getattr(
+                        self, "_dictation_finalizer_id", uuid.uuid4().hex
+                    )
+                    operation_id = uuid.uuid4().hex
+                    session.claim_finalization(owner_id, operation_id)
+                else:
+                    owner_id = finalization["owner_id"]
+                    operation_id = finalization["operation_id"]
+                manifest = session.read_manifest()
+                finalization = manifest["finalization"]
+                if finalization["history_state"] != "committed":
+                    entry = self.history.find_record(session.session_id)
+                    if entry is None:
+                        merged = ""
+                        committed = []
+                        tentative = []
+                        timestamped_session = len(manifest["segments"]) > 1
+                        for index, _segment in enumerate(manifest["segments"]):
+                            audio = self._durable_inference_audio(
+                                session, manifest, index
+                            )
+                            text = self._local_transcribe(
+                                audio, want_words=timestamped_session
+                            )
+                            words = text[1] if isinstance(text, tuple) else []
+                            decoded = text[0] if isinstance(text, tuple) else text
+                            owned = self._reconcile_timestamped_segment(
+                                committed,
+                                tentative,
+                                words,
+                                index=index,
+                                segment_samples=int(
+                                    manifest["segments"][index]["sample_count"]
+                                ),
+                                overlap_samples=min(
+                                    int(manifest["segments"][index][
+                                        "sample_count"
+                                    ]),
+                                    int(manifest["segments"][index - 1][
+                                        "sample_count"
+                                    ]) if index else int(
+                                        manifest["segments"][index][
+                                            "sample_count"
+                                        ]
+                                    ),
+                                    max(0, int(getattr(
+                                        self,
+                                        "_dictation_inference_overlap_samples",
+                                        SAMPLE_RATE // 2,
+                                    ))),
+                                ),
+                                sample_rate=int(
+                                    manifest["audio"]["sample_rate"]
+                                ),
+                            ) if timestamped_session else None
+                            if owned is not None:
+                                committed, tentative = owned
+                                merged = " ".join(committed + tentative)
+                            else:
+                                merged = self._merge_stable_prefix(
+                                    merged, decoded
+                                )
+                        merged = merged.strip()
+                        if not merged:
+                            raise RuntimeError("recovery_transcript_empty")
+                        entry = self.history.add(
+                            merged,
+                            "text",
+                            manifest["next_sample"] / float(SAMPLE_RATE),
+                            record_id=session.session_id,
+                        )
+                    if not entry:
+                        raise RuntimeError("recovery_history_failed")
+                    session.mark_history_committed(owner_id, operation_id)
+                finalization = session.read_manifest()["finalization"]
+                if finalization["insertion_state"] == "not_requested":
+                    session.claim_final_insertion(owner_id, operation_id)
+                    outcome = "saved_only"
+                else:
+                    # Persist-before-send means a pre-crash claimed request may
+                    # have reached the target. Never replay it after restart.
+                    outcome = finalization["insertion_outcome"] or "uncertain"
+                session.complete_finalization(
+                    owner_id, operation_id, insertion_outcome=outcome
+                )
+                recovered += 1
+            except Exception as error:
+                errors += 1
+                print("dictation recovery skipped:", type(error).__name__)
+        return {"recovered": recovered, "errors": errors}
+
     def _audio_cb(self, indata, frames, time_info, status):
         # Detect a sleep/resume gap before applying the cap. Audio discarded
         # here must not count toward the fresh post-resume recording.
@@ -1161,8 +1778,9 @@ class Mumble:
             print(f"[audio] {sleep_dur:.0f}s gap in audio — system may have "
                   "slept; discarding stale buffer and resetting")
             with self.lock:
-                self.frames = []
-                self._recorded_samples = 0
+                if getattr(self, "_dictation_session", None) is None:
+                    self.frames = []
+                    self._recorded_samples = 0
                 # Reject any pre-sleep chunk that completes later. Replace the
                 # idle event as well so that old work cannot signal the fresh
                 # post-resume session.
@@ -1174,30 +1792,31 @@ class Mumble:
                 self._stream_idle.set()
         self._last_audio_cb_time = now
 
-        # Normal dictation is deliberately bounded to ten minutes.  Besides
-        # preventing an accidental all-day hotkey press from exhausting RAM,
-        # ten minutes of our 16 kHz mono PCM fits below every supported cloud
-        # provider's 25 MB direct-upload limit.  Keep exactly the remaining
-        # samples from the final callback, then stop outside PortAudio's callback
-        # thread (closing a stream from inside its own callback can deadlock).
         recorded = max(0, int(getattr(self, "_recorded_samples", 0)))
-        remaining = recording_limits.DICTATION_MAX_SAMPLES - recorded
-        if remaining <= 0:
-            block = None
+        if getattr(self, "_dictation_session", None) is not None:
+            block = indata.copy()
+            accepted = self._append_durable_audio(block)
+            block = block[:accepted]
+            self._recorded_samples = recorded + accepted
         else:
-            block = indata[:remaining].copy()
-            self.frames.append(block)
-            self._recorded_samples = recorded + len(block)
-
-        if (getattr(self, "_recorded_samples", 0)
-                >= recording_limits.DICTATION_MAX_SAMPLES
-                and not getattr(self, "_dictation_limit_triggered", False)):
-            self._dictation_limit_triggered = True
-            threading.Thread(
-                target=self._stop_at_dictation_limit,
-                name="mumble-dictation-limit",
-                daemon=True,
-            ).start()
+            # Compatibility fallback for lightweight/embedded callers that do
+            # not configure the durable-session root.
+            remaining = recording_limits.DICTATION_MAX_SAMPLES - recorded
+            if remaining <= 0:
+                block = None
+            else:
+                block = indata[:remaining].copy()
+                self.frames.append(block)
+                self._recorded_samples = recorded + len(block)
+            if (getattr(self, "_recorded_samples", 0)
+                    >= recording_limits.DICTATION_MAX_SAMPLES
+                    and not getattr(self, "_dictation_limit_triggered", False)):
+                self._dictation_limit_triggered = True
+                threading.Thread(
+                    target=self._stop_at_dictation_limit,
+                    name="mumble-dictation-limit",
+                    daemon=True,
+                ).start()
 
         # Once the cap is full there is no new audio block to meter.
         if block is None or len(block) == 0:
@@ -1213,6 +1832,7 @@ class Mumble:
             if abs(lvl - self._last_level_queued) >= 0.04:
                 self._last_level_queued = lvl
                 self._tk_schedule(self.island.set_level, lvl)
+            self._publish_dictation_progress()
 
     def _stop_at_dictation_limit(self):
         """Finish a capped dictation from a safe worker thread."""
@@ -1525,11 +2145,14 @@ class Mumble:
         self.frames = []
         self._recorded_samples = 0
         self._dictation_limit_triggered = False
+        self._start_durable_dictation()
         self._q_acc = []   # fresh audio-quality accumulator per dictation
         # Reset the level-throttle baseline so the FIRST audio level of this
         # recording always reaches the island (stale value from the previous
         # recording's final level could otherwise swallow the opening update).
         self._last_level_queued = 0.0
+        self._last_dictation_progress_samples = 0
+        self._last_dictation_progress_segments = 0
         # Reset the mode-key window for this utterance. If the key is already held when
         # recording starts, open a window at t=0 (keyword spoken right at the start).
         self._rec_start = time.time()
@@ -1570,12 +2193,14 @@ class Mumble:
             self.stream = self._open_input_stream()
             self.stream.start()
         except Exception as exc:
+            self._discard_empty_durable_start()
             self._trace_finish(
                 "audio_open_failed", success=False,
                 error_class=type(exc).__name__,
             )
             raise
         self.recording = True
+        self._publish_dictation_progress(force=True)
         self._trace_mark("audio_recording", audio_state="recording")
         # Launch streaming transcription worker — transcribes chunks in the
         # background while the user speaks, so on stop the final paste is
@@ -1600,7 +2225,18 @@ class Mumble:
         # and an empty `_stream_results` makes `_process` take its authoritative
         # single full pass over the whole audio — transcription still works end to
         # end, it just runs once at stop.
-        if self.settings.get("resource_saver") or self._mode_active:
+        if (getattr(self, "_dictation_session", None) is not None
+                and not self.settings.get("resource_saver")
+                and not self._mode_active):
+            self._dictation_partial_thread = threading.Thread(
+                target=self._durable_partial_worker,
+                name="mumble-dictation-partials",
+                daemon=True,
+            )
+            self._stream_worker_thread = self._dictation_partial_thread
+            self._dictation_partial_thread.start()
+        elif (getattr(self, "_dictation_session", None) is not None
+                or self.settings.get("resource_saver") or self._mode_active):
             self._stream_worker_thread = None
         else:
             self._stream_worker_thread = threading.Thread(
@@ -1927,12 +2563,22 @@ class Mumble:
             time.sleep(0.18)
             stat_context = dict(stat_context or {})
             duration = stat_context.get("duration", 0.0)
-            entry = self.history.add(clean, "text", duration)
+            durable_session = getattr(self, "_dictation_session", None)
+            record_id = (
+                durable_session.session_id if durable_session is not None else None
+            )
+            entry = self.history.add(
+                clean, "text", duration, record_id=record_id
+            )
             if not entry:
                 self._notify("Couldn't save the dictation",
                              "Nothing was pasted. Check Mumble's data-folder permissions and try again.")
                 self._idle()
                 return
+            if durable_session is not None:
+                durable_session.mark_history_committed(
+                    self._dictation_finalizer_id, operation_id
+                )
             try:
                 if not self.stat_store.record(
                         entry["words"], duration, "text",
@@ -1942,9 +2588,22 @@ class Mumble:
             except Exception as e:
                 print("finalize-text stats error:", e)
             self._send_webui_async({"cmd": "refresh", "what": "history"})
+            should_insert = True
+            if durable_session is not None:
+                should_insert = durable_session.claim_final_insertion(
+                    self._dictation_finalizer_id, operation_id
+                )
+            if not should_insert:
+                return
             result = self._paste(
                 clean, source="finalize_text", target_lease=target_lease,
                 operation_id=operation_id)
+            if durable_session is not None:
+                durable_session.complete_finalization(
+                    self._dictation_finalizer_id,
+                    operation_id,
+                    insertion_outcome=result.outcome.value,
+                )
             if self.island:
                 self._tk_schedule(self.island.flash, "text",
                                   pasted=result.confirmed,
@@ -2049,6 +2708,22 @@ class Mumble:
                 stream.close()
             except Exception as e:
                 print("audio stream close failed:", e)
+        durable_session = getattr(self, "_dictation_session", None)
+        if durable_session is not None:
+            self._trace_mark("capture_finalization_started")
+        capture_failure = None
+        try:
+            self._seal_durable_audio()
+        except Exception as error:
+            capture_failure = error
+        if durable_session is not None:
+            self._trace_mark(
+                "capture_finalization_finished",
+                success=capture_failure is None,
+                error_class=(
+                    type(capture_failure).__name__ if capture_failure else None
+                ),
+            )
         self._trace_mark("audio_closed", audio_state="closed")
         self._resume_wake_word("dictation")
         if self.island:
@@ -2057,7 +2732,26 @@ class Mumble:
                 self._tk_schedule(self.island.set_armed, False)
             except Exception:
                 pass
-        if not self.frames:
+        if capture_failure is not None:
+            self._notify(
+                "Recording saved for recovery",
+                "Mumble could not finish writing this dictation. It was not "
+                "pasted; Mumble will try recovery after storage is available.",
+            )
+            self._trace_finish(
+                "capture_storage_failed", success=False,
+                error_class=type(capture_failure).__name__,
+            )
+            self._dictation_timing = None
+            self._idle()
+            return
+        durable_samples = max(0, int(getattr(
+            self, "_dictation_durable_samples", 0
+        )))
+        if not self.frames and durable_samples == 0:
+            if durable_session is not None:
+                durable_session.discard_unfinalized()
+                self._dictation_session = None
             self._search_requested = False
             self._idle()
             self._dictation_timing = None
@@ -2095,10 +2789,20 @@ class Mumble:
         worker = self._stream_worker_thread
         if worker and worker.is_alive():
             worker.join(timeout=0.05)  # cleanup only; inference is already idle
-        audio = np.concatenate(self.frames, axis=0).flatten()
+        if durable_session is not None:
+            self._transcribe_durable_segments(final=True)
+            audio = np.empty(0, dtype=np.float32)
+        else:
+            audio = None
+        if audio is None:
+            audio = np.concatenate(self.frames, axis=0).flatten()
         self.frames = []
-        duration = len(audio) / SAMPLE_RATE
+        duration_samples = durable_samples if durable_session is not None else len(audio)
+        duration = duration_samples / SAMPLE_RATE
         if duration < self.settings.get("min_seconds", 0.3):
+            if durable_session is not None:
+                durable_session.discard_unfinalized()
+                self._dictation_session = None
             self._search_requested = False
             self._dictation_timing = None
             self._idle()
@@ -2108,6 +2812,11 @@ class Mumble:
         # Prompt toggle ON = Prompt mode. OFF = plain text (clean, punctuated).
         with self.lock:
             mode_active = bool(self._mode_active)
+        if durable_session is not None:
+            durable_session.claim_finalization(
+                getattr(self, "_dictation_finalizer_id", uuid.uuid4().hex),
+                self._dictation_insertion_operation_id,
+            )
         windows = None
         # Mark the pipeline in-flight so a new press can't start a recording on top
         # of it (recording/busy are both False here). finally guarantees release —
@@ -2194,7 +2903,12 @@ class Mumble:
         )
         try:
             t0 = time.time()
+            self._trace_mark("transfer_started", route="cloud", provider=provider)
             text = transcription.transcribe(audio, invocation_snapshot)
+            self._trace_mark(
+                "transfer_finished", route="cloud", provider=provider,
+                success=True,
+            )
             print(f"[cloud-stt] {time.time() - t0:.2f}s "
                   f"({provider})")
             self._trace_mark(
@@ -2206,6 +2920,10 @@ class Mumble:
             )
             return text
         except Exception as e:
+            self._trace_mark(
+                "transfer_finished", route="cloud", provider=provider,
+                success=False,
+            )
             self._trace_mark(
                 "inference_finished",
                 inference_ordinal=ordinal,
@@ -2483,7 +3201,9 @@ class Mumble:
             with self.lock:
                 stream_results = list(self._stream_results)
                 processed_samples = max(0, self._stream_processed_samples)
-            if stream_results and not mode_active:
+            if stream_results and (
+                    not mode_active
+                    or getattr(self, "_dictation_session", None) is not None):
                 streaming_base = " ".join(stream_results)
                 # The seam: the worker counted EXACTLY how many samples its
                 # text covers (one unit — samples — on both sides). The tail is
@@ -2721,9 +3441,14 @@ class Mumble:
                 except Exception as e:
                     print("prompt history record error:", e)
             self._trace_mark("persistence_started", mode=mode)
+            durable_session = getattr(self, "_dictation_session", None)
+            record_id = (
+                durable_session.session_id if durable_session is not None else None
+            )
             entry = self.history.add(out, mode, duration, raw=raw,
                                      quality=self._take_quality(),
-                                     via=via_convert)
+                                     via=via_convert,
+                                     record_id=record_id)
             if not entry:
                 self._trace_mark("persistence_finished", success=False)
                 self._trace_finish("persistence_failed", success=False)
@@ -2731,6 +3456,11 @@ class Mumble:
                              "Nothing was pasted. Check Mumble's data-folder permissions and try again.")
                 self._idle()
                 return
+            if durable_session is not None:
+                durable_session.mark_history_committed(
+                    self._dictation_finalizer_id,
+                    insertion_operation_id,
+                )
             self._trace_mark("persistence_finished", success=True)
             try:
                 if not self.stat_store.record(
@@ -2749,11 +3479,24 @@ class Mumble:
             # PASTE FIRST — tray/window bookkeeping happens AFTER, so it can never
             # sit in front of the paste on this thread.
             if search_requested:
+                if durable_session is not None:
+                    durable_session.claim_final_insertion(
+                        self._dictation_finalizer_id,
+                        insertion_operation_id,
+                    )
                 self._open_search(out)
                 insertion_result = None
                 confirmed = True
                 print(f"[{mode}] Searched: {out}")
             else:
+                should_insert = True
+                if durable_session is not None:
+                    should_insert = durable_session.claim_final_insertion(
+                        self._dictation_finalizer_id,
+                        insertion_operation_id,
+                    )
+                if not should_insert:
+                    raise RuntimeError("durable_insertion_already_claimed")
                 insertion_result = self._paste(
                     out,
                     source="dictation",
@@ -2761,6 +3504,15 @@ class Mumble:
                     operation_id=insertion_operation_id,
                 )
                 confirmed = insertion_result.confirmed
+            if durable_session is not None:
+                durable_session.complete_finalization(
+                    self._dictation_finalizer_id,
+                    insertion_operation_id,
+                    insertion_outcome=(
+                        "saved_only" if search_requested
+                        else insertion_result.outcome.value
+                    ),
+                )
             self._trace_mark(
                 "paste_finished",
                 success=confirmed,
@@ -3890,7 +4642,8 @@ class Mumble:
                 elif cmd == "status":
                     st, txt = self.status()
                     resp.update(state=st, text=txt, recording=self.recording,
-                                active_mode=getattr(self, "active_mode", None))
+                                active_mode=getattr(self, "active_mode", None),
+                                dictation=self.dictation_progress())
                 elif cmd == "record":
                     # EXACTLY the activation-hotkey pipeline (Rule: every
                     # recording entry point behaves identically).
@@ -7380,6 +8133,22 @@ class Mumble:
             if self._transcription_ready()
             else "Mumble open (no speech model yet)."
         )
+        if self._transcription_ready():
+            def _recover_dictations():
+                result = self.recover_durable_dictations()
+                if result["recovered"]:
+                    self._send_webui_async(
+                        {"cmd": "refresh", "what": "history"}
+                    )
+                    self._notify(
+                        "Recovered dictation",
+                        "An interrupted dictation was safely restored to History.",
+                    )
+            threading.Thread(
+                target=_recover_dictations,
+                name="mumble-dictation-recovery",
+                daemon=True,
+            ).start()
         # Resume durable meeting jobs only after the selected transcription
         # engine is ready. Starting recovery beside model boot made both threads
         # race to load/use faster-whisper and could duplicate a large model in
@@ -7420,7 +8189,8 @@ class Mumble:
                 on_mode=self.set_active_mode,
                 on_deck=self.on_open_history,
                 on_foreign=self.toggle_island_foreign,
-                on_correct=self.open_correction_learning)
+                on_correct=self.open_correction_learning,
+                on_stop=self.on_hotkey)
             self._push_island_bar_state()
         except Exception as e:
             print("island widget wiring skipped:", e)
