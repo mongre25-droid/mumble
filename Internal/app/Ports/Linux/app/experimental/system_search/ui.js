@@ -41,7 +41,6 @@
     const q = String(query || "").toLowerCase();
     let results = sample.filter((item) => (category === "all" || item.kind === category)
       && (!q || (item.name + " " + item.subtitle).toLowerCase().includes(q)));
-    if (q && category === "all") results.push({ id: "preview-web", kind: "web", name: `Search the web for “${query}”`, subtitle: "Open with Perplexity", source: "web", favorite: false, actions: ["open"] });
     return { ok: true, results, total_matches: results.length, refreshing: false };
   }
 
@@ -58,16 +57,6 @@
 
   function ensureSurface() {
     if ($s('[data-view="system-search"]')) return;
-    const nav = $s(".navbar .nav");
-    const settings = $s('[data-nav="settings"]', nav);
-    if (!nav) return;
-    const button = document.createElement("button");
-    button.className = "nav-btn";
-    button.dataset.nav = "system-search";
-    button.innerHTML = '<span data-icon="search"></span>Mumble Find';
-    nav.insertBefore(button, settings || null);
-    button.addEventListener("click", enterView);
-
     const view = document.createElement("div");
     view.className = "view";
     view.dataset.view = "system-search";

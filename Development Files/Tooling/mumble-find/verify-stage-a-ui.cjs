@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const { chromium } = require("playwright");
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
@@ -18,6 +19,18 @@ const loaderSource = fs.readFileSync(
   path.join(appRoot, "webui", "system-search-loader.js"),
   "utf8",
 );
+const linuxAppRoot = path.join(appRoot, "Ports", "Linux", "app");
+const linuxAssets = {
+  ok: true,
+  css: fs.readFileSync(
+    path.join(linuxAppRoot, "experimental", "system_search", "ui.css"),
+    "utf8",
+  ),
+  js: fs.readFileSync(
+    path.join(linuxAppRoot, "experimental", "system_search", "ui.js"),
+    "utf8",
+  ),
+};
 const verifyCase = String(process.env.MUMBLE_FIND_VERIFY_CASE || "all");
 
 async function verifyLoader(browser) {
@@ -64,6 +77,57 @@ async function verifyLoader(browser) {
   await thrownPage.close();
 }
 
+async function verifyLinuxLoadedDestinations(browser) {
+  const page = await browser.newPage();
+  await page.addInitScript(payload => {
+    window.pywebview = { api: {
+      system_search_assets: async () => payload.assets,
+      system_search_status: async () => ({
+        ok: true,
+        supported: true,
+        platform: "linux",
+        platform_label: "Linux",
+        counts: {},
+      }),
+      system_search_query: async () => ({
+        ok: true,
+        results: [],
+        total_matches: 0,
+      }),
+      system_search_refresh: async () => ({ ok: true, refreshing: false }),
+      system_search_execute: async () => ({ ok: true }),
+    } };
+  }, { assets: linuxAssets });
+  await page.goto(pathToFileURL(path.join(linuxAppRoot, "webui", "index.html")).href);
+  await page.waitForSelector("#system-search-script", { state: "attached" });
+  await page.waitForFunction(() => Boolean(document.querySelector('[data-view="system-search"]')));
+  await page.evaluate(() => window.openSystemSearch());
+  assert.equal(
+    await page.locator('[data-view="system-search"]').evaluate(node => !node.hidden),
+    true,
+    "the separate Mumble Find command must still open its internal view",
+  );
+  const destinations = await page.locator("[data-nav]").evaluateAll(nodes => (
+    nodes.map(node => node.dataset.nav)
+  ));
+  const previewKinds = await page.evaluate(() => (
+    window.__mumbleSystemSearchTest.mockSearch("mumble", "all").results
+      .map(result => result.kind)
+  ));
+  assert.deepEqual(
+    destinations,
+    ["home", "history", "stats", "meetings", "reader", "settings"],
+    "loaded Linux bridge assets must preserve exactly six destinations",
+  );
+  assert.equal(
+    previewKinds.includes("web"),
+    false,
+    "Linux preview results must not embed Web Search",
+  );
+  await page.close();
+  return { destinations, previewKinds };
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
   if (verifyCase === "all" || verifyCase === "loader") {
@@ -74,6 +138,7 @@ async function main() {
     await browser.close();
     return;
   }
+  const linuxLoaded = await verifyLinuxLoadedDestinations(browser);
   const page = await browser.newPage({ viewport: { width: 700, height: 520 } });
   const browserErrors = [];
   page.on("pageerror", error => browserErrors.push(error.message));
@@ -249,7 +314,6 @@ async function main() {
   const destinations = [...mainHtml.matchAll(/class="nav-btn[^"]*"[^>]*data-nav="([^"]+)"/g)]
     .map(match => match[1]);
   assert.deepEqual(destinations, ["home", "history", "stats", "meetings", "reader", "settings"]);
-  assert.equal(await page.locator("#ss-nav-button").count(), 0, "Mumble Find must not become a seventh destination");
   assert.equal(browserErrors.length, 0, browserErrors.join(" | "));
 
   warmVisibilityMs.sort((left, right) => left - right);
@@ -262,6 +326,8 @@ async function main() {
     visibleIconRequests: firstPaint.iconCall.ids.length,
     newlyVisibleIconRequests: scrollHydration.second.length,
     destinations,
+    linuxLoadedDestinations: linuxLoaded.destinations,
+    linuxPreviewKinds: linuxLoaded.previewKinds,
   }));
   await browser.close();
 }

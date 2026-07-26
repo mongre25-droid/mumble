@@ -10,7 +10,7 @@
     pendingOpen = true;
     if (!loaded) { loadFromBridge(); return false; }
     if (typeof window.bootSystemSearch === "function") window.bootSystemSearch();
-    if (typeof window.navTo === "function" && document.querySelector('[data-nav="system-search"]')) {
+    if (typeof window.navTo === "function" && document.querySelector('[data-view="system-search"]')) {
       window.navTo("system-search");
       const input = document.querySelector("#ss-input");
       window.setTimeout(() => { if (input) { input.focus(); input.select(); } }, 35);

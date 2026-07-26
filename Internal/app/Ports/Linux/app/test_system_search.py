@@ -41,7 +41,7 @@ class SystemSearchTests(unittest.TestCase):
             self.assertEqual(status["total"], 3)
             self.assertTrue((Path(tmp) / "data" / "system_search_index.json").is_file())
 
-    def test_fuzzy_categories_prefixes_and_web_fallback(self):
+    def test_fuzzy_categories_prefixes_and_local_only_results(self):
         with tempfile.TemporaryDirectory() as tmp:
             engine = self.make_engine(tmp)
             engine.refresh()
@@ -50,8 +50,8 @@ class SystemSearchTests(unittest.TestCase):
             files = engine.search("file: project notes", "all")
             self.assertEqual(files["category"], "file")
             self.assertEqual(files["results"][0]["kind"], "file")
-            web = engine.search("something not indexed", "all")
-            self.assertEqual(web["results"][-1]["kind"], "web")
+            local = engine.search("something not indexed", "all")
+            self.assertTrue(all(row["kind"] != "web" for row in local["results"]))
 
     def test_favorites_are_local_and_influence_ranking(self):
         with tempfile.TemporaryDirectory() as tmp:

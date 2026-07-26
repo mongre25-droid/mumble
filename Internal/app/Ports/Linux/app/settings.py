@@ -24,7 +24,7 @@ DEFAULTS = {
     # Perplexity is the default (owner 2026-06-20): it opens with the question
     # pre-filled and the answer already generating — a better instant-search
     # result than a plain SERP. Google/Brave stay selectable in Settings.
-    "search_engine": "perplexity",   # web fallback: google | perplexity | brave
+    "search_engine": "perplexity",   # Web Search: google | perplexity | brave
     "browser": "default",            # search opens in: default | edge | chrome | brave | chromium
     # SMALL is the default (owner directive 2026-06-12): the most accurate of the
     # on-device models, and the cloud AI pass cleans up anything in the same call.

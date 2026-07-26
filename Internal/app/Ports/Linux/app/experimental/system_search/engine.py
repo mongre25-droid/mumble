@@ -683,9 +683,6 @@ class SystemSearchEngine:
                 score += 8.0
             ranked.append((score, item))
         ranked.sort(key=lambda row: (-row[0], row[1].name.casefold(), row[1].id))
-        if norm_query and category == "all":
-            ranked.append((18.0, self._web_result(query)))
-            ranked.sort(key=lambda row: (-row[0], row[1].name.casefold()))
         results = [self._public_result(item, score) for score, item in ranked[:limit]]
         return {
             "ok": True,

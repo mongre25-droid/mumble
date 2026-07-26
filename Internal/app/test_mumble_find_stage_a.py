@@ -2,7 +2,9 @@
 
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+import importlib.util
 import re
+import sys
 import tempfile
 import threading
 import time
@@ -382,6 +384,51 @@ class MumbleFindQueryTests(unittest.TestCase):
         self.assertEqual(provider.calls[0]["generation"], 1)
         self.assertLessEqual(provider.calls[0]["limit"], 250)
         self.assertEqual(folder_result["results"][0]["kind"], "folder")
+
+    def test_linux_local_engine_never_embeds_web_search_results(self):
+        engine_path = (
+            Path(__file__).resolve().parent
+            / "Ports"
+            / "Linux"
+            / "app"
+            / "experimental"
+            / "system_search"
+            / "engine.py"
+        )
+        module_name = "mumble_linux_system_search_engine_stage_a"
+        spec = importlib.util.spec_from_file_location(module_name, engine_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        linux_engine = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {module_name: linux_engine}):
+            spec.loader.exec_module(linux_engine)
+            with tempfile.TemporaryDirectory() as tmp:
+                engine = linux_engine.SystemSearchEngine(
+                    settings={"search_engine": "perplexity"},
+                    data_dir=tmp,
+                    platform="linux",
+                    home=tmp,
+                    file_roots=[],
+                    app_roots=[],
+                    start_background=False,
+                )
+                engine.start_refresh = lambda force=False: None
+                app = linux_engine.SearchItem.make(
+                    "app",
+                    "Mumble Notes",
+                    "/usr/bin/mumble-notes",
+                    "Local application",
+                    "desktop",
+                )
+                engine._items[app.id] = app
+                with patch.object(linux_engine.webbrowser, "open") as web_request:
+                    result = engine.search("mumble", "all", 12)
+
+        web_request.assert_not_called()
+        self.assertEqual(
+            [row["kind"] for row in result["results"]],
+            ["app"],
+        )
 
     def test_new_generation_cancels_old_work_and_old_result_is_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1016,7 +1063,7 @@ class MumbleFindUiContractTests(unittest.TestCase):
         }
         self.linux_html = self.linux_launcher_sources["production index"]
 
-    def test_visible_contract_uses_mumble_find_and_exactly_six_destinations(self):
+    def test_static_surfaces_use_mumble_find_and_canonical_six_destinations(self):
         nav = re.findall(r'class="nav-btn[^\"]*"[^>]*data-nav="([^"]+)"', self.html)
         self.assertEqual(nav, [
             "home", "history", "stats", "meetings", "reader", "settings"
@@ -1025,12 +1072,6 @@ class MumbleFindUiContractTests(unittest.TestCase):
         self.assertIn("Mumble Find", visible_source)
         self.assertIn("Find apps & files", visible_source)
         self.assertNotIn("Mumble Search", visible_source)
-        self.assertNotIn("ss-nav-button", self.ui)
-        linux_nav = re.findall(
-            r'class="nav-btn[^\"]*"[^>]*data-nav="([^"]+)"',
-            self.linux_html,
-        )
-        self.assertEqual(linux_nav, nav)
         self.assertIn("Mumble Find", self.linux_html)
         self.assertIn("Find apps &amp; files", self.linux_html)
         self.assertNotIn("Mumble Search", self.linux_html)
@@ -1068,7 +1109,13 @@ class MumbleFindUiContractTests(unittest.TestCase):
             self.linux_launcher_sources["subsystem documentation"],
         )
         self.assertIn("Find apps &amp; files", self.linux_html)
-        self.assertIn("Web Search", self.linux_html)
+        self.assertIn(
+            "Mumble Find stays local. Web Search is a separate explicit action.",
+            self.linux_html,
+        )
+        for provider in ("Google", "Perplexity", "Brave"):
+            with self.subTest(web_search_provider=provider):
+                self.assertIn(provider, self.linux_html)
 
     def test_header_is_a_dedicated_accessible_window_drag_region(self):
         self.assertIn('class="ss-header pywebview-drag-region"', self.ui)
