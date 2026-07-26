@@ -38,7 +38,7 @@ def main():
 
     # ---- hotkeys -----------------------------------------------------------
     hk = api.get_hotkeys()
-    for key in ("hotkey", "quick_paste_hotkey", "search_hotkey"):
+    for key in ("hotkey", "quick_paste_hotkey", "web_search_hotkey"):
         check(f"hotkeys has {key}", bool(hk.get(key)))
     check("retired mode key is not exposed", "mode_key" not in hk)
 

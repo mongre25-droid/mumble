@@ -1,0 +1,44 @@
+{
+  "schema": "mumble.local-ai-gates.v1",
+  "version": "issue19-gates-v1",
+  "decision_rule": "A candidate advances only when every required gate is pass. Fail, not_run, blocked, unknown, or missing retains the lane baseline.",
+  "required_metrics": {
+    "speech": ["wer", "first_stable_partial_ms", "stop_to_final_ms", "real_time_factor", "peak_ram_mb", "peak_vram_mb", "model_size_bytes", "idle_cpu_percent", "failure_recovery"],
+    "instruction": ["per_mode_corpus_runs", "task_success_rate", "semantic_preservation_rate", "unsupported_additions", "first_token_ms", "completion_p95_ms", "peak_ram_mb", "peak_vram_mb", "model_size_bytes", "idle_cpu_percent", "failure_recovery_rate"],
+    "classification": ["macro_f1", "false_action_count", "abstention_accuracy", "latency_p95_ms", "peak_ram_mb", "peak_vram_mb", "model_size_bytes", "idle_cpu_percent", "failure_recovery_rate"]
+  },
+  "lanes": {
+    "speech-baseline": {
+      "baseline": "faster-whisper",
+      "required_gates": ["accuracy", "latency", "resource", "language", "safety", "licence", "windows", "packaging"],
+      "thresholds": {"corpus_runs_min": 30, "failure_recovery_rate_min": 1.0}
+    },
+    "streaming-speech": {
+      "baseline": "faster-whisper",
+      "required_gates": ["accuracy", "latency", "resource", "language", "safety", "licence", "windows", "packaging"],
+      "thresholds": {"wer_absolute_degradation_max": 0.02, "first_stable_partial_p95_ms_max": 1500, "stop_to_final_p95_ms_max": 1200, "real_time_factor_p95_max": 1.0, "peak_ram_mb_max": 1536, "idle_cpu_percent_max": 1.0, "failure_recovery_rate_min": 1.0, "corpus_runs_min": 30}
+    },
+    "speech-quality-ceiling": {
+      "baseline": "faster-whisper",
+      "required_gates": ["accuracy", "latency", "resource", "language", "safety", "licence", "windows", "packaging"],
+      "thresholds": {"wer_relative_improvement_min": 0.05, "stop_to_final_p95_ms_max": 2500, "real_time_factor_p95_max": 1.0, "peak_ram_mb_max": 8192, "peak_vram_mb_max": 8192, "failure_recovery_rate_min": 1.0, "corpus_runs_min": 30}
+    },
+    "deterministic-text": {
+      "baseline": "deterministic-text",
+      "required_gates": ["accuracy", "latency", "resource", "language", "safety", "licence", "windows", "packaging"],
+      "thresholds": {"task_success_rate_min": 1.0, "semantic_preservation_rate_min": 1.0, "unsupported_additions_max": 0, "failure_recovery_rate_min": 1.0}
+    },
+    "instruction-text": {
+      "baseline": "deterministic-text",
+      "required_modes": ["prompt", "email", "reply", "classification"],
+      "required_gates": ["accuracy", "latency", "resource", "language", "safety", "licence", "windows", "packaging"],
+      "threshold_scope": "every_required_mode_must_pass_independently",
+      "thresholds": {"task_success_rate_min": 0.98, "semantic_preservation_rate_min": 0.99, "unsupported_additions_max": 0, "completion_p95_ms_max": 3000, "peak_ram_mb_max": 4096, "idle_cpu_percent_max": 1.0, "failure_recovery_rate_min": 1.0, "corpus_runs_min": 30}
+    },
+    "classification": {
+      "baseline": "deterministic-text",
+      "required_gates": ["accuracy", "latency", "resource", "language", "safety", "licence", "windows", "packaging"],
+      "thresholds": {"macro_f1_min": 0.98, "false_action_count_max": 0, "abstention_accuracy_min": 1.0, "latency_p95_ms_max": 100, "peak_ram_mb_max": 256, "idle_cpu_percent_max": 1.0, "failure_recovery_rate_min": 1.0, "corpus_runs_min": 100}
+    }
+  }
+}

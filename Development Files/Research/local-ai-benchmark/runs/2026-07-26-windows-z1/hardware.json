@@ -1,0 +1,69 @@
+{
+  "schema": "mumble.local-ai-hardware.v1",
+  "id": "windows-z1-extreme-2026-07-26",
+  "observed_at": "2026-07-26",
+  "benchmark_tier": {
+    "current_mumble_tier": "mid",
+    "issue19_lane": "typical_boundary_non_nvidia",
+    "strong_lane_eligible": false,
+    "reason": "8 physical CPU cores and 12.69 GiB usable RAM meet Mumble's current mid heuristic, but this host has no supported discrete NVIDIA GPU and less than the proposed 32 GiB strong-lane memory tier."
+  },
+  "operating_system": {
+    "name": "Microsoft Windows 11 Home",
+    "version": "10.0.26200",
+    "build": "26200",
+    "architecture": "64-bit"
+  },
+  "computer": {
+    "manufacturer": "LENOVO",
+    "model": "83E1",
+    "total_physical_memory_bytes": 13628198912
+  },
+  "cpu": {
+    "name": "AMD Ryzen Z1 Extreme",
+    "manufacturer": "AuthenticAMD",
+    "physical_cores": 8,
+    "logical_processors": 16,
+    "reported_max_clock_mhz": 3301
+  },
+  "gpu": {
+    "name": "AMD Radeon Graphics",
+    "video_processor": "AMD Radeon Graphics Processor (0x15BF)",
+    "driver_version": "32.0.23017.1001",
+    "reported_adapter_ram_bytes": 3221225472,
+    "memory_note": "Integrated graphics; the operating-system AdapterRAM value is recorded but must not be treated as dedicated VRAM without a candidate-specific measurement."
+  },
+  "power": {
+    "scheme": "High performance",
+    "scheme_guid": "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c",
+    "power_online": true,
+    "charging": false,
+    "discharging": true,
+    "note": "The WMI battery flags were recorded exactly; PowerOnline and Discharging were both true, so the run does not infer a cleaner AC/battery state."
+  },
+  "software": {
+    "powershell": "5.1.26100.8875",
+    "python": "3.12.10",
+    "worktree_virtual_environment": "absent",
+    "observed_packages": {
+      "faster-whisper": "1.2.1",
+      "ctranslate2": "4.8.0",
+      "onnxruntime": "1.26.0",
+      "psutil": "7.2.2",
+      "sherpa-onnx": null,
+      "torch": null,
+      "nemo": null
+    },
+    "repository_pins": {
+      "faster-whisper": "1.2.1",
+      "sherpa-onnx": "1.13.4",
+      "psutil": "7.2.2"
+    }
+  },
+  "privacy": {
+    "machine_name_recorded": false,
+    "user_name_recorded": false,
+    "serial_numbers_recorded": false,
+    "stable_device_identifiers_recorded": false
+  }
+}

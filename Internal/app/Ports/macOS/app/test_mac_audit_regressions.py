@@ -21,7 +21,7 @@ def test_mac_settings_keep_native_shortcuts_without_retired_products():
     assert defaults["hotkey"] == "ctrl+option+d"
     assert defaults["quick_paste_hotkey"] == "ctrl+option+v"
     assert defaults["history_hotkey"] == "ctrl+option+h"
-    assert defaults["search_hotkey"] == "ctrl+option+s"
+    assert defaults["web_search_hotkey"] == "ctrl+option+s"
     assert defaults["instant_text"] is True
     assert defaults["local_llm_enabled"] is False
     assert defaults["reader_tts_provider"] == "openrouter"
@@ -64,7 +64,8 @@ def test_mac_settings_migration_removes_retired_keys_and_repairs_shortcuts():
             assert store.get("hotkey") == "ctrl+option+d"
             assert store.get("quick_paste_hotkey") == "ctrl+option+v"
             assert store.get("history_hotkey") == "ctrl+option+h"
-            assert store.get("search_hotkey") == "ctrl+option+s"
+            assert store.get("web_search_hotkey") == "ctrl+option+s"
+            assert store.get("search_hotkey") is None
             for retired in settings.REMOVED_SETTINGS:
                 assert retired not in store.data
         finally:
@@ -77,7 +78,7 @@ def test_cloud_sync_never_moves_device_specific_mac_shortcuts():
         "hotkey": "ctrl+option+d",
         "quick_paste_hotkey": "ctrl+option+v",
         "history_hotkey": "ctrl+option+h",
-        "search_hotkey": "ctrl+option+s",
+        "web_search_hotkey": "ctrl+option+s",
         "mode_key": "right shift",
     })
     assert safe == {"model": "small.en"}

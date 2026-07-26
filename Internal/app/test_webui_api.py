@@ -55,7 +55,10 @@ def main():
 
     # ---- hotkeys -----------------------------------------------------------
     hk = api.get_hotkeys()
-    for key in ("hotkey", "quick_paste_hotkey", "search_hotkey", "mode_key"):
+    for key in (
+        "hotkey", "quick_paste_hotkey", "search_hotkey",
+        "web_search_hotkey", "mode_key",
+    ):
         check(f"hotkeys has {key}", bool(hk.get(key)))
     check("fresh Search shortcut is Ctrl + Alt + F",
           hk.get("search_hotkey") == "Ctrl + Alt + F")

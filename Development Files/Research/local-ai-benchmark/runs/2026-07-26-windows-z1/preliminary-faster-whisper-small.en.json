@@ -1,0 +1,83 @@
+{
+  "schema": "mumble.local-ai-preliminary-speech.v1",
+  "observed_at": "2026-07-26",
+  "source_parent": "65f27576f093553418540abe58501043971e8b1f",
+  "hardware_id": "windows-z1-extreme-2026-07-26",
+  "evidence_level": "single_offline_synthetic_preliminary_only",
+  "adoption_gate_status": "not_evaluated",
+  "candidate_id": "faster-whisper",
+  "model": "Systran/faster-whisper-small.en",
+  "snapshot_revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f",
+  "snapshot_location_policy": "local_cache_path_not_recorded",
+  "model_files": [
+    {
+      "filename": "config.json",
+      "size_bytes": 2657,
+      "sha256": "666a9605530ac1f61fa8177f3702b4dacec9966749e42610839fcc32661d5fae"
+    },
+    {
+      "filename": "model.bin",
+      "size_bytes": 483545366,
+      "sha256": "62b2a45b05ee59acb4a5341b33ee35e041395d378d418a18acfe4c9e768ee37a"
+    },
+    {
+      "filename": "tokenizer.json",
+      "size_bytes": 2128466,
+      "sha256": "929c5252409436dce1b38a75d1abbcb5e132d170d8e324e4e04ed915fa2d22df"
+    },
+    {
+      "filename": "vocabulary.txt",
+      "size_bytes": 422309,
+      "sha256": "ff77588746d3a2595d32ab5b69ffd7b95ce2441ac57533cb66fc3eb575a115cf"
+    }
+  ],
+  "runtime": {
+    "faster_whisper": "1.2.1",
+    "ctranslate2": "4.8.0",
+    "device": "cpu",
+    "compute_type": "int8",
+    "cpu_threads": 4,
+    "num_workers": 1,
+    "beam_size": 1,
+    "language": "en",
+    "vad_filter": false,
+    "network_disabled": true
+  },
+  "fixture": {
+    "id": "speech-dictation-001",
+    "source": "Windows SAPI synthetic speech",
+    "voice": "Microsoft Hazel Desktop - English (Great Britain)",
+    "voice_rate": 0,
+    "voice_volume": 100,
+    "audio_sha256": "12d1dadd044f5dcafdf86dc07be2b7208894dae3fba7a84dde2678e22675df48",
+    "channels": 1,
+    "sample_width_bytes": 2,
+    "sample_rate_hz": 22050,
+    "duration_ms": 4658.322,
+    "audio_retained": false
+  },
+  "metrics": {
+    "wer": 0.2,
+    "first_stable_partial_ms": null,
+    "first_stable_partial_reason": "not_available_from_completed_utterance_faster_whisper_baseline",
+    "stop_to_final_ms": 2965.109,
+    "real_time_factor": 0.636519,
+    "model_load_ms": 3201.732,
+    "peak_ram_mb": 702.246,
+    "peak_vram_mb": 0.0,
+    "model_size_bytes": 486098798,
+    "resident_idle_ram_mb": 318.977,
+    "resident_idle_cpu_percent_one_second": 1.6,
+    "failure_recovery": "not_run"
+  },
+  "limitations": [
+    "one_synthetic_fixture_only",
+    "no_first_stable_partial_from_completed_utterance_baseline",
+    "no_failure_injection",
+    "no_thirty_run_cold_warm_matrix",
+    "no_installed_package_measurement",
+    "no_physical_microphone_or_owner_recording"
+  ],
+  "content_policy": "fixture_id_hash_and_metrics_only",
+  "decision": "retain_baseline_preliminary_measurement_only"
+}

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Focused regression tests for Mumble Find shortcut defaults and conflicts."""
 
+import ast
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import threading
@@ -38,6 +40,7 @@ import branding
 from settings import (
     SEARCH_HOTKEY_DEFAULT,
     SEARCH_HOTKEY_LEGACY_DEFAULT,
+    WEB_SEARCH_HOTKEY_DEFAULT,
     Settings,
 )
 
@@ -46,11 +49,14 @@ class SearchShortcutConflictTests(unittest.TestCase):
     def test_default_is_valid_and_distinct_from_actual_mumble_bindings(self):
         self.assertEqual(SEARCH_HOTKEY_DEFAULT, "ctrl+alt+f")
         self.assertTrue(bindings.validate(SEARCH_HOTKEY_DEFAULT)[0])
+        self.assertEqual(WEB_SEARCH_HOTKEY_DEFAULT, "ctrl+alt+s")
+        self.assertTrue(bindings.validate(WEB_SEARCH_HOTKEY_DEFAULT)[0])
         actual = {
             "dictation": "ctrl+windows",
             "paste_latest": "ctrl+alt+v",
             "deck": "ctrl+alt+d",
             "search": SEARCH_HOTKEY_DEFAULT,
+            "web_search": WEB_SEARCH_HOTKEY_DEFAULT,
         }
         rows = list(actual.items())
         for index, (left_name, left) in enumerate(rows):
@@ -87,6 +93,93 @@ class SearchShortcutConflictTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("one key combination", message.lower())
 
+    def test_capture_keeps_the_physical_key_below_escape_layout_independent(self):
+        events = [
+            types.SimpleNamespace(
+                name="alt", event_type="down", scan_code=56,
+            ),
+            types.SimpleNamespace(
+                name="§", event_type="down", scan_code=41,
+            ),
+        ]
+
+        def hook(callback, suppress=True):
+            self.assertTrue(suppress)
+            for event in events:
+                callback(event)
+            return "keyboard-hook"
+
+        with patch.object(bindings.keyboard, "hook", side_effect=hook), \
+                patch.object(bindings.keyboard, "unhook"), \
+                patch.object(bindings, "HAVE_MOUSE", False):
+            captured = bindings.capture(timeout=0.1)
+
+        self.assertEqual(captured, "alt+physical:below-escape")
+        self.assertEqual(
+            bindings.pretty(captured), "Alt + Physical key below Esc"
+        )
+
+    def test_flow_launcher_oem_name_conflicts_with_the_same_physical_key(self):
+        with tempfile.TemporaryDirectory() as temp:
+            settings_dir = Path(temp) / "FlowLauncher" / "Settings"
+            settings_dir.mkdir(parents=True)
+            (settings_dir / "Settings.json").write_text(
+                json.dumps({"Hotkey": "Alt + Oem8"}), encoding="utf-8"
+            )
+            message = bindings.external_shortcut_conflict(
+                "alt+physical:below-escape", appdata=temp
+            )
+
+        self.assertIn("Flow Launcher", message)
+        self.assertIn("previous binding", message)
+        self.assertIn("Alt + Physical key below Esc", message)
+
+    def test_flow_conflict_keeps_the_previous_live_web_search_binding(self):
+        import mumble
+
+        class MemorySettings:
+            values = {
+                "hotkey": "ctrl+windows",
+                "quick_paste_hotkey": "ctrl+alt+v",
+                "history_hotkey": "ctrl+alt+d",
+                "search_hotkey": "ctrl+alt+f",
+                "web_search_hotkey": "ctrl+alt+s",
+            }
+
+            def get(self, key, default=None):
+                return self.values.get(key, default)
+
+            def set(self, key, value):
+                self.values[key] = value
+                return True
+
+        app = mumble.Mumble.__new__(mumble.Mumble)
+        app.settings = MemorySettings()
+        app._binding_lock = threading.RLock()
+        app.web_search_hotkey = "ctrl+alt+s"
+        app._hk_web_search = "old-web-search-hook"
+        app._hk_main = app._hk_quick = app._hk_history = app._hk_search = None
+        app.on_web_search_hotkey = lambda: None
+        message = (
+            "Flow Launcher already uses Alt + Physical key below Esc. "
+            "Mumble kept your previous binding."
+        )
+        with patch.object(
+            bindings, "external_shortcut_conflict", return_value=message,
+        ), patch.object(bindings, "register_hotkey") as register:
+            ok, received = app.apply_web_search_hotkey(
+                "alt+physical:below-escape"
+            )
+
+        self.assertFalse(ok)
+        self.assertEqual(received, message)
+        self.assertEqual(app.web_search_hotkey, "ctrl+alt+s")
+        self.assertEqual(app._hk_web_search, "old-web-search-hook")
+        self.assertEqual(
+            app.settings.get("web_search_hotkey"), "ctrl+alt+s"
+        )
+        register.assert_not_called()
+
 
 class SearchShortcutMigrationTests(unittest.TestCase):
     def load_settings(self, initial=None):
@@ -112,7 +205,11 @@ class SearchShortcutMigrationTests(unittest.TestCase):
     def test_first_run_uses_find_default(self):
         settings = self.load_settings()
         self.assertEqual(settings.get("search_hotkey"), SEARCH_HOTKEY_DEFAULT)
+        self.assertEqual(
+            settings.get("web_search_hotkey"), WEB_SEARCH_HOTKEY_DEFAULT
+        )
         self.assertTrue(settings.get("search_hotkey_find_default_applied"))
+        self.assertTrue(settings.get("web_search_hotkey_default_applied"))
 
     def test_exact_old_default_migrates_once(self):
         settings = self.load_settings({
@@ -137,6 +234,197 @@ class SearchShortcutMigrationTests(unittest.TestCase):
             settings.get("search_hotkey"), SEARCH_HOTKEY_LEGACY_DEFAULT
         )
 
+    def test_existing_find_install_adds_web_search_without_changing_find(self):
+        settings = self.load_settings({
+            "search_hotkey": "ctrl+shift+f9",
+            "search_hotkey_find_default_applied": True,
+        })
+        self.assertEqual(settings.get("search_hotkey"), "ctrl+shift+f9")
+        self.assertEqual(
+            settings.get("web_search_hotkey"), WEB_SEARCH_HOTKEY_DEFAULT
+        )
+
+    def test_completed_web_search_migration_preserves_user_choice(self):
+        settings = self.load_settings({
+            "web_search_hotkey": "ctrl+shift+f10",
+            "web_search_hotkey_default_applied": True,
+        })
+        self.assertEqual(settings.get("web_search_hotkey"), "ctrl+shift+f10")
+
+    def test_upgrade_keeps_user_find_binding_and_avoids_new_web_collision(self):
+        settings = self.load_settings({
+            "search_hotkey": WEB_SEARCH_HOTKEY_DEFAULT,
+            "search_hotkey_find_default_applied": True,
+        })
+        self.assertEqual(settings.get("search_hotkey"), WEB_SEARCH_HOTKEY_DEFAULT)
+        self.assertNotEqual(
+            settings.get("web_search_hotkey"), settings.get("search_hotkey")
+        )
+        self.assertTrue(bindings.validate(settings.get("web_search_hotkey"))[0])
+
+
+class WebSearchGlobalCommandTests(unittest.TestCase):
+    class ImmediateThread:
+        def __init__(self, target, **_kwargs):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    def test_selected_text_uses_web_search_without_toggling_mumble_find(self):
+        import mumble
+
+        app = mumble.Mumble.__new__(mumble.Mumble)
+        app.lock = threading.RLock()
+        app.paused = False
+        app.busy = False
+        app.recording = False
+        app._processing = False
+        app._grab_selection_quiet = lambda: "selected words"
+        prepared = []
+        app.request_web_search = lambda text: prepared.append(text) or {"ok": True}
+        app._toggle_system_search_page = lambda *_args: self.fail(
+            "Web Search must not toggle Mumble Find"
+        )
+
+        with patch.object(mumble.threading, "Thread", self.ImmediateThread):
+            self.assertTrue(app.on_web_search_hotkey())
+
+        self.assertEqual(prepared, ["selected words"])
+        self.assertFalse(app.busy)
+
+    def test_web_search_can_take_over_an_active_dictation_without_find_collision(self):
+        import mumble
+
+        app = mumble.Mumble.__new__(mumble.Mumble)
+        app.lock = threading.RLock()
+        app.paused = False
+        app.busy = False
+        app.recording = True
+        app._search_requested = False
+        stopped = []
+        app._safe_stop = lambda: stopped.append(True)
+        app._toggle_system_search_page = lambda *_args: self.fail(
+            "Web Search must not toggle Mumble Find"
+        )
+
+        with patch.object(mumble.threading, "Thread", self.ImmediateThread):
+            self.assertTrue(app.on_web_search_hotkey())
+
+        self.assertTrue(app._search_requested)
+        self.assertEqual(stopped, [True])
+
+    def test_find_and_web_search_register_and_swap_independently(self):
+        import mumble
+
+        values = {
+            "hotkey": "ctrl+windows",
+            "quick_paste_hotkey": "ctrl+alt+v",
+            "history_hotkey": "ctrl+alt+d",
+            "search_hotkey": "ctrl+alt+f",
+            "web_search_hotkey": "ctrl+alt+s",
+        }
+
+        class MemorySettings:
+            def get(self, key, default=None):
+                return values.get(key, default)
+
+            def set(self, key, value):
+                values[key] = value
+                return True
+
+        app = mumble.Mumble.__new__(mumble.Mumble)
+        app.settings = MemorySettings()
+        app._hk_main = app._hk_quick = app._hk_history = None
+        app._hk_search = app._hk_web_search = None
+        app.search_hotkey = "ctrl+alt+f"
+        app.web_search_hotkey = "ctrl+alt+s"
+        registrations = []
+
+        def register(spec, callback):
+            handle = object()
+            registrations.append((spec, callback, handle))
+            return handle
+
+        with patch.object(bindings, "register_hotkey", side_effect=register), \
+                patch.object(bindings, "unregister", return_value=True):
+            app._register_search()
+            find_handle = app._hk_search
+            app._register_web_search()
+
+        self.assertIs(app._hk_search, find_handle)
+        self.assertIsNot(app._hk_search, app._hk_web_search)
+        self.assertEqual(
+            [(spec, callback.__name__) for spec, callback, _handle in registrations],
+            [
+                ("ctrl+alt+f", "on_search_hotkey"),
+                ("ctrl+alt+s", "on_web_search_hotkey"),
+            ],
+        )
+
+    def test_home_and_settings_show_five_distinct_global_commands(self):
+        app_root = Path(__file__).resolve().parent
+        html = (app_root / "webui" / "index.html").read_text(encoding="utf-8")
+        script = (app_root / "webui" / "app.js").read_text(encoding="utf-8")
+        home = html.split('data-view="home"', 1)[1].split(
+            'data-view="history"', 1
+        )[0]
+        for label in (
+            "Dictate", "Paste latest", "Open Deck", "Mumble Find", "Web Search",
+        ):
+            with self.subTest(label=label):
+                self.assertIn(label, home)
+        nav = __import__("re").findall(
+            r'class="nav-btn[^\"]*"[^>]*data-nav="([^"]+)"', html
+        )
+        self.assertEqual(
+            nav, ["home", "history", "stats", "meetings", "reader", "settings"]
+        )
+        self.assertIn('data-capture="search_hotkey"', html)
+        self.assertIn('data-capture="web_search_hotkey"', html)
+        self.assertIn('setText("#hk-web-search", hk.web_search_hotkey)', script)
+        self.assertNotIn(">Finder<", html)
+
+    def test_maintained_ports_and_windows_fallback_expose_the_same_safe_command(self):
+        app_root = Path(__file__).resolve().parent
+        for platform in ("Linux", "macOS"):
+            with self.subTest(platform=platform):
+                port = app_root / "Ports" / platform / "app"
+                controller_name = (
+                    "mumble_linux.py" if platform == "Linux" else "mumble_mac.py"
+                )
+                controller = (port / controller_name).read_text(encoding="utf-8")
+                shell = (port / "webui_shell.py").read_text(encoding="utf-8")
+                script = (port / "webui" / "app.js").read_text(encoding="utf-8")
+                html = (port / "webui" / "index.html").read_text(encoding="utf-8")
+                self.assertIn("def request_web_search", controller)
+                self.assertIn("def confirm_web_search", controller)
+                self.assertIn('"cmd": "web_search_consent"', controller)
+                self.assertNotIn("self._open_search(out)", controller)
+                self.assertIn("def request_web_search", shell)
+                self.assertIn("window.pyWebSearchConsent", script)
+                self.assertIn('call("request_web_search"', script)
+                expected_labels = [
+                    "Dictate", "Paste latest", "Open Deck", "Web Search",
+                ]
+                if platform == "Linux":
+                    expected_labels.append("Mumble Find")
+                for label in expected_labels:
+                    self.assertIn(label, html)
+
+        linux_settings = (
+            app_root / "Ports" / "Linux" / "app" / "settings.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"search_hotkey": "ctrl+alt+f"', linux_settings)
+        self.assertIn('"web_search_hotkey": "ctrl+alt+s"', linux_settings)
+        mac_bindings = (
+            app_root / "Ports" / "macOS" / "app" / "bindings.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("physical:below-escape", mac_bindings)
+
+        fallback = (app_root / "app_window.py").read_text(encoding="utf-8")
+        self.assertIn("apply_web_search_hotkey", fallback)
+        self.assertIn("Web Search hotkey", fallback)
 
 class SearchCommandAcknowledgementTests(unittest.TestCase):
     def test_find_toggle_command_uses_resident_lifecycle_without_main_window(self):
@@ -208,6 +496,136 @@ class SearchCommandAcknowledgementTests(unittest.TestCase):
         self.assertEqual(toggle_calls, ["4" * 32])
         self.assertEqual(show_calls, [])
         self.assertEqual(main_calls, [])
+
+
+class WebSearchPrivacyCommandTests(unittest.TestCase):
+    def test_selected_words_wait_for_explicit_consent_before_browser_egress(self):
+        import mumble
+
+        app = mumble.Mumble.__new__(mumble.Mumble)
+        app.settings = {
+            "search_engine": "brave",
+            "browser": "default",
+        }
+        app._web_search_lock = threading.RLock()
+        app._pending_web_searches = {}
+        delivered = []
+        app._send_webui = lambda message, timeout=0.8: delivered.append(message) or True
+
+        with patch.object(app, "open_in_browser") as browser:
+            prepared = app.request_web_search("selected private words")
+            browser.assert_not_called()
+            self.assertTrue(prepared["ok"])
+            self.assertEqual(delivered[-1]["cmd"], "web_search_consent")
+            self.assertIn("sent to Brave", delivered[-1]["privacy"])
+            self.assertNotIn("http", delivered[-1]["privacy"])
+
+            confirmed = app.confirm_web_search(prepared["request_id"])
+            self.assertTrue(confirmed["ok"])
+            browser.assert_called_once_with(
+                "https://search.brave.com/search?q=selected%20private%20words"
+            )
+
+            repeated = app.confirm_web_search(prepared["request_id"])
+            self.assertFalse(repeated["ok"])
+            self.assertEqual(browser.call_count, 1)
+
+    def test_shell_shows_the_local_privacy_confirmation_before_egress(self):
+        import webui_shell
+
+        delivered = threading.Event()
+        replies = []
+        scripts = []
+        request = json.dumps({
+            "cmd": "web_search_consent",
+            "token": "test-token",
+            "request_id": "5" * 32,
+            "provider": "Perplexity",
+            "query": "selected private words",
+            "privacy": (
+                "These selected words will be sent to Perplexity over the "
+                "internet only after you choose Search online. Mumble Find "
+                "stays private on this device."
+            ),
+        }).encode("utf-8") + b"\n"
+
+        class Window:
+            def evaluate_js(self, script):
+                scripts.append(script)
+
+        class Connection:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def settimeout(self, _timeout):
+                pass
+
+            def recv(self, _size):
+                return request
+
+            def sendall(self, data):
+                replies.append(data)
+                delivered.set()
+
+        class Server:
+            first = True
+
+            def accept(self):
+                if self.first:
+                    self.first = False
+                    return Connection(), None
+                raise OSError("test listener complete")
+
+        window = Window()
+        with patch.object(webui_shell, "_webui_token_ok", return_value=True):
+            webui_shell._serve_webui_commands(
+                Server(), {"main": window, "main_min": False},
+                lambda activate=False: window, lambda: object(), "Mumble",
+            )
+            self.assertTrue(delivered.wait(1.0))
+
+        self.assertTrue(json.loads(replies[0])["ok"])
+        self.assertEqual(len(scripts), 1)
+        self.assertIn("window.pyWebSearchConsent", scripts[0])
+        self.assertIn("selected private words", scripts[0])
+        self.assertIn("Mumble Find", scripts[0])
+
+    def test_every_configured_provider_route_waits_for_the_same_consent(self):
+        import mumble
+
+        expected = {
+            "google": "https://www.google.com/search?q=provider%20test",
+            "perplexity": "https://www.perplexity.ai/search?q=provider%20test",
+            "brave": "https://search.brave.com/search?q=provider%20test",
+        }
+        for provider, url in expected.items():
+            with self.subTest(provider=provider):
+                app = mumble.Mumble.__new__(mumble.Mumble)
+                app.settings = {"search_engine": provider}
+                app._web_search_lock = threading.RLock()
+                app._pending_web_searches = {}
+                app._send_webui = lambda _message, timeout=0.8: True
+                with patch.object(app, "open_in_browser") as browser:
+                    prepared = app.request_web_search("provider test")
+                    browser.assert_not_called()
+                    result = app.confirm_web_search(prepared["request_id"])
+                    self.assertTrue(result["ok"])
+                    browser.assert_called_once_with(url)
+
+    def test_failed_consent_surface_discards_the_unsent_request(self):
+        import mumble
+
+        app = mumble.Mumble.__new__(mumble.Mumble)
+        app.settings = {"search_engine": "perplexity"}
+        app._web_search_lock = threading.RLock()
+        app._pending_web_searches = {}
+        app._send_webui = lambda _message, timeout=0.8: False
+        prepared = app.request_web_search("must stay local")
+        self.assertFalse(prepared["ok"])
+        self.assertEqual(app._pending_web_searches, {})
 
 
 class SearchBrowserRoutingTests(unittest.TestCase):
@@ -323,6 +741,242 @@ class SearchWebRebindTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["applied"])
         self.assertEqual(api.settings.get("search_hotkey"), "ctrl+shift+f9")
+
+    def test_maintained_port_bridges_never_persist_before_live_rebind(self):
+        app_root = Path(__file__).resolve().parent
+        probe = r'''
+import json
+import webui_shell
+
+class MemorySettings:
+    def __init__(self):
+        self.values = {
+            "hotkey": "ctrl+alt+d",
+            "quick_paste_hotkey": "ctrl+alt+v",
+            "history_hotkey": "ctrl+alt+h",
+            "search_hotkey": "ctrl+alt+f",
+            "web_search_hotkey": "ctrl+alt+s",
+        }
+        self.writes = []
+    def load(self):
+        return None
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+    def set(self, key, value):
+        self.writes.append((key, value))
+        self.values[key] = value
+        return True
+
+api = webui_shell.Api.__new__(webui_shell.Api)
+api.settings = MemorySettings()
+calls = []
+def controller(request, timeout=None):
+    calls.append((request, timeout))
+    return {"ok": False, "applied": False, "message": "occupied"}
+webui_shell._ctrl_send = controller
+result = api.set_setting("web_search_hotkey", "ctrl+shift+f9")
+first = {"result": result, "calls": list(calls), "writes": list(api.settings.writes)}
+calls.clear()
+api.settings.writes.clear()
+collision = api.set_setting("web_search_hotkey", "alt+ctrl+h")
+print(json.dumps({
+    "first": first,
+    "collision": collision,
+    "collision_calls": calls,
+    "collision_writes": api.settings.writes,
+}))
+'''
+        for platform in ("Linux", "macOS"):
+            with self.subTest(platform=platform):
+                port = app_root / "Ports" / platform / "app"
+                completed = subprocess.run(
+                    [sys.executable, "-c", probe], cwd=port,
+                    text=True, capture_output=True, check=True,
+                )
+                observed = json.loads(completed.stdout.strip().splitlines()[-1])
+                first = observed["first"]
+                self.assertEqual(first["calls"][0][0]["cmd"], "rebind")
+                self.assertEqual(first["writes"], [])
+                self.assertFalse(first["result"]["ok"])
+                self.assertIn("occupied", first["result"]["message"])
+                self.assertFalse(observed["collision"]["ok"])
+                self.assertIn("Open Deck", observed["collision"]["message"])
+                self.assertEqual(observed["collision_calls"], [])
+                self.assertEqual(observed["collision_writes"], [])
+
+    def test_maintained_port_controllers_swap_bindings_transactionally(self):
+        app_root = Path(__file__).resolve().parent
+
+        class MemorySettings:
+            def __init__(self, events):
+                self.events = events
+                self.fail_next = False
+                self.values = {
+                    "hotkey": "ctrl+alt+d",
+                    "quick_paste_hotkey": "ctrl+alt+v",
+                    "history_hotkey": "ctrl+alt+h",
+                    "search_hotkey": "ctrl+alt+f",
+                    "web_search_hotkey": "ctrl+alt+s",
+                }
+
+            def get(self, key, default=None):
+                return self.values.get(key, default)
+
+            def set(self, key, value):
+                self.events.append(("save", key, value))
+                self.values[key] = value
+                if self.fail_next:
+                    self.fail_next = False
+                    return False
+                return True
+
+        for platform, controller_name in (
+            ("Linux", "mumble_linux.py"), ("macOS", "mumble_mac.py"),
+        ):
+            with self.subTest(platform=platform):
+                source = (
+                    app_root / "Ports" / platform / "app" / controller_name
+                ).read_text(encoding="utf-8")
+                tree = ast.parse(source)
+                owner = next(
+                    node for node in tree.body
+                    if isinstance(node, ast.ClassDef) and node.name == "Mumble"
+                )
+                method = next(
+                    node for node in owner.body
+                    if isinstance(node, ast.FunctionDef)
+                    and node.name == "_apply_press_binding"
+                )
+                method = ast.fix_missing_locations(method)
+                events = []
+
+                class FakeBindings:
+                    @staticmethod
+                    def normalize(value):
+                        return str(value or "").strip().lower()
+
+                    @staticmethod
+                    def validate(_value):
+                        return True, ""
+
+                    @staticmethod
+                    def pretty(value):
+                        return value
+
+                    @staticmethod
+                    def conflicts(first, second):
+                        def chord(value):
+                            aliases = {
+                                "control": "ctrl", "option": "alt",
+                                "command": "windows", "cmd": "windows",
+                                "win": "windows",
+                            }
+                            return frozenset(
+                                aliases.get(part.strip(), part.strip())
+                                for part in str(value).lower().split("+")
+                                if part.strip()
+                            )
+                        left, right = chord(first), chord(second)
+                        return bool(
+                            left and right and (
+                                left.issubset(right) or right.issubset(left)
+                            )
+                        )
+
+                    @staticmethod
+                    def register_hotkey(value, _callback):
+                        events.append(("register", value))
+                        return "new-handle"
+
+                    @staticmethod
+                    def unregister(handle):
+                        events.append(("unregister", handle))
+                        return True
+
+                namespace = {"bindings": FakeBindings, "threading": threading}
+                exec(compile(ast.Module(body=[method], type_ignores=[]),
+                             controller_name, "exec"), namespace)
+
+                class Dummy:
+                    pass
+
+                app = Dummy()
+                app.settings = MemorySettings(events)
+                app.hotkey = "ctrl+alt+d"
+                app.quick_hotkey = "ctrl+alt+v"
+                app.history_hotkey = "ctrl+alt+h"
+                app.search_hotkey = "ctrl+alt+f"
+                app.web_search_hotkey = "ctrl+alt+s"
+                app._hk_web_search = "old-handle"
+                transactional = namespace["_apply_press_binding"]
+                ok, _message = transactional(
+                    app, "web_search_hotkey", "ctrl+shift+f9",
+                    "web_search_hotkey", "_hk_web_search", lambda: None,
+                    "Saved {binding}",
+                )
+                self.assertTrue(ok)
+                self.assertEqual(events, [
+                    ("register", "ctrl+shift+f9"),
+                    ("save", "web_search_hotkey", "ctrl+shift+f9"),
+                    ("unregister", "old-handle"),
+                ])
+                self.assertEqual(app._hk_web_search, "new-handle")
+
+                events.clear()
+                ok, message = transactional(
+                    app, "web_search_hotkey", "ctrl+alt+h",
+                    "web_search_hotkey", "_hk_web_search", lambda: None,
+                    "Saved {binding}",
+                )
+                self.assertFalse(ok)
+                self.assertIn("Open Deck", message)
+                self.assertEqual(events, [])
+                self.assertEqual(app._hk_web_search, "new-handle")
+
+                def occupied(value, _callback):
+                    events.append(("register", value))
+                    raise OSError("occupied")
+
+                FakeBindings.register_hotkey = staticmethod(occupied)
+                ok, message = transactional(
+                    app, "web_search_hotkey", "ctrl+shift+f10",
+                    "web_search_hotkey", "_hk_web_search", lambda: None,
+                    "Saved {binding}",
+                )
+                self.assertFalse(ok)
+                self.assertIn("previous binding", message)
+                self.assertEqual(events, [("register", "ctrl+shift+f10")])
+                self.assertEqual(app._hk_web_search, "new-handle")
+
+                events.clear()
+                FakeBindings.register_hotkey = staticmethod(
+                    lambda value, _callback: events.append(
+                        ("register", value)
+                    ) or "should-not-register"
+                )
+                ok, message = transactional(
+                    app, "web_search_hotkey", "alt+ctrl+h",
+                    "web_search_hotkey", "_hk_web_search", lambda: None,
+                    "Saved {binding}",
+                )
+                self.assertFalse(ok)
+                self.assertIn("Open Deck", message)
+                self.assertEqual(events, [])
+
+                events.clear()
+                app.settings.fail_next = True
+                previous = app.settings.get("web_search_hotkey")
+                ok, message = transactional(
+                    app, "web_search_hotkey", "ctrl+shift+f11",
+                    "web_search_hotkey", "_hk_web_search", lambda: None,
+                    "Saved {binding}",
+                )
+                self.assertFalse(ok)
+                self.assertIn("previous shortcut", message)
+                self.assertEqual(
+                    app.settings.get("web_search_hotkey"), previous
+                )
+                self.assertEqual(app._hk_web_search, "new-handle")
 
 
 if __name__ == "__main__":

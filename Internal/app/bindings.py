@@ -16,6 +16,9 @@ If `mouse` isn't installed, mouse specs fail with a clear message and every
 keyboard binding keeps working unchanged.
 """
 
+import json
+import os
+
 import keyboard
 
 try:
@@ -71,7 +74,13 @@ _KEY_ALIASES = {
     "return": "enter",
     "spacebar": "space",
     "del": "delete",
+    "oem3": "physical:below-escape",
+    "oem8": "physical:below-escape",
+    "grave": "physical:below-escape",
 }
+
+_PHYSICAL_BELOW_ESCAPE = "physical:below-escape"
+_PHYSICAL_SCAN_CODE = 41
 
 
 def _order_mods(mods):
@@ -116,6 +125,18 @@ def normalize(spec):
         b = _button(s)
         return f"{MOUSE_PREFIX}{b}" if b else s
     return s
+
+
+def _keyboard_hotkey(spec):
+    """Translate layout-independent physical keys for the hook library."""
+    parts = [part.strip() for part in normalize(spec).split("+") if part.strip()]
+    translated = [
+        _PHYSICAL_SCAN_CODE
+        if _KEY_ALIASES.get(part, part) == _PHYSICAL_BELOW_ESCAPE
+        else part
+        for part in parts
+    ]
+    return translated if _PHYSICAL_SCAN_CODE in translated else normalize(spec)
 
 
 def _binding_fingerprint(spec):
@@ -209,7 +230,7 @@ def validate(spec, hold=False):
                        "time you press it. Combine it with another key, e.g. "
                        "Ctrl + Windows.")
     try:
-        keyboard.parse_hotkey(s)
+        keyboard.parse_hotkey(_keyboard_hotkey(s))
         return True, ""
     except Exception:
         return False, "That doesn't look like a valid hotkey."
@@ -220,7 +241,32 @@ def pretty(spec):
     s = normalize(spec)
     if s.startswith(MOUSE_PREFIX):
         return _MOUSE_DISPLAY.get(_button(s) or "", s)
-    return " + ".join(p.strip().capitalize() for p in s.split("+") if p.strip())
+    labels = []
+    for part in (p.strip() for p in s.split("+") if p.strip()):
+        if _KEY_ALIASES.get(part, part) == _PHYSICAL_BELOW_ESCAPE:
+            labels.append("Physical key below Esc")
+        else:
+            labels.append(part.capitalize())
+    return " + ".join(labels)
+
+
+def external_shortcut_conflict(spec, appdata=None):
+    """Explain a known Flow Launcher collision without changing either app."""
+    root = appdata or os.environ.get("APPDATA", "")
+    if not root:
+        return None
+    path = os.path.join(root, "FlowLauncher", "Settings", "Settings.json")
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            flow_spec = str(json.load(handle).get("Hotkey") or "")
+    except (OSError, ValueError, TypeError):
+        return None
+    if not flow_spec or not conflicts(spec, flow_spec):
+        return None
+    return (
+        f"Flow Launcher already uses {pretty(spec)}. Mumble kept your previous "
+        "binding. Change or disable that Flow Launcher shortcut, then try again."
+    )
 
 
 class _Handle:
@@ -256,7 +302,7 @@ def register_hotkey(spec, callback):
             f"{spec!r} is a single modifier key — not valid as a press hotkey "
             "(it would fire on every press). Use a combo, e.g. 'ctrl+windows'."
         )
-    h = keyboard.add_hotkey(s, callback, suppress=False)
+    h = keyboard.add_hotkey(_keyboard_hotkey(s), callback, suppress=False)
     return _Handle("kb_hotkey", h)
 
 
@@ -377,7 +423,13 @@ def capture(timeout=15.0):
                     raw_mods.append(name)
             else:
                 # A non-modifier key completes the combo (with or without mods).
-                emit("+".join(_order_mods(mods) + [name]) if mods else name)
+                physical_name = (
+                    _PHYSICAL_BELOW_ESCAPE
+                    if getattr(e, "scan_code", None) == _PHYSICAL_SCAN_CODE
+                    else name
+                )
+                emit("+".join(_order_mods(mods) + [physical_name])
+                     if mods else physical_name)
         elif et == "up":
             if base and base in mods:
                 if len(mods) == 1:

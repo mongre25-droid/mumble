@@ -358,7 +358,9 @@ class SearchUiAndPortTests(unittest.TestCase):
         self.assertIn("Shared Mumble surface hierarchy", search_css)
         self.assertIn(".ss-kind-icon.native-icon", search_css)
         self.assertIn("Ctrl + Alt + F", html)
-        self.assertNotIn("Ctrl + Alt + S", html)
+        self.assertIn("Ctrl + Alt + S", html)
+        self.assertIn("Mumble Find", html)
+        self.assertIn("Web Search", html)
 
     def test_failed_web_capture_keeps_the_old_visible_binding(self):
         javascript = (self.app_root / "webui" / "app.js").read_text(

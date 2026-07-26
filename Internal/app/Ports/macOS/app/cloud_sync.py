@@ -357,6 +357,7 @@ _SETTINGS_SYNC_EXCLUDE = frozenset({
     # Option-based bindings onto Windows creates unusable shortcuts, and the
     # reverse direction has the same failure.
     "hotkey", "quick_paste_hotkey", "history_hotkey", "search_hotkey",
+    "web_search_hotkey",
     "mode_key",
     # Device-local sync bookkeeping must never be imported from another
     # device; doing so can make genuinely newer remote rows look stale.

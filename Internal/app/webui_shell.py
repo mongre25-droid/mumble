@@ -52,6 +52,7 @@ from mumble_find import (  # noqa: E402
 from prompt_history import PromptHistory  # noqa: E402
 from settings import (  # noqa: E402
     SEARCH_HOTKEY_DEFAULT,
+    WEB_SEARCH_HOTKEY_DEFAULT,
     Settings,
     TEXT_PROCESSING_PROVIDERS,
     validate_setting_value,
@@ -1618,6 +1619,8 @@ class Api:
             "quick_paste_hotkey": pp("quick_paste_hotkey", "ctrl+alt+v"),
             "history_hotkey": pp("history_hotkey", "ctrl+alt+d"),
             "search_hotkey": pp("search_hotkey", SEARCH_HOTKEY_DEFAULT),
+            "web_search_hotkey": pp(
+                "web_search_hotkey", WEB_SEARCH_HOTKEY_DEFAULT),
             "mode_key": pp("mode_key", "right shift"),
         }
 
@@ -1730,7 +1733,7 @@ class Api:
             )
         keys = [
             "user_name", "hotkey", "quick_paste_hotkey", "history_hotkey",
-            "search_hotkey",
+            "search_hotkey", "web_search_hotkey",
             "search_engine", "browser", "mode_key", "mode_button_enabled",
             "system_search_include_files", "system_search_roots",
             "system_search_max_items",
@@ -2464,7 +2467,7 @@ class Api:
             # UI still shows "active now" — a silent dead key.
             press_bindings = (
                 "hotkey", "quick_paste_hotkey", "history_hotkey",
-                "search_hotkey",
+                "search_hotkey", "web_search_hotkey",
             )
             if key in press_bindings or key == "mode_key":
                 try:
@@ -2483,6 +2486,8 @@ class Api:
                                 "history_hotkey", "ctrl+alt+d"),
                             "search_hotkey": self.settings.get(
                                 "search_hotkey", SEARCH_HOTKEY_DEFAULT),
+                            "web_search_hotkey": self.settings.get(
+                                "web_search_hotkey", WEB_SEARCH_HOTKEY_DEFAULT),
                         }
                         conflict = bindings.find_conflict(
                             value, current, exclude=key)
@@ -2492,6 +2497,7 @@ class Api:
                                 "quick_paste_hotkey": "Paste latest",
                                 "history_hotkey": "Open Deck",
                                 "search_hotkey": "Open Mumble Find",
+                                "web_search_hotkey": "Web Search",
                             }
                             other_key, other_value = conflict
                             return {
@@ -2927,6 +2933,33 @@ class Api:
             except Exception as e:
                 print("open_url failed:", e)
         return False
+
+    def request_web_search(self, text):
+        """Ask the controller to prepare a local, consent-gated Web Search."""
+        result = _ctrl_send({
+            "cmd": "web_search_request", "text": str(text or ""),
+        }, timeout=2.0)
+        return result or {
+            "ok": False,
+            "message": "Mumble could not prepare Web Search.",
+        }
+
+    def confirm_web_search(self, request_id):
+        result = _ctrl_send({
+            "cmd": "web_search_confirm",
+            "request_id": str(request_id or ""),
+        }, timeout=2.0)
+        return result or {
+            "ok": False,
+            "message": "Mumble could not confirm Web Search.",
+        }
+
+    def cancel_web_search(self, request_id):
+        result = _ctrl_send({
+            "cmd": "web_search_cancel",
+            "request_id": str(request_id or ""),
+        }, timeout=0.8)
+        return result or {"ok": False}
 
     def open_data_folder(self):
         try:
@@ -3469,6 +3502,24 @@ def _serve_webui_commands(srv, H, ensure_main, ensure_search, title,
                                 }
                             elif result is None or result is False:
                                 ok, message = False, "Mumble Find window unavailable"
+                        elif cmd == "web_search_consent":
+                            win = ensure_main()
+                            if win is None:
+                                ok, message = False, "main window unavailable"
+                            else:
+                                payload = json.dumps({
+                                    key: req.get(key) for key in (
+                                        "request_id", "provider", "query",
+                                        "privacy",
+                                    )
+                                })
+                                try:
+                                    win.evaluate_js(
+                                        "window.pyWebSearchConsent && "
+                                        f"window.pyWebSearchConsent({payload})"
+                                    )
+                                except Exception as e:
+                                    ok, message = False, str(e)
                         elif cmd in ("history", "deck", "show"):
                             win = ensure_main()
                             if win is None:

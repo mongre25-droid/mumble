@@ -355,8 +355,13 @@
                             </div>
                             <div class="home-shortcut-row">
                                 <span class="home-shortcut-icon" data-icon="search"></span>
-                                <span class="home-shortcut-copy"><b>Search</b><small>Apps, files, and folders</small></span>
+                                <span class="home-shortcut-copy"><b>Mumble Find</b><small>Find apps &amp; files</small></span>
                                 <span class="kbd dim" id="hk-search">Ctrl + Alt + F</span>
+                            </div>
+                            <div class="home-shortcut-row">
+                                <span class="home-shortcut-icon" data-icon="globe"></span>
+                                <span class="home-shortcut-copy"><b>Web Search</b><small>Confirm before words go online</small></span>
+                                <span class="kbd dim" id="hk-web-search">Ctrl + Alt + S</span>
                             </div>
                         </div>
                         <button class="home-shortcuts-edit" id="home-edit-shortcuts" type="button"
@@ -1854,6 +1859,23 @@
                                 <option value="google">Google</option>
                                 <option value="brave">Brave</option>
                             </select>
+                        </div>
+                    </div>
+                    <div class="set-row">
+                        <div>
+                            <div class="set-label">Web Search shortcut</div>
+                            <div class="set-sub">Selected words stay private until you confirm Search online</div>
+                        </div>
+                        <div class="set-ctl">
+                            <span class="kbd" data-keylabel="web_search_hotkey">Ctrl + Alt + S</span
+                            ><button
+                                class="btn btn-sm"
+                                data-capture="web_search_hotkey"
+                                data-label="[data-keylabel='web_search_hotkey']"
+                                data-fb="#set-hk-fb"
+                            >
+                                Press…
+                            </button>
                         </div>
                     </div>
                     <div class="set-row">

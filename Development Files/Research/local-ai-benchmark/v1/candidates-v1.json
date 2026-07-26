@@ -1,0 +1,103 @@
+{
+  "schema": "mumble.local-ai-candidates.v1",
+  "version": "issue19-candidates-v1",
+  "accessed": "2026-07-26",
+  "candidates": [
+    {
+      "id": "faster-whisper",
+      "lane": "speech-baseline",
+      "role": "retained_baseline",
+      "runtime": "faster-whisper 1.2.1 with CTranslate2",
+      "artifacts": [{"kind": "model_snapshot", "required": true, "revision_and_sha256": "must_be_recorded_per_run"}],
+      "licence": {"source_licence": "MIT", "runtime_dependency_licence": "CTranslate2 MIT; PyAV and enabled binary codecs separate", "weights": "Selected Systran/OpenAI-derived snapshot terms separate; exact revision required", "tokenizer": "Exact tokenizer files and hashes required", "dataset_conversion_provenance": "Whisper training provenance plus Systran conversion record required", "redistribution": "Not approved by this inventory; exact snapshot review required", "attribution": "Preserve runtime and model notices", "gating": "No gated access assumed; verify exact snapshot", "branding": "Use factual component attribution only; no logo or endorsement claim"}
+    },
+    {
+      "id": "deterministic-text",
+      "lane": "deterministic-text",
+      "role": "retained_baseline",
+      "runtime": "Mumble-owned formatting.py, model_free.py, and voice_commands.py",
+      "artifacts": [],
+      "licence": {"source_licence": "Mumble MIT", "runtime_dependency_licence": "Python standard library", "weights": "none", "tokenizer": "none", "dataset_conversion_provenance": "versioned synthetic fixtures in corpus-v1.json", "redistribution": "repository MIT terms", "attribution": "Mumble copyright notice", "gating": "none", "branding": "Mumble-owned baseline"}
+    },
+    {
+      "id": "moonshine-small-streaming",
+      "lane": "streaming-speech",
+      "role": "english_streaming_candidate",
+      "runtime": "Moonshine Voice native/ONNX Runtime boundary",
+      "artifacts": [
+        {"id": "moonshine-windows-cli-transcriber-v0.0.73", "kind": "research_control_archive", "required": false, "revision": "3df786f968582008bdecc66ca365a60203f91260", "filename": "windows-cli-transcriber.tar.gz", "url": "https://github.com/moonshine-ai/moonshine/releases/download/v0.0.73/windows-cli-transcriber.tar.gz", "size_bytes": 360363995, "sha256": "2adf58571dc71240d3035171f2d378f30838b506c28d9ced07f8507b28654dd3", "use": "metadata-only research control; not an approved Mumble integration package"},
+        {"id": "moonshine-english-small-streaming-components", "kind": "weights_runtime_tokenizer", "required": true, "revision": "must_be_pinned_before_run", "sha256": "must_be_recorded_per_component_before_run"}
+      ],
+      "licence": {"source_licence": "MIT at researched upstream revision", "runtime_dependency_licence": "ONNX Runtime and native dependencies separate", "weights": "English Small model reported MIT; capture exact files and licence text", "tokenizer": "Capture exact tokenizer files, terms, and hashes", "dataset_conversion_provenance": "Record upstream training sources and ORT quantisation conversion", "redistribution": "English artifacts require exact-file review; non-English excluded", "attribution": "Preserve copyright and model attribution", "gating": "Non-English Moonshine Community License is excluded pending permission", "branding": "No Moonshine logo, renaming, or endorsement implication"}
+    },
+    {
+      "id": "sherpa-zipformer-streaming-en",
+      "lane": "streaming-speech",
+      "role": "english_streaming_candidate",
+      "runtime": "sherpa-onnx 1.13.4 online recognizer",
+      "artifacts": [
+        {"id": "sherpa-zipformer-encoder-lc128-int8", "kind": "weight", "required": true, "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24", "filename": "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26/resolve/672fbf1b30579d6585301139bb363f42a0ad4a24/encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "size_bytes": 71083163, "sha256": "563fde436d16cf7607cf408cd6b30909819d03162652ef389c2450ced3f45ac1"},
+        {"id": "sherpa-zipformer-decoder-lc128-int8", "kind": "weight", "required": true, "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24", "filename": "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26/resolve/672fbf1b30579d6585301139bb363f42a0ad4a24/decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "size_bytes": 1307236, "sha256": "98da299f471e38bb4e1a8df579b8cc9122d6039576a77e357b3c60f17dd83b02"},
+        {"id": "sherpa-zipformer-joiner-lc128-int8", "kind": "weight", "required": true, "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24", "filename": "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26/resolve/672fbf1b30579d6585301139bb363f42a0ad4a24/joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx", "size_bytes": 259335, "sha256": "d944208d660d67c8d72cd2acaeac971fa5ceb8c80e76c1968148846fedd6e297"},
+        {"id": "sherpa-zipformer-bpe", "kind": "tokenizer", "required": true, "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24", "filename": "bpe.model", "url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26/resolve/672fbf1b30579d6585301139bb363f42a0ad4a24/bpe.model", "size_bytes": 244865, "sha256": "c53433de083c4a6ad12d034550ef22de68cec62c4f58932a7b6b8b2f1e743fa5"},
+        {"id": "sherpa-zipformer-tokens", "kind": "tokenizer", "required": true, "revision": "672fbf1b30579d6585301139bb363f42a0ad4a24", "filename": "tokens.txt", "url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26/resolve/672fbf1b30579d6585301139bb363f42a0ad4a24/tokens.txt", "size_bytes": 5048, "sha256": "49e3c2646595fd907228b3c6787069658f67b17377c60aeb8619c4551b2316fb"}
+      ],
+      "licence": {"source_licence": "Apache-2.0", "runtime_dependency_licence": "ONNX Runtime and sherpa dependencies separate", "weights": "Selected English Zipformer repository reports Apache-2.0; exact files required", "tokenizer": "tokens.txt is a separate required hashed artifact", "dataset_conversion_provenance": "Record model-card datasets and INT8 conversion provenance", "redistribution": "Pending exact artifact and NOTICE review", "attribution": "Preserve Apache licence, NOTICE, changes, and model attribution", "gating": "No gated access identified at researched revision; recheck", "branding": "Factual sherpa-onnx/model attribution only"}
+    },
+    {
+      "id": "parakeet-tdt-0.6b-v3",
+      "lane": "speech-quality-ceiling",
+      "role": "strong_hardware_completed_utterance_only",
+      "runtime": "NVIDIA NeMo/PyTorch research environment",
+      "artifacts": [
+        {"id": "parakeet-model-safetensors", "kind": "weight", "required": true, "revision": "7c35754d166cca382ad1e53e68b01e7c575f3a1d", "filename": "model.safetensors", "url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/7c35754d166cca382ad1e53e68b01e7c575f3a1d/model.safetensors", "size_bytes": 2508311120, "sha256": "3a2026366188c8c68598edbbff92f8d11590a08e0ae2e6775544e7b07d6a5e11"},
+        {"id": "parakeet-tokenizer", "kind": "tokenizer", "required": true, "revision": "7c35754d166cca382ad1e53e68b01e7c575f3a1d", "filename": "tokenizer.json", "url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/resolve/7c35754d166cca382ad1e53e68b01e7c575f3a1d/tokenizer.json", "size_bytes": 1159960, "sha256": "bd321b096832a3f270bd3b2a88823957920f1a5c5ada71114a26ea729d0cbe91"}
+      ],
+      "licence": {"source_licence": "NeMo Apache-2.0", "runtime_dependency_licence": "PyTorch, CUDA, and NeMo dependencies separate", "weights": "CC-BY-4.0", "tokenizer": "Exact tokenizer asset and terms required", "dataset_conversion_provenance": "Record model-card datasets and any conversion; no community conversion accepted silently", "redistribution": "Requires exact CC-BY attribution and packaging review", "attribution": "NVIDIA Parakeet attribution required", "gating": "Strong-hardware quality lane only", "branding": "Do not call it a Mumble model or imply NVIDIA endorsement"}
+    },
+    {
+      "id": "qwen3-0.6b-q8",
+      "lane": "instruction-text",
+      "role": "small_instruction_candidate",
+      "runtime": "Pinned llama.cpp child process",
+      "artifacts": [
+        {"id": "llama-cpp-b10107-windows-cpu-x64", "kind": "runtime", "required": true, "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9", "filename": "llama-b10107-bin-win-cpu-x64.zip", "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10107/llama-b10107-bin-win-cpu-x64.zip", "size_bytes": 18213827, "sha256": "52133a0a5a8f6035b1bdd2f89c3425ea8b742413d9bdb9a2dee30e3a1681b18c"},
+        {"id": "qwen3-0.6b-q8-gguf", "kind": "weight_and_embedded_tokenizer", "required": true, "revision": "23749fefcc72300e3a2ad315e1317431b06b590a", "filename": "Qwen3-0.6B-Q8_0.gguf", "url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf", "size_bytes": 639446688, "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"}
+      ],
+      "licence": {"source_licence": "llama.cpp MIT", "runtime_dependency_licence": "Enabled llama.cpp build dependencies separate", "weights": "Official Qwen GGUF Apache-2.0", "tokenizer": "Embedded/separate tokenizer provenance must match official artifact", "dataset_conversion_provenance": "Official Qwen model card and GGUF conversion", "redistribution": "Pending exact binary and artifact review", "attribution": "Preserve llama.cpp and Qwen notices", "gating": "Prompt, Email, Reply, and classification measured separately", "branding": "Factual Qwen attribution only"}
+    },
+    {
+      "id": "qwen2.5-1.5b-q4-k-m",
+      "lane": "instruction-text",
+      "role": "incumbent_instruction_control",
+      "runtime": "Pinned llama.cpp child process",
+      "artifacts": [
+        {"id": "llama-cpp-b10107-windows-cpu-x64", "kind": "runtime", "required": true, "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9", "filename": "llama-b10107-bin-win-cpu-x64.zip", "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10107/llama-b10107-bin-win-cpu-x64.zip", "size_bytes": 18213827, "sha256": "52133a0a5a8f6035b1bdd2f89c3425ea8b742413d9bdb9a2dee30e3a1681b18c"},
+        {"id": "qwen2.5-1.5b-q4-k-m-gguf", "kind": "weight_and_embedded_tokenizer", "required": true, "revision": "91cad51170dc346986eccefdc2dd33a9da36ead9", "filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf", "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf", "size_bytes": 1117320736, "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"}
+      ],
+      "licence": {"source_licence": "llama.cpp MIT", "runtime_dependency_licence": "Enabled llama.cpp build dependencies separate", "weights": "Official Qwen GGUF Apache-2.0", "tokenizer": "Embedded/separate tokenizer provenance must match official artifact", "dataset_conversion_provenance": "Official Qwen model card and GGUF conversion", "redistribution": "Pending exact binary and artifact review", "attribution": "Preserve llama.cpp and Qwen notices", "gating": "Prompt, Email, Reply, and classification measured separately", "branding": "Factual Qwen attribution only"}
+    },
+    {
+      "id": "granite-3.3-2b-q4-k-m",
+      "lane": "instruction-text",
+      "role": "instruction_quality_ceiling",
+      "runtime": "Pinned llama.cpp child process",
+      "artifacts": [
+        {"id": "llama-cpp-b10107-windows-cpu-x64", "kind": "runtime", "required": true, "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9", "filename": "llama-b10107-bin-win-cpu-x64.zip", "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10107/llama-b10107-bin-win-cpu-x64.zip", "size_bytes": 18213827, "sha256": "52133a0a5a8f6035b1bdd2f89c3425ea8b742413d9bdb9a2dee30e3a1681b18c"},
+        {"id": "granite-3.3-2b-q4-k-m-gguf", "kind": "weight_and_embedded_tokenizer", "required": true, "revision": "7cdf86ccd1f1bb3491c9b7017b033f2e51367397", "filename": "granite-3.3-2b-instruct-Q4_K_M.gguf", "url": "https://huggingface.co/ibm-granite/granite-3.3-2b-instruct-GGUF/resolve/7cdf86ccd1f1bb3491c9b7017b033f2e51367397/granite-3.3-2b-instruct-Q4_K_M.gguf", "size_bytes": 1545303328, "sha256": "ac71e9e32c0bea919b409c5918f69ca74339854b0319c5065e4e9fb6d95c4852"}
+      ],
+      "licence": {"source_licence": "llama.cpp MIT", "runtime_dependency_licence": "Enabled llama.cpp build dependencies separate", "weights": "Official IBM Granite GGUF Apache-2.0", "tokenizer": "Embedded/separate tokenizer provenance must match official artifact", "dataset_conversion_provenance": "Official Granite model card and GGUF conversion", "redistribution": "Pending exact binary and artifact review", "attribution": "Preserve llama.cpp and IBM Granite notices", "gating": "Prompt, Email, Reply, and classification measured separately", "branding": "Factual IBM Granite attribution only"}
+    },
+    {
+      "id": "model2vec-potion-base-8m",
+      "lane": "classification",
+      "role": "shadow_only_classifier_candidate",
+      "runtime": "Model2Vec or approved ONNX export",
+      "artifacts": [
+        {"id": "potion-base-8m-safetensors", "kind": "weight", "required": true, "revision": "bf8b056651a2c21b8d2565580b8569da283cab23", "filename": "model.safetensors", "url": "https://huggingface.co/minishlab/potion-base-8M/resolve/bf8b056651a2c21b8d2565580b8569da283cab23/model.safetensors", "size_bytes": 30236760, "sha256": "f65d0f325faadc1e121c319e2faa41170d3fa07d8c89abd48ca5358d9a223de2"},
+        {"id": "potion-base-8m-tokenizer", "kind": "tokenizer", "required": true, "revision": "bf8b056651a2c21b8d2565580b8569da283cab23", "filename": "tokenizer.json", "url": "https://huggingface.co/minishlab/potion-base-8M/resolve/bf8b056651a2c21b8d2565580b8569da283cab23/tokenizer.json", "size_bytes": 683666, "sha256": "e67e803f624fb4d67dea1c730d06e1067e1b14d830e2c2202569e3ef0f70bb50"}
+      ],
+      "licence": {"source_licence": "Model2Vec MIT", "runtime_dependency_licence": "Exact Python/ONNX runtime dependencies separate", "weights": "Potion Base 8M model card reports MIT", "tokenizer": "Exact tokenizer/vocabulary files and hashes required", "dataset_conversion_provenance": "Record model-card source data and any export conversion", "redistribution": "Pending exact artifact review", "attribution": "Preserve Model2Vec and model notices", "gating": "Shadow mode only; zero execution authority", "branding": "Factual Model2Vec attribution only"}
+    }
+  ]
+}

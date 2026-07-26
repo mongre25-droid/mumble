@@ -104,8 +104,8 @@ check("mac quick paste default uses Option+V",
       _settings.DEFAULTS["quick_paste_hotkey"] == "ctrl+option+v")
 check("mac Deck default uses non-conflicting Option+H",
       _settings.DEFAULTS["history_hotkey"] == "ctrl+option+h")
-check("mac search default uses Option+S",
-      _settings.DEFAULTS["search_hotkey"] == "ctrl+option+s")
+check("mac Web Search default uses Option+S",
+      _settings.DEFAULTS["web_search_hotkey"] == "ctrl+option+s")
 
 
 # ============================================ update (.command swap script)

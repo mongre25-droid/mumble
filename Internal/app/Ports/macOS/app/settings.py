@@ -67,7 +67,7 @@ DEFAULTS = {
     # confused the two concepts — now each has its own bind.
     "quick_paste_hotkey": "ctrl+option+v",
     "history_hotkey": "ctrl+option+h",
-    "search_hotkey": "ctrl+option+s",
+    "web_search_hotkey": "ctrl+option+s",
     # Perplexity is the default (owner 2026-06-20): it opens with the question
     # pre-filled and the answer already generating — a better instant-search
     # result than a plain SERP. Google/Brave stay selectable in Settings.
@@ -247,6 +247,7 @@ DEFAULTS = {
     "enhanced_default_applied": False,
     "local_provider_retired_applied": False,
     "search_perplexity_default_applied": False,
+    "web_search_hotkey_default_applied": False,
     "big_shift_applied": False,
     # One-time repair for builds whose shared settings file accidentally carried
     # the Windows Ctrl+Win / Ctrl+Alt defaults into the macOS distribution.
@@ -311,6 +312,7 @@ class Settings:
         # stale in-memory value (e.g. a blank API key the controller never saw)
         # can never clobber another process's edit. See _do_save.
         self._dirty = set()
+        self._loaded_keys = set()
         self.load()
         self._migrate()
 
@@ -318,6 +320,7 @@ class Settings:
         # Snapshot the freshly-loaded state so we can mark exactly the keys this
         # migration changes as dirty (they must win over the on-disk snapshot).
         before = json.loads(json.dumps(self.data))
+        legacy_search_hotkey = self.data.get("search_hotkey")
         changed = False
         removed = {key for key in REMOVED_SETTINGS if key in self.data}
         for key in removed:
@@ -378,6 +381,17 @@ class Settings:
         # with the question pre-filled and answering. Existing installs were all
         # on the OLD "google" default, so flip google -> perplexity once. A
         # deliberate "brave"/already-"perplexity" choice is left untouched.
+        if not self.data.get("web_search_hotkey_default_applied"):
+            if "web_search_hotkey" not in self._loaded_keys:
+                self.data["web_search_hotkey"] = (
+                    legacy_search_hotkey or "ctrl+option+s"
+                )
+            self.data["web_search_hotkey_default_applied"] = True
+            changed = True
+        if "search_hotkey" in self.data:
+            self.data.pop("search_hotkey", None)
+            self._dirty.add("search_hotkey")
+            changed = True
         if not self.data.get("search_perplexity_default_applied"):
             if self.data.get("search_engine") == "google":
                 self.data["search_engine"] = "perplexity"
@@ -438,7 +452,7 @@ class Settings:
                     "ctrl+alt+d": "ctrl+option+h",
                     "ctrl+alt+h": "ctrl+option+h",
                 },
-                "search_hotkey": {
+                "web_search_hotkey": {
                     "ctrl+alt+s": "ctrl+option+s",
                 },
             }
@@ -527,6 +541,7 @@ class Settings:
                 return
         if not isinstance(d, dict):
             return
+        self._loaded_keys = set(d)
         for k, v in d.items():
             if k == "modes" and isinstance(v, dict):
                 m = dict(DEFAULTS["modes"])

@@ -1275,10 +1275,10 @@ class AppWindow:
         )
         self._hotkey_card(
             b,
-            "Search hotkey",
-            "Stop recording and instantly search your dictation — or just press it while idle to search your current selection.",
-            "search_hotkey",
-            self.ctrl.apply_search_hotkey,
+            "Web Search hotkey",
+            "Prepare selected or dictated words, explain that they will go online, and wait for you to choose Search online.",
+            "web_search_hotkey",
+            self.ctrl.apply_web_search_hotkey,
         )
         self._build_search_engine_card(b)
 
@@ -1994,15 +1994,15 @@ class AppWindow:
         return cb
 
     def _build_search_engine_card(self, b):
-        """Choose which site the Search hotkey opens: Google, Perplexity, or
+        """Choose which site a confirmed Web Search opens: Google, Perplexity, or
         Brave. Perplexity opens with the question pre-filled and running."""
         card = self._card(b)
-        ui.label(card, "Search engine", size=12, semibold=True,
+        ui.label(card, "Web Search provider", size=12, semibold=True,
                  bg=C.surface).pack(anchor="w")
         ui.label(
             card,
-            "Where the Search hotkey sends your query. Perplexity opens with "
-            "the question already typed in and the answer generating.",
+            "Used only after the privacy explanation and your Search online "
+            "choice. Perplexity opens with the question already typed in.",
             size=10, color=C.text_mute, bg=C.surface, wrap=560,
         ).pack(anchor="w", pady=(2, 8))
         row = tk.Frame(card, bg=C.surface)

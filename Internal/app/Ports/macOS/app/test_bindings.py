@@ -103,6 +103,11 @@ check("ASCII layout character wins over US virtual-key position",
       b._darwin_character_token("a", 12) == "a")
 check("Option's non-ASCII glyph falls back to base virtual key",
       b._darwin_character_token("∂", 2) == "d")
+check("physical key below Escape ignores the printed layout glyph",
+      b._darwin_character_token("§", 50) == "physical:below-escape")
+check("Option plus physical key below Escape has a stable token",
+      b._darwin_spec_tokens("option+physical:below-escape") ==
+      frozenset({"alt", "physical:below-escape"}))
 check("Quartz side-button numbers map to X1/X2",
       b._darwin_mouse_number_token(3) == "mouse:x"
       and b._darwin_mouse_number_token(4) == "mouse:x2")

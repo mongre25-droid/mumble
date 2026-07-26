@@ -1,0 +1,41 @@
+{
+  "schema": "mumble.local-ai-availability.v1",
+  "source_parent": "65f27576f093553418540abe58501043971e8b1f",
+  "hardware_id": "windows-z1-extreme-2026-07-26",
+  "observed_at": "2026-07-26",
+  "candidate_availability": {
+    "faster-whisper": {
+      "reasons": ["formal_versioned_speech_corpus_not_materialized", "one_offline_sapi_fixture_recorded_separately_as_preliminary_only", "first_stable_partial_unavailable_for_completed_utterance_baseline", "failure_recovery_not_run", "thirty_run_cold_warm_matrix_not_run", "installed_package_gate_not_authorized"],
+      "preliminary_result": "preliminary-faster-whisper-small.en.json",
+      "gate_results": {"accuracy": "preliminary_only", "latency": "preliminary_only", "resource": "preliminary_only", "language": "preliminary_only", "safety": "not_run", "licence": "blocked", "windows": "preliminary_only", "packaging": "not_run"}
+    },
+    "moonshine-small-streaming": {
+      "reasons": ["approved_speech_audio_not_present", "moonshine_runtime_not_present", "weights_not_downloaded", "exact_runtime_weight_tokenizer_hashes_not_recorded", "installed_package_gate_not_authorized"],
+      "gate_results": {"accuracy": "not_run", "latency": "not_run", "resource": "not_run", "language": "not_run", "safety": "not_run", "licence": "blocked", "windows": "not_run", "packaging": "not_run"}
+    },
+    "sherpa-zipformer-streaming-en": {
+      "reasons": ["approved_speech_audio_not_present", "sherpa_runtime_not_present_in_benchmark_python", "pinned_zipformer_artifacts_not_downloaded_or_verified_on_host", "installed_package_gate_not_authorized"],
+      "gate_results": {"accuracy": "not_run", "latency": "not_run", "resource": "not_run", "language": "not_run", "safety": "not_run", "licence": "blocked", "windows": "not_run", "packaging": "not_run"}
+    },
+    "parakeet-tdt-0.6b-v3": {
+      "reasons": ["approved_speech_audio_not_present", "model_weights_not_downloaded", "nemo_and_pytorch_runtime_not_present", "host_not_eligible_for_declared_strong_lane", "installed_package_gate_not_authorized"],
+      "gate_results": {"accuracy": "not_run", "latency": "not_run", "resource": "not_run", "language": "not_run", "safety": "not_run", "licence": "blocked", "windows": "not_run", "packaging": "not_run"}
+    },
+    "qwen3-0.6b-q8": {
+      "reasons": ["pinned_llama_cpp_runtime_not_present", "pinned_official_gguf_not_downloaded_or_verified_on_host", "thirty_run_task_matrix_not_run", "installed_package_gate_not_authorized"],
+      "gate_results": {"accuracy": "not_run", "latency": "not_run", "resource": "not_run", "language": "not_run", "safety": "not_run", "licence": "blocked", "windows": "not_run", "packaging": "not_run"}
+    },
+    "qwen2.5-1.5b-q4-k-m": {
+      "reasons": ["pinned_llama_cpp_runtime_not_present", "pinned_official_gguf_not_downloaded_or_verified_on_host", "thirty_run_task_matrix_not_run", "installed_package_gate_not_authorized"],
+      "gate_results": {"accuracy": "not_run", "latency": "not_run", "resource": "not_run", "language": "not_run", "safety": "not_run", "licence": "blocked", "windows": "not_run", "packaging": "not_run"}
+    },
+    "granite-3.3-2b-q4-k-m": {
+      "reasons": ["pinned_llama_cpp_runtime_not_present", "pinned_official_gguf_not_downloaded_or_verified_on_host", "thirty_run_task_matrix_not_run", "installed_package_gate_not_authorized"],
+      "gate_results": {"accuracy": "not_run", "latency": "not_run", "resource": "not_run", "language": "not_run", "safety": "not_run", "licence": "blocked", "windows": "not_run", "packaging": "not_run"}
+    },
+    "model2vec-potion-base-8m": {
+      "reasons": ["model2vec_runtime_not_present", "pinned_weights_and_tokenizer_not_downloaded_or_verified_on_host", "one_hundred_run_shadow_safety_matrix_not_run", "installed_package_gate_not_authorized"],
+      "gate_results": {"accuracy": "not_run", "latency": "not_run", "resource": "not_run", "language": "not_run", "safety": "not_run", "licence": "blocked", "windows": "not_run", "packaging": "not_run"}
+    }
+  }
+}
