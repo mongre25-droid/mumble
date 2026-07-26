@@ -20,6 +20,7 @@ webview inside the controller process for instant live-apply (STATUS).
 Run standalone:  .venv\\Scripts\\python.exe webui_shell.py
 """
 
+import atexit
 import hmac
 import json
 import os
@@ -188,13 +189,43 @@ def _to_int(value, default):
         return default
 
 
+_PROCESS_SYSTEM_SEARCH = None
+_PROCESS_SYSTEM_SEARCH_LOCK = threading.RLock()
+_PROCESS_SYSTEM_SEARCH_ATEXIT = False
+
+
+def _get_process_system_search():
+    """Return the one search-service owner for this shell process."""
+    global _PROCESS_SYSTEM_SEARCH, _PROCESS_SYSTEM_SEARCH_ATEXIT
+    with _PROCESS_SYSTEM_SEARCH_LOCK:
+        if _PROCESS_SYSTEM_SEARCH is None:
+            from experimental.system_search import SystemSearchService
+            _PROCESS_SYSTEM_SEARCH = SystemSearchService()
+        if not _PROCESS_SYSTEM_SEARCH_ATEXIT:
+            atexit.register(_shutdown_process_system_search)
+            _PROCESS_SYSTEM_SEARCH_ATEXIT = True
+        return _PROCESS_SYSTEM_SEARCH
+
+
+def _shutdown_process_system_search():
+    """Deterministically stop the fallback process owner used outside main()."""
+    global _PROCESS_SYSTEM_SEARCH
+    with _PROCESS_SYSTEM_SEARCH_LOCK:
+        service = _PROCESS_SYSTEM_SEARCH
+        _PROCESS_SYSTEM_SEARCH = None
+    if service is not None:
+        service.shutdown()
+
+
 class Api:
     """window.pywebview.api.* — read + write over the live on-disk stores."""
 
-    def __init__(self):
+    def __init__(self, system_search_service=None):
         self.settings = Settings()
         self._sync_manager = None  # lazy-init, shared across cloud_* calls
         self._system_search = None  # lazy local index; Windows/Linux only
+        self._system_search_service = system_search_service
+        self._system_search_lease = None
 
     # ---- live-controller bridge -----------------------------------------
     def controller_alive(self):
@@ -218,14 +249,26 @@ class Api:
         engine = getattr(self, "_system_search", None)
         if engine is not None:
             return engine
-        from experimental.system_search import SystemSearchEngine
-        engine = SystemSearchEngine(
+        service = getattr(self, "_system_search_service", None)
+        if service is None:
+            service = _get_process_system_search()
+            self._system_search_service = service
+        engine, lease = service.acquire(
             settings=self.settings,
             data_dir=branding.DATA_DIR,
             url_opener=self.open_url,
         )
         self._system_search = engine
+        self._system_search_lease = lease
         return engine
+
+    def _release_system_search(self):
+        service = getattr(self, "_system_search_service", None)
+        lease = getattr(self, "_system_search_lease", None)
+        self._system_search = None
+        self._system_search_lease = None
+        if service is not None and lease is not None:
+            service.release(lease)
 
     def system_search_status(self):
         try:
@@ -3547,6 +3590,8 @@ def main():
             pass
     H = {"main": None, "main_min": False, "search": None,
          "search_hidden": True, "cmd_started": False}
+    from experimental.system_search import SystemSearchService
+    system_search_service = SystemSearchService()
 
     def _start_cmd_server():
         if H["cmd_started"]:
@@ -3559,7 +3604,7 @@ def main():
     def _make_main(hidden):
         if H["main"] is not None:
             return H["main"]
-        a = Api()
+        a = Api(system_search_service=system_search_service)
         a._show_system_search = _show_search
         a._hide_system_search = _hide_search
         a._toggle_system_search = _toggle_search
@@ -3647,6 +3692,7 @@ def main():
         # spawning a second shell process.
         def _on_main_closed(*_a):
             H["main"] = None
+            a._release_system_search()
         try:
             w.events.closed += _on_main_closed
         except Exception:
@@ -3656,7 +3702,7 @@ def main():
     def _make_search(hidden):
         if H["search"] is not None:
             return H["search"]
-        search_api = Api()
+        search_api = Api(system_search_service=system_search_service)
         search_api._title = search_title
         search_api._show_system_search = _show_search
         search_api._hide_system_search = _hide_search
@@ -3691,6 +3737,7 @@ def main():
         def _on_search_closed(*_a):
             H["search"] = None
             H["search_hidden"] = True
+            search_api._release_system_search()
             try:
                 find_lifecycle.window_closed(sw)
             except Exception:
@@ -3806,7 +3853,10 @@ def main():
         _make_main(hidden=True)
         find_lifecycle.ensure_resident()
 
-    webview.start()
+    try:
+        webview.start()
+    finally:
+        system_search_service.shutdown()
 
 
 if __name__ == "__main__":

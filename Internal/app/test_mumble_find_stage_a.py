@@ -15,7 +15,35 @@ from experimental.system_search.engine import (
     SystemSearchEngine,
 )
 from experimental.system_search.windows_search import WindowsSearchProvider
+from experimental.system_search.process_provider import WindowsSearchProcessProvider
 from mumble_find import MumbleFindLifecycle, WindowsForegroundFocus
+
+
+def _blocked_process_provider(connection):
+    try:
+        connection.recv()
+        threading.Event().wait()
+    except (EOFError, OSError):
+        return
+
+
+def _completing_process_provider(connection):
+    try:
+        while True:
+            request = connection.recv()
+            if request.get("kind") == "stop":
+                return
+            connection.send({
+                "request_id": request["request_id"],
+                "ok": True,
+                "result": {
+                    "items": [],
+                    "state": "complete",
+                    "message": "",
+                },
+            })
+    except (EOFError, OSError):
+        return
 
 
 class _Window:
@@ -485,6 +513,168 @@ class MumbleFindQueryTests(unittest.TestCase):
             self.assertEqual(engine.status()["provider_work"]["owned"], 0)
             self.assertEqual(engine.status()["provider_work"]["threads"], 0)
 
+    def test_api_recreation_reuses_one_process_owned_provider_boundary(self):
+        from webui_shell import Api
+
+        release = threading.Event()
+        engines = []
+
+        class BlockingProvider(_IndexedProvider):
+            def query(self, *args, **kwargs):
+                self.started.set()
+                release.wait(5.0)
+                return super().query(*args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            def make_engine(*args, **kwargs):
+                engine = self.make_engine(tmp, BlockingProvider())
+                engines.append(engine)
+                return engine
+
+            baseline_threads = sum(
+                thread.name.startswith("mumble-find-query")
+                for thread in threading.enumerate()
+            )
+            observed_threads = []
+            observed_owned = []
+            observed_work = []
+            service_statuses = []
+            release_durations = []
+            newest_result = None
+            try:
+                with patch(
+                    "experimental.system_search.SystemSearchEngine",
+                    side_effect=make_engine,
+                ), patch(
+                    "experimental.system_search.engine.SystemSearchEngine",
+                    side_effect=make_engine,
+                ):
+                    for lifecycle in range(3):
+                        api = Api.__new__(Api)
+                        api.settings = {
+                            "system_search_include_files": True,
+                        }
+                        api._system_search = None
+                        engine = api._get_system_search()
+                        for offset in range(2):
+                            generation = lifecycle * 2 + offset + 1
+                            result = engine.search(
+                                "mumble", generation=generation, deadline_ms=10,
+                            )
+                            self.assertTrue(result["results"])
+                            newest_result = result
+
+                        release_lease = getattr(
+                            api, "_release_system_search", None,
+                        )
+                        if release_lease is None:
+                            engine.close()
+                        else:
+                            release_started = time.monotonic()
+                            release_lease()
+                            release_durations.append(
+                                time.monotonic() - release_started
+                            )
+                            service_statuses.append(
+                                api._system_search_service.status()
+                            )
+
+                        observed_threads.append(sum(
+                            thread.name.startswith("mumble-find-query")
+                            for thread in threading.enumerate()
+                        ) - baseline_threads)
+                        observed_owned.append(sum(
+                            item.status()["provider_work"]["owned"]
+                            for item in engines
+                        ))
+                        observed_work.append(engine.status()["provider_work"])
+            finally:
+                release.set()
+                for engine in engines:
+                    engine.close()
+                shutdown = getattr(
+                    __import__("webui_shell"),
+                    "_shutdown_process_system_search",
+                    None,
+                )
+                if shutdown is not None:
+                    shutdown()
+
+        self.assertEqual(observed_threads, [2, 2, 2])
+        self.assertEqual(observed_owned, [2, 2, 2])
+        for key, expected in (
+            ("executors", 1),
+            ("submitted", 2),
+            ("running", 2),
+            ("pending", 0),
+            ("queued", 0),
+            ("ownership_entries", 2),
+            ("processes", 0),
+        ):
+            self.assertEqual([work[key] for work in observed_work], [expected] * 3)
+        self.assertEqual(len(engines), 1)
+        self.assertTrue(newest_result["capacity_exhausted"])
+        self.assertEqual(newest_result["provider_state"], "partial")
+        self.assertEqual([status["leases"] for status in service_statuses], [0, 0, 0])
+        self.assertTrue(all(status["engines_created"] == 1 for status in service_statuses))
+        self.assertTrue(all(duration < 0.1 for duration in release_durations))
+
+    def test_native_process_boundary_is_fixed_terminable_and_restartable(self):
+        provider = WindowsSearchProcessProvider(
+            worker_target=_blocked_process_provider,
+        )
+        token = QueryCancellation(1)
+        futures = [
+            provider.submit(
+                "mumble", limit=12, deadline=time.monotonic() + 5,
+                cancellation=token, generation=generation,
+            )
+            for generation in (1, 2)
+        ]
+        occupied = provider.work_status()
+        self.assertEqual(occupied["executors"], 1)
+        self.assertEqual(occupied["processes"], 2)
+        self.assertEqual(occupied["threads"], 2)
+        self.assertEqual(occupied["owned"], 2)
+        self.assertEqual(occupied["pending"], 0)
+        self.assertEqual(occupied["ownership_entries"], 2)
+        with self.assertRaisesRegex(RuntimeError, "capacity"):
+            provider.submit(
+                "newest", limit=12, deadline=time.monotonic() + 5,
+                cancellation=token, generation=3,
+            )
+
+        started = time.monotonic()
+        provider.shutdown()
+        self.assertLess(time.monotonic() - started, 2.0)
+        self.assertTrue(all(future.done() for future in futures))
+        stopped = provider.work_status()
+        self.assertEqual(stopped["executors"], 0)
+        self.assertEqual(stopped["processes"], 0)
+        self.assertEqual(stopped["threads"], 0)
+        self.assertEqual(stopped["owned"], 0)
+        self.assertEqual(stopped["ownership_entries"], 0)
+
+        restarted = WindowsSearchProcessProvider(
+            worker_target=_completing_process_provider,
+        )
+        try:
+            clean = restarted.submit(
+                "clean", limit=12, deadline=time.monotonic() + 5,
+                cancellation=QueryCancellation(4), generation=4,
+            ).result(timeout=2.0)
+            self.assertEqual(clean["state"], "complete")
+            self.assertEqual(restarted.work_status()["owned"], 0)
+            again = restarted.submit(
+                "again", limit=12, deadline=time.monotonic() + 5,
+                cancellation=QueryCancellation(5), generation=5,
+            ).result(timeout=2.0)
+            self.assertEqual(again["state"], "complete")
+            self.assertEqual(restarted.work_status()["processes"], 2)
+            self.assertEqual(restarted.work_status()["owned"], 0)
+        finally:
+            restarted.shutdown()
+
 
 class WindowsSearchProviderTests(unittest.TestCase):
     class _Fields:
@@ -794,6 +984,12 @@ class MumbleFindUiContractTests(unittest.TestCase):
         self.shell = (self.root / "webui_shell.py").read_text(encoding="utf-8")
         self.requirements = (self.root / "requirements.txt").read_text(encoding="utf-8")
         self.notices = (self.root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+        self.subsystem_readme = (
+            self.root / "experimental" / "system_search" / "README.md"
+        ).read_text(encoding="utf-8")
+        self.linux_html = (
+            self.root / "Ports" / "Linux" / "app" / "webui" / "index.html"
+        ).read_text(encoding="utf-8")
 
     def test_visible_contract_uses_mumble_find_and_exactly_six_destinations(self):
         nav = re.findall(r'class="nav-btn[^\"]*"[^>]*data-nav="([^"]+)"', self.html)
@@ -805,6 +1001,15 @@ class MumbleFindUiContractTests(unittest.TestCase):
         self.assertIn("Find apps & files", visible_source)
         self.assertNotIn("Mumble Search", visible_source)
         self.assertNotIn("ss-nav-button", self.ui)
+        linux_nav = re.findall(
+            r'class="nav-btn[^\"]*"[^>]*data-nav="([^"]+)"',
+            self.linux_html,
+        )
+        self.assertEqual(linux_nav, nav)
+        self.assertIn("Mumble Find", self.linux_html)
+        self.assertIn("Find apps &amp; files", self.linux_html)
+        self.assertNotIn("Mumble Search", self.linux_html)
+        self.assertNotIn("Search apps &amp; files", self.linux_html)
 
     def test_header_is_a_dedicated_accessible_window_drag_region(self):
         self.assertIn('class="ss-header pywebview-drag-region"', self.ui)
@@ -856,12 +1061,16 @@ class MumbleFindUiContractTests(unittest.TestCase):
         self.assertIn("pywin32 312", find_notice)
         self.assertIn("win32com", find_notice)
         self.assertNotIn("uses only Python's standard library", find_notice)
+        self.assertIn("pywin32 312", self.subsystem_readme)
+        self.assertIn("win32com.client", self.subsystem_readme)
+        self.assertIn("THIRD_PARTY_NOTICES.md", self.subsystem_readme)
+        self.assertNotIn(
+            "uses only Python's standard library",
+            self.subsystem_readme,
+        )
 
     def test_production_find_copy_never_promises_a_local_to_web_fallback(self):
-        linux_html = (
-            self.root / "Ports" / "Linux" / "app" / "webui" / "index.html"
-        ).read_text(encoding="utf-8")
-        visible = "\n".join((self.html, linux_html)).casefold()
+        visible = "\n".join((self.html, self.linux_html)).casefold()
         self.assertNotIn("web fallback shown after local", visible)
         self.assertNotIn("results stay local, with an optional web fallback", visible)
         self.assertIn("web search", visible)

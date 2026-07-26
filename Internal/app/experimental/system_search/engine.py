@@ -34,7 +34,7 @@ import threading
 import time
 import unicodedata
 
-from .windows_search import WindowsSearchProvider
+from .process_provider import WindowsSearchProcessProvider
 
 
 INDEX_VERSION = 3
@@ -161,13 +161,17 @@ class SystemSearchEngine:
         self._provider_slots = threading.BoundedSemaphore(PROVIDER_MAX_INFLIGHT)
         self._provider_futures = {}
         self._closed = False
-        self._query_executor = ThreadPoolExecutor(
-            max_workers=PROVIDER_MAX_INFLIGHT,
-            thread_name_prefix="mumble-find-query",
-        )
         self._file_provider = file_provider
         if self._file_provider is None and self.platform == "windows":
-            self._file_provider = WindowsSearchProvider()
+            self._file_provider = WindowsSearchProcessProvider(
+                capacity=PROVIDER_MAX_INFLIGHT,
+            )
+        self._query_executor = None
+        if not callable(getattr(self._file_provider, "submit", None)):
+            self._query_executor = ThreadPoolExecutor(
+                max_workers=PROVIDER_MAX_INFLIGHT,
+                thread_name_prefix="mumble-find-query",
+            )
         self._linux_icon_paths = {}
         self._background_refresh_enabled = bool(start_background)
         self._load_state()
@@ -550,6 +554,18 @@ class SystemSearchEngine:
     def _provider_work_status(self):
         with self._query_lock:
             futures = list(self._provider_futures.values())
+            closed = self._closed
+        provider_status = {}
+        work_status = getattr(self._file_provider, "work_status", None)
+        if callable(work_status):
+            try:
+                provider_status = work_status()
+            except Exception:
+                provider_status = {}
+        executor_threads = sum(
+            thread.is_alive()
+            for thread in getattr(self._query_executor, "_threads", ())
+        )
         return {
             "capacity": PROVIDER_MAX_INFLIGHT,
             "submitted": len(futures),
@@ -558,10 +574,15 @@ class SystemSearchEngine:
             "queued": sum(
                 not future.running() and not future.done() for future in futures
             ),
-            "threads": sum(
-                thread.is_alive()
-                for thread in getattr(self._query_executor, "_threads", ())
+            "pending": sum(
+                not future.running() and not future.done() for future in futures
             ),
+            "threads": executor_threads + int(provider_status.get("threads", 0)),
+            "processes": int(provider_status.get("processes", 0)),
+            "executors": int(provider_status.get(
+                "executors", 0 if closed else bool(self._query_executor)
+            )),
+            "ownership_entries": len(futures),
         }
 
     def _provider_status(self):
@@ -822,14 +843,24 @@ class SystemSearchEngine:
                 "capacity_exhausted": True,
             }
         try:
-            future = self._query_executor.submit(
-                provider.query,
-                query,
-                limit=candidate_limit,
-                deadline=deadline,
-                cancellation=token,
-                generation=generation,
-            )
+            submit = getattr(provider, "submit", None)
+            if callable(submit):
+                future = submit(
+                    query,
+                    limit=candidate_limit,
+                    deadline=deadline,
+                    cancellation=token,
+                    generation=generation,
+                )
+            else:
+                future = self._query_executor.submit(
+                    provider.query,
+                    query,
+                    limit=candidate_limit,
+                    deadline=deadline,
+                    cancellation=token,
+                    generation=generation,
+                )
         except Exception as exc:
             self._provider_slots.release()
             return {
@@ -853,7 +884,9 @@ class SystemSearchEngine:
 
         future.add_done_callback(release_ownership)
         try:
-            result = future.result(timeout=remaining)
+            result = future.result(timeout=max(
+                0.0, deadline - time.monotonic()
+            ))
         except FutureTimeout:
             future.cancel()
             try:
@@ -1024,17 +1057,26 @@ class SystemSearchEngine:
                     provider.cancel(token.generation)
                 except Exception:
                     pass
+        provider = self._file_provider
+        shutdown = getattr(provider, "shutdown", None)
+        if callable(shutdown):
+            try:
+                shutdown()
+            except Exception:
+                pass
         for future in futures:
             future.cancel()
         unfinished = set()
         if futures:
             _finished, unfinished = wait(futures, timeout=0.5)
-        self._query_executor.shutdown(
-            wait=not bool(unfinished), cancel_futures=True
-        )
+        if self._query_executor is not None:
+            self._query_executor.shutdown(
+                wait=not bool(unfinished), cancel_futures=True
+            )
         self._icon_executor.shutdown(wait=False, cancel_futures=True)
         with self._query_lock:
             self._query_tokens.clear()
+
 
     @property
     def icon_version(self):
@@ -1509,3 +1551,58 @@ class SystemSearchEngine:
         if not opener:
             raise RuntimeError("xdg-open is unavailable on this Linux system.")
         subprocess.Popen([opener, str(target if target.is_dir() else target.parent)])
+
+
+class SystemSearchService:
+    """Process-owned engine with window leases and one fixed provider boundary."""
+
+    def __init__(self, engine_factory=None):
+        self._engine_factory = engine_factory
+        self._lock = threading.RLock()
+        self._engine = None
+        self._leases = set()
+        self._next_lease = 1
+        self._engines_created = 0
+        self._closed = False
+
+    def acquire(self, *, settings=None, data_dir=None, url_opener=None):
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Mumble Find search service is closed.")
+            if self._engine is None:
+                factory = self._engine_factory or SystemSearchEngine
+                self._engine = factory(
+                    settings=settings,
+                    data_dir=data_dir,
+                    url_opener=url_opener,
+                )
+                self._engines_created += 1
+            lease = self._next_lease
+            self._next_lease += 1
+            self._leases.add(lease)
+            return self._engine, lease
+
+    def release(self, lease):
+        with self._lock:
+            self._leases.discard(lease)
+
+    def status(self):
+        with self._lock:
+            engine = self._engine
+            return {
+                "closed": self._closed,
+                "leases": len(self._leases),
+                "engines": int(engine is not None),
+                "engines_created": self._engines_created,
+                "provider_capacity": PROVIDER_MAX_INFLIGHT,
+            }
+
+    def shutdown(self):
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            engine = self._engine
+            self._leases.clear()
+        if engine is not None:
+            engine.close()
