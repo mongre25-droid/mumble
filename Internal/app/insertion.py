@@ -138,6 +138,13 @@ class TargetContext:
     def same_destination(self, other: Optional["TargetContext"]) -> bool:
         if not self.same_native_destination(other):
             return False
+        # Observed focus that never settled is not absence: it cannot safely
+        # authorize native input or exact restoration.
+        if (
+            self.uia_state == "unstable"
+            or (other is not None and other.uia_state == "unstable")
+        ):
+            return False
         # UI Automation strengthens identity only when both observations are
         # reliable. Missing, timed-out, transient, or one-sided evidence never
         # turns a stable native destination into a refusal.

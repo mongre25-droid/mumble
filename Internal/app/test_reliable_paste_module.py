@@ -3,6 +3,7 @@
 
 import threading
 import unittest
+from unittest.mock import patch
 import uuid
 
 from insertion import (
@@ -29,6 +30,7 @@ from windows_insertion import (
     WindowsClipboardAdapter,
     WindowsNativeInputAdapter,
     WindowsTargetAdapter,
+    WindowsUIAutomationEvidenceProvider,
 )
 
 
@@ -83,6 +85,233 @@ class ReliablePasteRedTests(unittest.TestCase):
         )
 
         self.assertFalse(selected.same_destination(replacement))
+
+    def test_windows_uia_provider_returns_consecutively_stable_focus(self):
+        class Element:
+            def __init__(self, runtime_id, has_keyboard_focus):
+                self.runtime_id = runtime_id
+                self.CurrentAutomationId = "fieldA"
+                self.CurrentClassName = "field"
+                self.CurrentControlType = 50004
+                self.CurrentHasKeyboardFocus = has_keyboard_focus
+                self.CurrentBoundingRectangle = type("Rectangle", (), {
+                    "left": 10,
+                    "top": 20,
+                    "right": 210,
+                    "bottom": 80,
+                })()
+
+            def GetRuntimeId(self):
+                return self.runtime_id
+
+        class Automation:
+            def __init__(self, entries):
+                self.elements = iter(Element(*entry) for entry in entries)
+                self.calls = 0
+
+            def GetFocusedElement(self):
+                self.calls += 1
+                return next(self.elements)
+
+        class CUIAutomation:
+            _reg_clsid_ = object()
+
+        class UIAModule:
+            pass
+
+        UIAModule.CUIAutomation = CUIAutomation
+        UIAModule.IUIAutomation = object()
+
+        automation = Automation((
+            ((42, 1), False),
+            ((42, 1), False),
+            ((42, 2), True),
+            ((42, 2), True),
+            ((42, 2), True),
+            ((42, 2), True),
+        ))
+        automation_creations = 0
+
+        class ComtypesModule:
+            @staticmethod
+            def CoInitialize():
+                return None
+
+            @staticmethod
+            def CoUninitialize():
+                return None
+
+            @staticmethod
+            def CoCreateInstance(_class_id, interface=None):
+                nonlocal automation_creations
+                self.assertIs(interface, UIAModule.IUIAutomation)
+                automation_creations += 1
+                return automation
+
+        class ClientModule:
+            @staticmethod
+            def GetModule(_name):
+                return UIAModule
+
+        def imported(name):
+            return {
+                "comtypes": ComtypesModule,
+                "comtypes.client": ClientModule,
+            }[name]
+
+        provider = WindowsUIAutomationEvidenceProvider()
+        with patch("windows_insertion.importlib.import_module", side_effect=imported):
+            result = provider.capture(0.20)
+            repeated = provider.capture(0.20)
+
+        self.assertEqual((42, 2), result.runtime_id)
+        self.assertTrue(result.observed)
+        self.assertEqual("observed", result.state)
+        self.assertEqual((42, 2), repeated.runtime_id)
+        self.assertEqual(1, automation_creations)
+
+        automation = Automation((
+            ((42, 3), True),
+            ((42, 4), True),
+            ((42, 3), True),
+            ((42, 4), True),
+        ))
+        with patch("windows_insertion.importlib.import_module", side_effect=imported):
+            unstable = WindowsUIAutomationEvidenceProvider().capture(0.20)
+
+        self.assertEqual("unstable", unstable.state)
+        self.assertTrue(unstable.observed)
+        self.assertEqual(4, automation.calls)
+
+    def test_public_module_never_sends_on_unstable_uia_evidence(self):
+        unstable = browser_target(
+            uia_runtime_id=(42, 9),
+            uia_observed=True,
+            uia_state="unstable",
+        )
+        target = FakeTarget()
+        target.active = unstable
+        clipboard = FakeClipboard()
+        native = ModuleNative()
+        module = InsertionModule(
+            target, clipboard, native, settle_delay=lambda _seconds: None,
+        )
+        operation = operation_id("unstable-uia-public-module")
+
+        receipt = module.begin(operation, "dictation")
+        result = module.deliver(operation, TextPayload("stable words"))
+        status = module.status(operation)
+
+        self.assertIs(unstable, receipt.target)
+        self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
+        self.assertEqual(InsertionReason.TARGET_CHANGED.value, result.reason)
+        self.assertIs(result, status)
+        self.assertEqual(0, clipboard.snapshot_calls)
+        self.assertEqual(0, native.send_calls)
+        self.assertEqual(0, native.unicode_calls)
+
+    def test_windows_uia_provider_does_not_queue_behind_a_timeout(self):
+        class Element:
+            CurrentHasKeyboardFocus = True
+
+            @staticmethod
+            def GetRuntimeId():
+                return (51, 7)
+
+        class Automation:
+            def __init__(self):
+                self.calls = 0
+                self.entered = threading.Event()
+                self.release = threading.Event()
+
+            def GetFocusedElement(self):
+                self.calls += 1
+                if self.calls == 1:
+                    self.entered.set()
+                    self.release.wait(1.0)
+                return Element()
+
+        automation = Automation()
+
+        class CUIAutomation:
+            _reg_clsid_ = object()
+
+        class UIAModule:
+            pass
+
+        UIAModule.CUIAutomation = CUIAutomation
+        UIAModule.IUIAutomation = object()
+
+        class ComtypesModule:
+            @staticmethod
+            def CoInitialize():
+                return None
+
+            @staticmethod
+            def CoCreateInstance(_class_id, interface=None):
+                self.assertIs(interface, UIAModule.IUIAutomation)
+                return automation
+
+        class ClientModule:
+            @staticmethod
+            def GetModule(_name):
+                return UIAModule
+
+        def imported(name):
+            return {
+                "comtypes": ComtypesModule,
+                "comtypes.client": ClientModule,
+            }[name]
+
+        provider = WindowsUIAutomationEvidenceProvider()
+        with patch("windows_insertion.importlib.import_module", side_effect=imported):
+            first = provider.capture(0.01)
+            self.assertTrue(automation.entered.wait(0.20))
+            repeated = [provider.capture(0.01) for _attempt in range(3)]
+            automation.release.set()
+            final = UIAEvidence(state="timed_out")
+            for _attempt in range(20):
+                final = provider.capture(0.20)
+                if final.state == "observed":
+                    break
+                threading.Event().wait(0.01)
+
+        self.assertEqual("timed_out", first.state)
+        self.assertTrue(all(item.state == "timed_out" for item in repeated))
+        self.assertEqual("observed", final.state)
+        self.assertEqual((51, 7), final.runtime_id)
+        self.assertEqual(4, automation.calls)
+
+    def test_public_module_blocks_rekeyed_uia_despite_same_leaf_metadata(self):
+        selected = browser_target(
+            uia_runtime_id=(42, 1),
+            uia_observed=True,
+            uia_state="observed",
+            control_class="Chrome_RenderWidgetHostHWND",
+        )
+        rekeyed = browser_target(
+            uia_runtime_id=(42, 2),
+            uia_observed=True,
+            uia_state="observed",
+            control_class="Chrome_RenderWidgetHostHWND",
+        )
+        target = FakeTarget()
+        target.active = selected
+        clipboard = FakeClipboard()
+        native = ModuleNative()
+        module = InsertionModule(
+            target, clipboard, native, settle_delay=lambda _seconds: None,
+        )
+        target.restore_result = False
+        operation = operation_id("rekeyed-uia-same-leaf-metadata")
+
+        module.begin(operation, "dictation")
+        target.active = rekeyed
+        result = module.deliver(operation, TextPayload("stable words"))
+
+        self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
+        self.assertEqual(InsertionReason.TARGET_CHANGED.value, result.reason)
+        self.assertEqual(0, native.send_calls)
 
     def test_exhausted_clipboard_acquisition_falls_back_to_unicode_text(self):
         class UnicodeNative(FakeNativeInput):

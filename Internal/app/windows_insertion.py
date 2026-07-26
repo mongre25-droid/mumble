@@ -9,6 +9,7 @@ import hashlib
 import importlib
 import io
 import os
+import queue
 import struct
 import threading
 import time
@@ -154,64 +155,95 @@ class UIAEvidence:
 
 
 class WindowsUIAutomationEvidenceProvider:
-    """Best-effort focused-element identity with a strict observation bound."""
+    """Best-effort focused-element identity from one persistent UIA client."""
 
     def __init__(self):
-        self._lock = threading.Lock()
+        self._start_lock = threading.Lock()
+        self._request_lock = threading.Lock()
         self._in_flight = False
+        self._requests = queue.Queue()
+        self._worker = None
+
+    def _serve(self):
+        try:
+            comtypes_module = importlib.import_module("comtypes")
+            initializer = getattr(comtypes_module, "CoInitialize", None)
+            if callable(initializer):
+                initializer()
+            client = importlib.import_module("comtypes.client")
+            uia = client.GetModule("UIAutomationCore.dll")
+            automation = comtypes_module.CoCreateInstance(
+                uia.CUIAutomation._reg_clsid_,
+                interface=uia.IUIAutomation,
+            )
+            unavailable = None
+        except (ImportError, ModuleNotFoundError):
+            automation = None
+            unavailable = UIAEvidence(state="unavailable")
+        except Exception:
+            automation = None
+            unavailable = UIAEvidence(state="transient")
+
+        while True:
+            completed, result = self._requests.get()
+            try:
+                if automation is None:
+                    result["value"] = unavailable
+                else:
+                    previous = ()
+                    observed = False
+                    for _sample in range(4):
+                        element = automation.GetFocusedElement()
+                        candidate_runtime_id = tuple(
+                            int(value) for value in element.GetRuntimeId()
+                        ) if element is not None else ()
+                        observed = observed or bool(candidate_runtime_id)
+                        runtime_id = (
+                            candidate_runtime_id
+                            if bool(getattr(
+                                element, "CurrentHasKeyboardFocus", False))
+                            else ()
+                        )
+                        if runtime_id and runtime_id == previous:
+                            result["value"] = UIAEvidence(
+                                runtime_id=runtime_id,
+                                observed=True,
+                                state="observed",
+                            )
+                            break
+                        previous = runtime_id
+                    else:
+                        result["value"] = UIAEvidence(
+                            runtime_id=previous,
+                            observed=observed,
+                            state="unstable" if observed else "unavailable",
+                        )
+            except Exception:
+                result["value"] = UIAEvidence(state="transient")
+            finally:
+                with self._request_lock:
+                    self._in_flight = False
+                completed.set()
+
+    def _ensure_worker(self):
+        with self._start_lock:
+            if self._worker is not None and self._worker.is_alive():
+                return
+            self._worker = threading.Thread(
+                target=self._serve, name="mumble-uia-target", daemon=True,
+            )
+            self._worker.start()
 
     def capture(self, timeout_s=0.05):
-        with self._lock:
+        self._ensure_worker()
+        with self._request_lock:
             if self._in_flight:
                 return UIAEvidence(state="timed_out")
             self._in_flight = True
         completed = threading.Event()
         result = {}
+        self._requests.put((completed, result))
 
-        def worker():
-            comtypes_module = None
-            initialized = False
-            try:
-                comtypes_module = importlib.import_module("comtypes")
-                initializer = getattr(comtypes_module, "CoInitialize", None)
-                if callable(initializer):
-                    initializer()
-                    initialized = True
-                client = importlib.import_module("comtypes.client")
-                uia = client.GetModule("UIAutomationCore.dll")
-                automation = comtypes_module.CoCreateInstance(
-                    uia.CUIAutomation._reg_clsid_,
-                    interface=uia.IUIAutomation,
-                )
-                element = automation.GetFocusedElement()
-                runtime_id = tuple(
-                    int(value) for value in element.GetRuntimeId()
-                ) if element is not None else ()
-                result["value"] = UIAEvidence(
-                    runtime_id=runtime_id,
-                    observed=bool(runtime_id),
-                    state="observed" if runtime_id else "unavailable",
-                )
-            except (ImportError, ModuleNotFoundError):
-                result["value"] = UIAEvidence(state="unavailable")
-            except Exception:
-                result["value"] = UIAEvidence(state="transient")
-            finally:
-                if initialized and comtypes_module is not None:
-                    try:
-                        uninitializer = getattr(
-                            comtypes_module, "CoUninitialize", None)
-                        if callable(uninitializer):
-                            uninitializer()
-                    except Exception:
-                        pass
-                with self._lock:
-                    self._in_flight = False
-                completed.set()
-
-        threading.Thread(
-            target=worker, name="mumble-uia-target", daemon=True,
-        ).start()
         if not completed.wait(max(0.0, float(timeout_s))):
             return UIAEvidence(state="timed_out")
         return result.get("value", UIAEvidence(state="transient"))
