@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Focused Level A contract tests for paste-anywhere delivery."""
 
+import threading
 import unittest
 import uuid
 
@@ -9,6 +10,7 @@ from insertion import (
     ImagePayload,
     InsertionModule,
     InsertionOutcome,
+    InsertionOperationExpired,
     InsertionRequest,
     InsertionRequestConflict,
     InsertionReason,
@@ -130,9 +132,35 @@ class ModuleNative(FakeNativeInput):
         return self.unicode_acceptance
 
 
+class ManualClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += float(seconds)
+
+
+class BlockingModuleNative(ModuleNative):
+    def __init__(self):
+        super().__init__(NativeAcceptance(
+            requested=4, accepted=4, submitted=True, confirmation=None))
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def send_paste(self):
+        self.send_calls += 1
+        self.started.set()
+        if not self.release.wait(2.0):
+            raise AssertionError("blocked paste was not released")
+        return self.acceptance
+
+
 class ReliablePasteModuleTests(unittest.TestCase):
     def make_module(self, *, target=None, clipboard=None, native=None,
-                    elevated_helper=None):
+                    elevated_helper=None, **module_options):
         target = target or FakeTarget()
         clipboard = clipboard or FakeClipboard()
         native = native or ModuleNative(NativeAcceptance(
@@ -140,8 +168,108 @@ class ReliablePasteModuleTests(unittest.TestCase):
         module = InsertionModule(
             target, clipboard, native, elevated_helper=elevated_helper,
             settle_delay=lambda _seconds: None,
+            **module_options,
         )
         return module, target, clipboard, native
+
+    def test_stalled_public_delivery_expires_once_and_late_completion_wins(self):
+        clock = ManualClock()
+        native = BlockingModuleNative()
+        module, _target, _clipboard, _native = self.make_module(
+            native=native, clock=clock)
+        op = operation_id("public-stalled-deadline")
+        payload = TextPayload("one original delivery")
+        module.begin(op, "dictation")
+        completed = []
+        failures = []
+
+        def deliver():
+            try:
+                completed.append(module.deliver(op, payload))
+            except BaseException as exc:
+                failures.append(exc)
+
+        worker = threading.Thread(target=deliver)
+        worker.start()
+        self.assertTrue(native.started.wait(1.0))
+        try:
+            clock.advance(10_000.0)
+            polled = [module.status(op) for _ in range(100)]
+            abandoned = module.abandon(op)
+            replayed = module.deliver(op, payload)
+
+            self.assertEqual({"unknown"}, {item.state for item in polled})
+            self.assertEqual("unknown", abandoned["state"])
+            self.assertEqual("unknown", replayed.state)
+            self.assertEqual(1, native.send_calls)
+            with self.assertRaises(InsertionRequestConflict):
+                module.deliver(op, TextPayload("changed payload"))
+        finally:
+            native.release.set()
+            worker.join(2.0)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual([], failures)
+        self.assertEqual(1, len(completed))
+        self.assertIs(completed[0], module.status(op))
+        self.assertEqual("terminal", module.status(op).state)
+        self.assertEqual(1, native.send_calls)
+
+    def test_many_overdue_public_deliveries_release_registry_capacity(self):
+        clock = ManualClock()
+        native = BlockingModuleNative()
+        module, _target, _clipboard, _native = self.make_module(
+            native=native, clock=clock, retention=8)
+        workers = []
+        old_operations = [operation_id("overdue-{}".format(index))
+                          for index in range(8)]
+        for op in old_operations:
+            module.begin(op, "dictation")
+            worker = threading.Thread(
+                target=module.deliver,
+                args=(op, TextPayload("payload-{}".format(op))),
+            )
+            worker.start()
+            workers.append(worker)
+        self.assertTrue(native.started.wait(1.0))
+        try:
+            for _ in range(100):
+                states = [module.status(op).state for op in old_operations]
+                if set(states) == {"pending"}:
+                    break
+            self.assertEqual({"pending"}, set(states))
+            clock.advance(10_000.0)
+            self.assertEqual(
+                {"unknown"},
+                {module.status(op).state for op in old_operations},
+            )
+
+            for index in range(8):
+                module.begin(
+                    operation_id("replacement-{}".format(index)),
+                    "dictation",
+                )
+        finally:
+            native.release.set()
+            for worker in workers:
+                worker.join(2.0)
+
+        self.assertTrue(all(not worker.is_alive() for worker in workers))
+        self.assertEqual(8, native.send_calls)
+
+    def test_terminal_records_and_replay_protection_stay_bounded(self):
+        module, _target, _clipboard, native = self.make_module(retention=8)
+        operations = [operation_id("bounded-terminal-{}".format(index))
+                      for index in range(24)]
+        for index, op in enumerate(operations):
+            module.begin(op, "dictation")
+            module.deliver(op, TextPayload("payload-{}".format(index)))
+
+        with self.assertRaises(InsertionOperationExpired):
+            module.deliver(operations[0], TextPayload("payload-0"))
+        with self.assertRaises(InsertionRequestConflict):
+            module.deliver(operations[-1], TextPayload("changed"))
+        self.assertEqual(24, native.send_calls)
 
     def test_begin_deliver_and_status_share_one_operation(self):
         module, _target, _clipboard, native = self.make_module()
@@ -485,29 +613,6 @@ class WindowsAdapterContractTests(unittest.TestCase):
         self.assertEqual(2, result.accepted)
         self.assertTrue(all(
             event.ki.dwFlags & KEYEVENTF_UNICODE for event in user32.events))
-
-    def test_windows_clipboard_contention_retries_inside_its_deadline(self):
-        class User32:
-            def __init__(self):
-                self.opens = 0
-                self.closes = 0
-
-            def OpenClipboard(self, _owner):
-                self.opens += 1
-                return self.opens >= 3
-
-            def CloseClipboard(self):
-                self.closes += 1
-
-        adapter = object.__new__(WindowsClipboardAdapter)
-        adapter.user32 = User32()
-
-        with adapter._opened():
-            pass
-
-        self.assertEqual(3, adapter.user32.opens)
-        self.assertEqual(1, adapter.user32.closes)
-
 
 if __name__ == "__main__":
     unittest.main()

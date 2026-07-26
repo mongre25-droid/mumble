@@ -1413,6 +1413,7 @@ class _ModuleOperation:
     result: Optional[DeliveryResult] = None
     state: str = "prepared"
     created_at: float = 0.0
+    pending_deadline: Optional[float] = None
 
 
 class InsertionModule:
@@ -1421,6 +1422,7 @@ class InsertionModule:
     def __init__(self, target_adapter, clipboard_adapter, native_input_adapter,
                  *, elevated_helper=None, settle_delay=time.sleep,
                  trace=None, retention=256, prepared_ttl_s=15 * 60.0,
+                 pending_ttl_s=30.0,
                  clock=time.monotonic):
         self._target = target_adapter
         self._clipboard = clipboard_adapter
@@ -1431,12 +1433,12 @@ class InsertionModule:
             elevated_helper=self._elevated_helper,
             settle_delay=settle_delay, trace=trace,
         )
-        self._coordinator = InsertionCoordinator(
-            self._transaction, retention=retention)
         self._retention = max(8, int(retention))
         self._prepared_ttl_s = max(0.0, float(prepared_ttl_s))
+        self._pending_ttl_s = max(0.0, float(pending_ttl_s))
         self._clock = clock
         self._operations = OrderedDict()
+        self._seen_operation_ids = OperationIdReplayGuard()
         self._lock = threading.Lock()
 
     @staticmethod
@@ -1447,24 +1449,28 @@ class InsertionModule:
         return operation_id
 
     def _reserve_locked(self):
-        self._expire_prepared_locked()
+        self._expire_locked()
         while len(self._operations) >= self._retention:
             removable = next((
                 key for key, value in self._operations.items()
-                if value.state in {"terminal", "abandoned"}
+                if value.state in {"terminal", "unknown", "abandoned"}
             ), None)
             if removable is None:
                 raise InsertionCoordinatorCapacityError(
                     "insertion module capacity is occupied by active operations")
             self._operations.pop(removable, None)
 
-    def _expire_prepared_locked(self):
+    def _expire_locked(self):
         now = self._clock()
         for entry in self._operations.values():
             if (entry.state == "prepared"
                     and max(0.0, now - entry.created_at)
                     >= self._prepared_ttl_s):
                 entry.state = "abandoned"
+            elif (entry.state == "pending"
+                  and entry.pending_deadline is not None
+                  and now >= entry.pending_deadline):
+                entry.state = "unknown"
 
     def begin(self, operation_id, source, reuse_destination_from=None):
         operation_id = self._operation_id(operation_id)
@@ -1474,7 +1480,7 @@ class InsertionModule:
         reuse_id = (self._operation_id(reuse_destination_from)
                     if reuse_destination_from else None)
         with self._lock:
-            self._expire_prepared_locked()
+            self._expire_locked()
             existing = self._operations.get(operation_id)
             if existing is not None:
                 if existing.state == "abandoned":
@@ -1487,6 +1493,9 @@ class InsertionModule:
                         "operation_id_reused_with_different_begin")
                 self._operations.move_to_end(operation_id)
                 return receipt
+            if operation_id in self._seen_operation_ids:
+                raise InsertionOperationExpired(
+                    "operation identity is no longer reusable")
             if reuse_id:
                 reused = self._operations.get(reuse_id)
                 if reused is None:
@@ -1514,6 +1523,7 @@ class InsertionModule:
             )
             self._operations[operation_id] = _ModuleOperation(
                 receipt, created_at=self._clock())
+            self._seen_operation_ids.remember(operation_id)
             return receipt
 
     def _bind_lease(self, operation_id, source, target_lease):
@@ -1523,7 +1533,7 @@ class InsertionModule:
             raise TypeError("target_lease_required")
         source = str(source or "").strip()
         with self._lock:
-            self._expire_prepared_locked()
+            self._expire_locked()
             existing = self._operations.get(operation_id)
             if existing is not None:
                 if existing.state == "abandoned":
@@ -1536,6 +1546,9 @@ class InsertionModule:
                         "operation_id_reused_with_different_destination")
                 self._operations.move_to_end(operation_id)
                 return receipt
+            if operation_id in self._seen_operation_ids:
+                raise InsertionOperationExpired(
+                    "operation identity is no longer reusable")
             self._reserve_locked()
             receipt = OperationReceipt(
                 operation_id=operation_id,
@@ -1544,6 +1557,7 @@ class InsertionModule:
             )
             self._operations[operation_id] = _ModuleOperation(
                 receipt, created_at=self._clock())
+            self._seen_operation_ids.remember(operation_id)
             return receipt
 
     @staticmethod
@@ -1569,9 +1583,12 @@ class InsertionModule:
         intent = DeliveryIntent(intent)
         fingerprint = self._payload_fingerprint(payload, intent)
         with self._lock:
-            self._expire_prepared_locked()
+            self._expire_locked()
             entry = self._operations.get(operation_id)
             if entry is None:
+                if operation_id in self._seen_operation_ids:
+                    raise InsertionOperationExpired(
+                        "operation identity is no longer reusable")
                 raise InsertionOperationExpired(
                     "begin must capture the destination before delivery")
             if entry.state == "abandoned":
@@ -1587,6 +1604,7 @@ class InsertionModule:
                 return self._nonterminal_result(entry)
             entry.payload_fingerprint = fingerprint
             entry.state = "pending"
+            entry.pending_deadline = self._clock() + self._pending_ttl_s
             receipt = entry.receipt
 
         if isinstance(payload, TextPayload):
@@ -1618,21 +1636,20 @@ class InsertionModule:
                             min(1.2, 0.18 + len(text) / 20000.0)),
         )
         try:
-            self._coordinator.prepare(request)
-            result = self._coordinator.submit(request)
+            result = self._transaction.insert(request)
         except BaseException:
             with self._lock:
-                entry = self._operations.get(operation_id)
-                if entry is not None:
-                    entry.state = "unknown"
+                current = self._operations.get(operation_id)
+                if current is entry:
+                    current.state = "unknown"
                     self._operations.move_to_end(operation_id)
             raise
         with self._lock:
-            self._expire_prepared_locked()
-            entry = self._operations.get(operation_id)
-            if entry is not None:
-                entry.result = result
-                entry.state = "terminal"
+            self._expire_locked()
+            current = self._operations.get(operation_id)
+            if current is entry:
+                current.result = result
+                current.state = "terminal"
                 self._operations.move_to_end(operation_id)
         return result
 
@@ -1662,9 +1679,11 @@ class InsertionModule:
     def status(self, operation_id):
         operation_id = self._operation_id(operation_id)
         with self._lock:
+            self._expire_locked()
             entry = self._operations.get(operation_id)
             if entry is None:
                 raise InsertionOperationExpired("insertion operation is missing")
+            self._operations.move_to_end(operation_id)
             if entry.result is not None:
                 return entry.result
             return self._nonterminal_result(entry)
@@ -1672,12 +1691,19 @@ class InsertionModule:
     def abandon(self, operation_id):
         operation_id = self._operation_id(operation_id)
         with self._lock:
+            self._expire_locked()
             entry = self._operations.get(operation_id)
             if entry is None:
-                return {"state": "missing", "operation_id": operation_id}
-            if entry.state == "pending":
-                return self._coordinator.abandon(operation_id)
+                return {
+                    "state": ("expired" if operation_id in
+                              self._seen_operation_ids else "missing"),
+                    "operation_id": operation_id,
+                }
             if entry.result is not None:
                 return entry.result.as_dict()
+            if entry.state in {"pending", "unknown"}:
+                entry.state = "unknown"
+                self._operations.move_to_end(operation_id)
+                return self._nonterminal_result(entry).as_dict()
             entry.state = "abandoned"
         return {"state": "abandoned", "operation_id": operation_id}

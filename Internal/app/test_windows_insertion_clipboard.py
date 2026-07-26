@@ -42,11 +42,14 @@ class MemoryWindowsClipboard(WindowsClipboardAdapter):
     def _enumerate_format_ids(self):
         return list(self.formats)
 
+    def _enumerate_format_ids_open(self):
+        return list(self.formats)
+
     def _read_format_bytes(self, format_id):
         return self.formats.get(format_id)
 
     @contextmanager
-    def _opened(self):
+    def _opened(self, deadline=None):
         yield self
 
     def _read_format_bytes_open(self, format_id):
@@ -122,7 +125,7 @@ class TransactionalClipboard(WindowsClipboardAdapter):
         self._replacement_finished = False
 
     @contextmanager
-    def _opened(self):
+    def _opened(self, deadline=None):
         if self.fail_open:
             raise RuntimeError("injected OpenClipboard failure")
         self.open_count += 1
@@ -132,6 +135,9 @@ class TransactionalClipboard(WindowsClipboardAdapter):
             self.close_count += 1
 
     def _enumerate_format_ids(self):
+        return list(self.formats)
+
+    def _enumerate_format_ids_open(self):
         return list(self.formats)
 
     def _read_format_bytes(self, format_id):
@@ -195,6 +201,98 @@ class TransactionalClipboard(WindowsClipboardAdapter):
         return b"fixture-dib-bytes"
 
 
+class ManualClipboardClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += float(seconds)
+
+
+class SnapshotUser32:
+    def __init__(self, formats, *, always_busy=False):
+        self.formats = dict(formats)
+        self.always_busy = always_busy
+        self.fail_next_open = True
+        self.open_attempts = 0
+        self.successful_opens = 0
+        self.close_calls = 0
+
+    def OpenClipboard(self, _owner):
+        self.open_attempts += 1
+        if self.always_busy:
+            return False
+        if self.fail_next_open:
+            self.fail_next_open = False
+            return False
+        self.successful_opens += 1
+        return True
+
+    def CloseClipboard(self):
+        self.close_calls += 1
+        self.fail_next_open = True
+
+    def GetClipboardSequenceNumber(self):
+        return 77
+
+    def EnumClipboardFormats(self, current):
+        format_ids = list(self.formats)
+        if not current:
+            return format_ids[0] if format_ids else 0
+        try:
+            index = format_ids.index(current) + 1
+        except ValueError:
+            return 0
+        return format_ids[index] if index < len(format_ids) else 0
+
+    def GetClipboardData(self, format_id):
+        return format_id if format_id in self.formats else 0
+
+    @staticmethod
+    def GetClipboardFormatNameW(_format_id, _buffer, _length):
+        return 0
+
+
+class SnapshotKernel32:
+    def __init__(self, formats):
+        self.data = dict(formats)
+        self.buffers = {
+            format_id: ctypes.create_string_buffer(value)
+            for format_id, value in self.data.items()
+        }
+
+    def GlobalSize(self, handle):
+        return len(self.data.get(handle, b""))
+
+    def GlobalLock(self, handle):
+        buffer = self.buffers.get(handle)
+        return ctypes.addressof(buffer) if buffer is not None else 0
+
+    @staticmethod
+    def GlobalUnlock(_handle):
+        return True
+
+
+def bounded_snapshot_adapter(format_count=64, *, always_busy=False):
+    formats = {
+        format_id: "format-{}".format(format_id).encode("ascii")
+        for format_id in range(100, 100 + format_count)
+    }
+    clock = ManualClipboardClock()
+    user32 = SnapshotUser32(formats, always_busy=always_busy)
+    adapter = WindowsClipboardAdapter(
+        user32=user32,
+        kernel32=SnapshotKernel32(formats),
+        acquisition_timeout_s=0.30,
+        clock=clock.monotonic,
+        sleeper=clock.sleep,
+    )
+    return adapter, formats, user32, clock
+
+
 def text_request(text="private dictation"):
     return InsertionRequest(
         operation_id="clipboard-test",
@@ -228,6 +326,34 @@ def rich_request():
 
 
 class WindowsClipboardTests(unittest.TestCase):
+    def test_sixty_four_format_snapshot_uses_one_bounded_acquisition_phase(self):
+        clipboard, formats, user32, clock = bounded_snapshot_adapter()
+
+        snapshot = clipboard.snapshot()
+
+        self.assertTrue(snapshot.restorable)
+        self.assertEqual(64, len(snapshot.formats))
+        self.assertEqual(1, user32.successful_opens)
+        self.assertEqual(1, user32.close_calls)
+        self.assertEqual(0.01, clock.now)
+        self.assertEqual(
+            formats,
+            {format_id: data
+             for format_id, _name, data in snapshot.formats},
+        )
+
+    def test_snapshot_contention_stops_at_one_absolute_deadline(self):
+        clipboard, _formats, user32, clock = bounded_snapshot_adapter(
+            always_busy=True)
+
+        with self.assertRaisesRegex(RuntimeError, "clipboard stayed busy"):
+            clipboard.snapshot()
+
+        self.assertEqual(0, user32.successful_opens)
+        self.assertEqual(0, user32.close_calls)
+        self.assertGreaterEqual(clock.now, 0.30)
+        self.assertLess(clock.now, 0.31)
+
     def test_normal_restore_checks_ownership_atomically_before_clear_for_text_and_image(self):
         prior = {CF_UNICODETEXT: b"prior\x00\x00"}
         for request in (text_request(), image_request()):

@@ -442,13 +442,19 @@ class WindowsClipboardAdapter:
 
     def __init__(self, user32=None, kernel32=None, image_loader=None, *,
                  max_formats=64, max_total_bytes=32 * 1024 * 1024,
-                 max_format_bytes=16 * 1024 * 1024):
+                 max_format_bytes=16 * 1024 * 1024,
+                 acquisition_timeout_s=0.30, clock=time.monotonic,
+                 sleeper=time.sleep):
         self.user32 = user32 or ctypes.windll.user32
         self.kernel32 = kernel32 or ctypes.windll.kernel32
         self._image_loader = image_loader
         self.max_formats = max(1, int(max_formats))
         self.max_total_bytes = max(1, int(max_total_bytes))
         self.max_format_bytes = max(1, int(max_format_bytes))
+        self._acquisition_timeout_s = max(
+            0.0, float(acquisition_timeout_s))
+        self._clock = clock
+        self._sleep = sleeper
         if user32 is None and kernel32 is None:
             self._configure_ctypes()
 
@@ -474,50 +480,61 @@ class WindowsClipboardAdapter:
         self.kernel32.GlobalSize.restype = ctypes.c_size_t
 
     def snapshot(self):
-        sequence = self._sequence()
-        format_ids = self._enumerate_format_ids()
-        if len(format_ids) > self.max_formats:
+        clock = getattr(self, "_clock", time.monotonic)
+        timeout_s = getattr(self, "_acquisition_timeout_s", 0.30)
+        deadline = clock() + timeout_s
+        with self._opened(deadline=deadline):
+            sequence = self._sequence()
+            format_ids = self._enumerate_format_ids_open()
+            if len(format_ids) > self.max_formats:
+                return ClipboardSnapshot(
+                    sequence=sequence,
+                    formats=(),
+                    restorable=False,
+                    reason="clipboard_format_count_over_budget",
+                )
+            formats = []
+            total_bytes = 0
+            for format_id in format_ids:
+                name = self._format_name(format_id)
+                if format_id in self._non_hglobal:
+                    if format_id in {CF_BITMAP, CF_PALETTE} and (
+                            CF_DIB in format_ids or CF_DIBV5 in format_ids):
+                        continue
+                    return ClipboardSnapshot(
+                        sequence=sequence, formats=tuple(formats),
+                        restorable=False,
+                        reason="unsupported_non_hglobal_format")
+                if not self._format_supported(format_id, name):
+                    return ClipboardSnapshot(
+                        sequence=sequence, formats=tuple(formats),
+                        restorable=False,
+                        reason="unsupported_private_format")
+                data = self._read_format_bytes_open(format_id)
+                if data is None:
+                    return ClipboardSnapshot(
+                        sequence=sequence, formats=tuple(formats),
+                        restorable=False,
+                        reason="delayed_or_unreadable_format")
+                if len(data) > self.max_format_bytes:
+                    return ClipboardSnapshot(
+                        sequence=sequence, formats=tuple(formats),
+                        restorable=False,
+                        reason="clipboard_format_over_budget")
+                total_bytes += len(data)
+                if total_bytes > self.max_total_bytes:
+                    return ClipboardSnapshot(
+                        sequence=sequence, formats=tuple(formats),
+                        restorable=False,
+                        reason="clipboard_total_over_budget")
+                formats.append((format_id, name, data))
+            if self._sequence() != sequence:
+                return ClipboardSnapshot(
+                    sequence=sequence, formats=tuple(formats),
+                    restorable=False,
+                    reason="clipboard_changed_during_snapshot")
             return ClipboardSnapshot(
-                sequence=sequence,
-                formats=(),
-                restorable=False,
-                reason="clipboard_format_count_over_budget",
-            )
-        formats = []
-        total_bytes = 0
-        for format_id in format_ids:
-            name = self._format_name(format_id)
-            if format_id in self._non_hglobal:
-                if format_id in {CF_BITMAP, CF_PALETTE} and (
-                        CF_DIB in format_ids or CF_DIBV5 in format_ids):
-                    continue
-                return ClipboardSnapshot(
-                    sequence=sequence, formats=tuple(formats), restorable=False,
-                    reason="unsupported_non_hglobal_format")
-            if not self._format_supported(format_id, name):
-                return ClipboardSnapshot(
-                    sequence=sequence, formats=tuple(formats), restorable=False,
-                    reason="unsupported_private_format")
-            data = self._read_format_bytes(format_id)
-            if data is None:
-                return ClipboardSnapshot(
-                    sequence=sequence, formats=tuple(formats), restorable=False,
-                    reason="delayed_or_unreadable_format")
-            if len(data) > self.max_format_bytes:
-                return ClipboardSnapshot(
-                    sequence=sequence, formats=tuple(formats), restorable=False,
-                    reason="clipboard_format_over_budget")
-            total_bytes += len(data)
-            if total_bytes > self.max_total_bytes:
-                return ClipboardSnapshot(
-                    sequence=sequence, formats=tuple(formats), restorable=False,
-                    reason="clipboard_total_over_budget")
-            formats.append((format_id, name, data))
-        if self._sequence() != sequence:
-            return ClipboardSnapshot(
-                sequence=sequence, formats=tuple(formats), restorable=False,
-                reason="clipboard_changed_during_snapshot")
-        return ClipboardSnapshot(sequence=sequence, formats=tuple(formats))
+                sequence=sequence, formats=tuple(formats))
 
     def write(self, request, snapshot):
         if request.content_kind in {"text", "rich"}:
@@ -674,14 +691,17 @@ class WindowsClipboardAdapter:
         return int(self.user32.GetClipboardSequenceNumber())
 
     def _enumerate_format_ids(self):
-        values = []
         with self._opened():
-            current = 0
-            while True:
-                current = int(self.user32.EnumClipboardFormats(current) or 0)
-                if not current:
-                    break
-                values.append(current)
+            return self._enumerate_format_ids_open()
+
+    def _enumerate_format_ids_open(self):
+        values = []
+        current = 0
+        while True:
+            current = int(self.user32.EnumClipboardFormats(current) or 0)
+            if not current:
+                break
+            values.append(current)
         return values
 
     def _read_format_bytes(self, format_id):
@@ -806,22 +826,29 @@ class WindowsClipboardAdapter:
         return output.getvalue()[14:]
 
     class _OpenClipboard:
-        def __init__(self, owner):
+        def __init__(self, owner, deadline=None):
             self.owner = owner
+            self.deadline = deadline
 
         def __enter__(self):
-            deadline = time.monotonic() + 0.30
+            clock = getattr(self.owner, "_clock", time.monotonic)
+            timeout_s = getattr(
+                self.owner, "_acquisition_timeout_s", 0.30)
+            sleeper = getattr(self.owner, "_sleep", time.sleep)
+            deadline = self.deadline
+            if deadline is None:
+                deadline = clock() + timeout_s
             while not self.owner.user32.OpenClipboard(None):
-                if time.monotonic() >= deadline:
+                if clock() >= deadline:
                     raise RuntimeError("Windows clipboard stayed busy")
-                time.sleep(0.01)
+                sleeper(0.01)
             return self
 
         def __exit__(self, exc_type, exc, tb):
             self.owner.user32.CloseClipboard()
 
-    def _opened(self):
-        return self._OpenClipboard(self)
+    def _opened(self, deadline=None):
+        return self._OpenClipboard(self, deadline)
 
 
 class WindowsNativeInputAdapter:
