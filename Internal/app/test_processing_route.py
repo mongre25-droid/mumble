@@ -538,12 +538,12 @@ def test_durable_records_keep_convergence_and_physical_validation_open():
     processing_row = status.split('<tr id="processing-truth"', 1)[1].split(
         "</tr>", 1
     )[0]
+    assert 'data-evidence-boundary="merged-source"' in processing_row
+    assert 'class="badge b-done"' in processing_row
     assert (
         'data-evidence-boundary="integration-candidate-awaiting-review"'
-        in processing_row
+        not in processing_row
     )
-    assert 'class="badge b-gated"' in processing_row
-    assert "Issue #14 remains open" in status
     assert "Issues #12 and #14 through #30 remain open" in status
     assert 'data-evidence-boundary="integration-candidate"' in logs
     assert "No live provider request" in logs
