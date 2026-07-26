@@ -2146,3 +2146,34 @@ body.lite .row .btn-icon[data-copybtn]:hover { animation: none; transform: none;
 
 /* Reader pane readability: ensure text alignment is start (not justified) */
 .reader-pane { text-align: start; }
+
+
+/* Truthful Settings hydration state shared with the Windows product contract. */
+.settings-hydration {
+  display: flex; align-items: center; gap: 12px; margin: 0 auto 16px;
+  max-width: 760px; padding: 13px 15px; border: 1px solid var(--border-soft);
+  border-radius: 16px; background: var(--surface-2);
+}
+.settings-hydration b,
+.settings-hydration span:not(.settings-hydration-spinner) { display: block; }
+.settings-hydration span:not(.settings-hydration-spinner) {
+  color: var(--text-mute); font-size: 11px; margin-top: 2px;
+}
+.settings-hydration-spinner {
+  width: 12px; height: 12px; border: 2px solid var(--border-soft);
+  border-top-color: var(--gold); border-radius: 50%; animation: spin .8s linear infinite;
+  flex: none;
+}
+[data-view="settings"][data-settings-state="ready"] .settings-hydration { display: none; }
+[data-view="settings"][data-settings-state="error"] .settings-hydration {
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border-soft));
+}
+[data-view="settings"][data-settings-state="error"] .settings-hydration-spinner { display: none; }
+[data-view="settings"]:not([data-settings-state="ready"]) [data-setting] {
+  visibility: hidden; pointer-events: none;
+}
+.processing-route-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 0 14px; }
+.processing-route-facts > div { padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-2); }
+.processing-route-facts dt { color: var(--text-mute); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.processing-route-facts dd { margin: 3px 0 0; color: var(--text); font-size: 11px; line-height: 1.45; }
+@media (max-width: 680px) { .processing-route-facts { grid-template-columns: 1fr; } }

@@ -111,8 +111,11 @@ check("_cloud_generate docstring mentions VAL-CROSS-011",
 check("_cloud_generate docstring mentions frozen config",
       "frozen" in doc_region.lower())
 
-# Verify that _generate() captures cfg via _ai_cfg() before the cloud call
-gen_region = _mumble_src[_mumble_src.find("def _generate("):_mumble_src.find("def _generate(") + 4000]
+# Verify that _generate() freezes config before the cloud call. Split at the
+# next method instead of using a fixed character window: the invocation
+# snapshot contract legitimately made this method longer.
+gen_region = _mumble_src[_mumble_src.find("def _generate("):]
+gen_region = gen_region.split("\n    def ", 1)[0]
 check("_generate captures cfg before cloud call",
       "cfg = self._ai_cfg()" in gen_region)
 check("_generate captures prompt_cfg before cloud call",

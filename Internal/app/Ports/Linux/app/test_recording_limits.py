@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import mumble_linux as mumble
+import processing_route
 import recording_limits
 import transcription
 
@@ -111,12 +112,19 @@ def test_meeting_limit_finalizes_even_without_island(monkeypatch):
 
 def test_cloud_request_rejects_audio_over_single_request_limit(monkeypatch):
     monkeypatch.setattr(recording_limits, "DICTATION_MAX_SAMPLES", 4)
-    settings = type("Settings", (), {"get": staticmethod(lambda _k, d=None: d)})()
+    settings = {
+        "pro_mode": True,
+        "local_only_mode": False,
+        "transcription_mode": "cloud",
+        "cloud_transcription_provider": "groq",
+        "groq_api_key": "test-only-key",
+    }
+    invocation = processing_route.snapshot_inputs(
+        settings, feature="dictation", lane="speech_to_text"
+    )
 
     with pytest.raises(ValueError, match="at most 10 minutes"):
-        transcription.transcribe(
-            np.zeros(5, dtype=np.float32), settings, language="en"
-        )
+        transcription.transcribe(np.zeros(5, dtype=np.float32), invocation)
 
 
 if __name__ == "__main__":

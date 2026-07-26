@@ -146,7 +146,8 @@ def test_ui_and_bridge_do_not_resurrect_removed_product_concepts():
     shell = paths[0].read_text(encoding="utf-8")
     app_js = paths[1].read_text(encoding="utf-8")
     assert "from prompt_history import PromptHistory" in shell
-    assert 'provider not in ("cerebras", "openrouter")' in shell
+    assert "processing_route.snapshot(" in shell
+    assert "processing_route.call_provider(" in shell
     assert "def save_vocabulary" in shell
     assert '"save_vocabulary"' in app_js
     assert '"mode_key"' not in shell

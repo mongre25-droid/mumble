@@ -23,9 +23,11 @@ import time
 import uuid
 import wave
 
+import ai
 import meeting_diarise
 import meeting_store
 import branding
+import processing_route
 from recording_limits import (
     LONG_FORM_CHUNK_SECONDS,
     MEETING_MAX_SAMPLES,
@@ -859,24 +861,31 @@ def _chunk_transcript_lines(lines, max_chars=ANALYSIS_CHUNK_CHARS):
     return chunks
 
 
-def _analysis_context(settings):
+_MEETINGS_ANALYSIS_FEATURE = "meetings"
+_MEETINGS_ANALYSIS_LANE = "meeting_analysis"
+
+
+def _analysis_context(settings, context=""):
     """Resolve the configured LLM call context, or None when unavailable."""
-    import ai
-    provider = settings.get("llm_provider", "cerebras") or "cerebras"
-    info = ai.PROVIDERS.get(provider) or ai.PROVIDERS["cerebras"]
-    key = settings.get(info.get("key_setting", ""), "") or ""
-    if not key and provider != "local":
-        return None
-    model = (settings.get(info.get("model_setting", ""), "")
-             or info.get("default_model", "gpt-oss-120b")).strip()
-    return ai, info, key, model
+    invocation = processing_route.snapshot_inputs(
+        settings,
+        feature=_MEETINGS_ANALYSIS_FEATURE,
+        lane=_MEETINGS_ANALYSIS_LANE,
+        context=context, context_policy="meeting_transcript",
+    )
+    info = ai.PROVIDERS.get(invocation.route.provider) or {}
+    return ai, info, invocation
 
 
 def _analysis_call(context, system, user, max_tokens, timeout):
-    ai, info, key, model = context
-    return ai.cerebras_chat(
-        system, user, key, model=model, url=info.get("url"),
-        max_tokens=max_tokens, timeout=timeout)
+    ai_module, info, invocation = context
+    decision = invocation.route
+    return processing_route.call_provider(
+        decision, ai_module.cerebras_chat,
+        system, user, decision.api_key, model=decision.model, url=info.get("url"),
+        max_tokens=max_tokens, timeout=timeout,
+        expected_feature=_MEETINGS_ANALYSIS_FEATURE,
+        expected_lane=_MEETINGS_ANALYSIS_LANE)
 
 
 def _dedupe_strings(items):
@@ -934,7 +943,7 @@ def summarize_meeting(meeting_id, settings):
         return None
     chunks = _chunk_transcript_lines(
         _meeting_transcript_lines(meeting_record, timestamps=True))
-    context = _analysis_context(settings)
+    context = _analysis_context(settings, context="\n\n".join(chunks))
     if not chunks or context is None:
         return None
 
@@ -985,7 +994,7 @@ def _extract_list_analysis(meeting_id, settings, system, store_field,
         return []
     chunks = _chunk_transcript_lines(
         _meeting_transcript_lines(meeting_record, timestamps=True))
-    context = _analysis_context(settings)
+    context = _analysis_context(settings, context="\n\n".join(chunks))
     if not chunks or context is None:
         return []
     title = meeting_record.get("title", "Meeting")
@@ -1033,7 +1042,7 @@ def extract_open_questions(meeting_id, settings):
         return []
     chunks = _chunk_transcript_lines(
         _meeting_transcript_lines(meeting_record, timestamps=True))
-    context = _analysis_context(settings)
+    context = _analysis_context(settings, context="\n\n".join(chunks))
     if not chunks or context is None:
         return []
     title = meeting_record.get("title", "Meeting")
@@ -1069,7 +1078,7 @@ def process_meeting_deep(meeting_id, settings):
         return None
     chunks = _chunk_transcript_lines(
         _meeting_transcript_lines(meeting_record, timestamps=True))
-    context = _analysis_context(settings)
+    context = _analysis_context(settings, context="\n\n".join(chunks))
     if not chunks or context is None:
         return None
     title = meeting_record.get("title", "Meeting")

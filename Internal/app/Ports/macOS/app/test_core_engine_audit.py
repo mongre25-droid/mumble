@@ -39,11 +39,16 @@ def test_hotword_sanitizer_treats_string_as_one_term():
 
 
 def test_cloud_transcription_uses_shared_hotword_sanitizer(monkeypatch):
+    import processing_route
     import transcription
 
     class Settings:
         def get(self, key, default=None):
             return {
+                "pro_mode": True,
+                "local_only_mode": False,
+                "transcription_mode": "cloud",
+                "cloud_transcription_provider": "groq",
                 "groq_api_key": "key",
                 "vocabulary_terms": "Alice Smith",
             }.get(key, default)
@@ -55,7 +60,10 @@ def test_cloud_transcription_uses_shared_hotword_sanitizer(monkeypatch):
         return "ok"
 
     monkeypatch.setattr(transcription, "_transcribe_multipart", fake_send)
-    assert transcription.transcribe(np.zeros(8), Settings()) == "ok"
+    invocation = processing_route.snapshot_inputs(
+        Settings(), feature="dictation", lane="speech_to_text"
+    )
+    assert transcription.transcribe(np.zeros(8), invocation) == "ok"
     assert captured["prompt"] == "Alice Smith"
 
 
@@ -387,6 +395,7 @@ def test_local_provider_accepts_bare_host_and_handles_bad_port():
 
 def test_anthropic_provider_preserves_assistant_turns(monkeypatch):
     from ai.providers import anthropic
+    import processing_route
 
     captured = {}
 
@@ -396,12 +405,20 @@ def test_anthropic_provider_preserves_assistant_turns(monkeypatch):
 
     monkeypatch.setattr(anthropic, "_anthropic_chat", fake_chat)
     provider = anthropic.AnthropicProvider("key")
+    decision = processing_route.snapshot(
+        {
+            "pro_mode": True, "local_only_mode": False, "instant_text": False,
+            "llm_provider": "anthropic", "anthropic_api_key": "key",
+        },
+        feature="prompt", lane="prompt",
+    )
     assert provider.chat([
         {"role": "system", "content": "system"},
         {"role": "user", "content": "first"},
         {"role": "assistant", "content": "answer"},
         {"role": "user", "content": "follow-up"},
-    ]) == "ok"
+    ], route_decision=decision,
+       expected_feature="prompt", expected_lane="prompt") == "ok"
     assert [m["role"] for m in captured["conversation"]] == [
         "user", "assistant", "user",
     ]

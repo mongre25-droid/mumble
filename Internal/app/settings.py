@@ -94,6 +94,9 @@ def _fsync_parent(path):
             except OSError:
                 pass
 
+TEXT_PROCESSING_PROVIDERS = ("cerebras", "openrouter")
+
+
 DEFAULTS = {
     "hotkey": "ctrl+windows",
     # Two SEPARATE history actions (owner v9): quick_paste_hotkey pastes the most
@@ -294,8 +297,8 @@ DEFAULTS = {
     "clipboard_enabled": True,
     "clipboard_max": 5000,
     "pro_mode": True,
-    # Text-processing engine. Product UI deliberately offers only these two.
-    "llm_provider": "cerebras",  # cerebras | openrouter
+    # Text-processing engine. The tuple above is the Windows product contract.
+    "llm_provider": "cerebras",
     # Cerebras (recommended)
     "cerebras_api_key": "",
     "cerebras_model": "gpt-oss-120b",
@@ -383,7 +386,7 @@ SETTING_ENUMS = {
     "browser": {"default", "edge", "chrome", "brave", "chromium"},
     "transcription_mode": {"local", "cloud"},
     "cloud_transcription_provider": {"groq", "openai", "openrouter"},
-    "llm_provider": {"cerebras", "openrouter"},
+    "llm_provider": set(TEXT_PROCESSING_PROVIDERS),
     "compute_type": {"int8", "float16", "float32"},
     "device": {"auto", "cpu", "cuda"},
     "polish_aggressiveness": {"Light", "Standard", "Thorough"},

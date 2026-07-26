@@ -1319,6 +1319,58 @@ function toast(msg, kind = "info", ms = 2600) {
   }, ms);
 }
 
+function insertionNotice(result, confirmedMessage = "Pasted") {
+  const outcome = (result && result.outcome) || "saved_only";
+  if (outcome === "confirmed" && result && result.confirmed === true) {
+    return { message: confirmedMessage, kind: "ok" };
+  }
+  if (outcome === "sent_unconfirmed") {
+    return {
+      message: (result && result.message) || "Sent—check the field.",
+      kind: "info",
+    };
+  }
+  if (outcome === "pending") {
+    return {
+      message: (result && result.message) || "Still working. Mumble will not send this twice.",
+      kind: "info",
+    };
+  }
+  return {
+    message:
+      (result && result.message) ||
+      (outcome === "uncertain"
+        ? "Paste not confirmed—check the field before trying again."
+        : "Not sent. The result remains saved in Deck and History."),
+    kind: outcome === "uncertain" ? "info" : "err",
+  };
+}
+
+function showInsertionResult(result, confirmedMessage, ms = 2200) {
+  const notice = insertionNotice(result, confirmedMessage);
+  toast(notice.message, notice.kind, ms);
+  if (result && result.cleanup_warning) {
+    toast(result.cleanup_warning, "info", 3000);
+  }
+  return result && result.outcome === "confirmed" && result.confirmed === true;
+}
+
+function acceptInsertionResult(result) {
+  const operationId = String((result && result.operation_id) || "");
+  if (!operationId) return true;
+  const seen = acceptInsertionResult.seen ||
+    (acceptInsertionResult.seen = new Set());
+  if (seen.has(operationId)) return false;
+  seen.add(operationId);
+  while (seen.size > 256) seen.delete(seen.values().next().value);
+  return true;
+}
+
+window.pyInsertionResult = function pyInsertionResult(result) {
+  if (!acceptInsertionResult(result)) return;
+  showInsertionResult(result, "Pasted Deck result", 2600);
+};
+
 async function copyTextReliable(text) {
   try {
     if (!navigator.clipboard || !navigator.clipboard.writeText)
@@ -1338,6 +1390,13 @@ async function copyTextReliable(text) {
 function activateDialog(overlay, onCancel) {
   const dialog = overlay.querySelector(".modal,.uc") || overlay.firstElementChild;
   const previous = document.activeElement;
+  const background = document.getElementById("app");
+  const backgroundWasInert = !!background?.inert;
+  const backgroundAriaHidden = background?.getAttribute("aria-hidden");
+  if (background) {
+    background.inert = true;
+    background.setAttribute("aria-hidden", "true");
+  }
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
   dialog.setAttribute("tabindex", "-1");
@@ -1362,6 +1421,11 @@ function activateDialog(overlay, onCancel) {
   (focusable()[0] || dialog).focus();
   return () => {
     overlay.removeEventListener("keydown", onKey);
+    if (background) {
+      background.inert = backgroundWasInert;
+      if (backgroundAriaHidden == null) background.removeAttribute("aria-hidden");
+      else background.setAttribute("aria-hidden", backgroundAriaHidden);
+    }
     if (previous && document.contains(previous)) previous.focus();
   };
 }
@@ -1469,7 +1533,7 @@ async function runConvert(text, mode) {
   ]);
   if (r && r.ok && r.live)
     toast(
-      `Converting to ${label} — the result will paste at your cursor`,
+      `Converting to ${label}—the result will be saved, then Mumble will attempt the selected field`,
       "ok",
       3000,
     );
@@ -1502,8 +1566,8 @@ function runHoverJob() {
   Promise.resolve(call("run_deck_job", HX.runPreset, HX.runMode, items))
     .then((r) => {
       if (r && r.ok && r.live)
-        toast("Working — the result will paste at your cursor", "ok", 3000);
-      else if (r && r.ok) toast("Done — result pasted", "ok");
+        toast("Working—the result will be saved, then Mumble will attempt the selected field", "info", 3000);
+      else if (r && r.ok) toast("Done — check the destination field", "info");
       else
         toast(
           (r && r.message) ||
@@ -1524,9 +1588,12 @@ function navTo(view) {
   if (CURRENT === "reader" && view !== "reader") readerStopForNav();
   CURRENT = view;
   $$("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== view));
-  $$(".nav-btn").forEach((b) =>
-    b.classList.toggle("active", b.dataset.nav === view),
-  );
+  $$(".nav-btn").forEach((b) => {
+    const current = b.dataset.nav === view;
+    b.classList.toggle("active", current);
+    if (current) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
   const sv = document.querySelector(`[data-view="${view}"]`);
   if (sv) sv.scrollTop = 0;
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -1580,11 +1647,14 @@ async function focusDeckForKeyboard() {
    transition, shadow, blur and glass-transparency — the "works everywhere" config. */
 let CHOSEN_FX = "enhanced"; // the user's selected tier (Settings → Visual effects)
 let SAVER = false; // Resource Saver Mode
+const FOCUS_STAGE_TIERS = Object.freeze({ lite: "light", standard: "standard", enhanced: "full" });
 function applyVisual() {
   const fx = SAVER ? "lite" : CHOSEN_FX; // saver always wins → lite
   document.body.classList.toggle("saver", SAVER);
   document.body.classList.toggle("lite", fx === "lite");
   document.body.classList.toggle("enhanced", fx === "enhanced");
+  const tier = FOCUS_STAGE_TIERS[fx];
+  if (tier && window.MumbleUIFoundation) window.MumbleUIFoundation.applyEffectsTier(tier);
 }
 function applyEffects(fx) {
   if (fx) CHOSEN_FX = fx;
@@ -1735,7 +1805,32 @@ function reflectStatus(st) {
     lab.textContent = rec ? "Stop and transcribe" : "Start dictation";
   chip.classList.toggle("is-recording", rec || st.state === "transcribing");
   chip.classList.toggle("is-error", st.state === "error");
+  const recordButton = $("#record-btn");
+  if (recordButton) {
+    if (rec) recordButton.dataset.control = "stop";
+    else delete recordButton.dataset.control;
+  }
   setText("#status-text", st.text || (rec ? "Listening…" : "Ready"));
+  const stateKind = st.state === "error" ? "error" : (rec || st.state === "transcribing") ? "loading" : null;
+  const stateHost = $("#home-live-state");
+  if (stateHost && window.MumbleUIFoundation) {
+    const shouldHide = !stateKind;
+    if (stateHost.hidden !== shouldHide) stateHost.hidden = shouldHide;
+    let surface = stateHost.querySelector(".state-surface");
+    const stateOptions = stateKind ? {
+      title: stateKind === "error" ? "Dictation could not start" : "Dictation is active",
+      message: st.text || (rec ? "Mumble is listening. Stop to transcribe your words." : "Mumble is processing your words."),
+      content: "The live status above remains the authoritative recording state.",
+      action: st.recoveryAction && st.recoveryAction.label ? st.recoveryAction : null,
+    } : null;
+    if (stateKind && !surface) {
+      surface = window.MumbleUIFoundation.createStateSurface(stateKind, stateOptions);
+      surface.setAttribute("aria-atomic", "true");
+      stateHost.append(surface);
+    } else if (stateKind) {
+      window.MumbleUIFoundation.updateStateSurface(surface, stateKind, stateOptions);
+    }
+  }
 }
 
 /* light live polling: keeps the chip honest while you dictate via the hotkey.
@@ -1981,7 +2076,7 @@ async function pasteLatest() {
     ? await call("deck_paste_image", action.imagePath)
     : await call("deck_paste", action.text || "");
   if (r && r.ok) {
-    toast(`Pasted ${action.label || "Deck item"}`, "ok", 1600);
+    showInsertionResult(r, `Pasted ${action.label || "Deck item"}`, 2000);
     return;
   }
   if (!action.imagePath && action.text && await copyTextReliable(action.text)) {
@@ -2698,11 +2793,8 @@ function wireRows(root) {
     (b) =>
       (b.onclick = async () => {
         const r = await call("deck_paste_image", b.dataset.pasteimage || "");
-        toast(
-          r && r.ok ? "Pasted clipboard image" : (r && r.message) || "Couldn't paste the image",
-          r && r.ok ? "ok" : "err",
-          1800,
-        );
+        if (r && r.ok) showInsertionResult(r, "Pasted clipboard image", 2000);
+        else toast((r && r.message) || "Couldn't paste the image", "err", 1800);
       }),
   );
   $$("[data-reader]", root).forEach(
@@ -3073,10 +3165,10 @@ async function histMerge(paste) {
   if (paste && HAS_PY()) {
     const r = await call("deck_paste", combined);
     if (r && r.ok) {
-      toast(
+      showInsertionResult(
+        r,
         `Pasted ${items.length} merged entr${items.length === 1 ? "y" : "ies"}`,
-        "ok",
-        2000,
+        2200,
       );
       return;
     }
@@ -3108,8 +3200,8 @@ async function histRun() {
   try {
     const r = await call("run_deck_job", HX.runPreset, HX.runMode, items);
     if (r && r.ok && r.live)
-      toast("Working — the result will paste at your cursor", "ok", 3000);
-    else if (r && r.ok) toast("Done — result pasted", "ok");
+      toast("Working—the result will be saved, then Mumble will attempt the selected field", "info", 3000);
+    else if (r && r.ok) toast("Done — check the destination field", "info");
     else
       toast(
         (r && r.message) ||
@@ -3964,14 +4056,82 @@ function wireKeyFields() {
   });
 }
 
+let SETTINGS_HYDRATION_VERSION = 0;
+const SETTINGS_MUTATION_VERSION = Object.create(null);
+
+function setSettingsHydrationState(state, message) {
+  const view = $('[data-view="settings"]');
+  if (!view) return;
+  view.dataset.settingsState = state;
+  view.setAttribute("aria-busy", state === "loading" ? "true" : "false");
+  const title = $("#settings-hydration-title");
+  const copy = $("#settings-hydration-copy");
+  const retry = $("#settings-hydration-retry");
+  if (state === "loading") {
+    if (title) title.textContent = "Loading your saved settings…";
+    if (copy) copy.textContent = "Controls will appear when Mumble has confirmed the saved and effective setup.";
+  } else if (state === "error") {
+    if (title) title.textContent = "Settings could not be read";
+    if (copy) copy.textContent = message || "Your existing configuration was not changed. Try again when the app is ready.";
+  }
+  if (retry) {
+    retry.hidden = state !== "error";
+    if (!retry.dataset.wired) {
+      retry.dataset.wired = "1";
+      retry.addEventListener("click", () => hydrateSettings());
+    }
+  }
+  const selector = 'button,input,select,textarea,a[href],[role="button"],[tabindex]';
+  if (!view.dataset.hydrationGuardWired) {
+    view.dataset.hydrationGuardWired = "1";
+    const block = (event) => {
+      const action = event.target.closest?.(selector);
+      if (view.dataset.settingsState !== "ready" && action && action !== retry) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    ["click", "change", "input", "keydown"].forEach((type) => view.addEventListener(type, block, true));
+  }
+  $$(selector, view).forEach((control) => {
+    if (control === retry) return;
+    if (state !== "ready" && control.dataset.hydrationGuarded !== "1") {
+      control.dataset.hydrationGuarded = "1";
+      control.dataset.hydrationTabIndex = control.getAttribute("tabindex") ?? "";
+      control.dataset.hydrationAriaDisabled = control.getAttribute("aria-disabled") ?? "";
+      if ("disabled" in control) {
+        control.dataset.hydrationWasDisabled = control.disabled ? "1" : "0";
+        control.disabled = true;
+      }
+      control.setAttribute("aria-disabled", "true");
+      control.tabIndex = -1;
+    } else if (state === "ready" && control.dataset.hydrationGuarded === "1") {
+      if ("disabled" in control && control.dataset.hydrationWasDisabled === "0") control.disabled = false;
+      const oldTab = control.dataset.hydrationTabIndex;
+      if (oldTab === "") control.removeAttribute("tabindex"); else control.setAttribute("tabindex", oldTab);
+      const oldAria = control.dataset.hydrationAriaDisabled;
+      if (oldAria === "") control.removeAttribute("aria-disabled"); else control.setAttribute("aria-disabled", oldAria);
+      ["hydrationGuarded", "hydrationTabIndex", "hydrationAriaDisabled", "hydrationWasDisabled"].forEach((key) => delete control.dataset[key]);
+    }
+  });
+}
+
 async function hydrateSettings() {
+  const requestId = ++SETTINGS_HYDRATION_VERSION;
+  setSettingsHydrationState("loading");
   try {
     const loaded = await call("get_settings");
+    if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
     if (!loaded || typeof loaded !== "object") throw new Error("No settings returned");
     SET = loaded;
   } catch (e) {
+    if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
+    setSettingsHydrationState(
+      "error",
+      "Your existing configuration was not changed. Try again when the app is ready.",
+    );
     toast("Settings could not be loaded. Your existing configuration was not changed.", "err", 4200);
-    return;
+    return false;
   }
   // generic [data-setting] binding
   $$("[data-setting]").forEach((el) => {
@@ -3999,6 +4159,8 @@ async function hydrateSettings() {
       el.addEventListener(ev, async () => {
         const previous = nested(SET, key);
         let v = el.type === "checkbox" ? el.checked : el.value;
+        const mutationId = (SETTINGS_MUTATION_VERSION[key] || 0) + 1;
+        SETTINGS_MUTATION_VERSION[key] = mutationId;
         if (el.dataset.type === "number") v = Number(v);
         // Never write an untouched masked key back over the real one.
         if (el.dataset.masked === "1" || (typeof v === "string" && v.indexOf("•") >= 0)) return;
@@ -4008,6 +4170,7 @@ async function hydrateSettings() {
         } catch (e) {
           r = { ok: false, message: (e && e.message) || "Couldn't save this setting" };
         }
+        if (mutationId !== SETTINGS_MUTATION_VERSION[key]) return;
         if (!r || r.ok === false) {
           // Keep the control and in-memory settings honest when validation or
           // persistence fails. Previously the UI flashed "Saved" and adopted a
@@ -4077,7 +4240,20 @@ async function hydrateSettings() {
     if (name) control.setAttribute("aria-label", name);
   });
   // mic list (populated separately from the generic binding)
-  const mics = await call("list_microphones");
+  let mics;
+  try {
+    mics = await call("list_microphones");
+    if (!Array.isArray(mics)) throw new Error("No microphone list returned");
+  } catch (e) {
+    if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
+    setSettingsHydrationState(
+      "error",
+      "Your saved settings were read, but microphones could not be checked. Try again when audio devices are ready.",
+    );
+    toast("Microphones could not be checked. Your settings were not changed.", "err", 4200);
+    return false;
+  }
+  if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
   const msel = $("#set-mic");
   if (msel) {
     msel.innerHTML = mics
@@ -4139,6 +4315,9 @@ async function hydrateSettings() {
   });
   // Account card (cloud sync)
   hydrateAccountCard();
+  if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
+  setSettingsHydrationState("ready");
+  return true;
 }
 function nested(o, path) {
   return path.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
@@ -4776,30 +4955,34 @@ function updateSetupSummary() {
     $("#transcription-route-copy").textContent = txCopy;
   }
 
-  let processingTitle = "On-device text processing";
+  let processingTitle = "On-device text shaping";
   let processingCopy = "Transcript text stays on-device for formatting and explicit actions.";
   let processingTone = "local";
-  if (action.effective === "cloud") {
+  const localProvider = action.provider === "local" && action.reason === "local_provider";
+  if (localProvider) {
+    processingTitle = "On-device text shaping · local model";
+    processingCopy = "Transcript text is sent only to your selected local model service on this device. Microphone audio is never sent by this route.";
+  } else if (action.effective === "cloud") {
     const label = names[action.provider] || action.provider;
     processingTitle = plain.effective === "local"
       ? `Split route · plain local, actions via ${label}`
-      : `Hosted text processing · ${label}`;
+      : `Hosted text shaping · ${label}`;
     processingCopy = plain.effective === "local"
       ? "Instant plain dictation stays local. Prompt, Email, and preset actions may send transcript text; audio is never sent by this route."
       : `Transcript text may be sent to ${label}; audio is never sent by this route.`;
     processingTone = "cloud";
   } else if (action.reason === "local_only") {
-    processingTitle = "On-device text processing · local-only override";
+    processingTitle = "On-device text shaping · device-only override";
     processingCopy = "Your hosted provider and key remain saved, but no transcript text is sent while the override is on.";
   } else if (action.reason === "pro_off") {
-    processingTitle = "On-device text processing · Pro Mode off";
+    processingTitle = "On-device text shaping · hosted processing off";
     processingCopy = "Transcript text stays local. The separate transcription route is unchanged.";
   } else if (action.reason === "no_key") {
-    processingTitle = "On-device text processing · no provider key";
-    processingCopy = "Pro Mode is on, but no key is saved for the selected provider. Transcript text stays local.";
+    processingTitle = "On-device text shaping · no provider key";
+    processingCopy = "Hosted text processing is on, but no key is saved for the selected provider. Transcript text stays local.";
     processingTone = "warning";
   } else if (action.reason === "unsupported_provider") {
-    processingTitle = "On-device text processing · provider unavailable";
+    processingTitle = "On-device text shaping · provider unavailable";
     processingCopy = "The saved provider is preserved but inactive. Choose a supported provider to enable hosted text processing.";
     processingTone = "warning";
   }
@@ -4816,6 +4999,30 @@ function updateSetupSummary() {
     $("#processing-route-title").textContent = processingTitle;
     $("#processing-route-copy").textContent = processingCopy;
   }
+  const decision = action.decision || {};
+  const providerLabel = names[action.provider] || action.provider || "No provider";
+  setText("#route-fact-saved", localProvider
+    ? `On-device local model${decision.model ? ` · ${decision.model}` : ""}`
+    : SET.pro_mode
+    ? `Hosted text processing · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}`
+    : "On-device text shaping");
+  setText("#route-fact-effective", action.effective === "cloud"
+    ? `Hosted · ready (${providerLabel})`
+    : `On this device · ${processingTitle.split(" · ").slice(1).join(" · ") || "local"}`);
+  setText("#route-fact-engine", action.effective === "cloud"
+    ? `Transcript text · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}`
+    : localProvider
+      ? `Transcript text · local model${decision.model ? ` · ${decision.model}` : ""}`
+      : "Transcript text · local text-shaping pipeline");
+  setText("#route-fact-location", action.effective === "cloud"
+    ? `${providerLabel} hosted service`
+    : "This device");
+  setText("#route-fact-egress", action.effective === "cloud"
+    ? "Transcript text and any action context; never microphone audio on this route"
+    : "Nothing for text shaping");
+  setText("#route-fact-tradeoff", action.effective === "cloud"
+    ? "Network and provider affect speed and quality. Provider usage may cost money; Mumble makes no unmeasured speed promise."
+    : "No provider charge and strongest privacy. Speed and quality depend on this device and the available local engine.");
   const hostedSummary = $("#hosted-provider-summary");
   if (hostedSummary) {
     const name = names[action.provider] || action.provider || "unavailable";
@@ -5511,7 +5718,7 @@ async function confirmReaderCloudUse(kind) {
   const provider = kind === "tts" ? (READER.provider || "the voice provider") :
     ((SET && SET.llm_provider) || "your AI provider");
   const body = kind === "tts"
-    ? `Reader voice sends each short passage to ${provider} to create audio. If it is unavailable, another configured voice provider may be tried. Reader Sync, when enabled, also stores your library in your account.`
+    ? `Reader voice sends each short passage to ${provider} to create audio. If one voice model is unavailable, another compatible model from that same provider may be tried. Reader Sync, when enabled, also stores your library in your account.`
     : `Summarize sends the document text to ${provider}. Do not continue with confidential material unless you are comfortable sharing it with that provider.`;
   const ok = await confirmModal({ icon: "shield", title: "Send document text?",
     body, confirmText: "Continue", danger: false });

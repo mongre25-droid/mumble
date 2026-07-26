@@ -395,6 +395,18 @@ def test_reader_bridge_propagates_storage_failures(monkeypatch):
 
 def test_reader_voice_preview_does_not_leak_a_temp_file(monkeypatch):
     api = webui_shell.Api.__new__(webui_shell.Api)
+    route_settings = {
+        "pro_mode": True,
+        "local_only_mode": False,
+        "instant_text": False,
+        "reader_tts_provider": "openrouter",
+        "reader_tts_model": "google/gemini-3.1-flash-tts-preview",
+        "openrouter_api_key": "sk-or-test",
+    }
+    api.settings = type(
+        "RouteSettings", (),
+        {"get": lambda _self, key, default=None: route_settings.get(key, default)},
+    )()
     monkeypatch.setattr(
         webui_shell.ai, "synthesize_with_fallback",
         lambda *_args, **_kwargs: (

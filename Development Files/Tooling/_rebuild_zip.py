@@ -29,6 +29,7 @@ import re
 import shutil
 import sys
 import zipfile
+from pathlib import Path
 
 APP_REL = os.path.join("Internal", "app")
 
@@ -37,6 +38,36 @@ EXCLUDE_DIRS = {
     ".venv", "__pycache__", "Ports", "llama-cpp-bin", "release_assets",
     "_test_logs", ".pytest_cache", ".mypy_cache", ".ruff_cache", "tests",
 }
+
+ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
+
+TEXT_EXTENSIONS = {
+    ".bat", ".cfg", ".cmd", ".css", ".csv", ".desktop", ".html",
+    ".ini", ".js", ".json", ".jsx", ".md", ".ps1", ".py", ".service",
+    ".sh", ".svg", ".toml", ".ts", ".tsx", ".txt", ".vbs", ".xml",
+    ".yaml", ".yml",
+}
+TEXT_NAMES = {"LICENSE", "NOTICE"}
+
+
+def packaged_bytes(source):
+    """Return canonical package bytes while leaving binary files untouched."""
+    with open(source, "rb") as handle:
+        data = handle.read()
+    name = os.path.basename(os.fspath(source))
+    extension = os.path.splitext(name)[1].lower()
+    if extension in TEXT_EXTENSIONS or name.upper() in TEXT_NAMES:
+        return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return data
+
+
+def write_file(archive, source, archive_name):
+    """Write one deterministic member independent of timestamps/line endings."""
+    info = zipfile.ZipInfo(archive_name.replace("\\", "/"), ZIP_EPOCH)
+    info.create_system = 3
+    info.external_attr = (0o100644 & 0xFFFF) << 16
+    info.compress_type = zipfile.ZIP_DEFLATED
+    archive.writestr(info, packaged_bytes(source), compresslevel=9)
 
 
 def find_repo_root(start):
@@ -62,15 +93,40 @@ def add_tree(z, src_dir, arc_prefix):
     and test/compiled files (the app/ runtime)."""
     n = 0
     for root, dirs, files in os.walk(src_dir):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        dirs[:] = sorted(d for d in dirs if d not in EXCLUDE_DIRS)
         for fn in sorted(files):
             if _skip_file(fn):
                 continue
             full = os.path.join(root, fn)
             rel = os.path.relpath(full, src_dir).replace(os.sep, "/")
-            z.write(full, arc_prefix + rel)
+            write_file(z, full, arc_prefix + rel)
             n += 1
     return n
+
+
+def website_archive_path(root):
+    """Return the maintained website's release-download destination."""
+    return (
+        Path(root) / "Development Files" / "Marketing" / "Website" /
+        "public" / "Mumble.zip"
+    )
+
+
+def sync_website_archive(root, canonical_archive):
+    """Synchronize the validated archive without inventing missing structure."""
+    destination = website_archive_path(root)
+    if not destination.parent.is_dir():
+        raise FileNotFoundError(
+            "Expected maintained website release directory is missing: "
+            f"{destination.parent}"
+        )
+    shutil.copy2(canonical_archive, destination)
+    if destination.read_bytes() != Path(canonical_archive).read_bytes():
+        raise RuntimeError(
+            "Maintained website release archive did not match the canonical "
+            f"artifact after synchronization: {destination}"
+        )
+    return destination
 
 
 def main():
@@ -81,6 +137,13 @@ def main():
         sys.exit(1)
 
     out = os.path.join(root, "Internal", "Releases", "Mumble.zip")
+    website_zip = website_archive_path(root)
+    if not website_zip.parent.is_dir():
+        print(
+            "ERROR: expected maintained website release directory is missing: "
+            f"{website_zip.parent}"
+        )
+        sys.exit(1)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     tmp = out + ".new"
     internal = os.path.join(root, "Internal")
@@ -91,7 +154,7 @@ def main():
         # 1. root Mumble.exe — the native launcher.
         exe = os.path.join(root, "Mumble.exe")
         if os.path.isfile(exe):
-            z.write(exe, "Mumble/Mumble.exe")
+            write_file(z, exe, "Mumble/Mumble.exe")
             counts["Mumble.exe"] = 1
         else:
             print("WARNING: root Mumble.exe missing — zip will lack the launcher.")
@@ -99,7 +162,7 @@ def main():
         # component notices live under Internal/app and are included by add_tree.
         licence = os.path.join(root, "LICENSE")
         if os.path.isfile(licence):
-            z.write(licence, "Mumble/LICENSE")
+            write_file(z, licence, "Mumble/LICENSE")
             counts["LICENSE"] = 1
         else:
             print("WARNING: root LICENSE missing — zip will lack Mumble's licence.")
@@ -109,7 +172,7 @@ def main():
         for fn in sorted(os.listdir(internal)):
             full = os.path.join(internal, fn)
             if os.path.isfile(full):
-                z.write(full, "Mumble/Internal/" + fn)
+                write_file(z, full, "Mumble/Internal/" + fn)
                 ni += 1
         counts["Internal launchers"] = ni
         # 3. Internal/app/ runtime (pruned).
@@ -137,7 +200,14 @@ def main():
         "Internal/ launcher (Open Mumble.bat)": "Mumble/Internal/Open Mumble.bat" in names,
         "Internal/ hidden .vbs": "Mumble/Internal/Mumble (hidden).vbs" in names,
         "app runtime (mumble.py)": "Mumble/Internal/app/mumble.py" in names,
+        "processing route policy shipped": "Mumble/Internal/app/processing_route.py" in names,
         "webui shipped": "Mumble/Internal/app/webui/app.js" in names,
+        "Focus Stage foundation shipped": all(
+            n in names for n in (
+                "Mumble/Internal/app/webui/focus-stage-contract.json",
+                "Mumble/Internal/app/webui/focus-stage.js",
+                "Mumble/Internal/app/webui/focus-stage.css",
+            )),
         "Mumble Search runtime shipped": (
             "Mumble/Internal/app/experimental/system_search/engine.py" in names
             and "Mumble/Internal/app/experimental/system_search/ui.js" in names
@@ -173,12 +243,8 @@ def main():
         # The marketing site serves its own public/ copy. Keep the user-facing
         # download byte-for-byte aligned with the validated root artifact;
         # previously a rebuilt root ZIP left the website serving an older build.
-        website_zip = os.path.join(
-            root, "Development Files", "Other", "website", "public",
-            "Mumble.zip")
-        if os.path.isdir(os.path.dirname(website_zip)):
-            shutil.copy2(out, website_zip)
-            print("  [ok ] website/public/Mumble.zip synced")
+        sync_website_archive(root, out)
+        print(f"  [ok ] maintained website archive synced: {website_zip}")
     sys.exit(0 if ok else 2)
 
 

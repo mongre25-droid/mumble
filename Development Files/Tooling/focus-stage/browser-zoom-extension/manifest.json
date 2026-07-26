@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Mumble browser zoom test driver",
+  "version": "1.0.0",
+  "description": "Test-only access to Chromium's browser-managed tab zoom API.",
+  "permissions": ["tabs"],
+  "background": {
+    "service_worker": "service-worker.js"
+  }
+}

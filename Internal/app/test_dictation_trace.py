@@ -7,6 +7,7 @@ import tempfile
 import threading
 
 from dictation_trace import DictationTraceSink, export_traces, read_traces
+from insertion import InsertionOperationExpired, InsertionRequest, InsertionTransaction
 
 
 class Clock:
@@ -153,7 +154,7 @@ def controller_capture_contract():
         controller._processing = False
         controller._pause_wake_word = lambda _lease: True
         controller._resume_wake_word = lambda _lease: None
-        controller._cloud_transcription_on = lambda: False
+        controller._cloud_transcription_on = lambda _route=None: False
         controller._set_state = lambda _state: None
         controller._tk_schedule = lambda fn, *args, **kwargs: fn(*args, **kwargs)
         controller._maybe_warm_ai = lambda: None
@@ -284,7 +285,7 @@ def completed_dictation_contract():
         controller._processing = False
         controller._pause_wake_word = lambda _lease: True
         controller._resume_wake_word = lambda _lease: None
-        controller._cloud_transcription_on = lambda: False
+        controller._cloud_transcription_on = lambda _route=None: False
         controller._set_state = lambda _state: None
         controller._tk_schedule = lambda fn, *args, **kwargs: fn(*args, **kwargs)
         controller._maybe_warm_ai = lambda: None
@@ -310,6 +311,34 @@ def completed_dictation_contract():
         controller._dictation_trace_session = None
         controller._dictation_inference_ordinal = 0
         controller._focused_editable = lambda: True
+
+        class Target:
+            def current(self):
+                return object()
+
+        class Transaction:
+            def insert(self, request):
+                controller._insertion_trace(
+                    "clipboard_ready", operation_id=request.operation_id,
+                    content_kind=request.content_kind,
+                )
+                controller._insertion_trace(
+                    "paste_sent", operation_id=request.operation_id,
+                    requested=4, accepted=4,
+                )
+                return mumble.InsertionResult(
+                    operation_id=request.operation_id,
+                    source=request.source,
+                    outcome=mumble.InsertionOutcome.CONFIRMED,
+                    reason="fixture confirmed one insertion",
+                    message="Pasted.",
+                    send_count=1,
+                    native_requested=4,
+                    native_accepted=4,
+                )
+
+        controller._insertion_target = Target()
+        controller._insertion_transaction = Transaction()
 
         clipboard_state = {"text": "original clipboard"}
         old_paste = mumble.pyperclip.paste
@@ -367,7 +396,11 @@ def cloud_inference_contract():
     class Settings:
         def get(self, key, default=None):
             values = {
+                "pro_mode": True,
+                "local_only_mode": False,
+                "transcription_mode": "cloud",
                 "cloud_transcription_provider": "groq",
+                "groq_api_key": "FROZEN_TRACE_KEY",
                 "language": "en",
             }
             return values.get(key, default)
@@ -411,6 +444,170 @@ def cloud_inference_contract():
               "private cloud words" not in json.dumps(rows[0]))
 
 
+def insertion_only_trace_contract():
+    with tempfile.TemporaryDirectory(prefix="mumble_insertion_trace_") as temp_dir:
+        trace_path = os.path.join(temp_dir, "dictation-traces.jsonl")
+        sink = DictationTraceSink(trace_path, enabled=True)
+        valid_operation_id = "a" * 32
+        unsafe_operation_id = "PRIVATE_TRANSCRIPT_CONTENT"
+        session = sink.start_insertion({
+            "trace_kind": "insertion",
+            "operation_id": valid_operation_id,
+            "source": "paste_latest",
+            "content_kind": "text",
+            "text": "PRIVATE TRANSCRIPT",
+            "path": r"C:\Private\secret.png",
+            "title": "Private window title",
+        })
+        session.mark(
+            "insertion_started",
+            operation_id=valid_operation_id,
+            requested_count=4,
+            target_captured=True,
+            editable=True,
+            integrity_relation="same",
+            transcript="PRIVATE TRANSCRIPT",
+            exception="PRIVATE RAW EXCEPTION",
+        )
+        session.finish(
+            "sent_unconfirmed",
+            source="paste_latest",
+            accepted_count=4,
+            send_count=1,
+            confirmation="unavailable",
+            fallback_reason="confirmation_unavailable",
+            cleanup_warning=False,
+        )
+
+        rows = read_traces(trace_path)
+        check("insertion-only operation is bounded in the strict sink", len(rows) == 1)
+        serialized = json.dumps(rows[0])
+        check("safe insertion identity and counts survive",
+              valid_operation_id in serialized
+              and '"accepted_count": 4' in serialized
+              and '"send_count": 1' in serialized)
+        check("private insertion data has no trace field",
+              "PRIVATE" not in serialized and "secret.png" not in serialized)
+
+        unsafe_path = os.path.join(temp_dir, "unsafe-operation.jsonl")
+        unsafe_sink = DictationTraceSink(unsafe_path, enabled=True)
+        unsafe_session = unsafe_sink.start_insertion({
+            "operation_id": unsafe_operation_id,
+            "source": "deck_history",
+            "content_kind": "text",
+        })
+        check("unsafe operation cannot create a trace session",
+              unsafe_session is None)
+        unsafe_serialized = json.dumps(read_traces(unsafe_path))
+        check("unsafe operation text cannot enter the strict trace sink",
+              unsafe_operation_id not in unsafe_serialized)
+
+        import mumble
+        controller_path = os.path.join(temp_dir, "controller-insertions.jsonl")
+        controller = mumble.Mumble.__new__(mumble.Mumble)
+        controller._dictation_trace_session = None
+        controller._dictation_trace_sink = DictationTraceSink(
+            controller_path, enabled=True)
+        controller._insertion_trace_sessions = {}
+        controller._insertion_trace_lock = threading.Lock()
+        controller_operation_id = "b" * 32
+        controller._insertion_trace(
+            "insertion_started", operation_id=controller_operation_id,
+            source="deck_history", content_kind="text",
+            target_captured=True)
+        controller._insertion_trace(
+            "insertion_finished", operation_id=controller_operation_id,
+            source="deck_history", outcome="not_sent", send_count=0,
+            fallback_reason="target_changed", cleanup_warning=False)
+        controller._insertion_trace(
+            "insertion_finished", operation_id=controller_operation_id,
+            source="deck_history", outcome="not_sent", send_count=0,
+            fallback_reason="target_changed", cleanup_warning=False)
+        controller_rows = read_traces(controller_path)
+        check("controller creates a bounded record without dictation",
+              len(controller_rows) == 1
+              and controller_rows[0]["context"]["trace_kind"] == "insertion")
+        check("duplicate controller terminal trace is idempotent",
+              sum(event.get("name") == "insertion_finished"
+                  for event in controller_rows[0]["events"]) == 1)
+        controller_serialized = json.dumps(controller_rows[0])
+        check("valid opaque identity correlates controller trace events",
+              controller_serialized.count(controller_operation_id) >= 2)
+
+        unsafe_controller_path = os.path.join(
+            temp_dir, "unsafe-controller-operation.jsonl")
+        controller._dictation_trace_sink = DictationTraceSink(
+            unsafe_controller_path, enabled=True)
+        controller._insertion_trace(
+            "insertion_started", operation_id=unsafe_operation_id,
+            source="deck_history", content_kind="text")
+        controller._insertion_trace(
+            "insertion_finished", operation_id=unsafe_operation_id,
+            source="deck_history", outcome="not_sent", send_count=0)
+        check("unsafe operation text cannot enter controller trace material",
+              unsafe_operation_id not in json.dumps(
+                  read_traces(unsafe_controller_path)))
+        check("unsafe operation cannot enter controller trace registry",
+              unsafe_operation_id not in controller._insertion_trace_sessions)
+        check("controller boundary rejects unsafe operation identifiers",
+              controller._validated_external_operation_id(
+                  unsafe_operation_id) is None)
+        check("controller boundary accepts runtime opaque identifiers",
+              controller._validated_external_operation_id(
+                  valid_operation_id) == valid_operation_id)
+
+        failure_path = os.path.join(temp_dir, "terminal-failures.jsonl")
+        failure_controller = mumble.Mumble.__new__(mumble.Mumble)
+        failure_controller._dictation_trace_session = None
+        failure_controller._dictation_trace_sink = DictationTraceSink(
+            failure_path, enabled=True)
+        failure_controller._insertion_trace_sessions = {}
+        failure_controller._insertion_trace_lock = threading.Lock()
+        transaction = InsertionTransaction(
+            None, None, None, trace=failure_controller._insertion_trace)
+        sentinel = "PRIVATE_CALLER_TEXT_AND_EXCEPTION"
+
+        class OriginalFailure(RuntimeError):
+            pass
+
+        def fail_terminal(_request):
+            raise OriginalFailure(sentinel)
+
+        transaction._execute = fail_terminal
+        for index in range(300):
+            request = InsertionRequest(
+                operation_id="{:032x}".format(index + 50000),
+                source="deck_history",
+                content_kind="text",
+                text=sentinel,
+                activation_target=None,
+            )
+            try:
+                transaction.insert(request)
+            except OriginalFailure:
+                pass
+            else:
+                raise AssertionError("terminal exception was not preserved")
+            try:
+                transaction.insert(request)
+            except InsertionOperationExpired:
+                pass
+            else:
+                raise AssertionError("failed operation became reusable")
+
+        failure_rows = read_traces(failure_path)
+        failure_serialized = json.dumps(failure_rows)
+        check("300 terminal failures leave no controller trace sessions",
+              failure_controller._insertion_trace_sessions == {})
+        check("300 terminal failures each persist one terminal trace",
+              len(failure_rows) == 300
+              and all(sum(event.get("name") == "insertion_finished"
+                          for event in row["events"]) == 1
+                      for row in failure_rows))
+        check("terminal failure traces remain content-free",
+              sentinel not in failure_serialized)
+
+
 if __name__ == "__main__":
     print("\n== privacy-safe exportable dictation trace ==")
     trace_contract()
@@ -420,4 +617,6 @@ if __name__ == "__main__":
     completed_dictation_contract()
     print("\n== cloud inference boundary trace ==")
     cloud_inference_contract()
+    print("\n== insertion-only trace boundary ==")
+    insertion_only_trace_contract()
     print("\nALL GREEN")

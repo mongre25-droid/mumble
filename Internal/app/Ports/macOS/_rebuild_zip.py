@@ -17,9 +17,10 @@ ROOT = os.path.dirname(SRC)                               # repo root
 ZIP = os.path.join(ROOT, "MacMumble.zip")
 TOP = "MacMumble"
 
-EXCLUDE_DIRS = {".venv", "__pycache__", ".git"}
-EXCLUDE_NAMES = {".DS_Store"}
+EXCLUDE_DIRS = {".venv", "__pycache__", ".git", ".pytest_cache", "_test_logs"}
+EXCLUDE_NAMES = {".DS_Store", "requirements-dev.txt"}
 EXEC_EXT = (".command", ".sh")                            # need the +x bit
+ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
 
 def _mode_bits(path):
@@ -33,16 +34,21 @@ def main():
     count, execs = 0, []
     with zipfile.ZipFile(ZIP, "w", zipfile.ZIP_DEFLATED) as z:
         for dirpath, dirnames, filenames in os.walk(SRC):
-            dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
-            for name in filenames:
-                if name in EXCLUDE_NAMES:
+            dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDE_DIRS)
+            for name in sorted(filenames):
+                rel_from_port = os.path.relpath(
+                    os.path.join(dirpath, name), SRC).replace(os.sep, "/")
+                if (name in EXCLUDE_NAMES
+                        or (rel_from_port.startswith("app/test_") and name.endswith(".py"))
+                        or name.endswith((".pyc", ".pyo"))):
                     continue
                 full = os.path.join(dirpath, name)
                 rel = os.path.relpath(full, SRC).replace(os.sep, "/")
                 arc = f"{TOP}/{rel}"
                 with open(full, "rb") as f:
                     data = f.read()
-                info = zipfile.ZipInfo(arc)
+                info = zipfile.ZipInfo(arc, ZIP_EPOCH)
+                info.create_system = 3
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info.external_attr = _mode_bits(full)
                 z.writestr(info, data)
@@ -51,6 +57,11 @@ def main():
                     execs.append(rel)
     print(f"MacMumble.zip built: {count} files -> {ZIP}")
     print("  executable (+x) launchers:", ", ".join(execs) if execs else "(none)")
+    with zipfile.ZipFile(ZIP) as built:
+        required = f"{TOP}/app/processing_route.py"
+        if required not in built.namelist() or built.testzip() is not None:
+            raise RuntimeError("macOS archive verification failed")
+    print("  verified processing route policy membership and archive CRCs")
 
 
 if __name__ == "__main__":

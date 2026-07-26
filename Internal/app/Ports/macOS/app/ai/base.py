@@ -6,6 +6,47 @@ knowing its internals.
 """
 
 from abc import ABC, abstractmethod
+from functools import wraps
+import inspect
+
+import processing_route
+
+
+def _guard_provider_method(method):
+    if inspect.isgeneratorfunction(method):
+        @wraps(method)
+        def guarded_stream(self, *args, **kwargs):
+            decision = kwargs.pop("route_decision", None)
+            expected_feature = kwargs.pop("expected_feature", None)
+            expected_lane = kwargs.pop("expected_lane", None)
+
+            def generate():
+                info = self.model_info
+                processing_route.require_text_shaping(
+                    decision, expected_feature=expected_feature,
+                    expected_lane=expected_lane,
+                    expected_provider=info.get("provider"),
+                    api_key=getattr(self, "_api_key", ""),
+                    model=kwargs.get("model", info.get("model")))
+                yield from method(self, *args, **kwargs)
+
+            return generate()
+        return guarded_stream
+
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        decision = kwargs.pop("route_decision", None)
+        expected_feature = kwargs.pop("expected_feature", None)
+        expected_lane = kwargs.pop("expected_lane", None)
+        info = self.model_info
+        processing_route.require_text_shaping(
+            decision, expected_feature=expected_feature,
+            expected_lane=expected_lane,
+            expected_provider=info.get("provider"),
+            api_key=getattr(self, "_api_key", ""),
+            model=kwargs.get("model", info.get("model")))
+        return method(self, *args, **kwargs)
+    return guarded
 
 
 class BaseProvider(ABC):
@@ -21,6 +62,14 @@ class BaseProvider(ABC):
     reasoning-model detection) live here so individual providers don't
     duplicate them.
     """
+
+    def __init_subclass__(cls, **kwargs):
+        """Make route permission mandatory for every present and future adapter."""
+        super().__init_subclass__(**kwargs)
+        for name in ("chat", "chat_stream"):
+            method = cls.__dict__.get(name)
+            if method is not None and not getattr(method, "__isabstractmethod__", False):
+                setattr(cls, name, _guard_provider_method(method))
 
     # ------------------------------------------------------------------
     # Abstract interface — every provider MUST implement these

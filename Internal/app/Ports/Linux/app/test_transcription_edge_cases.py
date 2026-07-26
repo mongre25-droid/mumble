@@ -50,6 +50,7 @@ print("=== Section 1: Import and structural checks ===")
 
 check("ai.stt_providers imports cleanly", True)
 import ai.stt_providers as stt
+import processing_route
 check("stt_providers.PROVIDERS is dict", isinstance(stt.PROVIDERS, dict))
 check("stt_providers has transcribe", callable(stt.transcribe))
 check("stt_providers has provider_info", callable(stt.provider_info))
@@ -108,23 +109,63 @@ def test_2_4_transcription_mode_setting_exists():
     check("transcription_mode default is 'local'", mode == "local")
 
 def test_2_5_cloud_transcribe_requires_api_key():
-    """Cloud transcription raises ValueError when no API key is set."""
+    """Cloud transcription fails closed before transport without authority/key."""
     import numpy as np
     audio = np.zeros(16000, dtype=np.float32)
 
     class NoKeySettings:
         def get(self, key, default=None):
             return {
+                "pro_mode": True,
+                "local_only_mode": False,
+                "transcription_mode": "cloud",
                 "cloud_transcription_provider": "groq",
+                "groq_transcription_model": "whisper-large-v3-turbo",
                 "groq_api_key": "",
             }.get(key, default)
 
+    transport_attempts = []
+    original_transport = stt._post_and_extract
+
+    def reject_transport(*args, **kwargs):
+        transport_attempts.append((args, kwargs))
+        raise AssertionError("provider transport must not run")
+
+    stt._post_and_extract = reject_transport
     try:
-        stt.transcribe(audio, NoKeySettings())
-        check("transcribe raises on missing key", False)
-    except ValueError as e:
-        check("transcribe raises ValueError on missing key",
-              "API key" in str(e) or "key" in str(e).lower())
+        try:
+            stt.transcribe(audio, NoKeySettings())
+            check("missing snapshot fails closed", False)
+        except TypeError as e:
+            check("missing snapshot fails closed",
+                  str(e) == ("Cloud transcription requires an explicit "
+                             "ProcessingInputSnapshot"))
+
+        invocation = processing_route.snapshot_inputs(
+            NoKeySettings(), feature="dictation", lane="speech_to_text"
+        )
+        decision = invocation.route
+        check("missing-key fixture supplies exact frozen speech-to-text snapshot",
+              isinstance(invocation, processing_route.ProcessingInputSnapshot)
+              and decision.feature == "dictation"
+              and decision.lane == "speech_to_text"
+              and decision.provider == "groq"
+              and decision.model == "whisper-large-v3-turbo"
+              and decision.requested_route == processing_route.HOSTED)
+
+        try:
+            stt.transcribe(audio, invocation)
+            check("frozen missing-key route is rejected", False)
+        except processing_route.HostedRouteBlocked as e:
+            check("frozen missing-key route reaches intended edge case",
+                  e.reason == "missing_key" and e.decision is decision)
+        except Exception as e:
+            check(f"frozen route avoids earlier {type(e).__name__}", False)
+
+        check("missing authority/key makes no provider transport attempt",
+              transport_attempts == [])
+    finally:
+        stt._post_and_extract = original_transport
 
 test_2_1_cloud_stt_providers_are_registered()
 test_2_2_cloud_stt_providers_have_urls()

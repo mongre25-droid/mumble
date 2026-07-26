@@ -28,6 +28,7 @@ def check(label, cond):
 print("=== Import checks ===")
 
 import ai.stt_providers as stt
+import processing_route
 check("stt_providers module imports", True)
 check("PROVIDERS is dict", isinstance(stt.PROVIDERS, dict))
 check("DEFAULT_PROVIDER is 'groq'", stt.DEFAULT_PROVIDER == "groq")
@@ -93,37 +94,45 @@ check("pcm16_wav_bytes correct size", abs(len(wav) - 32044) < 100)
 
 print("\n=== transcribe() error paths ===")
 
-# transcribe requires a settings object — test the error path
+# transcribe requires a frozen invocation snapshot — test fail-closed paths
 class FakeSettings:
     def get(self, key, default=None):
-        if key == "cloud_transcription_provider":
-            return "groq"
-        if key == "groq_api_key":
-            return ""
-        return default
+        return {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "transcription_mode": "cloud",
+            "cloud_transcription_provider": "groq",
+            "groq_api_key": "",
+        }.get(key, default)
 
 try:
-    stt.transcribe(np.zeros(16000, dtype=np.float32), FakeSettings())
+    missing_key = processing_route.snapshot_inputs(
+        FakeSettings(), feature="dictation", lane="speech_to_text"
+    )
+    stt.transcribe(np.zeros(16000, dtype=np.float32), missing_key)
     check("transcribe raises on missing key", False)
-except ValueError as e:
-    check("transcribe raises ValueError on missing key", "No API key" in str(e) or "key" in str(e).lower())
-except Exception as e:
-    check(f"transcribe raises on missing key (got {type(e).__name__})", True)
+except processing_route.HostedRouteBlocked as e:
+    check("transcribe rejects a frozen missing-key route", e.reason == "missing_key")
 
 class UnknownProviderSettings:
     def get(self, key, default=None):
-        if key == "cloud_transcription_provider":
-            return "retired-provider"
-        if key == "groq_api_key":
-            return "gsk-must-not-be-used"
-        return default
+        return {
+            "pro_mode": True,
+            "local_only_mode": False,
+            "transcription_mode": "cloud",
+            "cloud_transcription_provider": "retired-provider",
+            "groq_api_key": "MUST_NOT_BE_USED",
+        }.get(key, default)
 
 
 try:
-    stt.transcribe(np.zeros(1600, dtype=np.float32), UnknownProviderSettings())
+    unsupported = processing_route.snapshot_inputs(
+        UnknownProviderSettings(), feature="dictation", lane="speech_to_text"
+    )
+    stt.transcribe(np.zeros(1600, dtype=np.float32), unsupported)
     unknown_raised = False
-except ValueError as e:
-    unknown_raised = "Unsupported cloud transcription provider" in str(e)
+except processing_route.HostedRouteBlocked as e:
+    unknown_raised = e.reason == "unsupported_provider"
 check("transcribe never reinterprets an unknown provider as Groq",
       unknown_raised)
 
