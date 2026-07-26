@@ -4,7 +4,7 @@ Mumble itself is released under the repository's MIT licence. The complete
 dependency inventory and the PyMuPDF distribution analysis live in the Core
 licensing documentation.
 
-## Mumble Search
+## Mumble Find
 
 `experimental/system_search/` is original Mumble code and uses only Python's
 standard library plus the existing `pyperclip` runtime for the explicit Copy

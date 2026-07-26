@@ -109,10 +109,9 @@ DEFAULTS = {
     # mnemonic (Find) while staying distinct from Mumble's actual registered
     # record, paste-latest and Deck chords.
     "search_hotkey": SEARCH_HOTKEY_DEFAULT,
-    # Local app/file results come first. Perplexity is the default web fallback;
-    # Google and Brave remain selectable in Settings.
-    "search_engine": "perplexity",   # web fallback: google | perplexity | brave
-    "browser": "default",            # web fallback opens in the chosen browser
+    # Used only by explicit Deck web-search actions; Mumble Find stays local.
+    "search_engine": "perplexity",   # google | perplexity | brave
+    "browser": "default",            # browser for an explicit web search
     "system_search_include_files": True,
     "system_search_roots": [],        # empty = standard user folders
     "system_search_max_items": 75000,

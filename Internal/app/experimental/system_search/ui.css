@@ -1,4 +1,4 @@
-/* Mumble Search — centered launcher palette. */
+/* Mumble Find — centred launcher palette. */
 .ss-overlay {
   position: fixed;
   inset: 0;
@@ -225,7 +225,6 @@
 .ss-app-icon-img { width: 28px; height: 28px; object-fit: contain; }
 .ss-result[data-kind="app"] .ss-kind-icon { color: var(--gold); background: rgba(232, 184, 75, .068); }
 .ss-result[data-kind="folder"] .ss-kind-icon { color: #e9c768; }
-.ss-result[data-kind="web"] .ss-kind-icon { color: #8bbcf1; }
 .ss-copy { min-width: 0; }
 .ss-name { display: flex; align-items: center; min-width: 0; gap: 6px; color: var(--text); font-size: 12px; font-weight: 650; }
 .ss-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -349,6 +348,7 @@ body.search-popup-page .ss-header {
   min-height: 44px;
   padding: 8px 14px 5px;
   -webkit-app-region: drag;
+  cursor: move;
 }
 body.search-popup-page .ss-mark { width: 28px; height: 28px; border-radius: 9px; }
 body.search-popup-page .ss-heading h2 { font-size: 12px; }

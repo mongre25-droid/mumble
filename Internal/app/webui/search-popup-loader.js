@@ -1,4 +1,4 @@
-/* Fixed bridge loader for the standalone Mumble Search window. */
+/* Fixed bridge loader for the standalone Mumble Find window. */
 (function () {
   "use strict";
 
@@ -34,7 +34,7 @@
     try {
       return install(await window.pywebview.api.system_search_assets());
     } catch (error) {
-      console.error("Mumble Search assets failed", error);
+      console.error("Mumble Find assets failed", error);
       return false;
     } finally {
       loading = false;

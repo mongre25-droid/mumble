@@ -1,15 +1,22 @@
-"""Fast, local application-and-file search for Mumble.
+"""Fast, local application-and-indexed-file search for Mumble Find.
 
 The search engine deliberately has a narrow authority boundary: it indexes
-known application locations and user folders, returns immutable result ids,
-and will only act on an id that came from its own index.  Search text can never
-become a command line or an arbitrary path.
+known application locations, asks an operating-system provider for bounded file
+candidates, returns immutable result ids, and will only act on an id that came
+from those trusted sources. Search text can never become a command line or an
+arbitrary path.
 """
 
 from __future__ import annotations
 
 import base64
 from collections import OrderedDict
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    ThreadPoolExecutor,
+    TimeoutError as FutureTimeout,
+    wait,
+)
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -26,30 +33,22 @@ import sys
 import threading
 import time
 import unicodedata
-from urllib.parse import quote_plus
-import webbrowser
+
+from .windows_search import WindowsSearchProvider
 
 
-INDEX_VERSION = 2
+INDEX_VERSION = 3
 DEFAULT_MAX_ITEMS = 75_000
-DEFAULT_RESULT_LIMIT = 40
+DEFAULT_RESULT_LIMIT = 12
+DEFAULT_QUERY_DEADLINE_MS = 75
+PROVIDER_CANDIDATE_LIMIT = 250
 INDEX_MAX_AGE_SECONDS = 15 * 60
 STATE_MAX_HISTORY = 250
 ICON_CACHE_LIMIT = 128
-ICON_BATCH_LIMIT = 16
-SKIP_DIRS = frozenset({
-    ".cache", ".git", ".hg", ".idea", ".mypy_cache", ".pytest_cache",
-    ".svn", ".tox", ".venv", "__pycache__", "appdata", "cache",
-    "node_modules", "site-packages", "temp", "tmp", "venv",
-})
+ICON_BATCH_LIMIT = 12
+ICON_CACHE_VERSION = 1
+ICON_CONCURRENCY = 4
 APP_SUFFIXES = frozenset({".lnk", ".url", ".exe", ".bat", ".cmd"})
-WEB_ENGINES = {
-    "google": "https://www.google.com/search?q={q}",
-    "perplexity": "https://www.perplexity.ai/search?q={q}",
-    "brave": "https://search.brave.com/search?q={q}",
-}
-
-
 def _utc_now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -105,12 +104,27 @@ class SearchItem:
         )
 
 
+class QueryCancellation:
+    """Cooperative cancellation identity shared by provider and ranker work."""
+
+    def __init__(self, generation):
+        self.generation = int(generation)
+        self._event = threading.Event()
+
+    @property
+    def cancelled(self):
+        return self._event.is_set()
+
+    def cancel(self):
+        self._event.set()
+
+
 class SystemSearchEngine:
     """Bounded local index with fuzzy ranking and safe result actions."""
 
     def __init__(self, settings=None, data_dir=None, platform=None, home=None,
-                 file_roots=None, app_roots=None, max_items=None,
-                 start_background=True, url_opener=None):
+                  file_roots=None, app_roots=None, max_items=None,
+                  start_background=True, url_opener=None, file_provider=None):
         self.settings = settings
         self.platform = self._platform_name(platform)
         self.home = Path(home or Path.home()).expanduser()
@@ -135,7 +149,23 @@ class SystemSearchEngine:
         self._last_error = ""
         self._state = {"favorites": [], "usage": {}}
         self._icon_cache = OrderedDict()
+        self._icon_epoch = 1
+        self._icon_executor = ThreadPoolExecutor(
+            max_workers=ICON_CONCURRENCY,
+            thread_name_prefix="mumble-find-icon",
+        )
+        self._query_lock = threading.RLock()
+        self._query_generation = 0
+        self._query_tokens = {}
+        self._query_executor = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="mumble-find-query",
+        )
+        self._file_provider = file_provider
+        if self._file_provider is None and self.platform == "windows":
+            self._file_provider = WindowsSearchProvider()
         self._linux_icon_paths = {}
+        self._background_refresh_enabled = bool(start_background)
         self._load_state()
         self._load_cache()
         if start_background and self.supported:
@@ -232,7 +262,7 @@ class SystemSearchEngine:
     def start_refresh(self, force=False):
         if not self.supported:
             return {"ok": False, "supported": False,
-                    "message": "Mumble Search is available on Windows and Linux."}
+                    "message": "Mumble Find is currently available on Windows."}
         with self._lock:
             if self._refreshing:
                 return {"ok": True, "refreshing": True}
@@ -265,18 +295,12 @@ class SystemSearchEngine:
                 items[item.id] = item
                 if len(items) >= self.max_items:
                     break
-            remaining = max(0, self.max_items - len(items))
-            if remaining and bool(_setting(
-                    self.settings, "system_search_include_files", True)):
-                for item in self._discover_files(remaining):
-                    items[item.id] = item
-                    if len(items) >= self.max_items:
-                        break
             with self._lock:
                 self._items = items
                 self._ephemeral.clear()
                 self._updated_at = _utc_now()
                 self._refreshing = False
+                self.invalidate_icon_cache()
             self._save_cache(items)
         except Exception as exc:
             with self._lock:
@@ -487,39 +511,8 @@ class SystemSearchEngine:
             icon_hint=fields.get("Icon", ""),
         )
 
-    def _discover_files(self, limit):
-        emitted = 0
-        for root in self._file_roots():
-            try:
-                for current, dirs, files in os.walk(root, followlinks=False):
-                    dirs[:] = [
-                        name for name in dirs
-                        if not name.startswith(".") and name.casefold() not in SKIP_DIRS
-                    ]
-                    current_path = Path(current)
-                    for name in dirs:
-                        path = current_path / name
-                        yield SearchItem.make(
-                            "folder", name, str(path), str(current_path), "files"
-                        )
-                        emitted += 1
-                        if emitted >= limit:
-                            return
-                    for name in files:
-                        if name.startswith("."):
-                            continue
-                        path = current_path / name
-                        yield SearchItem.make(
-                            "file", name, str(path), str(current_path), "files",
-                            keywords=path.suffix.lstrip("."),
-                        )
-                        emitted += 1
-                        if emitted >= limit:
-                            return
-            except (OSError, PermissionError):
-                continue
-
     def status(self):
+        provider = self._provider_status()
         with self._lock:
             counts = {"app": 0, "file": 0, "folder": 0}
             for item in self._items.values():
@@ -538,12 +531,48 @@ class SystemSearchEngine:
                 "last_error": self._last_error,
                 "counts": counts,
                 "total": len(self._items),
-                "roots": [str(path) for path in self._file_roots()],
+                "roots": [],
                 "hotkey": _setting(self.settings, "search_hotkey", "ctrl+alt+f"),
+                "file_provider": provider,
+                "icon_version": self.icon_version,
                 "message": (
-                    "Mumble Search is available on Windows and Linux."
+                    "Mumble Find is currently available on Windows."
                     if not self.supported else ""
                 ),
+            }
+
+    def _provider_status(self):
+        if not bool(_setting(
+                self.settings, "system_search_include_files", True)):
+            return {
+                "available": False,
+                "state": "disabled",
+                "name": "Windows Search",
+                "message": "File and folder results are turned off.",
+            }
+        provider = self._file_provider
+        if provider is None:
+            return {
+                "available": False,
+                "state": "error",
+                "name": "Indexed file search",
+                "message": (
+                    "Indexed file and folder search is not available on this "
+                    "platform yet; installed applications remain searchable."
+                ),
+            }
+        try:
+            result = provider.status()
+            return result if isinstance(result, dict) else {
+                "available": True, "state": "ready",
+                "name": "Indexed file search", "message": "",
+            }
+        except Exception as exc:
+            return {
+                "available": False,
+                "state": "error",
+                "name": "Indexed file search",
+                "message": str(exc)[:200],
             }
 
     @staticmethod
@@ -617,8 +646,6 @@ class SystemSearchEngine:
 
     @staticmethod
     def _actions_for(item):
-        if item.kind == "web":
-            return ["open"]
         actions = ["open", "favorite"]
         if item.kind in {"file", "app"} and item.source not in {"start-apps"}:
             actions.append("reveal")
@@ -649,8 +676,6 @@ class SystemSearchEngine:
             return "Windows app" if item.source == "start-apps" else "Application"
         if item.kind == "folder":
             return "Folder"
-        if item.kind == "web":
-            return item.subtitle if not os.path.isabs(item.subtitle) else "Web search"
         suffix = Path(item.name).suffix.lower().lstrip(".")
         labels = {
             "doc": "Word document", "docx": "Word document",
@@ -663,26 +688,148 @@ class SystemSearchEngine:
         }
         return labels.get(suffix, f"{suffix.upper()} file" if suffix else "File")
 
-    def _web_result(self, query):
-        engine = str(_setting(self.settings, "search_engine", "perplexity"))
-        template = WEB_ENGINES.get(engine, WEB_ENGINES["perplexity"])
-        url = template.format(q=quote_plus(query))
-        label = engine.title()
-        item = SearchItem.make(
-            "web", f'Search the web for “{query}”', url,
-            f"Open with {label}", "web",
-        )
-        with self._lock:
-            self._ephemeral[item.id] = item
-        return item
+    def cancel(self, generation):
+        try:
+            generation = int(generation)
+        except (TypeError, ValueError):
+            return False
+        with self._query_lock:
+            token = self._query_tokens.get(generation)
+            if token is not None:
+                token.cancel()
+        provider = self._file_provider
+        if provider is not None:
+            try:
+                provider.cancel(generation)
+            except Exception:
+                pass
+        return token is not None
 
-    def search(self, query="", category="all", limit=DEFAULT_RESULT_LIMIT):
+    def _begin_query(self, generation):
+        with self._query_lock:
+            if generation is None:
+                generation = self._query_generation + 1
+            try:
+                generation = int(generation)
+            except (TypeError, ValueError):
+                generation = self._query_generation + 1
+            if generation <= self._query_generation:
+                return generation, None
+            older = list(self._query_tokens)
+            self._query_generation = generation
+            token = QueryCancellation(generation)
+            self._query_tokens[generation] = token
+        for old_generation in older:
+            if old_generation < generation:
+                self.cancel(old_generation)
+        with self._query_lock:
+            for old_generation in older:
+                if old_generation < generation:
+                    self._query_tokens.pop(old_generation, None)
+        return generation, token
+
+    def _stale_query_result(self, generation, message="Superseded query"):
+        return {
+            "ok": False,
+            "supported": self.supported,
+            "generation": generation,
+            "stale": True,
+            "results": [],
+            "total_matches": 0,
+            "provider_state": "cancelled",
+            "message": message,
+            "icon_version": self.icon_version,
+        }
+
+    @staticmethod
+    def _provider_item(value):
+        if isinstance(value, SearchItem):
+            return value if value.kind in {"file", "folder"} else None
+        if not isinstance(value, dict):
+            return None
+        kind = str(value.get("kind") or "file").lower()
+        target = str(value.get("target") or "")
+        if kind not in {"file", "folder"} or not target:
+            return None
+        return SearchItem.make(
+            kind,
+            value.get("name") or Path(target).name,
+            target,
+            value.get("subtitle") or "",
+            value.get("source") or "windows-search",
+            keywords=value.get("keywords") or "",
+        )
+
+    def _query_file_provider(self, query, category, candidate_limit,
+                             deadline, token, generation):
+        if (not query or category == "app" or not bool(_setting(
+                self.settings, "system_search_include_files", True))):
+            return {"items": [], "state": "complete", "message": ""}
+        provider = self._file_provider
+        if provider is None:
+            return {
+                "items": [], "state": "error",
+                "message": (
+                    "Indexed file and folder search is unavailable; installed "
+                    "applications remain searchable."
+                ),
+            }
+        future = self._query_executor.submit(
+            provider.query,
+            query,
+            limit=candidate_limit,
+            deadline=deadline,
+            cancellation=token,
+            generation=generation,
+        )
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            result = future.result(timeout=remaining)
+        except FutureTimeout:
+            token.cancel()
+            try:
+                provider.cancel(generation)
+            except Exception:
+                pass
+            return {
+                "items": [], "state": "partial",
+                "message": (
+                    "Windows Search reached the query deadline; installed "
+                    "applications remain usable."
+                ),
+                "deadline_exceeded": True,
+            }
+        except Exception as exc:
+            return {
+                "items": [], "state": "error",
+                "message": (
+                    "Windows Search is unavailable; installed applications "
+                    f"remain searchable. {str(exc)[:160]}"
+                ),
+            }
+        return result if isinstance(result, dict) else {
+            "items": [], "state": "error",
+            "message": "Windows Search returned an invalid response.",
+        }
+
+    def search(self, query="", category="all", limit=DEFAULT_RESULT_LIMIT,
+               generation=None, deadline_ms=DEFAULT_QUERY_DEADLINE_MS):
         if not self.supported:
             return {"ok": False, "supported": False, "results": [],
-                    "message": "Mumble Search is available on Windows and Linux."}
+                    "message": "Mumble Find is currently available on Windows."}
+        generation, token = self._begin_query(generation)
+        if token is None:
+            return self._stale_query_result(generation)
+        started = time.monotonic()
+        try:
+            deadline_ms = max(10, min(5_000, int(deadline_ms)))
+        except (TypeError, ValueError):
+            deadline_ms = DEFAULT_QUERY_DEADLINE_MS
+        deadline = started + deadline_ms / 1000.0
         # Keep a long-lived WebUI useful without a watcher service: the first
-        # query after the 15-minute cache window refreshes in the background.
-        self.start_refresh(force=False)
+        # query after the cache window refreshes only the app catalogue.
+        if self._background_refresh_enabled:
+            self.start_refresh(force=False)
         query = str(query or "").strip()[:300]
         category = str(category or "all").strip().lower()
         aliases = {"apps": "app", "files": "file", "folders": "folder"}
@@ -697,20 +844,36 @@ class SystemSearchEngine:
         if category not in {"all", "app", "file", "folder"}:
             category = "all"
         try:
-            limit = max(1, min(100, int(limit)))
+            limit = max(1, min(DEFAULT_RESULT_LIMIT, int(limit)))
         except (TypeError, ValueError):
             limit = DEFAULT_RESULT_LIMIT
         norm_query = _normalise(query)
         with self._lock:
-            items = list(self._items.values())
+            items = [item for item in self._items.values() if item.kind == "app"]
             favorites = set(self._state.get("favorites", []))
             refreshing = self._refreshing
+        provider_result = self._query_file_provider(
+            query,
+            category,
+            min(PROVIDER_CANDIDATE_LIMIT, max(12, limit * 20)),
+            deadline,
+            token,
+            generation,
+        )
+        if token.cancelled or generation != self._query_generation:
+            return self._stale_query_result(generation)
+        provider_items = []
+        for value in provider_result.get("items", []):
+            item = self._provider_item(value)
+            if item is not None:
+                provider_items.append(item)
+        items.extend(provider_items)
         ranked = []
         for item in items:
+            if token.cancelled or time.monotonic() >= deadline:
+                break
             if category != "all" and item.kind != category:
                 continue
-            # The launcher idle state is an application shelf. Files and folders
-            # remain searchable, and category filters can still browse them.
             if not norm_query and category == "all" and item.kind != "app":
                 continue
             score = self._text_score(norm_query, item) if norm_query else 0.0
@@ -723,55 +886,156 @@ class SystemSearchEngine:
                 score += 8.0
             ranked.append((score, item))
         ranked.sort(key=lambda row: (-row[0], row[1].name.casefold(), row[1].id))
-        if norm_query and category == "all":
-            ranked.append((18.0, self._web_result(query)))
-            ranked.sort(key=lambda row: (-row[0], row[1].name.casefold()))
-        result_limit = min(limit, 12) if not norm_query and category == "all" else limit
-        results = [self._public_result(item, score) for score, item in ranked[:result_limit]]
+        if token.cancelled or generation != self._query_generation:
+            return self._stale_query_result(generation)
+        selected = ranked[:limit]
+        results = [self._public_result(item, score) for score, item in selected]
+        with self._lock:
+            self._ephemeral = {
+                item.id: item for _score, item in selected if item.kind != "app"
+            }
+        provider_state = str(provider_result.get("state") or "complete")
+        message = str(provider_result.get("message") or "")
+        complete_error = bool(
+            provider_state == "error" and not results and category != "app"
+        )
         return {
-            "ok": True,
+            "ok": not complete_error,
             "supported": True,
             "query": query,
             "category": category,
+            "generation": generation,
+            "stale": False,
+            "deadline_ms": deadline_ms,
+            "deadline_exceeded": bool(
+                provider_result.get("deadline_exceeded")
+                or time.monotonic() >= deadline
+            ),
             "refreshing": refreshing,
             "results": results,
             "total_matches": len(ranked),
+            "provider_state": provider_state,
+            "partial": provider_state == "partial",
+            "message": message,
+            "icon_version": self.icon_version,
+            "elapsed_ms": round((time.monotonic() - started) * 1000, 3),
         }
 
-    def icons(self, result_ids):
-        """Return bounded native app icons for already-issued opaque ids."""
+    @property
+    def icon_version(self):
+        with self._lock:
+            return f"{ICON_CACHE_VERSION}:{self._icon_epoch}"
+
+    def invalidate_icon_cache(self):
+        with self._lock:
+            self._icon_epoch += 1
+            self._icon_cache.clear()
+            return f"{ICON_CACHE_VERSION}:{self._icon_epoch}"
+
+    @staticmethod
+    def _icon_fingerprint(item):
+        try:
+            stat = Path(item.target).stat()
+            source = f"{item.target}\0{stat.st_mtime_ns}\0{stat.st_size}"
+        except OSError:
+            source = item.target
+        return hashlib.sha256(source.encode("utf-8", "replace")).hexdigest()[:16]
+
+    def _extract_icon(self, item):
+        return (
+            self._windows_icon_data(item.target)
+            if self.platform == "windows"
+            else self._linux_icon_data(item)
+        )
+
+    def icons(self, result_ids, generation=None, icon_version=None):
+        """Hydrate visible app icons with bounded, versioned worker ownership."""
         if self.platform not in {"windows", "linux"} or not isinstance(
                 result_ids, (list, tuple)):
-            return {"ok": True, "icons": {}}
+            return {"ok": True, "icons": {}, "stale": False}
+        with self._query_lock:
+            current_generation = self._query_generation
+            token = self._query_tokens.get(current_generation)
+        try:
+            generation = (current_generation if generation is None
+                          else int(generation))
+        except (TypeError, ValueError):
+            generation = current_generation
+        current_version = self.icon_version
+        icon_version = str(icon_version or current_version)
+        if (generation != current_generation or icon_version != current_version
+                or (token is not None and token.cancelled)):
+            return {
+                "ok": True, "icons": {}, "stale": True,
+                "generation": generation, "icon_version": current_version,
+            }
         requested = []
         for raw in result_ids[:ICON_BATCH_LIMIT]:
             item_id = str(raw or "")
             if item_id and item_id not in requested:
                 requested.append(item_id)
         with self._lock:
-            items = {item_id: self._items.get(item_id) for item_id in requested}
-        output = {}
-        for item_id, item in items.items():
-            if item is None or item.kind != "app":
-                continue
-            cached = self._icon_cache.get(item_id)
-            if cached:
-                self._icon_cache.move_to_end(item_id)
-                output[item_id] = cached
-                continue
-            icon = (
-                self._windows_icon_data(item.target)
-                if self.platform == "windows"
-                else self._linux_icon_data(item)
+            items = {
+                item_id: self._items.get(item_id)
+                for item_id in requested
+                if self._items.get(item_id) is not None
+                and self._items[item_id].kind == "app"
+            }
+            cached = {}
+            misses = []
+            for item_id, item in items.items():
+                key = (current_version, item_id, self._icon_fingerprint(item))
+                icon = self._icon_cache.get(key)
+                if icon:
+                    self._icon_cache.move_to_end(key)
+                    cached[item_id] = icon
+                else:
+                    misses.append((item_id, item, key))
+        futures = {
+            self._icon_executor.submit(self._extract_icon, item): (item_id, key)
+            for item_id, item, key in misses
+        }
+        output = dict(cached)
+        pending = set(futures)
+        while pending:
+            with self._query_lock:
+                cancelled = (
+                    generation != self._query_generation
+                    or icon_version != self.icon_version
+                    or (token is not None and token.cancelled)
+                )
+            if cancelled:
+                for future in pending:
+                    future.cancel()
+                break
+            done, pending = wait(
+                pending, timeout=0.01, return_when=FIRST_COMPLETED)
+            for future in done:
+                item_id, key = futures[future]
+                try:
+                    icon = future.result()
+                except Exception:
+                    icon = ""
+                if icon:
+                    output[item_id] = icon
+                    with self._lock:
+                        self._icon_cache[key] = icon
+                        self._icon_cache.move_to_end(key)
+                        while len(self._icon_cache) > ICON_CACHE_LIMIT:
+                            self._icon_cache.popitem(last=False)
+        with self._query_lock:
+            stale = (
+                generation != self._query_generation
+                or icon_version != self.icon_version
+                or (token is not None and token.cancelled)
             )
-            if not icon:
-                continue
-            self._icon_cache[item_id] = icon
-            self._icon_cache.move_to_end(item_id)
-            while len(self._icon_cache) > ICON_CACHE_LIMIT:
-                self._icon_cache.popitem(last=False)
-            output[item_id] = icon
-        return {"ok": True, "icons": output}
+        return {
+            "ok": True,
+            "icons": {} if stale else output,
+            "stale": stale,
+            "generation": generation,
+            "icon_version": self.icon_version,
+        }
 
     @staticmethod
     def _image_file_data(path):
@@ -1024,7 +1288,7 @@ class SystemSearchEngine:
     def toggle_favorite(self, item_id, favorite=None):
         item_id = str(item_id or "")
         with self._lock:
-            if item_id not in self._items:
+            if item_id not in self._items and item_id not in self._ephemeral:
                 return {"ok": False, "message": "That search result is no longer indexed."}
             favorites = list(self._state.get("favorites", []))
             current = item_id in favorites
@@ -1078,11 +1342,6 @@ class SystemSearchEngine:
             return {"ok": False, "message": str(exc)[:240] or "The item could not be opened."}
 
     def _open(self, item):
-        if item.kind == "web":
-            opener = self._url_opener or webbrowser.open
-            if not opener(item.target):
-                raise RuntimeError("The selected browser did not accept the search.")
-            return
         if self.platform == "windows":
             if item.source == "start-apps":
                 subprocess.Popen(

@@ -157,24 +157,47 @@ def test_boot_heals_a_preexisting_search_collision_only():
     assert (app._hk_main, app._hk_quick, app._hk_history) == other_handles
 
 
-def test_search_hotkey_cannot_steal_focus_during_dictation():
+def test_find_hotkey_toggles_during_every_dictation_state_without_rebinding_target():
     for recording, busy, processing in (
-        (True, False, False),
-        (False, True, False),
-        (False, False, True),
+        (False, False, False),  # idle
+        (True, False, False),   # listening
+        (False, True, False),   # finalising transition
+        (False, False, True),   # processing
     ):
         app = mumble.Mumble.__new__(mumble.Mumble)
         app.recording = recording
         app.busy = busy
         app._processing = processing
+        lease = object()
+        operation_id = "a" * 32
+        app._dictation_insertion_lease = lease
+        app._dictation_insertion_operation_id = operation_id
         hints = []
         app._quick_status = hints.append
-        app._bump_feature = lambda *_a: (
-            (_ for _ in ()).throw(AssertionError("guarded Search counted as open")))
-        assert mumble.Mumble.on_search_hotkey(app) is False
-        assert hints == ["Finish this dictation before opening Search"]
+        feature_events = []
+        app._bump_feature = feature_events.append
+        app._toggle_system_search_page = lambda: True
+        original_thread = mumble.threading.Thread
+
+        class InlineThread:
+            def __init__(self, target, **_kwargs):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        mumble.threading.Thread = InlineThread
+        try:
+            assert mumble.Mumble.on_search_hotkey(app) is True
+        finally:
+            mumble.threading.Thread = original_thread
+
+        assert hints == []
+        assert feature_events == ["search"]
         assert (app.recording, app.busy, app._processing) == (
             recording, busy, processing)
+        assert app._dictation_insertion_lease is lease
+        assert app._dictation_insertion_operation_id == operation_id
 
 
 def test_search_open_failure_surfaces_an_island_hint():
@@ -183,7 +206,7 @@ def test_search_open_failure_surfaces_an_island_hint():
     app.busy = False
     app._processing = False
     app._bump_feature = lambda *_a: None
-    app._show_system_search_page = lambda: False
+    app._toggle_system_search_page = lambda: False
     hints = []
     app._quick_status = hints.append
     original_thread = mumble.threading.Thread
@@ -200,7 +223,88 @@ def test_search_open_failure_surfaces_an_island_hint():
         assert mumble.Mumble.on_search_hotkey(app) is True
     finally:
         mumble.threading.Thread = original_thread
-    assert hints == ["Mumble Search couldn't open — try again"]
+    assert hints == ["Mumble Find couldn't toggle — try again"]
+
+
+def test_find_toggle_retry_does_not_issue_a_second_toggle_via_process_launch():
+    app = mumble.Mumble.__new__(mumble.Mumble)
+
+    class LiveProcess:
+        def poll(self):
+            return None
+
+    app._webui_proc = LiveProcess()
+    sent = []
+
+    def send(message, timeout):
+        sent.append((message, timeout))
+        return len(sent) == 2
+
+    app._send_webui = send
+    app._open_web_ui = lambda *_a: (_ for _ in ()).throw(
+        AssertionError("a live resident process must not receive a second toggle")
+    )
+    original_sleep = mumble.time.sleep
+    mumble.time.sleep = lambda _seconds: None
+    try:
+        assert mumble.Mumble._toggle_system_search_page(app) is True
+    finally:
+        mumble.time.sleep = original_sleep
+
+    assert [entry[0] for entry in sent] == [
+        {"cmd": "system_search_toggle"},
+        {"cmd": "system_search_toggle"},
+    ]
+
+
+def test_twenty_cold_start_find_requests_launch_once_and_deliver_twenty_toggles():
+    app = mumble.Mumble.__new__(mumble.Mumble)
+    app._find_toggle_lock = mumble.threading.Lock()
+    app._webui_proc = None
+    launch_count = 0
+    toggle_count = 0
+    ready = False
+
+    class LiveProcess:
+        def poll(self):
+            return None
+
+    def open_web_ui(start):
+        nonlocal launch_count, ready
+        assert start == "search"
+        launch_count += 1
+        app._webui_proc = LiveProcess()
+        ready = True
+        return True
+
+    def send(message, timeout):
+        nonlocal toggle_count
+        assert message == {"cmd": "system_search_toggle"}
+        assert timeout == 0.8
+        if not ready:
+            return False
+        toggle_count += 1
+        return True
+
+    app._open_web_ui = open_web_ui
+    app._send_webui = send
+    original_sleep = mumble.time.sleep
+    mumble.time.sleep = lambda _seconds: None
+    workers = [mumble.threading.Thread(
+        target=lambda: mumble.Mumble._toggle_system_search_page(app)
+    ) for _ in range(20)]
+    try:
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(1.0)
+    finally:
+        mumble.time.sleep = original_sleep
+
+    assert all(not worker.is_alive() for worker in workers)
+    assert launch_count == 1
+    assert toggle_count == 20
+    assert toggle_count % 2 == 0
 
 
 def test_windows_heals_synced_macos_record_hotkey():

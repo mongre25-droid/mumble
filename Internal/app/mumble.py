@@ -194,6 +194,9 @@ class Mumble:
         self.history_hotkey = self.settings.get("history_hotkey", "ctrl+alt+d")
         self.search_hotkey = self.settings.get(
             "search_hotkey", SEARCH_HOTKEY_DEFAULT)
+        # Serialise cold-start and repeated Mumble Find requests so a shortcut
+        # burst can launch at most one shell process and deliver each toggle once.
+        self._find_toggle_lock = threading.Lock()
         self.mode_key = self.settings.get("mode_key", "right shift")
 
         # --- THE BIG SHIFT: Prompt is a sticky toggle, not a held key ---
@@ -1547,7 +1550,7 @@ class Mumble:
         # starts (owner v6 responsiveness). Opening the audio stream takes a few
         # ms; making the user wait on that I/O before any feedback is what made
         # activation feel laggy. The waveform sits at level 0 until audio arrives.
-        # Legacy compatibility only: current Mumble Search never sets this flag;
+        # Legacy compatibility only: current Mumble Find never sets this flag;
         # it opens the separate local launcher and does not enter dictation.
         is_search = getattr(self, "_search_requested", False)
         rec_state = "search" if is_search else "listening"
@@ -4467,29 +4470,45 @@ class Mumble:
                 self._deck_focus_request_pending = False
 
     def on_search_hotkey(self):
-        # Never steal focus from a dictation target. During start/stop ``busy``
-        # spans the transition, and ``_processing`` remains true through the
-        # eventual paste, so all phases that could redirect text into Search are
-        # covered without changing the dictation state machine.
-        if self.recording or self.busy or self._processing:
-            self._quick_status("Finish this dictation before opening Search")
-            return False
+        # Mumble Find owns only its resident overlay visibility. It deliberately
+        # does not read or mutate recording/busy/processing state, the immutable
+        # Stop-time insertion lease, or the insertion operation identity.
         self._bump_feature("search")
 
-        def _open():
-            if not self._show_system_search_page():
-                self._quick_status("Mumble Search couldn't open — try again")
+        def _toggle():
+            if not self._toggle_system_search_page():
+                self._quick_status("Mumble Find couldn't toggle — try again")
 
         threading.Thread(
-            target=_open,
-            name="mumble-open-system-search",
+            target=_toggle,
+            name="mumble-toggle-find",
             daemon=True,
         ).start()
         return True
 
+    def _toggle_system_search_page(self):
+        """Toggle the resident local launcher without surfacing the main window."""
+        lock = getattr(self, "_find_toggle_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._find_toggle_lock = lock
+        with lock:
+            message = {"cmd": "system_search_toggle"}
+            if self._send_webui(message, timeout=0.8):
+                return True
+            proc = getattr(self, "_webui_proc", None)
+            if proc is None or proc.poll() is not None:
+                if not self._open_web_ui("search"):
+                    return False
+            for _ in range(25):
+                time.sleep(0.3)
+                if self._send_webui(message, timeout=0.8):
+                    return True
+            return False
+
     def _show_system_search_page(self):
-        """Open the dedicated local launcher without surfacing the main window."""
-        message = {"cmd": "system_search"}
+        """Show the resident local launcher without surfacing the main window."""
+        message = {"cmd": "system_search_show"}
         if self._send_webui(message, timeout=0.8):
             return True
         if not self._open_web_ui("search"):
@@ -4500,7 +4519,7 @@ class Mumble:
                 return True
         return False
 
-    # Web providers used when Deck or Mumble Search opens an external result.
+    # Web providers used only for explicit Deck web-search actions.
     # {q} is the URL-encoded query.
     SEARCH_ENGINES = {
         "google": "https://www.google.com/search?q={q}",
@@ -4600,7 +4619,7 @@ class Mumble:
         "hotkey": "Start / stop dictation",
         "quick_paste_hotkey": "Paste latest",
         "history_hotkey": "Open Deck",
-        "search_hotkey": "Open Mumble Search",
+        "search_hotkey": "Open Mumble Find",
     }
 
     def _press_binding_values(self):
@@ -4780,10 +4799,10 @@ class Mumble:
     def apply_search_hotkey(self, hk):
         return self._apply_press_binding(
             "search_hotkey", hk, "search_hotkey", "_hk_search",
-            self.on_search_hotkey, "Saved — Mumble Search opens with {binding}.")
+            self.on_search_hotkey, "Saved — Mumble Find opens with {binding}.")
 
     def set_search_engine(self, engine):
-        """Choose the local Search launcher's optional web fallback provider."""
+        """Choose the provider used for an explicit Deck web search."""
         engine = (engine or "perplexity").strip().lower()
         if engine not in self.SEARCH_ENGINES:
             engine = "perplexity"

@@ -1,4 +1,4 @@
-"""Regression tests for the bounded Windows/Linux Mumble Search engine."""
+"""Regression tests for the bounded Mumble Find engine."""
 
 from pathlib import Path
 import importlib.util
@@ -9,6 +9,39 @@ from unittest.mock import patch
 
 from experimental.system_search import SystemSearchEngine
 from experimental.system_search.engine import SearchItem
+
+
+class _IndexedFileProvider:
+    def __init__(self, paths):
+        self.paths = [Path(path) for path in paths]
+
+    def status(self):
+        return {
+            "available": True,
+            "state": "ready",
+            "name": "Windows Search test seam",
+            "message": "",
+        }
+
+    def cancel(self, _generation):
+        return None
+
+    def query(self, query, *, limit, deadline, cancellation, generation):
+        del deadline, generation
+        words = str(query or "").casefold().split()
+        items = []
+        for path in self.paths:
+            if cancellation.cancelled:
+                break
+            if words and not all(word in path.name.casefold() for word in words):
+                continue
+            items.append(SearchItem.make(
+                "folder" if path.is_dir() else "file",
+                path.name,
+                str(path),
+                source="windows-search",
+            ))
+        return {"items": items[:limit], "state": "complete", "message": ""}
 
 
 class SystemSearchTests(unittest.TestCase):
@@ -39,15 +72,20 @@ class SystemSearchTests(unittest.TestCase):
             file_roots=[files],
             app_roots=[apps],
             start_background=False,
+            file_provider=_IndexedFileProvider([
+                files / "Project notes.md", files / "Designs"
+            ]),
         )
 
-    def test_refresh_indexes_apps_files_and_folders(self):
+    def test_refresh_versions_only_the_application_catalogue(self):
         with tempfile.TemporaryDirectory() as tmp:
             engine = self.make_engine(tmp)
             status = engine.refresh()
-            self.assertEqual(status["counts"], {"app": 1, "file": 1, "folder": 1})
-            self.assertEqual(status["total"], 3)
+            self.assertEqual(status["counts"], {"app": 1, "file": 0, "folder": 0})
+            self.assertEqual(status["total"], 1)
             self.assertTrue((Path(tmp) / "data" / "system_search_index.json").is_file())
+            files = engine.search("project notes", "file")
+            self.assertEqual(files["results"][0]["source"], "windows-search")
 
     def test_idle_launcher_is_app_first_and_public_metadata_hides_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -124,7 +162,7 @@ class SystemSearchTests(unittest.TestCase):
         self.assertTrue(icon.startswith("data:image/png;base64,"))
         self.assertGreater(len(icon), 500)
 
-    def test_fuzzy_categories_prefixes_and_web_fallback(self):
+    def test_fuzzy_categories_prefixes_and_no_web_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             engine = self.make_engine(tmp)
             engine.refresh()
@@ -134,7 +172,8 @@ class SystemSearchTests(unittest.TestCase):
             self.assertEqual(files["category"], "file")
             self.assertEqual(files["results"][0]["kind"], "file")
             web = engine.search("something not indexed", "all")
-            self.assertEqual(web["results"][-1]["kind"], "web")
+            self.assertEqual(web["results"], [])
+            self.assertNotIn("web", str(web).casefold())
 
     def test_favorites_are_local_and_influence_ranking(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -168,7 +207,7 @@ class SystemSearchTests(unittest.TestCase):
             self.assertFalse(engine.status()["supported"])
             self.assertFalse(engine.search("notes")["ok"])
 
-    def test_web_fallback_uses_the_configured_browser_opener(self):
+    def test_configured_web_provider_is_not_used_by_local_results(self):
         opened = []
         with tempfile.TemporaryDirectory() as tmp:
             engine = SystemSearchEngine(
@@ -177,25 +216,12 @@ class SystemSearchTests(unittest.TestCase):
                 platform="windows",
                 start_background=False,
                 url_opener=lambda url: opened.append(url) or True,
+                file_provider=_IndexedFileProvider([]),
             )
-            item = engine._web_result("Mumble privacy")
-            result = engine.execute(item.id, "open")
+            result = engine.search("Mumble privacy", generation=1)
             self.assertTrue(result["ok"])
-            self.assertEqual(opened, [
-                "https://search.brave.com/search?q=Mumble+privacy"
-            ])
-            self.assertEqual(engine._state["usage"][item.id]["count"], 1)
-
-    def test_web_fallback_reports_browser_refusal(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            engine = SystemSearchEngine(
-                settings={}, data_dir=tmp, platform="windows",
-                start_background=False, url_opener=lambda _url: False,
-            )
-            item = engine._web_result("does not open")
-            result = engine.execute(item.id, "open")
-            self.assertFalse(result["ok"])
-            self.assertIn("browser", result["message"].lower())
+            self.assertEqual(result["results"], [])
+            self.assertEqual(opened, [])
 
     def test_windows_open_reveal_and_store_app_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -290,7 +316,8 @@ class SearchUiAndPortTests(unittest.TestCase):
         self.assertIn('id="ss-dialog" role="dialog"', search_ui)
         self.assertIn('role="list"', search_ui)
         self.assertNotIn('role="listbox"', search_ui)
-        self.assertIn("Find anything. Stay in flow.", search_ui)
+        self.assertIn("Find apps & files", search_ui)
+        self.assertNotIn("Search the web for", search_ui)
         self.assertIn('src="mumble.png"', search_ui)
         self.assertNotIn("../assets/mumble.png", search_ui)
         self.assertNotIn("ss-app-fallback", search_ui)

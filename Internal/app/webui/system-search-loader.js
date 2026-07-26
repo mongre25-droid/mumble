@@ -1,4 +1,4 @@
-/* Main-window entry point for the dedicated Mumble Search launcher. */
+/* Main-window entry point for the dedicated Mumble Find launcher. */
 (function () {
   "use strict";
 
@@ -49,7 +49,7 @@
         await responses[1].text(),
       );
     } catch (error) {
-      console.error("Mumble Search preview assets failed", error);
+      console.error("Mumble Find preview assets failed", error);
       return false;
     }
   }

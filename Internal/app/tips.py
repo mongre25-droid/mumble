@@ -105,7 +105,7 @@ TIPS = [
     {"id": "deck", "max": 3, "eligible": feature_new("deck", 4),
      "text": "Ctrl + Alt + D opens the Deck — your full history"},
     {"id": "search", "max": 2, "eligible": feature_new("search", 6),
-     "text": "Ctrl + Alt + F opens Mumble Search for apps and files"},
+     "text": "Ctrl + Alt + F opens Mumble Find for apps and files"},
     {"id": "infer", "max": 2, "eligible": after(2),
      "text": "Just speak — Mumble shapes email or clean text for you"},
 

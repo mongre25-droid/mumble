@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused regression tests for Mumble Search shortcut defaults and conflicts."""
+"""Focused regression tests for Mumble Find shortcut defaults and conflicts."""
 
 import json
 from pathlib import Path
@@ -139,15 +139,16 @@ class SearchShortcutMigrationTests(unittest.TestCase):
 
 
 class SearchCommandAcknowledgementTests(unittest.TestCase):
-    def test_search_command_opens_launcher_without_creating_main_window(self):
+    def test_find_toggle_command_uses_resident_lifecycle_without_main_window(self):
         import webui_shell
 
         delivered = threading.Event()
         replies = []
         main_calls = []
-        search_calls = []
+        show_calls = []
+        toggle_calls = []
         request = json.dumps({
-            "cmd": "system_search", "token": "test-token",
+            "cmd": "system_search_toggle", "token": "test-token",
         }).encode("utf-8") + b"\n"
 
         class Connection:
@@ -181,19 +182,24 @@ class SearchCommandAcknowledgementTests(unittest.TestCase):
             return object()
 
         def ensure_search():
-            search_calls.append(True)
+            show_calls.append(True)
             return object()
+
+        def toggle_search():
+            toggle_calls.append(True)
+            return {"ok": True, "state": "visible", "message": ""}
 
         with patch.object(webui_shell, "_webui_token_ok", return_value=True):
             webui_shell._serve_webui_commands(
                 Server(), {"main": None, "main_min": False},
-                ensure_main, ensure_search, "Mumble",
+                ensure_main, ensure_search, "Mumble", toggle_search,
             )
             self.assertTrue(delivered.wait(1.0))
 
         reply = json.loads(replies[0].decode("utf-8"))
         self.assertEqual(reply, {"ok": True, "message": ""})
-        self.assertEqual(search_calls, [True])
+        self.assertEqual(toggle_calls, [True])
+        self.assertEqual(show_calls, [])
         self.assertEqual(main_calls, [])
 
 

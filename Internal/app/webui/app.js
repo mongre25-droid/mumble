@@ -8389,7 +8389,7 @@ async function boot() {
         .catch(() => toast("The selected browser could not open that search.", "err", 3000));
     } else {
       if (typeof window.openSystemSearch === "function") window.openSystemSearch();
-      else toast("Mumble Search is still loading. Try again in a moment.", "info", 2500);
+      else toast("Mumble Find is still loading. Try again in a moment.", "info", 2500);
     }
   });
   // stats range

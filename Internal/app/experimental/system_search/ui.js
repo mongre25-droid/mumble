@@ -1,4 +1,4 @@
-/* Mumble Search — calm, centered, keyboard-first launcher UI. */
+/* Mumble Find — calm, centred, keyboard-first local launcher UI. */
 (function () {
   "use strict";
 
@@ -10,6 +10,8 @@
     results: [],
     selected: 0,
     request: 0,
+    iconRequest: 0,
+    iconVersion: "",
     wired: false,
     open: false,
     previousFocus: null,
@@ -61,11 +63,13 @@
         hotkey: "ctrl+alt+f",
         updated_at: new Date().toISOString(),
         roots: ["Documents", "Downloads"],
+        file_provider: { available: true, state: "ready", name: "Windows Search", message: "" },
+        icon_version: "1:preview",
       }
     );
   }
 
-  function mockSearch(query, category) {
+  function mockSearch(query, category, generation) {
     const sample = [
       {
         id: "preview-vscode",
@@ -101,21 +105,15 @@
         (category === "all" || item.kind === category) &&
         (!q || (item.name + " " + item.subtitle).toLowerCase().includes(q)),
     );
-    if (q && category === "all")
-      results.push({
-        id: "preview-web",
-        kind: "web",
-        name: `Search the web for “${query}”`,
-        subtitle: "Open with Perplexity",
-        source: "web",
-        favorite: false,
-        actions: ["open"],
-      });
     return {
       ok: true,
-      results,
+      results: results.slice(0, 12),
       total_matches: results.length,
       refreshing: false,
+      generation: Number(generation || 1),
+      provider_state: "complete",
+      message: "",
+      icon_version: "1:preview",
     };
   }
 
@@ -127,15 +125,17 @@
     )
       return window.pywebview.api[name](...args);
     if (name === "system_search_status") return mockStatus();
-    if (name === "system_search_query") return mockSearch(args[0], args[1]);
+    if (name === "system_search_query") return mockSearch(args[0], args[1], args[3]);
+    if (name === "system_search_cancel") return true;
     if (name === "system_search_refresh")
       return { ok: true, refreshing: true };
     if (name === "system_search_execute")
       return { ok: true, action: args[1] || "open", favorite: true };
     if (name === "system_search_icons") return { ok: true, icons: {} };
-    if (name === "system_search_hide" || name === "system_search_show")
-      return true;
-    return { ok: false, message: "Mumble Search is unavailable." };
+    if (name === "system_search_hide" || name === "system_search_show" ||
+        name === "system_search_toggle")
+      return { ok: true, state: name.endsWith("hide") ? "hidden" : "visible" };
+    return { ok: false, message: "Mumble Find is unavailable." };
   }
 
   function paint(root) {
@@ -158,20 +158,6 @@
 
   function ensureSurface() {
     if ($s("#ss-overlay")) return;
-    const nav = standalone ? null : $s(".navbar .nav");
-    const settings = nav && $s('[data-nav="settings"]', nav);
-    if (nav && !$s("#ss-nav-button")) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "nav-btn";
-      button.id = "ss-nav-button";
-      button.setAttribute("aria-haspopup", "dialog");
-      button.setAttribute("aria-controls", "ss-dialog");
-      button.innerHTML = '<span data-icon="search" aria-hidden="true"></span>Search';
-      nav.insertBefore(button, settings || null);
-      button.addEventListener("click", showSearch);
-      paint(button);
-    }
 
     const overlay = document.createElement("div");
     overlay.id = "ss-overlay";
@@ -180,17 +166,17 @@
     overlay.innerHTML = `
       <div class="ss-backdrop" data-ss-dismiss></div>
       <section class="ss-dialog" id="ss-dialog" role="dialog" aria-modal="true" aria-labelledby="ss-title" aria-describedby="ss-privacy">
-        <header class="ss-header pywebview-drag-region">
+        <header class="ss-header pywebview-drag-region" aria-label="Move Mumble Find window" title="Drag to move Mumble Find">
           <div class="ss-heading">
             <span class="ss-mark" aria-hidden="true"><img src="mumble.png" alt="" /></span>
-            <div><span class="ss-kicker">MUMBLE <i></i> LOCAL SEARCH</span><h2 id="ss-title">Find anything. Stay in flow.</h2><p id="ss-privacy"><span data-icon="shield" aria-hidden="true"></span>Private, instant, on this device</p></div>
+            <div><span class="ss-kicker">MUMBLE FIND <i></i> LOCAL</span><h2 id="ss-title">Find apps & files</h2><p id="ss-privacy"><span data-icon="shield" aria-hidden="true"></span>Private on this device</p></div>
           </div>
-          <button type="button" class="btn btn-icon btn-ghost ss-close" id="ss-close" aria-label="Close Mumble Search"><span data-icon="x" aria-hidden="true"></span></button>
+          <button type="button" class="btn btn-icon btn-ghost ss-close" id="ss-close" aria-label="Close Mumble Find"><span data-icon="x" aria-hidden="true"></span></button>
         </header>
         <div class="ss-search-row">
           <span class="ss-search-icon" data-icon="search" aria-hidden="true"></span>
-          <label class="sr-only" for="ss-input">Search apps, files and folders</label>
-          <input id="ss-input" class="ss-input selectable" type="search" autocomplete="off" spellcheck="false" aria-controls="ss-results" aria-describedby="ss-announcer" placeholder="Search apps, files and folders…" />
+          <label class="sr-only" for="ss-input">Find apps & files</label>
+          <input id="ss-input" class="ss-input selectable" type="search" autocomplete="off" spellcheck="false" aria-controls="ss-results" aria-describedby="ss-announcer" placeholder="Find apps & files" />
           <span class="kbd ss-shortcut" id="ss-hotkey">Ctrl + Alt + F</span>
         </div>
         <div class="ss-toolbar">
@@ -200,7 +186,7 @@
             <button type="button" class="ss-filter" data-ss-filter="file" aria-pressed="false">Files</button>
             <button type="button" class="ss-filter" data-ss-filter="folder" aria-pressed="false">Folders</button>
           </div>
-          <span class="ss-index-state" id="ss-index-state">Preparing Search…</span>
+          <span class="ss-index-state" id="ss-index-state">Preparing Mumble Find…</span>
           <button type="button" class="btn btn-icon btn-ghost ss-refresh" id="ss-refresh" title="Refresh local search index" aria-label="Refresh local search index"><span data-icon="refresh" aria-hidden="true"></span></button>
         </div>
         <div class="ss-results-head">
@@ -309,7 +295,6 @@
       }
       overlay.hidden = false;
       requestAnimationFrame(() => overlay.classList.add("open"));
-      $s("#ss-nav-button")?.classList.add("active");
     }
     // Run on every show, including the second boot event when pywebview's
     // bridge becomes ready after DOMContentLoaded. This replaces preview data
@@ -322,8 +307,24 @@
     return true;
   }
 
-  function closeSearch(restoreFocus) {
-    if (!SS.open) return;
+  async function closeSearch(restoreFocus) {
+    if (!SS.open) return true;
+    if (standalone) {
+      let result = null;
+      try {
+        result = await api("system_search_hide");
+      } catch (error) {
+        result = { ok: false, state: "visible", message: "Mumble Find could not close its window." };
+      }
+      if (!result || (result.ok === false && result.state !== "hidden")) {
+        const message = (result && result.message) ||
+          "Mumble Find could not close its window.";
+        announce(message);
+        if (typeof window.toast === "function")
+          window.toast(message, "err", 3000);
+        return false;
+      }
+    }
     SS.open = false;
     clearTimeout(SS.statusTimer);
     const overlay = $s("#ss-overlay");
@@ -334,7 +335,6 @@
       app.inert = false;
       app.removeAttribute("aria-hidden");
     }
-    $s("#ss-nav-button")?.classList.remove("active");
     if (typeof window.syncDeckWindow === "function") window.syncDeckWindow();
     if (
       restoreFocus &&
@@ -343,7 +343,7 @@
     )
       SS.previousFocus.focus();
     SS.previousFocus = null;
-    if (standalone) api("system_search_hide");
+    return true;
   }
 
   function announce(message) {
@@ -357,7 +357,7 @@
       SS.status = await api("system_search_status");
       if (!SS.status || SS.status.supported === false) {
         setIndexState(
-          (SS.status && SS.status.message) || "Mumble Search is unavailable.",
+          (SS.status && SS.status.message) || "Mumble Find is unavailable.",
           true,
         );
         return SS.status;
@@ -431,15 +431,21 @@
     const request = ++SS.request;
     const host = $s("#ss-results");
     if (!host) return;
+    SS.iconRequest += 1;
+    if (request > 1) api("system_search_cancel", request - 1);
     host.setAttribute("aria-busy", "true");
+    setIndexState("Searching local indexes…", false);
     try {
       const result = await api(
         "system_search_query",
         SS.query,
         SS.category,
         12,
+        request,
+        75,
       );
-      if (request !== SS.request) return;
+      if (request !== SS.request || !result || result.stale ||
+          Number(result.generation || request) !== request) return;
       if (!result || result.ok === false) {
         SS.results = [];
         SS.selected = 0;
@@ -450,7 +456,8 @@
         });
         return;
       }
-      SS.results = result.results || [];
+      SS.results = (result.results || []).slice(0, 12);
+      SS.iconVersion = String(result.icon_version || "");
       SS.selected = Math.min(
         SS.selected,
         Math.max(0, SS.results.length - 1),
@@ -467,7 +474,7 @@
       SS.results = [];
       renderResults({
         ok: false,
-        message: "Mumble Search could not read the local index.",
+        message: "Mumble Find could not read the local index.",
       });
     } finally {
       if (request === SS.request) host.setAttribute("aria-busy", "false");
@@ -476,7 +483,7 @@
 
   function iconFor(kind) {
     return (
-      { app: "monitor", file: "file", folder: "folder", web: "search" }[
+      { app: "monitor", file: "file", folder: "folder" }[
         kind
       ] || "search"
     );
@@ -503,13 +510,22 @@
       announce(result.message);
       return;
     }
+    const providerState = String(result.provider_state || "complete");
+    if (providerState === "partial" || providerState === "error") {
+      setIndexState(
+        result.message || "Some indexed locations are unavailable; installed applications remain searchable.",
+        true,
+      );
+    } else {
+      setIndexState("Local results are ready", false);
+    }
     if (!SS.results.length) {
       host.innerHTML = `<div class="ss-empty" role="status"><div><span class="ss-empty-icon" data-icon="search"></span><strong>${
         SS.query ? "No local matches" : "Your index is warming up"
       }</strong><p>${
         SS.query
-          ? "Try fewer words, another category, or the web result when Everything is selected."
-          : "Mumble is finding apps and files in the background. You can start typing now."
+          ? "Try fewer words or another local category."
+          : "Installed applications remain searchable while Windows Search becomes ready. You can start typing now."
       }</p></div></div>`;
       paint(host);
       return;
@@ -550,13 +566,25 @@
   }
 
   async function hydrateAppIcons(host) {
-    const slots = $$s("[data-ss-app-icon]", host).slice(0, 16);
+    const request = SS.request;
+    const iconRequest = SS.iconRequest;
+    const iconVersion = SS.iconVersion;
+    const slots = $$s("[data-ss-app-icon]", host)
+      .filter((slot) => {
+        const bounds = slot.getBoundingClientRect();
+        return bounds.bottom >= 0 && bounds.top <= window.innerHeight;
+      })
+      .slice(0, 12);
     if (!slots.length) return;
     try {
       const result = await api(
         "system_search_icons",
         slots.map((slot) => slot.dataset.ssAppIcon),
+        request,
+        iconVersion,
       );
+      if (request !== SS.request || iconRequest !== SS.iconRequest ||
+          !result || result.stale || String(result.icon_version || "") !== iconVersion) return;
       const icons = result && result.icons;
       if (!icons || typeof icons !== "object") return;
       slots.forEach((slot) => {
@@ -612,7 +640,7 @@
     host?.setAttribute("aria-busy", "true");
     const hidesForLaunch = standalone && (action === "open" || action === "reveal");
     try {
-      if (hidesForLaunch) await api("system_search_hide");
+      if (hidesForLaunch && !(await closeSearch(false))) return;
       const result = await api("system_search_execute", item.id, action);
       if (!result || result.ok === false) {
         const message =
@@ -620,7 +648,10 @@
         if (typeof window.toast === "function")
           window.toast(message, "err", 3000);
         announce(message);
-        if (hidesForLaunch) await api("system_search_show");
+        if (hidesForLaunch) {
+          await api("system_search_show");
+          showSearch();
+        }
         return;
       }
       if (action === "favorite") {
@@ -633,14 +664,17 @@
           window.toast("Path copied", "ok", 1200);
         announce("Path copied");
       } else {
-        closeSearch(false);
+        if (!hidesForLaunch) await closeSearch(false);
       }
     } catch (error) {
       const message = "That item could not be opened.";
       if (typeof window.toast === "function")
         window.toast(message, "err", 3000);
       announce(message);
-      if (hidesForLaunch) await api("system_search_show");
+      if (hidesForLaunch) {
+        await api("system_search_show");
+        showSearch();
+      }
     } finally {
       SS.actionBusy = false;
       host?.setAttribute("aria-busy", "false");

@@ -1,4 +1,4 @@
-"""Mumble Search: local application and file discovery for Windows and Linux."""
+"""Mumble Find: local application and indexed file discovery."""
 
 from .engine import SearchItem, SystemSearchEngine
 

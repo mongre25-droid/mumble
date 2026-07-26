@@ -43,6 +43,11 @@ import reader_store  # noqa: E402
 from clipboard import Clipboard  # noqa: E402
 from favorites import Favorites  # noqa: E402
 from history import History  # noqa: E402
+from mumble_find import (  # noqa: E402
+    MumbleFindLifecycle,
+    NullForegroundFocus,
+    WindowsForegroundFocus,
+)
 from prompt_history import PromptHistory  # noqa: E402
 from settings import (  # noqa: E402
     SEARCH_HOTKEY_DEFAULT,
@@ -208,7 +213,7 @@ class Api:
         return {"live": False, "state": "idle", "text": "Ready",
                 "recording": False, "active_mode": None}
 
-    # ---- Mumble Search (Windows/Linux experimental) --------------------
+    # ---- Mumble Find (Windows Stage A; Linux retains its platform seam) --
     def _get_system_search(self):
         engine = getattr(self, "_system_search", None)
         if engine is not None:
@@ -230,13 +235,22 @@ class Api:
             return {"ok": False, "supported": sys.platform.startswith(("win", "linux")),
                     "message": "The local search index could not start."}
 
-    def system_search_query(self, query="", category="all", limit=40):
+    def system_search_query(self, query="", category="all", limit=12,
+                            generation=None, deadline_ms=75):
         try:
-            return self._get_system_search().search(query, category, limit)
+            return self._get_system_search().search(
+                query, category, limit, generation, deadline_ms)
         except Exception as e:
             print("system-search query failed:", e)
             return {"ok": False, "results": [],
-                    "message": "The local search index could not be read."}
+                     "message": "The local search index could not be read."}
+
+    def system_search_cancel(self, generation):
+        try:
+            return self._get_system_search().cancel(generation)
+        except Exception as e:
+            print("system-search cancellation failed:", e)
+            return False
 
     def system_search_refresh(self):
         try:
@@ -252,9 +266,10 @@ class Api:
             print("system-search action failed:", e)
             return {"ok": False, "message": "That item could not be opened."}
 
-    def system_search_icons(self, result_ids):
+    def system_search_icons(self, result_ids, generation=None, icon_version=None):
         try:
-            return self._get_system_search().icons(result_ids)
+            return self._get_system_search().icons(
+                result_ids, generation, icon_version)
         except Exception as e:
             print("system-search icon load failed:", e)
             return {"ok": True, "icons": {}}
@@ -262,18 +277,35 @@ class Api:
     def system_search_show(self):
         callback = getattr(self, "_show_system_search", None)
         try:
-            return bool(callback and callback())
+            return callback() if callback else {
+                "ok": False, "state": "unavailable",
+                "message": "Mumble Find is unavailable.",
+            }
         except Exception as e:
             print("system-search show failed:", e)
-            return False
+            return {"ok": False, "state": "unknown", "message": str(e)[:160]}
 
     def system_search_hide(self):
         callback = getattr(self, "_hide_system_search", None)
         try:
-            return bool(callback and callback())
+            return callback() if callback else {
+                "ok": False, "state": "unavailable",
+                "message": "Mumble Find is unavailable.",
+            }
         except Exception as e:
             print("system-search hide failed:", e)
-            return False
+            return {"ok": False, "state": "unknown", "message": str(e)[:160]}
+
+    def system_search_toggle(self):
+        callback = getattr(self, "_toggle_system_search", None)
+        try:
+            return callback() if callback else {
+                "ok": False, "state": "unavailable",
+                "message": "Mumble Find is unavailable.",
+            }
+        except Exception as e:
+            print("system-search toggle failed:", e)
+            return {"ok": False, "state": "unknown", "message": str(e)[:160]}
 
     def system_search_assets(self):
         """Return two fixed package assets without allowing path traversal."""
@@ -289,7 +321,7 @@ class Api:
             return {"ok": True, "css": css, "js": javascript}
         except Exception as e:
             print("system-search asset load failed:", e)
-            return {"ok": False, "message": "Mumble Search UI is unavailable."}
+            return {"ok": False, "message": "Mumble Find is unavailable."}
 
     # ---- Experimental Correction Learning ------------------------------
     def correction_learning_status(self):
@@ -2404,7 +2436,7 @@ class Api:
                                 "hotkey": "Start / stop dictation",
                                 "quick_paste_hotkey": "Paste latest",
                                 "history_hotkey": "Open Deck",
-                                "search_hotkey": "Open Mumble Search",
+                                "search_hotkey": "Open Mumble Find",
                             }
                             other_key, other_value = conflict
                             return {
@@ -2919,7 +2951,7 @@ class Api:
         clicking the window be focus-neutral so a highlighted selection survives a
         Capture. On every other page (onboarding, Settings, Home) — and whenever the
         Deck is un-pinned — it's called with on=False so normal typing works.
-        Reapply the persisted topmost state here as well: Mumble Search temporarily
+        Reapply the persisted topmost state here as well: Mumble Find temporarily
         drops topmost while its input is active, and closing it calls this method
         to restore the pre-Search window mode. Returns True when applied."""
         title = getattr(self, "_title", None)
@@ -3292,7 +3324,8 @@ def _apply_mumble_icon(title):
         print("icon apply failed:", e)
 
 
-def _serve_webui_commands(srv, H, ensure_main, ensure_search, title):
+def _serve_webui_commands(srv, H, ensure_main, ensure_search, title,
+                          toggle_search=None, hide_search=None):
     """Handle controller→webui commands on the lock socket.
       'show' → front the main app window; 'history'/'deck' → main window History
           tab (in-app browsing); 'refresh' → silently re-render the open page.
@@ -3354,10 +3387,21 @@ def _serve_webui_commands(srv, H, ensure_main, ensure_search, title):
                                         "window.pyInsertionResult({})".format(result))
                                 except Exception as e:
                                     ok, message = False, str(e)
-                        elif cmd == "system_search":
-                            win = ensure_search()
-                            if win is None:
-                                ok, message = False, "search window unavailable"
+                        elif cmd in {
+                                "system_search", "system_search_show",
+                                "system_search_hide", "system_search_toggle"}:
+                            callback = (
+                                hide_search if cmd == "system_search_hide" else
+                                toggle_search if cmd == "system_search_toggle"
+                                and toggle_search is not None else
+                                ensure_search
+                            )
+                            result = callback() if callback else None
+                            if isinstance(result, dict):
+                                ok = bool(result.get("ok"))
+                                message = str(result.get("message") or "")
+                            elif result is None or result is False:
+                                ok, message = False, "Mumble Find window unavailable"
                         elif cmd in ("history", "deck", "show"):
                             win = ensure_main()
                             if win is None:
@@ -3473,7 +3517,7 @@ def main():
     # The single main app window is created on demand; a shared holder keeps every
     # closure pointing at the current window (and whether it is minimized, so the
     # refresh router skips a window that's off-screen).
-    search_title = "Mumble Search"
+    search_title = "Mumble Find"
     SEARCH_W, SEARCH_H = 700, 520
     search_x = search_y = None
     if sys.platform.startswith("win"):
@@ -3493,14 +3537,16 @@ def main():
             return
         H["cmd_started"] = True
         _serve_webui_commands(
-            lock, H, _ensure_main_front, _ensure_search_front, title)
+            lock, H, _ensure_main_front, _ensure_search_front, title,
+            _toggle_search, _hide_search)
 
     def _make_main(hidden):
         if H["main"] is not None:
             return H["main"]
         a = Api()
-        a._show_system_search = _ensure_search_front
+        a._show_system_search = _show_search
         a._hide_system_search = _hide_search
+        a._toggle_system_search = _toggle_search
         a._design_size = (DESIGN_W, DESIGN_H)
         a._title = title
         # RESIZABLE: users may grow the window freely; the layout is fluid and the
@@ -3580,8 +3626,9 @@ def main():
             except Exception:
                 pass  # this pywebview build/backend doesn't expose the event
 
-        # Closing the main window ends the shell process: webview.start() returns
-        # when the live-window count hits zero, and there is only this one window now.
+        # Closing the main window leaves the hidden resident Mumble Find window
+        # alive. A later Deck/Home command can recreate the main window without
+        # spawning a second shell process.
         def _on_main_closed(*_a):
             H["main"] = None
         try:
@@ -3595,8 +3642,9 @@ def main():
             return H["search"]
         search_api = Api()
         search_api._title = search_title
-        search_api._show_system_search = _ensure_search_front
+        search_api._show_system_search = _show_search
         search_api._hide_system_search = _hide_search
+        search_api._toggle_system_search = _toggle_search
         kwargs = {
             "js_api": search_api,
             "width": SEARCH_W,
@@ -3619,51 +3667,30 @@ def main():
         def _sl():
             _apply_mumble_icon(search_title)
             _start_cmd_server()
-            if hidden:
-                try:
-                    sw.show()
-                except Exception:
-                    pass
-            H["search_hidden"] = False
-            _set_noactivate(search_title, False)
-            _bring_to_front(search_title)
-            _set_topmost(search_title, True)
-            try:
-                sw.evaluate_js(
-                    "window.showSystemSearch && window.showSystemSearch()")
-            except Exception:
-                pass
+            # The resident window finishes loading while hidden. The lifecycle
+            # owner alone decides when a user action makes it visible.
+            H["search_hidden"] = True
         sw.events.loaded += _sl
 
         def _on_search_closed(*_a):
             H["search"] = None
             H["search_hidden"] = True
+            try:
+                find_lifecycle.window_closed(sw)
+            except Exception:
+                pass
         try:
             sw.events.closed += _on_search_closed
         except Exception:
             pass
         return sw
 
-    def _hide_search(*_a):
-        sw = H.get("search")
-        if sw is None:
-            return False
-        try:
-            sw.hide()
-            H["search_hidden"] = True
-            return True
-        except Exception:
-            return False
-
-    def _ensure_search_front(*_a):
-        sw = _make_search(hidden=False)
-        if sw is None:
-            return None
+    def _present_search(sw):
         try:
             sw.show()
             sw.restore()
-        except Exception:
-            pass
+        except Exception as exc:
+            raise RuntimeError("the resident window could not be shown") from exc
         H["search_hidden"] = False
         _set_noactivate(search_title, False)
         _bring_to_front(search_title)
@@ -3674,6 +3701,37 @@ def main():
         except Exception:
             pass
         return sw
+
+    def _conceal_search(sw):
+        try:
+            sw.hide()
+        except Exception as exc:
+            raise RuntimeError("the resident window could not be hidden") from exc
+        H["search_hidden"] = True
+
+    focus_adapter = (
+        WindowsForegroundFocus(search_title)
+        if sys.platform.startswith("win") else NullForegroundFocus()
+    )
+    find_lifecycle = MumbleFindLifecycle(
+        lambda *, hidden, centered: _make_search(hidden=hidden),
+        focus_adapter,
+        show_window=_present_search,
+        hide_window=_conceal_search,
+    )
+
+    def _show_search(*_a):
+        return find_lifecycle.show()
+
+    def _hide_search(*_a):
+        return find_lifecycle.hide()
+
+    def _toggle_search(*_a):
+        return find_lifecycle.toggle()
+
+    def _ensure_search_front(*_a):
+        result = _show_search()
+        return find_lifecycle.window if result.get("ok") else None
 
     def _ensure_main_front(activate=False, *_a):
         mw = _make_main(hidden=False)
@@ -3727,9 +3785,10 @@ def main():
     # w.show() once the golden-black theme is painted — no white flash.
     start_mode = str(os.environ.get("MUMBLE_START") or "app").strip().lower()
     if start_mode == "search":
-        _make_search(hidden=True)
+        find_lifecycle.ensure_resident()
     else:
         _make_main(hidden=True)
+        find_lifecycle.ensure_resident()
 
     webview.start()
 
