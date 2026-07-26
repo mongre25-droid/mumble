@@ -1,4 +1,4 @@
-"""Regression tests for the bounded Windows/Linux Mumble Search engine."""
+"""Regression tests for the bounded Windows/Linux Mumble Find engine."""
 
 from pathlib import Path
 import tempfile

@@ -1,6 +1,6 @@
-# Mumble Search
+# Mumble Find
 
-Mumble Search is the experimental Windows/Linux application and file launcher.
+Mumble Find is the experimental Windows/Linux application and file launcher.
 It replaces the former autonomous Computer Control experiment.
 
 The engine uses only Python's standard library plus Mumble's existing clipboard

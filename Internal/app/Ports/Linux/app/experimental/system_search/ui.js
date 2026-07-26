@@ -1,4 +1,4 @@
-/* Mumble Search — keyboard-first Windows/Linux launcher UI. */
+/* Mumble Find — keyboard-first Windows/Linux launcher UI. */
 (function () {
   "use strict";
 
@@ -64,7 +64,7 @@
     const button = document.createElement("button");
     button.className = "nav-btn";
     button.dataset.nav = "system-search";
-    button.innerHTML = '<span data-icon="search"></span>Search';
+    button.innerHTML = '<span data-icon="search"></span>Mumble Find';
     nav.insertBefore(button, settings || null);
     button.addEventListener("click", enterView);
 
@@ -80,13 +80,13 @@
             <span class="badge">Windows + Linux exclusive</span>
             <span class="t-mute fs10">Local index · no cloud</span>
           </div>
-          <h1 class="ss-title">Find anything. Open it instantly.</h1>
+          <h1 class="ss-title">Find apps &amp; files</h1>
           <p class="ss-lede">Search installed apps, documents, downloads and folders from one keyboard-first launcher. Mumble learns what you open most, while every query and path stays on this device.</p>
         </section>
-        <section class="ss-launcher" aria-label="Mumble Search launcher">
+        <section class="ss-launcher" aria-label="Mumble Find launcher">
           <div class="ss-search-row">
             <span class="ss-search-icon" data-icon="search"></span>
-            <input id="ss-input" class="ss-input selectable" type="search" autocomplete="off" spellcheck="false" aria-label="Search applications and files" placeholder="Search apps, files and folders…" />
+            <input id="ss-input" class="ss-input selectable" type="search" autocomplete="off" spellcheck="false" aria-label="Find apps &amp; files" placeholder="Find apps &amp; files" />
             <span class="kbd ss-shortcut" id="ss-hotkey">Ctrl + Alt + S</span>
           </div>
           <div class="ss-filters" role="tablist" aria-label="Search categories">

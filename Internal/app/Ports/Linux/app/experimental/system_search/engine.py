@@ -221,7 +221,7 @@ class SystemSearchEngine:
     def start_refresh(self, force=False):
         if not self.supported:
             return {"ok": False, "supported": False,
-                    "message": "Mumble Search is available on Windows and Linux."}
+                    "message": "Mumble Find is available on Windows and Linux."}
         with self._lock:
             if self._refreshing:
                 return {"ok": True, "refreshing": True}
@@ -529,7 +529,7 @@ class SystemSearchEngine:
                 "roots": [str(path) for path in self._file_roots()],
                 "hotkey": _setting(self.settings, "search_hotkey", "ctrl+alt+s"),
                 "message": (
-                    "Mumble Search is available on Windows and Linux."
+                    "Mumble Find is available on Windows and Linux."
                     if not self.supported else ""
                 ),
             }
@@ -643,7 +643,7 @@ class SystemSearchEngine:
     def search(self, query="", category="all", limit=DEFAULT_RESULT_LIMIT):
         if not self.supported:
             return {"ok": False, "supported": False, "results": [],
-                    "message": "Mumble Search is available on Windows and Linux."}
+                    "message": "Mumble Find is available on Windows and Linux."}
         # Keep a long-lived WebUI useful without a watcher service: the first
         # query after the 15-minute cache window refreshes in the background.
         self.start_refresh(force=False)

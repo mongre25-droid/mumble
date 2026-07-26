@@ -987,9 +987,34 @@ class MumbleFindUiContractTests(unittest.TestCase):
         self.subsystem_readme = (
             self.root / "experimental" / "system_search" / "README.md"
         ).read_text(encoding="utf-8")
-        self.linux_html = (
-            self.root / "Ports" / "Linux" / "app" / "webui" / "index.html"
-        ).read_text(encoding="utf-8")
+        linux_root = self.root / "Ports" / "Linux" / "app"
+        self.linux_launcher_sources = {
+            "subsystem documentation": (
+                linux_root / "experimental" / "system_search" / "README.md"
+            ).read_text(encoding="utf-8"),
+            "subsystem package": (
+                linux_root / "experimental" / "system_search" / "__init__.py"
+            ).read_text(encoding="utf-8"),
+            "engine messages": (
+                linux_root / "experimental" / "system_search" / "engine.py"
+            ).read_text(encoding="utf-8"),
+            "loaded launcher UI": (
+                linux_root / "experimental" / "system_search" / "ui.js"
+            ).read_text(encoding="utf-8"),
+            "launcher stylesheet": (
+                linux_root / "experimental" / "system_search" / "ui.css"
+            ).read_text(encoding="utf-8"),
+            "bridge loader": (
+                linux_root / "webui" / "system-search-loader.js"
+            ).read_text(encoding="utf-8"),
+            "production bridge": (
+                linux_root / "webui_shell.py"
+            ).read_text(encoding="utf-8"),
+            "production index": (
+                linux_root / "webui" / "index.html"
+            ).read_text(encoding="utf-8"),
+        }
+        self.linux_html = self.linux_launcher_sources["production index"]
 
     def test_visible_contract_uses_mumble_find_and_exactly_six_destinations(self):
         nav = re.findall(r'class="nav-btn[^\"]*"[^>]*data-nav="([^"]+)"', self.html)
@@ -1010,6 +1035,40 @@ class MumbleFindUiContractTests(unittest.TestCase):
         self.assertIn("Find apps &amp; files", self.linux_html)
         self.assertNotIn("Mumble Search", self.linux_html)
         self.assertNotIn("Search apps &amp; files", self.linux_html)
+
+    def test_linux_launcher_naming_covers_loaded_production_sources(self):
+        for source_name, source in self.linux_launcher_sources.items():
+            with self.subTest(source=source_name):
+                self.assertNotIn("Mumble Search", source)
+                self.assertNotIn("Search apps & files", source)
+                self.assertNotIn("Search apps &amp; files", source)
+
+        self.assertIn(
+            'aria-label="Mumble Find launcher"',
+            self.linux_launcher_sources["loaded launcher UI"],
+        )
+        self.assertIn(
+            'aria-label="Find apps &amp; files"',
+            self.linux_launcher_sources["loaded launcher UI"],
+        )
+        self.assertIn(
+            '"message": "Mumble Find UI is unavailable."',
+            self.linux_launcher_sources["production bridge"],
+        )
+        self.assertIn(
+            "Mumble Find is available on Windows and Linux.",
+            self.linux_launcher_sources["engine messages"],
+        )
+        self.assertIn(
+            "Mumble Find bridge failed",
+            self.linux_launcher_sources["bridge loader"],
+        )
+        self.assertIn(
+            "# Mumble Find",
+            self.linux_launcher_sources["subsystem documentation"],
+        )
+        self.assertIn("Find apps &amp; files", self.linux_html)
+        self.assertIn("Web Search", self.linux_html)
 
     def test_header_is_a_dedicated_accessible_window_drag_region(self):
         self.assertIn('class="ss-header pywebview-drag-region"', self.ui)

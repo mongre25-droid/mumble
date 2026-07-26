@@ -1,4 +1,4 @@
-/* Fixed local bridge loader for Mumble Search. */
+/* Fixed local bridge loader for Mumble Find. */
 (function () {
   "use strict";
 
@@ -47,7 +47,7 @@
       if (status && status.supported === false) return false;
       return install(await window.pywebview.api.system_search_assets(), status);
     } catch (error) {
-      console.error("Mumble Search bridge failed", error);
+      console.error("Mumble Find bridge failed", error);
       return false;
     } finally { loading = false; }
   }
@@ -62,7 +62,7 @@
       if (!responses.every((response) => response.ok)) return;
       install({ ok: true, css: await responses[0].text(), js: await responses[1].text() },
         { ok: true, supported: true, platform: "windows", platform_label: "Windows" });
-    } catch (error) { console.error("Mumble Search preview assets failed", error); }
+    } catch (error) { console.error("Mumble Find preview assets failed", error); }
   }
 
   window.addEventListener("pywebviewready", loadFromBridge);

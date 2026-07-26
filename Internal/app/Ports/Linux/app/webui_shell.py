@@ -184,7 +184,7 @@ class Api:
                     "active_mode": r.get("active_mode")}
         return {"live": False, "state": "idle", "text": "Ready",
                 "recording": False, "active_mode": None}
-    # ---- Mumble Search (Linux experimental) -----------------------------
+    # ---- Mumble Find (Linux experimental) -------------------------------
     def _get_system_search(self):
         engine = getattr(self, "_system_search", None)
         if engine is None:
@@ -241,7 +241,7 @@ class Api:
             return {"ok": True, "css": css, "js": javascript}
         except Exception as exc:
             print("system-search asset load failed:", exc)
-            return {"ok": False, "message": "Mumble Search UI is unavailable."}
+            return {"ok": False, "message": "Mumble Find UI is unavailable."}
 
 
     # Correction learning currently relies on Windows UI Automation. Keep the
