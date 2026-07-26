@@ -153,6 +153,7 @@ async function main() {
       queryCalls: [],
       cancelCalls: [],
       iconCalls: [],
+      dragCalls: [],
       iconGateOpen: false,
       resolveFirstIcons: null,
     };
@@ -165,6 +166,15 @@ async function main() {
       source: "start-menu",
       actions: ["open", "reveal"],
     }));
+    rows[0] = {
+      id: "opaque-local-file",
+      kind: "file",
+      name: "Project notes.md",
+      subtitle: "Markdown document",
+      meta: "Markdown document",
+      source: "windows-search",
+      actions: ["open", "reveal", "drag"],
+    };
     window.pywebview = { api: {
       system_search_status: async () => ({
         ok: true,
@@ -209,6 +219,10 @@ async function main() {
         return { ok: true, icons: {}, stale: false, generation, icon_version: iconVersion };
       },
       system_search_execute: async () => ({ ok: true }),
+      system_search_drag: async resultId => {
+        window.__findTest.dragCalls.push(resultId);
+        return { ok: true, dropped: false, effect: "none" };
+      },
       system_search_refresh: async () => ({ ok: true, refreshing: false }),
       system_search_hide: async () => ({ ok: true, state: "hidden" }),
       system_search_show: async () => ({ ok: true, state: "visible" }),
@@ -251,6 +265,20 @@ async function main() {
   );
   assert.equal(firstPaint.dragHeader, true);
   assert.equal(firstPaint.closeInHeader, true);
+
+  const grip = page.locator(".ss-drag-grip").first();
+  const gripBox = await grip.boundingBox();
+  assert.ok(gripBox, "file result must expose a separate native drag grip");
+  await page.mouse.move(gripBox.x + 4, gripBox.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(gripBox.x + 12, gripBox.y + 12);
+  await page.mouse.up();
+  await page.waitForFunction(() => window.__findTest.dragCalls.length === 1);
+  assert.deepEqual(
+    await page.evaluate(() => window.__findTest.dragCalls),
+    ["opaque-local-file"],
+    "browser drag must send only the opaque result identity",
+  );
 
   await page.evaluate(() => {
     window.__findTest.iconGateOpen = true;

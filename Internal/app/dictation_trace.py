@@ -28,6 +28,16 @@ EVENT_NAMES = frozenset({
     "first_audio",
     "audio_stopped",
     "audio_closed",
+    "capture_finalization_started",
+    "capture_finalization_finished",
+    "conversion_started",
+    "conversion_finished",
+    "transfer_started",
+    "transfer_finished",
+    "vad_started",
+    "vad_finished",
+    "decoding_started",
+    "decoding_finished",
     "stable_partial_ready",
     "unstable_partial_ready",
     "stream_drain_finished",
@@ -312,3 +322,122 @@ def export_traces(source_path, destination_path, limit=None):
     except OSError:
         pass
     return len(rows)
+
+
+SUMMARY_SCHEMA = "mumble.dictation-trace-summary.v1"
+STAGE_EVENT_PAIRS = {
+    "capture_finalization": (
+        "capture_finalization_started", "capture_finalization_finished"
+    ),
+    "conversion": ("conversion_started", "conversion_finished"),
+    "transfer": ("transfer_started", "transfer_finished"),
+    "vad": ("vad_started", "vad_finished"),
+    "inference": ("inference_started", "inference_finished"),
+    "decoding": ("decoding_started", "decoding_finished"),
+    "shaping": ("formatting_started", "formatting_ready"),
+    "ui": ("activation", "island_render"),
+    "clipboard": ("paste_lock_acquired", "clipboard_ready"),
+    "insertion": ("insertion_started", "insertion_finished"),
+    "activation_to_paste": ("activation", "paste_finished"),
+}
+
+
+def _percentile(values, percentile):
+    ordered = sorted(float(value) for value in values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = (len(ordered) - 1) * float(percentile)
+    lower = int(position)
+    upper = min(lower + 1, len(ordered) - 1)
+    fraction = position - lower
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
+
+
+def _paired_duration(events, start_name, finish_name):
+    started = None
+    total = 0.0
+    pairs = 0
+    for event in events:
+        name = event.get("name")
+        elapsed = event.get("elapsed_ms")
+        if not isinstance(elapsed, (int, float)):
+            continue
+        if name == start_name and started is None:
+            started = float(elapsed)
+        elif name == finish_name and started is not None:
+            total += max(0.0, float(elapsed) - started)
+            pairs += 1
+            started = None
+    return total if pairs else None
+
+
+def summarize_traces(records, *, corpus_version):
+    """Aggregate content-free stage timings for one versioned test corpus."""
+    corpus_version = str(corpus_version or "").strip()
+    if (not corpus_version or len(corpus_version) > 80
+            or any(char not in set(
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+            ) for char in corpus_version)):
+        raise ValueError("invalid_trace_corpus_version")
+    durations = {stage: [] for stage in STAGE_EVENT_PAIRS}
+    lifecycle_durations = {
+        lifecycle: {stage: [] for stage in STAGE_EVENT_PAIRS}
+        for lifecycle in ("cold", "warm")
+    }
+    lifecycles = {"cold": 0, "warm": 0}
+    accepted = 0
+    for record in records:
+        if (not isinstance(record, dict)
+                or record.get("schema") != SCHEMA
+                or not isinstance(record.get("events"), list)):
+            continue
+        accepted += 1
+        context = record.get("context") or {}
+        lifecycle = "warm" if context.get("model_resident") is True else "cold"
+        lifecycles[lifecycle] += 1
+        for stage, (start_name, finish_name) in STAGE_EVENT_PAIRS.items():
+            duration = _paired_duration(
+                record["events"], start_name, finish_name
+            )
+            if duration is not None:
+                durations[stage].append(duration)
+                lifecycle_durations[lifecycle][stage].append(duration)
+
+    def statistics(source):
+        result = {}
+        for stage, values in source.items():
+            if not values:
+                continue
+            result[stage] = {
+                "count": len(values),
+                "p50_ms": round(_percentile(values, 0.50), 3),
+                "p90_ms": round(_percentile(values, 0.90), 3),
+                "p95_ms": round(_percentile(values, 0.95), 3),
+                "max_ms": round(max(values), 3),
+            }
+        return result
+
+    stages = statistics(durations)
+    by_lifecycle = {
+        lifecycle: statistics(values)
+        for lifecycle, values in lifecycle_durations.items()
+    }
+    bottlenecks = {}
+    for lifecycle, values in by_lifecycle.items():
+        candidates = {
+            stage: stats for stage, stats in values.items()
+            if stage != "activation_to_paste"
+        }
+        if candidates:
+            bottlenecks[lifecycle] = max(
+                candidates, key=lambda stage: candidates[stage]["p95_ms"]
+            )
+    return {
+        "schema": SUMMARY_SCHEMA,
+        "corpus_version": corpus_version,
+        "trace_count": accepted,
+        "lifecycles": lifecycles,
+        "stages": stages,
+        "by_lifecycle": by_lifecycle,
+        "bottleneck_by_lifecycle": bottlenecks,
+    }

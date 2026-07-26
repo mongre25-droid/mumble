@@ -550,7 +550,7 @@ class _WidgetBar:
     def __init__(self, root, on_mode=None, on_deck=None, on_foreign=None,
                  on_correct=None, on_correct_dismiss=None, on_expand=None,
                  on_control_review=None,
-                 on_control_cancel=None, get_state=None):
+                 on_control_cancel=None, on_stop=None, get_state=None):
         self.ok = False
         self.win = None
         self.visible = False
@@ -569,6 +569,7 @@ class _WidgetBar:
         self.on_expand = on_expand
         self.on_control_review = on_control_review
         self.on_control_cancel = on_control_cancel
+        self.on_stop = on_stop
         self.get_state = get_state or (lambda: {"modes": [("prompt", "Prompt")],
                                                  "active": None, "foreign_on": False,
                                                  "show_foreign": False})
@@ -617,6 +618,10 @@ class _WidgetBar:
             print("bar hit-test failed:", ex)
             return
         x = event.x
+        stop = layout.get("stop")
+        if stop and stop[0] <= x < stop[1]:
+            self._fire(self.on_stop)
+            return
         review = layout.get("control_review")
         if review and review[0] <= x < review[1]:
             self._fire(self.on_control_review)
@@ -793,6 +798,7 @@ class Island:
         self.on_correct = None
         self.on_control_review = None
         self.on_control_cancel = None
+        self.on_stop = None
         # The companion rail is the island's direct mode deck: selectable lanes,
         # configured language, then Deck. `bar_state` is
         # the live snapshot the bar renders + hit-tests from; the controller pushes
@@ -807,6 +813,8 @@ class Island:
             "correction_available": False,
             "correction_label": "Review",
             "control_review_available": False,
+            "stop_enabled": False,
+            "stop_label": "Stop",
             # Retained for snapshots/tests from the retired dropdown layout.
             "expanded": False,
         }
@@ -821,6 +829,7 @@ class Island:
             on_expand=self._widget_expand,
             on_control_review=self._widget_control_review,
             on_control_cancel=self._widget_control_cancel,
+            on_stop=self._widget_stop,
             get_state=lambda: self.bar_state,
         )
 
@@ -877,10 +886,23 @@ class Island:
             self.bar_state["correction_available"] = False
             self.correction_left = 0
         self.state = s
+        self.bar_state["stop_enabled"] = s in ("listening", "search")
+        self._refresh_bar()
 
     def set_level(self, lvl):
         """Thread-safe setter for the current audio volume level (0.0 to 1.0)."""
         self.level = lvl
+
+    def set_dictation_progress(self, progress):
+        """Show content-free elapsed time and durable-save progress by Stop."""
+        progress = progress if isinstance(progress, dict) else {}
+        elapsed = max(0, int(progress.get("duration_seconds", 0)))
+        minutes, seconds = divmod(elapsed, 60)
+        saved = max(0, int(progress.get("segments_persisted", 0)))
+        self.bar_state["stop_label"] = (
+            f"Stop · {minutes}:{seconds:02d} · {saved} saved"
+        )
+        self._refresh_bar()
 
     def _mode_names(self, mode):
         """Normalise a mode (string or list) → real mode names, with any
@@ -981,7 +1003,7 @@ class Island:
     # ---- companion mode-deck callbacks ----
     def set_widget_callbacks(self, on_mode=None, on_deck=None, on_foreign=None,
                              on_correct=None, on_control_review=None,
-                             on_control_cancel=None):
+                             on_control_cancel=None, on_stop=None):
         """Wire the bar to the controller (select a mode / open the Deck / toggle
         Foreign)."""
         self.on_mode = on_mode
@@ -990,6 +1012,7 @@ class Island:
         self.on_correct = on_correct
         self.on_control_review = on_control_review
         self.on_control_cancel = on_control_cancel
+        self.on_stop = on_stop
 
     def _widget_mode(self, key):
         if callable(self.on_mode):
@@ -1020,6 +1043,10 @@ class Island:
         self.clear_control_review()
         if callable(self.on_control_cancel):
             self.on_control_cancel()
+
+    def _widget_stop(self):
+        if callable(self.on_stop):
+            self.on_stop()
 
     def _widget_expand(self):
         """Compatibility no-op: the two direct modes are always visible now."""

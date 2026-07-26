@@ -309,6 +309,14 @@ class Api:
             print("system-search action failed:", e)
             return {"ok": False, "message": "That item could not be opened."}
 
+    def system_search_drag(self, result_id):
+        """Start native OLE drag from an opaque controller-owned result id."""
+        try:
+            return self._get_system_search().execute(result_id, "drag")
+        except Exception as e:
+            print("system-search drag failed:", e)
+            return {"ok": False, "message": "That item could not be dragged."}
+
     def system_search_icons(self, result_ids, generation=None, icon_version=None):
         try:
             return self._get_system_search().icons(

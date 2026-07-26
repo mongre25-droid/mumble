@@ -261,6 +261,38 @@ class SystemSearchTests(unittest.TestCase):
                                           "CREATE_NO_WINDOW", 0),
                 )
 
+    def test_windows_native_drag_resolves_only_an_opaque_indexed_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dragged = []
+            file_path = root / "Project notes.md"
+            file_path.write_text("notes", encoding="utf-8")
+            engine = SystemSearchEngine(
+                settings={"system_search_include_files": True},
+                data_dir=root / "data",
+                platform="windows",
+                start_background=False,
+                file_provider=_IndexedFileProvider([file_path]),
+                native_drag_starter=lambda path: dragged.append(path) or {
+                    "ok": True,
+                    "effect": "copy",
+                },
+            )
+
+            public = engine.search(
+                "Project notes", "file", generation=1, deadline_ms=75,
+            )["results"][0]
+            self.assertNotIn("target", public)
+            self.assertIn("drag", public["actions"])
+
+            started = engine.execute(public["id"], "drag")
+            self.assertTrue(started["ok"])
+            self.assertEqual(dragged, [str(file_path)])
+
+            rejected = engine.execute(str(file_path), "drag")
+            self.assertFalse(rejected["ok"])
+            self.assertEqual(dragged, [str(file_path)])
+
     def test_windows_missing_target_fails_honestly(self):
         with tempfile.TemporaryDirectory() as tmp:
             engine = SystemSearchEngine(

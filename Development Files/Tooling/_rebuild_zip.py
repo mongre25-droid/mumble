@@ -208,8 +208,10 @@ def main():
                 "Mumble/Internal/app/webui/focus-stage.js",
                 "Mumble/Internal/app/webui/focus-stage.css",
             )),
-        "Mumble Search runtime shipped": (
-            "Mumble/Internal/app/experimental/system_search/engine.py" in names
+        "Mumble Find runtime and native drag shipped": (
+            "Mumble/Internal/app/mumble_find.py" in names
+            and "Mumble/Internal/app/experimental/system_search/engine.py" in names
+            and "Mumble/Internal/app/experimental/system_search/native_drag.py" in names
             and "Mumble/Internal/app/experimental/system_search/ui.js" in names
             and "Mumble/Internal/app/experimental/system_search/ui.css" in names
             and "Mumble/Internal/app/webui/system-search-loader.js" in names),

@@ -1158,6 +1158,20 @@ class MumbleFindUiContractTests(unittest.TestCase):
         self.assertNotIn("web result", self.ui.lower())
         self.assertIn("Show in folder", self.ui)
         self.assertIn('data-ss-action="open"', self.ui)
+        self.assertIn('data-ss-drag', self.ui)
+        self.assertIn('api("system_search_drag", item.id)', self.ui)
+        self.assertIn("def system_search_drag(self, result_id):", self.shell)
+        self.assertNotIn("system_search_drag(self, path", self.shell)
+
+    def test_package_check_requires_native_drag_runtime(self):
+        builder = (
+            self.root.parents[1] / "Development Files" / "Tooling" /
+            "_rebuild_zip.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'Mumble/Internal/app/experimental/system_search/native_drag.py',
+            builder,
+        )
 
     def test_find_dependency_truth_names_pinned_pywin32_and_win32com(self):
         self.assertIn("pywin32==312", self.requirements)
