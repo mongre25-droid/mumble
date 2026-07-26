@@ -149,6 +149,7 @@ class SearchCommandAcknowledgementTests(unittest.TestCase):
         toggle_calls = []
         request = json.dumps({
             "cmd": "system_search_toggle", "token": "test-token",
+            "operation_id": "4" * 32,
         }).encode("utf-8") + b"\n"
 
         class Connection:
@@ -185,9 +186,12 @@ class SearchCommandAcknowledgementTests(unittest.TestCase):
             show_calls.append(True)
             return object()
 
-        def toggle_search():
-            toggle_calls.append(True)
-            return {"ok": True, "state": "visible", "message": ""}
+        def toggle_search(operation_id):
+            toggle_calls.append(operation_id)
+            return {
+                "ok": True, "state": "visible", "changed": False,
+                "operation_id": operation_id, "message": "",
+            }
 
         with patch.object(webui_shell, "_webui_token_ok", return_value=True):
             webui_shell._serve_webui_commands(
@@ -197,8 +201,11 @@ class SearchCommandAcknowledgementTests(unittest.TestCase):
             self.assertTrue(delivered.wait(1.0))
 
         reply = json.loads(replies[0].decode("utf-8"))
-        self.assertEqual(reply, {"ok": True, "message": ""})
-        self.assertEqual(toggle_calls, [True])
+        self.assertEqual(reply, {
+            "ok": True, "message": "", "operation_id": "4" * 32,
+            "state": "visible", "changed": False,
+        })
+        self.assertEqual(toggle_calls, ["4" * 32])
         self.assertEqual(show_calls, [])
         self.assertEqual(main_calls, [])
 

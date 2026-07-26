@@ -10,7 +10,25 @@
       window.pywebview.api &&
       typeof window.pywebview.api.system_search_show === "function"
     ) {
-      return !!(await window.pywebview.api.system_search_show());
+      try {
+        const result = await window.pywebview.api.system_search_show();
+        if (!result || typeof result !== "object" || result.ok !== true) {
+          const message = result && typeof result.message === "string"
+            ? result.message
+            : "Mumble Find could not open.";
+          if (typeof window.toast === "function") window.toast(message, "err", 3000);
+          else console.error(message);
+          return false;
+        }
+        return true;
+      } catch (error) {
+        const message = error && error.message
+          ? `Mumble Find could not open: ${error.message}`
+          : "Mumble Find could not open.";
+        if (typeof window.toast === "function") window.toast(message, "err", 3000);
+        else console.error(message);
+        return false;
+      }
     }
     // Browser-only preview keeps the embedded palette available to designers;
     // the installed app always uses the separate native window above.

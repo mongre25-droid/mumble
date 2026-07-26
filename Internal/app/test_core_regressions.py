@@ -176,7 +176,7 @@ def test_find_hotkey_toggles_during_every_dictation_state_without_rebinding_targ
         app._quick_status = hints.append
         feature_events = []
         app._bump_feature = feature_events.append
-        app._toggle_system_search_page = lambda: True
+        app._toggle_system_search_page = lambda _find_operation_id: True
         original_thread = mumble.threading.Thread
 
         class InlineThread:
@@ -206,7 +206,7 @@ def test_search_open_failure_surfaces_an_island_hint():
     app.busy = False
     app._processing = False
     app._bump_feature = lambda *_a: None
-    app._toggle_system_search_page = lambda: False
+    app._toggle_system_search_page = lambda _find_operation_id: False
     hints = []
     app._quick_status = hints.append
     original_thread = mumble.threading.Thread
@@ -226,7 +226,7 @@ def test_search_open_failure_surfaces_an_island_hint():
     assert hints == ["Mumble Find couldn't toggle — try again"]
 
 
-def test_find_toggle_retry_does_not_issue_a_second_toggle_via_process_launch():
+def test_find_toggle_retry_reuses_one_operation_identity_after_lost_acknowledgement():
     app = mumble.Mumble.__new__(mumble.Mumble)
 
     class LiveProcess:
@@ -235,6 +235,8 @@ def test_find_toggle_retry_does_not_issue_a_second_toggle_via_process_launch():
 
     app._webui_proc = LiveProcess()
     sent = []
+
+    operation_id = "f" * 32
 
     def send(message, timeout):
         sent.append((message, timeout))
@@ -247,14 +249,77 @@ def test_find_toggle_retry_does_not_issue_a_second_toggle_via_process_launch():
     original_sleep = mumble.time.sleep
     mumble.time.sleep = lambda _seconds: None
     try:
-        assert mumble.Mumble._toggle_system_search_page(app) is True
+        assert mumble.Mumble._toggle_system_search_page(app, operation_id) is True
     finally:
         mumble.time.sleep = original_sleep
 
     assert [entry[0] for entry in sent] == [
-        {"cmd": "system_search_toggle"},
-        {"cmd": "system_search_toggle"},
+        {"cmd": "system_search_toggle", "operation_id": operation_id},
+        {"cmd": "system_search_toggle", "operation_id": operation_id},
     ]
+
+
+def test_find_toggle_does_not_replay_an_uncertain_operation_into_a_restarted_process():
+    app = mumble.Mumble.__new__(mumble.Mumble)
+
+    class Process:
+        def __init__(self):
+            self.dead = False
+
+        def poll(self):
+            return 1 if self.dead else None
+
+    original = Process()
+    app._webui_proc = original
+    sent = []
+    launched = []
+
+    def send(message, timeout):
+        sent.append((message, timeout))
+        original.dead = True
+        return False
+
+    app._send_webui = send
+    app._open_web_ui = lambda *_a: launched.append(True) or True
+    original_sleep = mumble.time.sleep
+    mumble.time.sleep = lambda _seconds: None
+    try:
+        result = mumble.Mumble._toggle_system_search_page(app, "e" * 32)
+    finally:
+        mumble.time.sleep = original_sleep
+
+    assert result is False
+    assert len(sent) == 1
+    assert launched == []
+
+
+def test_find_hotkey_assigns_a_unique_operation_identity_to_each_user_action():
+    app = mumble.Mumble.__new__(mumble.Mumble)
+    app._bump_feature = lambda *_a: None
+    app._quick_status = lambda *_a: None
+    operation_ids = []
+    app._toggle_system_search_page = lambda operation_id: (
+        operation_ids.append(operation_id) or True
+    )
+    original_thread = mumble.threading.Thread
+
+    class InlineThread:
+        def __init__(self, target, **_kwargs):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    mumble.threading.Thread = InlineThread
+    try:
+        mumble.Mumble.on_search_hotkey(app)
+        mumble.Mumble.on_search_hotkey(app)
+    finally:
+        mumble.threading.Thread = original_thread
+
+    assert len(operation_ids) == 2
+    assert operation_ids[0] != operation_ids[1]
+    assert all(len(value) == 32 for value in operation_ids)
 
 
 def test_twenty_cold_start_find_requests_launch_once_and_deliver_twenty_toggles():
@@ -279,7 +344,8 @@ def test_twenty_cold_start_find_requests_launch_once_and_deliver_twenty_toggles(
 
     def send(message, timeout):
         nonlocal toggle_count
-        assert message == {"cmd": "system_search_toggle"}
+        assert message["cmd"] == "system_search_toggle"
+        assert len(message["operation_id"]) == 32
         assert timeout == 0.8
         if not ready:
             return False
@@ -291,7 +357,7 @@ def test_twenty_cold_start_find_requests_launch_once_and_deliver_twenty_toggles(
     original_sleep = mumble.time.sleep
     mumble.time.sleep = lambda _seconds: None
     workers = [mumble.threading.Thread(
-        target=lambda: mumble.Mumble._toggle_system_search_page(app)
+        target=lambda: mumble.Mumble._toggle_system_search_page(app, os.urandom(16).hex())
     ) for _ in range(20)]
     try:
         for worker in workers:

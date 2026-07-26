@@ -14,9 +14,66 @@ const cssSource = fs.readFileSync(
   "utf8",
 );
 const mainHtml = fs.readFileSync(path.join(appRoot, "webui", "index.html"), "utf8");
+const loaderSource = fs.readFileSync(
+  path.join(appRoot, "webui", "system-search-loader.js"),
+  "utf8",
+);
+const verifyCase = String(process.env.MUMBLE_FIND_VERIFY_CASE || "all");
+
+async function verifyLoader(browser) {
+  const cases = [
+    { name: "success", value: { ok: true, state: "visible" }, expected: true },
+    { name: "false", value: false, expected: false },
+    { name: "backend failure", value: { ok: false, message: "backend failed" }, expected: false, message: "backend failed" },
+    { name: "missing", value: undefined, expected: false },
+    { name: "malformed", value: { state: "visible" }, expected: false },
+    { name: "boolean true", value: true, expected: false },
+  ];
+  for (const entry of cases) {
+    const page = await browser.newPage();
+    await page.setContent("<!doctype html><html><body><button data-open-system-search></button></body></html>");
+    await page.evaluate(({ value }) => {
+      window.__loaderValue = value;
+      window.__loaderMessages = [];
+      window.toast = message => window.__loaderMessages.push(String(message));
+      window.pywebview = { api: {
+        system_search_show: async () => window.__loaderValue,
+      } };
+    }, { value: entry.value });
+    await page.addScriptTag({ content: loaderSource });
+    const result = await page.evaluate(() => window.openSystemSearch());
+    assert.equal(result, entry.expected, `${entry.name} must preserve backend truth`);
+    if (entry.message) {
+      const messages = await page.evaluate(() => window.__loaderMessages);
+      assert.ok(messages.some(message => message.includes(entry.message)), "backend failure message must be surfaced");
+    }
+    await page.close();
+  }
+
+  const thrownPage = await browser.newPage();
+  await thrownPage.setContent("<!doctype html><html><body></body></html>");
+  await thrownPage.evaluate(() => {
+    window.__loaderMessages = [];
+    window.toast = message => window.__loaderMessages.push(String(message));
+    window.pywebview = { api: {
+      system_search_show: async () => { throw new Error("transport failed"); },
+    } };
+  });
+  await thrownPage.addScriptTag({ content: loaderSource });
+  assert.equal(await thrownPage.evaluate(() => window.openSystemSearch()), false);
+  await thrownPage.close();
+}
 
 async function main() {
   const browser = await chromium.launch({ headless: true });
+  if (verifyCase === "all" || verifyCase === "loader") {
+    await verifyLoader(browser);
+  }
+  if (verifyCase === "loader") {
+    console.log(JSON.stringify({ ok: true, case: "loader" }));
+    await browser.close();
+    return;
+  }
   const page = await browser.newPage({ viewport: { width: 700, height: 520 } });
   const browserErrors = [];
   page.on("pageerror", error => browserErrors.push(error.message));
@@ -134,6 +191,24 @@ async function main() {
     window.__findTest.iconGateOpen = true;
     window.__findTest.resolveFirstIcons();
   });
+  await page.waitForFunction(() => window.__findTest.iconCalls.length === 1);
+  await page.locator(".ss-result").nth(11).scrollIntoViewIfNeeded();
+  await page.waitForFunction(
+    () => window.__findTest.iconCalls.length >= 2,
+    undefined,
+    { timeout: 3000 },
+  );
+  const scrollHydration = await page.evaluate(() => ({
+    first: window.__findTest.iconCalls[0].ids,
+    second: window.__findTest.iconCalls[1].ids,
+  }));
+  assert.ok(scrollHydration.second.length > 0, "newly visible rows must request icons");
+  assert.ok(scrollHydration.second.length <= 12, "later icon request must remain bounded");
+  assert.equal(
+    scrollHydration.second.some(id => scrollHydration.first.includes(id)),
+    false,
+    "settled or pending icons must not be requested again",
+  );
 
   async function query(value, expectedText) {
     await page.locator("#ss-input").fill(value);
@@ -185,6 +260,7 @@ async function main() {
     headlessWarmVisibilityP95Ms: Number(warmVisibilityMs[28].toFixed(3)),
     firstPageRows: firstPaint.rowCount,
     visibleIconRequests: firstPaint.iconCall.ids.length,
+    newlyVisibleIconRequests: scrollHydration.second.length,
     destinations,
   }));
   await browser.close();
@@ -192,5 +268,5 @@ async function main() {
 
 main().catch(error => {
   console.error(error.stack || error);
-  process.exitCode = 1;
+  process.exit(1);
 });

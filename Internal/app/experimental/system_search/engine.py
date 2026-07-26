@@ -42,6 +42,7 @@ DEFAULT_MAX_ITEMS = 75_000
 DEFAULT_RESULT_LIMIT = 12
 DEFAULT_QUERY_DEADLINE_MS = 75
 PROVIDER_CANDIDATE_LIMIT = 250
+PROVIDER_MAX_INFLIGHT = 2
 INDEX_MAX_AGE_SECONDS = 15 * 60
 STATE_MAX_HISTORY = 250
 ICON_CACHE_LIMIT = 128
@@ -157,8 +158,11 @@ class SystemSearchEngine:
         self._query_lock = threading.RLock()
         self._query_generation = 0
         self._query_tokens = {}
+        self._provider_slots = threading.BoundedSemaphore(PROVIDER_MAX_INFLIGHT)
+        self._provider_futures = {}
+        self._closed = False
         self._query_executor = ThreadPoolExecutor(
-            max_workers=2,
+            max_workers=PROVIDER_MAX_INFLIGHT,
             thread_name_prefix="mumble-find-query",
         )
         self._file_provider = file_provider
@@ -513,6 +517,7 @@ class SystemSearchEngine:
 
     def status(self):
         provider = self._provider_status()
+        provider_work = self._provider_work_status()
         with self._lock:
             counts = {"app": 0, "file": 0, "folder": 0}
             for item in self._items.values():
@@ -534,12 +539,30 @@ class SystemSearchEngine:
                 "roots": [],
                 "hotkey": _setting(self.settings, "search_hotkey", "ctrl+alt+f"),
                 "file_provider": provider,
+                "provider_work": provider_work,
                 "icon_version": self.icon_version,
                 "message": (
                     "Mumble Find is currently available on Windows."
                     if not self.supported else ""
                 ),
             }
+
+    def _provider_work_status(self):
+        with self._query_lock:
+            futures = list(self._provider_futures.values())
+        return {
+            "capacity": PROVIDER_MAX_INFLIGHT,
+            "submitted": len(futures),
+            "owned": len(futures),
+            "running": sum(future.running() for future in futures),
+            "queued": sum(
+                not future.running() and not future.done() for future in futures
+            ),
+            "threads": sum(
+                thread.is_alive()
+                for thread in getattr(self._query_executor, "_threads", ())
+            ),
+        }
 
     def _provider_status(self):
         if not bool(_setting(
@@ -697,6 +720,9 @@ class SystemSearchEngine:
             token = self._query_tokens.get(generation)
             if token is not None:
                 token.cancel()
+            future = self._provider_futures.get(generation)
+            if future is not None:
+                future.cancel()
         provider = self._file_provider
         if provider is not None:
             try:
@@ -707,6 +733,8 @@ class SystemSearchEngine:
 
     def _begin_query(self, generation):
         with self._query_lock:
+            if self._closed:
+                return self._query_generation, None
             if generation is None:
                 generation = self._query_generation + 1
             try:
@@ -774,19 +802,60 @@ class SystemSearchEngine:
                     "applications remain searchable."
                 ),
             }
-        future = self._query_executor.submit(
-            provider.query,
-            query,
-            limit=candidate_limit,
-            deadline=deadline,
-            cancellation=token,
-            generation=generation,
-        )
         remaining = max(0.0, deadline - time.monotonic())
+        if remaining <= 0:
+            return {
+                "items": [], "state": "partial",
+                "message": (
+                    "Windows Search reached the query deadline; installed "
+                    "applications remain usable."
+                ),
+                "deadline_exceeded": True,
+            }
+        if not self._provider_slots.acquire(blocking=False):
+            return {
+                "items": [], "state": "partial",
+                "message": (
+                    "Windows Search is still completing earlier work; "
+                    "installed applications remain usable."
+                ),
+                "capacity_exhausted": True,
+            }
+        try:
+            future = self._query_executor.submit(
+                provider.query,
+                query,
+                limit=candidate_limit,
+                deadline=deadline,
+                cancellation=token,
+                generation=generation,
+            )
+        except Exception as exc:
+            self._provider_slots.release()
+            return {
+                "items": [], "state": "error",
+                "message": (
+                    "Windows Search could not start; installed applications "
+                    f"remain searchable. {str(exc)[:160]}"
+                ),
+            }
+        with self._query_lock:
+            self._provider_futures[generation] = future
+
+        def release_ownership(completed):
+            release = False
+            with self._query_lock:
+                if self._provider_futures.get(generation) is completed:
+                    self._provider_futures.pop(generation, None)
+                    release = True
+            if release:
+                self._provider_slots.release()
+
+        future.add_done_callback(release_ownership)
         try:
             result = future.result(timeout=remaining)
         except FutureTimeout:
-            token.cancel()
+            future.cancel()
             try:
                 provider.cancel(generation)
             except Exception:
@@ -819,6 +888,14 @@ class SystemSearchEngine:
                     "message": "Mumble Find is currently available on Windows."}
         generation, token = self._begin_query(generation)
         if token is None:
+            with self._query_lock:
+                closed = self._closed
+            if closed:
+                return {
+                    "ok": False, "supported": self.supported,
+                    "generation": generation, "stale": False, "results": [],
+                    "message": "Mumble Find search is closed.",
+                }
             return self._stale_query_result(generation)
         started = time.monotonic()
         try:
@@ -870,7 +947,7 @@ class SystemSearchEngine:
         items.extend(provider_items)
         ranked = []
         for item in items:
-            if token.cancelled or time.monotonic() >= deadline:
+            if token.cancelled:
                 break
             if category != "all" and item.kind != category:
                 continue
@@ -896,6 +973,16 @@ class SystemSearchEngine:
             }
         provider_state = str(provider_result.get("state") or "complete")
         message = str(provider_result.get("message") or "")
+        deadline_exceeded = bool(
+            provider_result.get("deadline_exceeded")
+            or time.monotonic() >= deadline
+        )
+        if deadline_exceeded and provider_state == "complete":
+            provider_state = "partial"
+            message = message or (
+                "The query deadline was reached; installed applications "
+                "remain usable."
+            )
         complete_error = bool(
             provider_state == "error" and not results and category != "app"
         )
@@ -907,19 +994,47 @@ class SystemSearchEngine:
             "generation": generation,
             "stale": False,
             "deadline_ms": deadline_ms,
-            "deadline_exceeded": bool(
-                provider_result.get("deadline_exceeded")
-                or time.monotonic() >= deadline
-            ),
+            "deadline_exceeded": deadline_exceeded,
             "refreshing": refreshing,
             "results": results,
             "total_matches": len(ranked),
             "provider_state": provider_state,
             "partial": provider_state == "partial",
+            "capacity_exhausted": bool(
+                provider_result.get("capacity_exhausted")
+            ),
             "message": message,
             "icon_version": self.icon_version,
             "elapsed_ms": round((time.monotonic() - started) * 1000, 3),
         }
+
+    def close(self):
+        """Stop accepting work and release bounded search/icon ownership."""
+        with self._query_lock:
+            if self._closed:
+                return
+            self._closed = True
+            tokens = list(self._query_tokens.values())
+            futures = list(self._provider_futures.values())
+        for token in tokens:
+            token.cancel()
+            provider = self._file_provider
+            if provider is not None:
+                try:
+                    provider.cancel(token.generation)
+                except Exception:
+                    pass
+        for future in futures:
+            future.cancel()
+        unfinished = set()
+        if futures:
+            _finished, unfinished = wait(futures, timeout=0.5)
+        self._query_executor.shutdown(
+            wait=not bool(unfinished), cancel_futures=True
+        )
+        self._icon_executor.shutdown(wait=False, cancel_futures=True)
+        with self._query_lock:
+            self._query_tokens.clear()
 
     @property
     def icon_version(self):

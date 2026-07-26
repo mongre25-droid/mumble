@@ -296,10 +296,14 @@ class Api:
             print("system-search hide failed:", e)
             return {"ok": False, "state": "unknown", "message": str(e)[:160]}
 
-    def system_search_toggle(self):
+    def system_search_toggle(self, operation_id=None):
         callback = getattr(self, "_toggle_system_search", None)
         try:
-            return callback() if callback else {
+            result = (
+                callback() if callback and operation_id is None else
+                callback(operation_id) if callback else None
+            )
+            return result if callback else {
                 "ok": False, "state": "unavailable",
                 "message": "Mumble Find is unavailable.",
             }
@@ -3357,6 +3361,7 @@ def _serve_webui_commands(srv, H, ensure_main, ensure_search, title,
                         data += chunk
                     req = json.loads(data.decode("utf-8", "replace") or "{}")
                     ok, message = True, ""
+                    reply_details = {}
                     if not _webui_token_ok(req):
                         print("webui command rejected: unauthorized")
                         ok, message = False, "unauthorized"
@@ -3396,10 +3401,21 @@ def _serve_webui_commands(srv, H, ensure_main, ensure_search, title,
                                 and toggle_search is not None else
                                 ensure_search
                             )
-                            result = callback() if callback else None
+                            result = (
+                                callback(req.get("operation_id"))
+                                if callback and cmd == "system_search_toggle"
+                                else callback() if callback else None
+                            )
                             if isinstance(result, dict):
                                 ok = bool(result.get("ok"))
                                 message = str(result.get("message") or "")
+                                reply_details = {
+                                    key: result.get(key) for key in (
+                                        "operation_id", "state", "changed",
+                                        "resident", "focus_captured",
+                                        "focus_restored",
+                                    ) if key in result
+                                }
                             elif result is None or result is False:
                                 ok, message = False, "Mumble Find window unavailable"
                         elif cmd in ("history", "deck", "show"):
@@ -3416,9 +3432,9 @@ def _serve_webui_commands(srv, H, ensure_main, ensure_search, title,
                         else:
                             ok, message = False, "unknown command"
                     try:
-                        conn.sendall((json.dumps({
-                            "ok": ok, "message": message,
-                        }) + "\n").encode("utf-8"))
+                        reply = {"ok": ok, "message": message}
+                        reply.update(reply_details)
+                        conn.sendall((json.dumps(reply) + "\n").encode("utf-8"))
                     except Exception:
                         pass
             except Exception as e:
@@ -3726,8 +3742,8 @@ def main():
     def _hide_search(*_a):
         return find_lifecycle.hide()
 
-    def _toggle_search(*_a):
-        return find_lifecycle.toggle()
+    def _toggle_search(operation_id=None, *_a):
+        return find_lifecycle.toggle(operation_id)
 
     def _ensure_search_front(*_a):
         result = _show_search()

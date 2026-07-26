@@ -10,8 +10,8 @@ pystray==0.19.5
 Pillow==12.3.0
 pywebview==6.2.1
 
-# Windows correction observation and DirectML transcription support.
-# Mumble Find itself uses only the Python standard library.
+# Windows correction observation, DirectML transcription, and Mumble Find's
+# SystemIndex ADO route (`win32com.client`) use the pinned Windows runtime.
 comtypes==1.4.16
 pywin32==312
 # sherpa-onnx powers the optional SenseVoice + DirectML transcription path.

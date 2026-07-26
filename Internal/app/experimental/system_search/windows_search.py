@@ -27,8 +27,10 @@ class WindowsSearchProvider:
 
     name = "Windows Search"
 
-    def __init__(self, connection_factory=None):
+    def __init__(self, connection_factory=None, com_runtime=None):
+        self._native_connection = connection_factory is None
         self._connection_factory = connection_factory or self._make_connection
+        self._com_runtime = com_runtime
         self._active = {}
         self._lock = threading.RLock()
         self._last_error = ""
@@ -44,6 +46,14 @@ class WindowsSearchProvider:
             "Extended Properties='Application=Mumble Find';"
         )
         return connection
+
+    def _worker_com_runtime(self):
+        if self._com_runtime is not None:
+            return self._com_runtime
+        if not self._native_connection:
+            return None
+        import pythoncom
+        return pythoncom
 
     def status(self):
         return {
@@ -94,7 +104,16 @@ class WindowsSearchProvider:
         )
         connection = None
         recordset = None
+        com_runtime = None
+        com_initialized = False
         try:
+            com_runtime = self._worker_com_runtime()
+            if com_runtime is not None:
+                # This method executes on the provider worker. COM apartments
+                # are thread-local, so initialization belongs here rather than
+                # on the caller/UI thread.
+                com_runtime.CoInitializeEx(com_runtime.COINIT_MULTITHREADED)
+                com_initialized = True
             connection = self._connection_factory()
             try:
                 connection.CommandTimeout = max(1, int(math.ceil(remaining)))
@@ -150,6 +169,11 @@ class WindowsSearchProvider:
                         "keywords": Path(name).suffix.lstrip("."),
                     })
                 recordset.MoveNext()
+            if cancellation.cancelled or time.monotonic() >= deadline:
+                return {
+                    "items": items, "state": "partial",
+                    "message": "The indexed file search reached its deadline.",
+                }
             self._last_error = ""
             return {"items": items, "state": "complete", "message": ""}
         except Exception as exc:
@@ -170,5 +194,10 @@ class WindowsSearchProvider:
             if connection is not None:
                 try:
                     connection.Close()
+                except Exception:
+                    pass
+            if com_initialized:
+                try:
+                    com_runtime.CoUninitialize()
                 except Exception:
                     pass

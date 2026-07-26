@@ -6,10 +6,14 @@ licensing documentation.
 
 ## Mumble Find
 
-`experimental/system_search/` is original Mumble code and uses only Python's
-standard library plus the existing `pyperclip` runtime for the explicit Copy
-path action. No source code, assets or binaries from the launchers studied for
-this feature are incorporated.
+`experimental/system_search/` is original Mumble code. Its Windows Search
+`SystemIndex` route uses `win32com.client` from the already pinned pywin32 312
+runtime to access ADO, while the explicit Copy action uses the existing
+`pyperclip` runtime. pywin32 is unmodified from PyPI and is distributed under
+its BSD-style licence; the retained licence text is
+`licenses/computer_control/pywin32-BSD.txt`. No source code, assets or binaries
+from the launchers studied for this feature are incorporated, and Mumble does
+not bundle or modify Windows Search.
 
 Flow Launcher, Ueli and Microsoft PowerToys were reviewed as permissively
 licensed product references. Their high-level patterns — provider-based local

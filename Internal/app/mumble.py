@@ -4474,9 +4474,10 @@ class Mumble:
         # does not read or mutate recording/busy/processing state, the immutable
         # Stop-time insertion lease, or the insertion operation identity.
         self._bump_feature("search")
+        operation_id = uuid.uuid4().hex
 
         def _toggle():
-            if not self._toggle_system_search_page():
+            if not self._toggle_system_search_page(operation_id):
                 self._quick_status("Mumble Find couldn't toggle — try again")
 
         threading.Thread(
@@ -4486,21 +4487,40 @@ class Mumble:
         ).start()
         return True
 
-    def _toggle_system_search_page(self):
+    def _toggle_system_search_page(self, operation_id):
         """Toggle the resident local launcher without surfacing the main window."""
         lock = getattr(self, "_find_toggle_lock", None)
         if lock is None:
             lock = threading.Lock()
             self._find_toggle_lock = lock
         with lock:
-            message = {"cmd": "system_search_toggle"}
-            if self._send_webui(message, timeout=0.8):
-                return True
+            message = {
+                "cmd": "system_search_toggle",
+                "operation_id": str(operation_id),
+            }
             proc = getattr(self, "_webui_proc", None)
-            if proc is None or proc.poll() is not None:
-                if not self._open_web_ui("search"):
-                    return False
+            resident_was_live = proc is not None and proc.poll() is None
+            if resident_was_live:
+                if self._send_webui(message, timeout=0.8):
+                    return True
+                # A missing reply is not proof that the toggle did not happen.
+                # Retry only into the same resident process, with the same ID.
+                for _ in range(25):
+                    if (getattr(self, "_webui_proc", None) is not proc
+                            or proc.poll() is not None):
+                        return False
+                    time.sleep(0.3)
+                    if self._send_webui(message, timeout=0.8):
+                        return True
+                return False
+            if not self._open_web_ui("search"):
+                return False
+            launched_proc = getattr(self, "_webui_proc", None)
             for _ in range(25):
+                if (launched_proc is not None
+                        and (getattr(self, "_webui_proc", None) is not launched_proc
+                             or launched_proc.poll() is not None)):
+                    return False
                 time.sleep(0.3)
                 if self._send_webui(message, timeout=0.8):
                     return True

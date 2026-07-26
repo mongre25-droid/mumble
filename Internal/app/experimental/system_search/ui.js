@@ -17,6 +17,11 @@
     previousFocus: null,
     statusTimer: null,
     actionBusy: false,
+    iconContext: "",
+    iconCacheVersion: "",
+    iconRequested: new Set(),
+    iconSources: new Map(),
+    iconHydrationTimer: null,
   };
   const standalone = document.body.classList.contains("search-popup-page");
 
@@ -248,6 +253,10 @@
       closeSearch(true),
     );
     overlay.addEventListener("keydown", handleDialogKeydown);
+    $s("#ss-results").addEventListener("scroll", scheduleIconHydration, {
+      passive: true,
+    });
+    window.addEventListener("resize", scheduleIconHydration, { passive: true });
   }
 
   function handleDialogKeydown(event) {
@@ -327,6 +336,7 @@
     }
     SS.open = false;
     clearTimeout(SS.statusTimer);
+    clearTimeout(SS.iconHydrationTimer);
     const overlay = $s("#ss-overlay");
     overlay.classList.remove("open");
     overlay.hidden = true;
@@ -562,20 +572,45 @@
       );
     });
     paint(host);
-    hydrateAppIcons(host);
+    scheduleIconHydration();
+  }
+
+  function scheduleIconHydration() {
+    clearTimeout(SS.iconHydrationTimer);
+    SS.iconHydrationTimer = setTimeout(() => {
+      const host = $s("#ss-results");
+      if (host && SS.open) hydrateAppIcons(host);
+    }, 40);
   }
 
   async function hydrateAppIcons(host) {
     const request = SS.request;
     const iconRequest = SS.iconRequest;
     const iconVersion = SS.iconVersion;
+    const context = `${request}:${iconRequest}:${iconVersion}`;
+    if (SS.iconCacheVersion !== iconVersion) {
+      SS.iconCacheVersion = iconVersion;
+      SS.iconSources.clear();
+    }
+    if (SS.iconContext !== context) {
+      SS.iconContext = context;
+      SS.iconRequested.clear();
+    }
+    $$s("[data-ss-app-icon]", host).forEach((slot) => {
+      const source = SS.iconSources.get(slot.dataset.ssAppIcon);
+      if (source) paintNativeIcon(slot, source);
+    });
+    const hostBounds = host.getBoundingClientRect();
     const slots = $$s("[data-ss-app-icon]", host)
       .filter((slot) => {
         const bounds = slot.getBoundingClientRect();
-        return bounds.bottom >= 0 && bounds.top <= window.innerHeight;
+        return !SS.iconRequested.has(slot.dataset.ssAppIcon) &&
+          bounds.bottom >= Math.max(0, hostBounds.top) &&
+          bounds.top <= Math.min(window.innerHeight, hostBounds.bottom);
       })
       .slice(0, 12);
     if (!slots.length) return;
+    slots.forEach((slot) => SS.iconRequested.add(slot.dataset.ssAppIcon));
     try {
       const result = await api(
         "system_search_icons",
@@ -591,17 +626,24 @@
         const source = icons[slot.dataset.ssAppIcon];
         if (typeof source !== "string" ||
             !/^data:image\/(?:png|svg\+xml|webp|jpeg);base64,/.test(source)) return;
-        const image = document.createElement("img");
-        image.className = "ss-app-icon-img";
-        image.alt = "";
-        image.src = source;
-        image.addEventListener("error", () => image.remove(), { once: true });
-        slot.replaceChildren(image);
-        slot.classList.add("native-icon");
+        SS.iconSources.set(slot.dataset.ssAppIcon, source);
+        paintNativeIcon(slot, source);
       });
     } catch (error) {
       // Keep the quiet loading surface; never invent or rotate an app mark.
     }
+  }
+
+  function paintNativeIcon(slot, source) {
+    if (!slot || slot.dataset.iconSource === source) return;
+    const image = document.createElement("img");
+    image.className = "ss-app-icon-img";
+    image.alt = "";
+    image.src = source;
+    image.addEventListener("error", () => image.remove(), { once: true });
+    slot.replaceChildren(image);
+    slot.dataset.iconSource = source;
+    slot.classList.add("native-icon");
   }
 
   function selectIndex(index, announceSelection) {

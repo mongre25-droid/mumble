@@ -1,6 +1,7 @@
 """Focused Level A contracts for Mumble Find Stage A."""
 
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 import re
 import tempfile
 import threading
@@ -98,6 +99,47 @@ class MumbleFindLifecycleTests(unittest.TestCase):
         self.assertEqual(created[0].hide_count, 1)
         self.assertEqual(focus.restored, [focus.captured[0]])
 
+    def test_duplicate_toggle_operation_returns_the_original_terminal_outcome_once(self):
+        lifecycle, created, _options, _focus = self.make_lifecycle()
+
+        first = lifecycle.toggle("1" * 32)
+        duplicate = lifecycle.toggle("1" * 32)
+        next_action = lifecycle.toggle("2" * 32)
+
+        self.assertEqual(duplicate, first)
+        self.assertEqual(created[0].show_count, 1)
+        self.assertEqual(created[0].hide_count, 1)
+        self.assertEqual(next_action["state"], "hidden")
+
+    def test_concurrent_duplicate_toggle_delivery_applies_one_transition(self):
+        lifecycle, created, _options, _focus = self.make_lifecycle()
+        barrier = threading.Barrier(9)
+        results = []
+
+        def deliver():
+            barrier.wait()
+            results.append(lifecycle.toggle("3" * 32))
+
+        workers = [threading.Thread(target=deliver) for _ in range(8)]
+        for worker in workers:
+            worker.start()
+        barrier.wait()
+        for worker in workers:
+            worker.join(1.0)
+
+        self.assertTrue(all(not worker.is_alive() for worker in workers))
+        self.assertEqual(created[0].show_count, 1)
+        self.assertEqual({result["state"] for result in results}, {"visible"})
+        self.assertLessEqual(lifecycle.operation_outcome_count, 256)
+
+    def test_terminal_toggle_outcome_store_is_strictly_bounded(self):
+        lifecycle, _created, _options, _focus = self.make_lifecycle()
+
+        for value in range(300):
+            lifecycle.toggle(f"{value:032x}")
+
+        self.assertEqual(lifecycle.operation_outcome_count, 256)
+
     def test_failed_focus_restore_is_reported_without_reshowing(self):
         lifecycle, created, _options, focus = self.make_lifecycle(
             restore_result=False
@@ -157,19 +199,59 @@ class MumbleFindWindowsFocusTests(unittest.TestCase):
 
     def test_adapter_captures_and_restores_only_a_valid_non_find_window(self):
         user32 = self.User32()
+        identities = {
+            101: (101, 11, 1001, 50001),
+            202: (202, 22, 2002, 50002),
+        }
         adapter = WindowsForegroundFocus(
-            "Mumble Find", user32=user32, find_window=lambda: 202
+            "Mumble Find", user32=user32, find_window=lambda: 202,
+            identity_resolver=lambda hwnd: identities.get(hwnd),
         )
 
-        self.assertEqual(adapter.capture(), 101)
-        self.assertTrue(adapter.restore(101))
+        target = adapter.capture()
+        self.assertEqual((target.hwnd, target.thread_id, target.process_id,
+                          target.process_created), identities[101])
+        self.assertTrue(adapter.restore(target))
         self.assertEqual(user32.restored, [("focus", 101)])
 
         user32.foreground = 202
         self.assertIsNone(adapter.capture())
-        self.assertFalse(adapter.restore(202))
+        self.assertFalse(adapter.restore(target.__class__(*identities[202])))
         user32.valid.remove(101)
-        self.assertFalse(adapter.restore(101))
+        self.assertFalse(adapter.restore(target))
+        user32.valid.add(101)
+        user32.visible.remove(101)
+        self.assertFalse(adapter.restore(target))
+        user32.visible.add(101)
+        user32.SetForegroundWindow = lambda _hwnd: False
+        self.assertFalse(adapter.restore(target))
+
+    def test_focus_restore_rejects_hwnd_and_pid_reuse_or_process_recreation(self):
+        user32 = self.User32()
+        current = [101, 11, 1001, 50001]
+        adapter = WindowsForegroundFocus(
+            "Mumble Find", user32=user32, find_window=lambda: 202,
+            identity_resolver=lambda hwnd: tuple(current) if hwnd == 101 else None,
+        )
+        captured = adapter.capture()
+
+        for changed in (
+            [101, 12, 1001, 50001],  # thread/window identity changed
+            [101, 11, 2002, 50001],  # HWND reused by another process
+            [101, 11, 1001, 60002],  # same PID recreated
+        ):
+            current[:] = changed
+            self.assertFalse(adapter.restore(captured))
+        current[:] = [101, 11, 1001, 50001]
+        self.assertTrue(adapter.restore(captured))
+
+    def test_focus_capture_fails_closed_when_process_identity_is_unavailable(self):
+        user32 = self.User32()
+        adapter = WindowsForegroundFocus(
+            "Mumble Find", user32=user32, find_window=lambda: 202,
+            identity_resolver=lambda _hwnd: None,
+        )
+        self.assertIsNone(adapter.capture())
 
 class _IndexedProvider:
     def __init__(self, *, state="complete", message="", rows=None):
@@ -344,6 +426,65 @@ class MumbleFindQueryTests(unittest.TestCase):
         self.assertLessEqual(p95, 75.0)
         self.assertEqual(retained_tokens, 1)
 
+    def test_current_deadline_preserves_ranked_apps_as_honest_partial_results(self):
+        release = threading.Event()
+
+        class SlowProvider(_IndexedProvider):
+            def query(self, *args, **kwargs):
+                self.started.set()
+                release.wait(1.0)
+                return super().query(*args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = SlowProvider()
+            engine = self.make_engine(tmp, provider)
+            result = engine.search("mumble", generation=1, deadline_ms=10)
+            release.set()
+            close = getattr(engine, "close", None)
+            if close is not None:
+                close()
+
+        self.assertFalse(result["stale"])
+        self.assertTrue(result["deadline_exceeded"])
+        self.assertTrue(result["partial"])
+        self.assertEqual(result["provider_state"], "partial")
+        self.assertEqual([row["kind"] for row in result["results"]], ["app"])
+        self.assertNotIn("superseded", result["message"].casefold())
+
+    def test_non_cooperative_deadlines_keep_provider_ownership_strictly_bounded(self):
+        release = threading.Event()
+
+        class BlockingProvider(_IndexedProvider):
+            def query(self, *args, **kwargs):
+                self.started.set()
+                release.wait(2.0)
+                return super().query(*args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = BlockingProvider()
+            engine = self.make_engine(tmp, provider)
+            try:
+                results = [
+                    engine.search("mumble", generation=generation, deadline_ms=10)
+                    for generation in range(1, 21)
+                ]
+                ownership = engine.status()["provider_work"]
+                self.assertLessEqual(ownership["submitted"], 2)
+                self.assertEqual(ownership["queued"], 0)
+                self.assertLessEqual(ownership["owned"], 2)
+                self.assertTrue(all(result["results"] for result in results))
+                self.assertTrue(any(result.get("capacity_exhausted") for result in results))
+            finally:
+                release.set()
+                close = getattr(engine, "close", None)
+                if close is not None:
+                    close()
+                    close()
+
+        if hasattr(engine, "close"):
+            self.assertEqual(engine.status()["provider_work"]["owned"], 0)
+            self.assertEqual(engine.status()["provider_work"]["threads"], 0)
+
 
 class WindowsSearchProviderTests(unittest.TestCase):
     class _Fields:
@@ -439,6 +580,104 @@ class WindowsSearchProviderTests(unittest.TestCase):
         self.assertIn("installed applications remain searchable", result["message"])
         self.assertFalse(provider.status()["available"])
         self.assertFalse(provider.cancel(3))
+
+    def test_worker_thread_initializes_queries_and_uninitializes_com_in_order(self):
+        events = []
+        worker_ids = []
+
+        class ComRuntime:
+            COINIT_MULTITHREADED = 0
+
+            def CoInitializeEx(self, apartment):
+                worker_ids.append(threading.get_ident())
+                events.append(("initialize", apartment))
+
+            def CoUninitialize(self):
+                worker_ids.append(threading.get_ident())
+                events.append(("uninitialize", None))
+
+        connection = self._Connection([])
+        original_execute = connection.Execute
+
+        def execute(sql):
+            worker_ids.append(threading.get_ident())
+            events.append(("query", None))
+            return original_execute(sql)
+
+        connection.Execute = execute
+        provider = WindowsSearchProvider(
+            lambda: connection, com_runtime=ComRuntime()
+        )
+        caller_thread = threading.get_ident()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = executor.submit(
+                provider.query,
+                "notes",
+                limit=12,
+                deadline=time.monotonic() + 1.0,
+                cancellation=QueryCancellation(8),
+                generation=8,
+            ).result(timeout=1.0)
+
+        self.assertEqual(result["state"], "complete")
+        self.assertEqual([event[0] for event in events], [
+            "initialize", "query", "uninitialize"
+        ])
+        self.assertTrue(worker_ids)
+        self.assertEqual(set(worker_ids), {worker_ids[0]})
+        self.assertNotEqual(worker_ids[0], caller_thread)
+
+    def test_com_cleanup_runs_after_query_and_row_failures_and_cancellation(self):
+        for mode in ("query", "row", "cancel", "deadline"):
+            events = []
+
+            class ComRuntime:
+                COINIT_MULTITHREADED = 0
+
+                def CoInitializeEx(self, _apartment):
+                    events.append("initialize")
+
+                def CoUninitialize(self):
+                    events.append("uninitialize")
+
+            connection = self._Connection([{
+                "System.ItemPathDisplay": r"C:\\Indexed\\note.txt",
+                "System.FileName": "note.txt",
+            }])
+            token = QueryCancellation(9)
+            if mode == "query":
+                connection.Execute = lambda _sql: (_ for _ in ()).throw(
+                    RuntimeError("query failed")
+                )
+            elif mode == "row":
+                connection.recordset.MoveNext = lambda: (_ for _ in ()).throw(
+                    RuntimeError("row failed")
+                )
+            elif mode == "cancel":
+                def cancel_during_connect():
+                    token.cancel()
+                    return connection
+                connection_factory = cancel_during_connect
+            elif mode == "deadline":
+                original_move_next = connection.recordset.MoveNext
+
+                def cross_deadline():
+                    time.sleep(0.02)
+                    original_move_next()
+                connection.recordset.MoveNext = cross_deadline
+            if mode != "cancel":
+                connection_factory = lambda: connection
+            provider = WindowsSearchProvider(
+                connection_factory, com_runtime=ComRuntime()
+            )
+            provider_result = provider.query(
+                "notes", limit=12,
+                deadline=time.monotonic() + (0.005 if mode == "deadline" else 1.0),
+                cancellation=token, generation=9,
+            )
+            self.assertEqual(events, ["initialize", "uninitialize"], mode)
+            if mode == "deadline":
+                self.assertEqual(provider_result["state"], "partial")
 
 
 class MumbleFindIconTests(unittest.TestCase):
@@ -553,6 +792,8 @@ class MumbleFindUiContractTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.shell = (self.root / "webui_shell.py").read_text(encoding="utf-8")
+        self.requirements = (self.root / "requirements.txt").read_text(encoding="utf-8")
+        self.notices = (self.root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
 
     def test_visible_contract_uses_mumble_find_and_exactly_six_destinations(self):
         nav = re.findall(r'class="nav-btn[^\"]*"[^>]*data-nav="([^"]+)"', self.html)
@@ -606,6 +847,24 @@ class MumbleFindUiContractTests(unittest.TestCase):
         self.assertNotIn("web result", self.ui.lower())
         self.assertIn("Show in folder", self.ui)
         self.assertIn('data-ss-action="open"', self.ui)
+
+    def test_find_dependency_truth_names_pinned_pywin32_and_win32com(self):
+        self.assertIn("pywin32==312", self.requirements)
+        self.assertIn("Mumble Find", self.requirements)
+        self.assertIn("win32com", self.requirements)
+        find_notice = self.notices.split("## Mumble Find", 1)[1].split("## ", 1)[0]
+        self.assertIn("pywin32 312", find_notice)
+        self.assertIn("win32com", find_notice)
+        self.assertNotIn("uses only Python's standard library", find_notice)
+
+    def test_production_find_copy_never_promises_a_local_to_web_fallback(self):
+        linux_html = (
+            self.root / "Ports" / "Linux" / "app" / "webui" / "index.html"
+        ).read_text(encoding="utf-8")
+        visible = "\n".join((self.html, linux_html)).casefold()
+        self.assertNotIn("web fallback shown after local", visible)
+        self.assertNotIn("results stay local, with an optional web fallback", visible)
+        self.assertIn("web search", visible)
 
 if __name__ == "__main__":
     unittest.main()
