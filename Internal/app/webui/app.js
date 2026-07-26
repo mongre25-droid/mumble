@@ -1319,7 +1319,7 @@ function toast(msg, kind = "info", ms = 2600) {
   }, ms);
 }
 
-function insertionNotice(result, confirmedMessage = "Pasted") {
+function insertionNotice(result, confirmedMessage = "Inserted") {
   const outcome = (result && result.outcome) || "saved_only";
   if (outcome === "confirmed" && result && result.confirmed === true) {
     return { message: confirmedMessage, kind: "ok" };
@@ -1340,8 +1340,8 @@ function insertionNotice(result, confirmedMessage = "Pasted") {
     message:
       (result && result.message) ||
       (outcome === "uncertain"
-        ? "Paste not confirmed—check the field before trying again."
-        : "Not sent. The result remains saved in Deck and History."),
+        ? "Delivery uncertain — check the selected destination."
+        : "Not inserted — saved in Mumble."),
     kind: outcome === "uncertain" ? "info" : "err",
   };
 }
@@ -1368,7 +1368,7 @@ function acceptInsertionResult(result) {
 
 window.pyInsertionResult = function pyInsertionResult(result) {
   if (!acceptInsertionResult(result)) return;
-  showInsertionResult(result, "Pasted Deck result", 2600);
+  showInsertionResult(result, "Inserted Deck result", 2600);
 };
 
 async function copyTextReliable(text) {
@@ -2076,7 +2076,7 @@ async function pasteLatest() {
     ? await call("deck_paste_image", action.imagePath)
     : await call("deck_paste", action.text || "");
   if (r && r.ok) {
-    showInsertionResult(r, `Pasted ${action.label || "Deck item"}`, 2000);
+    showInsertionResult(r, `Inserted ${action.label || "Deck item"}`, 2000);
     return;
   }
   if (!action.imagePath && action.text && await copyTextReliable(action.text)) {
@@ -2793,7 +2793,7 @@ function wireRows(root) {
     (b) =>
       (b.onclick = async () => {
         const r = await call("deck_paste_image", b.dataset.pasteimage || "");
-        if (r && r.ok) showInsertionResult(r, "Pasted clipboard image", 2000);
+        if (r && r.ok) showInsertionResult(r, "Inserted clipboard image", 2000);
         else toast((r && r.message) || "Couldn't paste the image", "err", 1800);
       }),
   );
@@ -3167,7 +3167,7 @@ async function histMerge(paste) {
     if (r && r.ok) {
       showInsertionResult(
         r,
-        `Pasted ${items.length} merged entr${items.length === 1 ? "y" : "ies"}`,
+        `Inserted ${items.length} merged entr${items.length === 1 ? "y" : "ies"}`,
         2200,
       );
       return;

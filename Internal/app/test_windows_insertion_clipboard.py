@@ -33,6 +33,10 @@ class MemoryWindowsClipboard(WindowsClipboardAdapter):
         self.max_format_bytes = max_format_bytes
         self.history_id = 60001
         self.cloud_id = 60002
+        self.registered = {
+            "HTML Format": 60003,
+            "Rich Text Format": 60004,
+        }
         self.corrupt_restore = False
 
     def _enumerate_format_ids(self):
@@ -63,6 +67,9 @@ class MemoryWindowsClipboard(WindowsClipboardAdapter):
 
     def _privacy_formats(self):
         return self.history_id, self.cloud_id
+
+    def _registered_format(self, name):
+        return self.registered[name]
 
     def _format_name(self, format_id):
         if format_id in self.names:
@@ -205,6 +212,18 @@ def image_request():
         content_kind="image",
         activation_target=TargetContext(1, 2, 3, 4, "medium"),
         image_path=r"C:\fixture.png",
+    )
+
+
+def rich_request():
+    return InsertionRequest(
+        operation_id="clipboard-rich-test",
+        source="deck_history",
+        content_kind="rich",
+        activation_target=TargetContext(1, 2, 3, 4, "medium"),
+        text="plain",
+        rich_html="<b>plain</b>",
+        rich_rtf=r"{\rtf1\b plain}",
     )
 
 
@@ -409,6 +428,23 @@ class WindowsClipboardTests(unittest.TestCase):
         self.assertTrue(clipboard.still_owns(ownership))
         clipboard.formats[CF_UNICODETEXT] = b"mutated"
         self.assertFalse(clipboard.still_owns(ownership))
+
+    def test_rich_write_exposes_plain_html_and_rtf_in_one_owned_payload(self):
+        clipboard = MemoryWindowsClipboard({CF_UNICODETEXT: b"prior\x00\x00"})
+        snapshot = clipboard.snapshot()
+
+        ownership = clipboard.write(rich_request(), snapshot)
+
+        self.assertEqual(
+            "plain".encode("utf-16-le") + b"\x00\x00",
+            clipboard.formats[CF_UNICODETEXT])
+        self.assertIn(
+            b"<b>plain</b>",
+            clipboard.formats[clipboard.registered["HTML Format"]])
+        self.assertIn(
+            b"{\\rtf1\\b plain}",
+            clipboard.formats[clipboard.registered["Rich Text Format"]])
+        self.assertTrue(clipboard.still_owns(ownership))
 
     def test_restore_requires_exact_format_readback(self):
         clipboard = MemoryWindowsClipboard({CF_UNICODETEXT: b"prior\x00\x00"})

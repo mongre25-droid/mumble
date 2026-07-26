@@ -166,7 +166,7 @@ class InsertionTransactionTests(unittest.TestCase):
         values.update(changes)
         return InsertionRequest(**values)
 
-    def test_focus_restoration_requires_a_mumble_displaced_target_lease(self):
+    def test_dictation_restores_the_exact_stop_time_target_before_delivery(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
         target.active = OTHER_TARGET
         transaction = InsertionTransaction(target, clipboard, native,
@@ -184,10 +184,9 @@ class InsertionTransactionTests(unittest.TestCase):
 
         result = transaction.insert(request)
 
-        self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
-        self.assertEqual("target_changed", result.reason)
-        self.assertEqual(0, target.restore_calls)
-        self.assertEqual(0, native.send_calls)
+        self.assertEqual(InsertionOutcome.CONFIRMED, result.outcome)
+        self.assertEqual(1, target.restore_calls)
+        self.assertEqual(1, native.send_calls)
 
     def test_deck_lease_may_restore_the_destination_mumble_displaced(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
@@ -308,6 +307,7 @@ class InsertionTransactionTests(unittest.TestCase):
     def test_late_target_change_is_saved_only_and_never_sent(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
         target.current_values = [TARGET, OTHER_TARGET]
+        target.restore_result = False
         transaction = InsertionTransaction(target, clipboard, native,
                                            settle_delay=lambda _seconds: None)
 
@@ -316,32 +316,33 @@ class InsertionTransactionTests(unittest.TestCase):
         self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
         self.assertEqual(0, native.send_calls)
         self.assertEqual(1, clipboard.restore_calls)
+        self.assertEqual("no_send", result.attempt_ledger[-1].state.value)
 
-    def test_same_control_late_safety_mutations_fail_closed_before_native_input(self):
+    def test_same_control_metadata_changes_do_not_become_eligibility_gates(self):
         cases = [
             ("read-only", replace(
                 TARGET, read_only=True,
                 editability=TargetEditability.NOT_EDITABLE),
-             [True, True], InsertionReason.READ_ONLY),
+             [True, True]),
             ("protected", replace(
                 TARGET, protected=True,
                 editability=TargetEditability.NOT_EDITABLE),
-             [True, True], InsertionReason.PROTECTED_FIELD),
-            ("unsupported", replace(
+             [True, True]),
+            ("non-editable-class", replace(
                 TARGET, control_class="Button", has_caret=False,
                 editability=TargetEditability.NOT_EDITABLE),
-             [True, True], InsertionReason.NOT_EDITABLE),
-            ("supported-control-changed", replace(
+             [True, True]),
+            ("control-class-changed", replace(
                 TARGET, control_class="RichEdit50W"),
-             [True, True], InsertionReason.TARGET_SAFETY_CHANGED),
+             [True, True]),
             ("higher-integrity", replace(
                 TARGET, integrity="high", integrity_relation="higher"),
-             [True, False], InsertionReason.HIGHER_INTEGRITY),
+             [True, False]),
             ("unknown-integrity", replace(
                 TARGET, integrity="unknown", integrity_relation="unknown"),
-             [True, None], InsertionReason.UNKNOWN_INTEGRITY),
+             [True, None]),
         ]
-        for name, late_context, injectable, expected_reason in cases:
+        for name, late_context, injectable in cases:
             with self.subTest(name=name):
                 target, clipboard, native = (
                     FakeTarget(), FakeClipboard(), FakeNativeInput())
@@ -353,12 +354,17 @@ class InsertionTransactionTests(unittest.TestCase):
 
                 result = transaction.insert(self.make_request("late-" + name))
 
-                self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
-                self.assertEqual(expected_reason.value, result.reason)
+                if name == "higher-integrity":
+                    self.assertEqual(InsertionOutcome.NOT_SENT, result.outcome)
+                    self.assertEqual(
+                        InsertionReason.PERMISSION_NEEDED.value, result.reason)
+                else:
+                    self.assertEqual(InsertionOutcome.CONFIRMED, result.outcome)
                 self.assertEqual(1, clipboard.write_calls)
                 self.assertEqual(1, clipboard.restore_calls)
-                self.assertEqual(0, native.send_calls)
-                self.assertNotIn("Pasted", result.message)
+                self.assertEqual(
+                    0 if name == "higher-integrity" else 1,
+                    native.send_calls)
 
     def test_elevation_mismatch_never_touches_clipboard_or_input(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
@@ -367,8 +373,8 @@ class InsertionTransactionTests(unittest.TestCase):
 
         result = transaction.insert(self.make_request("elevated"))
 
-        self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
-        self.assertEqual(InsertionReason.HIGHER_INTEGRITY.value, result.reason)
+        self.assertEqual(InsertionOutcome.NOT_SENT, result.outcome)
+        self.assertEqual(InsertionReason.PERMISSION_NEEDED.value, result.reason)
         self.assertEqual(0, clipboard.snapshot_calls)
         self.assertEqual(0, native.send_calls)
 
@@ -459,6 +465,7 @@ class InsertionTransactionTests(unittest.TestCase):
         self.assertEqual(0, result.send_count)
         self.assertEqual(0, native.send_calls)
         self.assertEqual(1, clipboard.restore_calls)
+        self.assertEqual("no_send", result.attempt_ledger[-1].state.value)
 
     def test_swallowed_paste_is_not_sent_and_duplicate_does_not_retry(self):
         acceptance = NativeAcceptance(4, 4, True, confirmation=False,
@@ -514,7 +521,7 @@ class InsertionTransactionTests(unittest.TestCase):
         result = transaction.insert(self.make_request("unconfirmed"))
 
         self.assertEqual(InsertionOutcome.SENT_UNCONFIRMED, result.outcome)
-        self.assertIn("Sent—check the field", result.message)
+        self.assertIn("Sent — check the selected destination", result.message)
 
     def test_external_clipboard_change_is_never_overwritten(self):
         target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
@@ -539,6 +546,7 @@ class InsertionTransactionTests(unittest.TestCase):
                         ClipboardRestoreState.NEWER_EXTERNAL)
                     if path == "early-exit":
                         target.current_values = [TARGET, OTHER_TARGET]
+                        target.restore_result = False
                     transaction = InsertionTransaction(
                         target, clipboard, native,
                         settle_delay=lambda _seconds: None)
@@ -991,32 +999,26 @@ class InsertionTransactionTests(unittest.TestCase):
         self.assertEqual(2, result.send_count)
         self.assertEqual(lease, result.target_lease)
 
-    def test_editability_and_privilege_policy_fails_closed_with_stable_reasons(self):
+    def test_control_metadata_and_missing_child_handle_do_not_block_delivery(self):
         cases = [
             ("button", TargetContext(
                 101, 202, 303, 404, "medium", "Button", False,
-                TargetEditability.NOT_EDITABLE), True,
-             InsertionReason.NOT_EDITABLE),
+                TargetEditability.NOT_EDITABLE), True),
             ("read-only", TargetContext(
                 101, 202, 303, 404, "medium", "Edit", True,
-                TargetEditability.NOT_EDITABLE, read_only=True), True,
-             InsertionReason.READ_ONLY),
+                TargetEditability.NOT_EDITABLE, read_only=True), True),
             ("protected", TargetContext(
                 101, 202, 303, 404, "medium", "Edit", True,
-                TargetEditability.NOT_EDITABLE, protected=True), True,
-             InsertionReason.PROTECTED_FIELD),
+                TargetEditability.NOT_EDITABLE, protected=True), True),
             ("no-focus", TargetContext(
                 101, 202, 303, 0, "medium", "", False,
-                TargetEditability.NOT_EDITABLE), True,
-             InsertionReason.NO_FOCUS),
+                TargetEditability.NOT_EDITABLE), True),
             ("unknown-editability", TargetContext(
                 101, 202, 303, 404, "medium", "Custom", False,
-                TargetEditability.UNKNOWN), True,
-             InsertionReason.EDITABILITY_UNKNOWN),
-            ("unknown-integrity", TARGET, None,
-             InsertionReason.UNKNOWN_INTEGRITY),
+                TargetEditability.UNKNOWN), True),
+            ("unknown-integrity", TARGET, None),
         ]
-        for name, context, injectable, expected_reason in cases:
+        for name, context, injectable in cases:
             with self.subTest(name=name):
                 target, clipboard, native = FakeTarget(), FakeClipboard(), FakeNativeInput()
                 target.active = context
@@ -1024,11 +1026,9 @@ class InsertionTransactionTests(unittest.TestCase):
                 transaction = InsertionTransaction(target, clipboard, native)
                 result = transaction.insert(self.make_request(
                     "policy-" + name, activation_target=context))
-                self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
-                self.assertEqual(expected_reason.value, result.reason)
-                self.assertEqual(0, native.send_calls)
-                self.assertEqual(0, clipboard.write_calls)
-                self.assertNotIn("Pasted", result.message)
+                self.assertEqual(InsertionOutcome.CONFIRMED, result.outcome)
+                self.assertEqual(1, native.send_calls)
+                self.assertEqual(1, clipboard.write_calls)
 
 
 if __name__ == "__main__":

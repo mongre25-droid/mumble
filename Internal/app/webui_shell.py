@@ -436,7 +436,7 @@ class Api:
             return {
                 "ok": False,
                 "live": False,
-                "message": "Start Mumble from the tray, then choose an editable destination and try again.",
+                "message": "Start Mumble from the tray, then select the destination and try again.",
             }
         try:
             win = getattr(self, "_window", None)
@@ -536,7 +536,7 @@ class Api:
         if not prepared or not prepared.get("ok"):
             return {"ok": False, "live": bool((prepared or {}).get("live", True)),
                     "message": (prepared or {}).get("message") or
-                               "Choose an editable destination before using Deck paste."}
+                               "Select the destination before using Deck paste."}
         r = self._submit_insertion({
             "cmd": "paste", "text": text, "operation_id": operation_id})
         if r and r.get("ok"):
@@ -560,7 +560,7 @@ class Api:
         if not prepared or not prepared.get("ok"):
             return {"ok": False, "live": bool((prepared or {}).get("live", True)),
                     "message": (prepared or {}).get("message") or
-                               "Choose an editable destination before using Deck paste."}
+                               "Select the destination before using Deck paste."}
         r = self._submit_insertion({
             "cmd": "paste_image", "path": path,
             "operation_id": operation_id})
@@ -2828,7 +2828,7 @@ class Api:
         if not prepared or not prepared.get("ok"):
             return {"ok": False, "live": bool((prepared or {}).get("live", True)),
                     "message": (prepared or {}).get("message") or
-                               "Choose an editable destination before running this Deck action."}
+                               "Select the destination before running this Deck action."}
         r = _ctrl_send({"cmd": "deck_job", "slot": preset_slot,
                         "mode": mode, "items": payload,
                         "operation_id": operation_id})

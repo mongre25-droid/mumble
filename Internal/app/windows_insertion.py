@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import ctypes
 from ctypes import wintypes
+from dataclasses import dataclass
 import hashlib
+import importlib
 import io
 import os
 import struct
+import threading
 import time
 
 from insertion import (
@@ -35,6 +38,7 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 TOKEN_QUERY = 0x0008
 TOKEN_INTEGRITY_LEVEL = 25
 KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
 INPUT_KEYBOARD = 1
 VK_CONTROL = 0x11
 VK_V = 0x56
@@ -129,14 +133,102 @@ def _keyboard_input(vk, key_up=False):
     )
 
 
+def _unicode_input(code_unit, key_up=False):
+    return _INPUT(
+        type=INPUT_KEYBOARD,
+        value=_INPUT_UNION(ki=_KEYBDINPUT(
+            wVk=0,
+            wScan=int(code_unit),
+            dwFlags=KEYEVENTF_UNICODE | (KEYEVENTF_KEYUP if key_up else 0),
+            time=0,
+            dwExtraInfo=0,
+        )),
+    )
+
+
+@dataclass(frozen=True)
+class UIAEvidence:
+    runtime_id: tuple = ()
+    observed: bool = False
+    state: str = "unavailable"
+
+
+class WindowsUIAutomationEvidenceProvider:
+    """Best-effort focused-element identity with a strict observation bound."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._in_flight = False
+
+    def capture(self, timeout_s=0.05):
+        with self._lock:
+            if self._in_flight:
+                return UIAEvidence(state="timed_out")
+            self._in_flight = True
+        completed = threading.Event()
+        result = {}
+
+        def worker():
+            comtypes_module = None
+            initialized = False
+            try:
+                comtypes_module = importlib.import_module("comtypes")
+                initializer = getattr(comtypes_module, "CoInitialize", None)
+                if callable(initializer):
+                    initializer()
+                    initialized = True
+                client = importlib.import_module("comtypes.client")
+                uia = client.GetModule("UIAutomationCore.dll")
+                automation = comtypes_module.CoCreateInstance(
+                    uia.CUIAutomation._reg_clsid_,
+                    interface=uia.IUIAutomation,
+                )
+                element = automation.GetFocusedElement()
+                runtime_id = tuple(
+                    int(value) for value in element.GetRuntimeId()
+                ) if element is not None else ()
+                result["value"] = UIAEvidence(
+                    runtime_id=runtime_id,
+                    observed=bool(runtime_id),
+                    state="observed" if runtime_id else "unavailable",
+                )
+            except (ImportError, ModuleNotFoundError):
+                result["value"] = UIAEvidence(state="unavailable")
+            except Exception:
+                result["value"] = UIAEvidence(state="transient")
+            finally:
+                if initialized and comtypes_module is not None:
+                    try:
+                        uninitializer = getattr(
+                            comtypes_module, "CoUninitialize", None)
+                        if callable(uninitializer):
+                            uninitializer()
+                    except Exception:
+                        pass
+                with self._lock:
+                    self._in_flight = False
+                completed.set()
+
+        threading.Thread(
+            target=worker, name="mumble-uia-target", daemon=True,
+        ).start()
+        if not completed.wait(max(0.0, float(timeout_s))):
+            return UIAEvidence(state="timed_out")
+        return result.get("value", UIAEvidence(state="transient"))
+
+
 class WindowsTargetAdapter:
-    def __init__(self, user32=None, kernel32=None, advapi32=None):
+    def __init__(self, user32=None, kernel32=None, advapi32=None,
+                 uia_provider=None, *, uia_timeout_s=0.05):
         self.user32 = user32 or ctypes.windll.user32
         self.kernel32 = kernel32 or ctypes.windll.kernel32
         self.advapi32 = advapi32 or ctypes.windll.advapi32
         if user32 is None and kernel32 is None and advapi32 is None:
             self._configure_ctypes()
         self._own_integrity = self._process_integrity(os.getpid())
+        self._uia_provider = (uia_provider if uia_provider is not None else
+                              WindowsUIAutomationEvidenceProvider())
+        self._uia_timeout_s = max(0.0, float(uia_timeout_s))
 
     def _configure_ctypes(self):
         self.user32.GetForegroundWindow.restype = wintypes.HWND
@@ -146,6 +238,14 @@ class WindowsTargetAdapter:
         self.kernel32.OpenProcess.argtypes = [
             wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
         self.kernel32.OpenProcess.restype = wintypes.HANDLE
+        self.kernel32.GetProcessTimes.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+        ]
+        self.kernel32.GetProcessTimes.restype = wintypes.BOOL
         self.advapi32.OpenProcessToken.argtypes = [
             wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
         self.advapi32.GetSidSubAuthorityCount.argtypes = [ctypes.c_void_p]
@@ -202,6 +302,15 @@ class WindowsTargetAdapter:
             integrity_relation = "higher"
         else:
             integrity_relation = "lower"
+        process_creation_id = self._process_creation_identity(int(pid.value))
+        provider = getattr(self, "_uia_provider", None)
+        if provider is None:
+            uia = UIAEvidence(state="unavailable")
+        else:
+            try:
+                uia = provider.capture(getattr(self, "_uia_timeout_s", 0.05))
+            except Exception:
+                uia = UIAEvidence(state="transient")
         return TargetContext(
             window=hwnd,
             process_id=int(pid.value),
@@ -214,6 +323,11 @@ class WindowsTargetAdapter:
             read_only=read_only,
             protected=protected,
             integrity_relation=integrity_relation,
+            process_creation_id=process_creation_id,
+            uia_runtime_id=tuple(getattr(uia, "runtime_id", ()) or ()),
+            uia_observed=bool(getattr(uia, "observed", False)),
+            uia_state=str(getattr(uia, "state", "unavailable") or
+                          "unavailable"),
         )
 
     def restore(self, target, timeout_s):
@@ -244,6 +358,27 @@ class WindowsTargetAdapter:
         if target_level is None or own_level is None:
             return None
         return own_level >= target_level
+
+    def _process_creation_identity(self, pid):
+        process = self.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not process:
+            return 0
+        creation = wintypes.FILETIME()
+        exit_time = wintypes.FILETIME()
+        kernel = wintypes.FILETIME()
+        user = wintypes.FILETIME()
+        try:
+            if not self.kernel32.GetProcessTimes(
+                    process, ctypes.byref(creation), ctypes.byref(exit_time),
+                    ctypes.byref(kernel), ctypes.byref(user)):
+                return 0
+            return ((int(creation.dwHighDateTime) << 32)
+                    | int(creation.dwLowDateTime))
+        except Exception:
+            return 0
+        finally:
+            self.kernel32.CloseHandle(process)
 
     def _process_integrity(self, pid):
         process = self.kernel32.OpenProcess(
@@ -385,15 +520,26 @@ class WindowsClipboardAdapter:
         return ClipboardSnapshot(sequence=sequence, formats=tuple(formats))
 
     def write(self, request, snapshot):
-        if request.content_kind == "text":
+        if request.content_kind in {"text", "rich"}:
             format_id = CF_UNICODETEXT
             data = request.text.encode("utf-16-le") + b"\x00\x00"
             history_id, cloud_id = self._privacy_formats()
-            payloads = (
+            payloads = [
                 (format_id, data),
                 (history_id, struct.pack("<I", 0)),
                 (cloud_id, struct.pack("<I", 0)),
-            )
+            ]
+            if request.content_kind == "rich" and request.rich_html:
+                payloads.append((
+                    self._registered_format("HTML Format"),
+                    self._html_clipboard_bytes(request.rich_html),
+                ))
+            if request.content_kind == "rich" and request.rich_rtf:
+                payloads.append((
+                    self._registered_format("Rich Text Format"),
+                    request.rich_rtf.encode("utf-8") + b"\x00",
+                ))
+            payloads = tuple(payloads)
         elif request.content_kind == "image":
             format_id = CF_DIB
             data = self._image_dib(request.image_path)
@@ -589,6 +735,34 @@ class WindowsClipboardAdapter:
             raise RuntimeError("clipboard_privacy_format_registration_failed")
         return history_id, cloud_id
 
+    def _registered_format(self, name):
+        format_id = int(self.user32.RegisterClipboardFormatW(name) or 0)
+        if not format_id:
+            raise RuntimeError("clipboard_format_registration_failed")
+        return format_id
+
+    @staticmethod
+    def _html_clipboard_bytes(fragment):
+        fragment_bytes = str(fragment).encode("utf-8")
+        prefix = b"<html><body><!--StartFragment-->"
+        suffix = b"<!--EndFragment--></body></html>"
+        header_template = (
+            "Version:1.0\r\n"
+            "StartHTML:{:010d}\r\n"
+            "EndHTML:{:010d}\r\n"
+            "StartFragment:{:010d}\r\n"
+            "EndFragment:{:010d}\r\n"
+        )
+        placeholder = header_template.format(0, 0, 0, 0).encode("ascii")
+        start_html = len(placeholder)
+        start_fragment = start_html + len(prefix)
+        end_fragment = start_fragment + len(fragment_bytes)
+        end_html = end_fragment + len(suffix)
+        header = header_template.format(
+            start_html, end_html, start_fragment, end_fragment,
+        ).encode("ascii")
+        return header + prefix + fragment_bytes + suffix + b"\x00"
+
     def _set_format(self, format_id, data):
         handle = self.kernel32.GlobalAlloc(GMEM_MOVEABLE, max(1, len(data)))
         if not handle:
@@ -702,3 +876,30 @@ class WindowsNativeInputAdapter:
 
     def send_undo(self):
         return self._send_control_chord(VK_Z)
+
+    def send_unicode(self, text):
+        units = str(text or "").encode("utf-16-le")
+        code_units = [
+            int.from_bytes(units[index:index + 2], "little")
+            for index in range(0, len(units), 2)
+        ]
+        if not code_units:
+            return NativeAcceptance(
+                requested=0, accepted=0, submitted=False,
+                confirmation=None, error="empty_text")
+        events = []
+        for code_unit in code_units:
+            events.extend((
+                _unicode_input(code_unit),
+                _unicode_input(code_unit, key_up=True),
+            ))
+        inputs = (_INPUT * len(events))(*events)
+        accepted = int(self.user32.SendInput(
+            len(events), inputs, ctypes.sizeof(_INPUT)) or 0)
+        return NativeAcceptance(
+            requested=len(events), accepted=accepted,
+            submitted=accepted > 0, confirmation=None,
+            error="" if accepted == len(events) else
+                "Windows accepted {} of {} Unicode input events".format(
+                    accepted, len(events)),
+        )

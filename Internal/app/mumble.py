@@ -90,8 +90,11 @@ import transcription  # optional cloud STT (advanced); local faster-whisper is d
 import ui
 import update
 from insertion import (
+    DeliveryIntent,
+    ImagePayload,
     InsertionCoordinator,
     InsertionCoordinatorCapacityError,
+    InsertionModule,
     InsertionOperationExpired,
     InsertionOutcome,
     InsertionRequest,
@@ -100,6 +103,7 @@ from insertion import (
     InsertionTransaction,
     OperationIdReplayGuard,
     TargetLease,
+    TextPayload,
 )
 from windows_insertion import (
     WindowsClipboardAdapter,
@@ -272,14 +276,13 @@ class Mumble:
         self._insertion_target = WindowsTargetAdapter()
         self._insertion_clipboard = WindowsClipboardAdapter()
         self._insertion_native = WindowsNativeInputAdapter()
-        self._insertion_transaction = InsertionTransaction(
+        self._insertion_module = InsertionModule(
             self._insertion_target,
             self._insertion_clipboard,
             self._insertion_native,
             trace=self._insertion_trace,
         )
-        self._insertion_coordinator = InsertionCoordinator(
-            self._insertion_transaction)
+        self._insertion_coordinator = self._insertion_module
         self._dictation_insertion_lease = None
         self._dictation_insertion_operation_id = None
         self._deck_insertion_lease = None
@@ -2012,9 +2015,17 @@ class Mumble:
         # Ordinary dictation belongs to the destination selected when Stop is
         # requested. Processing may take seconds, but it must never send the
         # result back to the field that happened to be active at Start.
-        self._dictation_insertion_lease = self._make_insertion_lease(
-            "dictation", "stop", mumble_displaced_target=False)
         self._dictation_insertion_operation_id = uuid.uuid4().hex
+        module = getattr(self, "_insertion_module", None)
+        if module is not None:
+            receipt = module.begin(
+                self._dictation_insertion_operation_id,
+                "dictation",
+            )
+            self._dictation_insertion_lease = receipt.target_lease
+        else:
+            self._dictation_insertion_lease = self._make_insertion_lease(
+                "dictation", "stop", mumble_displaced_target=False)
         self._trace_mark("audio_stopped", audio_state="stopping")
         release_at = time.perf_counter()
         self._dictation_timing = {
@@ -2934,16 +2945,22 @@ class Mumble:
 
     def _ensure_insertion_transaction(self):
         """Create adapters lazily for focused controller tests and recovery paths."""
+        module = getattr(self, "_insertion_module", None)
+        if module is not None:
+            self._insertion_coordinator = module
+            return module
         if getattr(self, "_insertion_transaction", None) is None:
             self._insertion_target = WindowsTargetAdapter()
             self._insertion_clipboard = WindowsClipboardAdapter()
             self._insertion_native = WindowsNativeInputAdapter()
-            self._insertion_transaction = InsertionTransaction(
+            self._insertion_module = InsertionModule(
                 self._insertion_target,
                 self._insertion_clipboard,
                 self._insertion_native,
                 trace=self._insertion_trace,
             )
+            self._insertion_coordinator = self._insertion_module
+            return self._insertion_module
         if (getattr(self, "_insertion_coordinator", None) is None
                 or getattr(self._insertion_coordinator, "_transaction", None)
                 is not self._insertion_transaction):
@@ -3028,6 +3045,13 @@ class Mumble:
             created.pop(operation_id, None)
             self._get_prepared_insertion_tombstones().remember(operation_id)
             expired.append(operation_id)
+        module = getattr(self, "_insertion_module", None)
+        if module is not None:
+            for operation_id in expired:
+                try:
+                    module.abandon(operation_id)
+                except Exception:
+                    pass
         return expired
 
     def _cleanup_prepared_insertions(self):
@@ -3298,17 +3322,6 @@ class Mumble:
             self._ensure_insertion_transaction()
             lease = target_lease or self._make_insertion_lease(
                 source, "invocation", target=activation_target)
-            request = InsertionRequest(
-                operation_id=operation_id,
-                source=source,
-                content_kind="text",
-                text=text,
-                activation_target=lease.target,
-                target_lease=lease,
-                restore_clipboard=not keep_on_clipboard,
-                settle_seconds=min(1.2, 0.18 + len(text) / 20000.0),
-                undo_before_paste=bool(undo_before_paste),
-            )
             if self.clipboard:
                 clipboard_pause_attempted = True
                 self.clipboard.pause()
@@ -3317,15 +3330,42 @@ class Mumble:
                 except Exception:
                     pass
             wait_started = time.perf_counter()
-            coordinator = self._insertion_coordinator
-            coordinator.prepare(request)
-            with self._paste_lock:
-                self._trace_mark(
-                    "paste_lock_acquired",
-                    wait_ms=(time.perf_counter() - wait_started) * 1000.0,
-                    operation_id=request.operation_id,
+            module = getattr(self, "_insertion_module", None)
+            if module is not None:
+                coordinator = module
+                module._bind_lease(operation_id, lease.source or source, lease)
+                with self._paste_lock:
+                    self._trace_mark(
+                        "paste_lock_acquired",
+                        wait_ms=(time.perf_counter() - wait_started) * 1000.0,
+                        operation_id=operation_id,
+                    )
+                    result = module.deliver(
+                        operation_id, TextPayload(text),
+                        (DeliveryIntent.REPLACE if undo_before_paste else
+                         DeliveryIntent.INSERT),
+                    )
+            else:
+                request = InsertionRequest(
+                    operation_id=operation_id,
+                    source=source,
+                    content_kind="text",
+                    text=text,
+                    activation_target=lease.target,
+                    target_lease=lease,
+                    restore_clipboard=not keep_on_clipboard,
+                    settle_seconds=min(1.2, 0.18 + len(text) / 20000.0),
+                    undo_before_paste=bool(undo_before_paste),
                 )
-                result = coordinator.submit(request)
+                coordinator = self._insertion_coordinator
+                coordinator.prepare(request)
+                with self._paste_lock:
+                    self._trace_mark(
+                        "paste_lock_acquired",
+                        wait_ms=(time.perf_counter() - wait_started) * 1000.0,
+                        operation_id=request.operation_id,
+                    )
+                    result = coordinator.submit(request)
         finally:
             self._finalize_insertion_lifecycle(
                 operation_id,
@@ -3699,28 +3739,41 @@ class Mumble:
             self._ensure_insertion_transaction()
             lease = target_lease or self._make_insertion_lease(
                 source, "invocation", target=activation_target)
-            request = InsertionRequest(
-                operation_id=operation_id,
-                source=source,
-                content_kind="image",
-                image_path=path or "",
-                activation_target=lease.target,
-                target_lease=lease,
-                settle_seconds=0.30,
-            )
             wait_started = time.perf_counter()
-            coordinator = self._insertion_coordinator
             if self.clipboard:
                 clipboard_pause_attempted = True
                 self.clipboard.pause()
-            coordinator.prepare(request)
-            with self._paste_lock:
-                self._trace_mark(
-                    "paste_lock_acquired",
-                    wait_ms=(time.perf_counter() - wait_started) * 1000.0,
-                    operation_id=request.operation_id,
+            module = getattr(self, "_insertion_module", None)
+            if module is not None:
+                coordinator = module
+                module._bind_lease(operation_id, lease.source or source, lease)
+                with self._paste_lock:
+                    self._trace_mark(
+                        "paste_lock_acquired",
+                        wait_ms=(time.perf_counter() - wait_started) * 1000.0,
+                        operation_id=operation_id,
+                    )
+                    result = module.deliver(
+                        operation_id, ImagePayload(path or ""))
+            else:
+                request = InsertionRequest(
+                    operation_id=operation_id,
+                    source=source,
+                    content_kind="image",
+                    image_path=path or "",
+                    activation_target=lease.target,
+                    target_lease=lease,
+                    settle_seconds=0.30,
                 )
-                result = coordinator.submit(request)
+                coordinator = self._insertion_coordinator
+                coordinator.prepare(request)
+                with self._paste_lock:
+                    self._trace_mark(
+                        "paste_lock_acquired",
+                        wait_ms=(time.perf_counter() - wait_started) * 1000.0,
+                        operation_id=request.operation_id,
+                    )
+                    result = coordinator.submit(request)
         finally:
             self._finalize_insertion_lifecycle(
                 operation_id,
@@ -3868,11 +3921,14 @@ class Mumble:
                         try:
                             lease = self._prepare_deck_insertion_lease(
                                 operation_id, source, req.get("ui_process_id"))
+                            module = getattr(self, "_insertion_module", None)
+                            if module is not None and lease is not None:
+                                module._bind_lease(operation_id, source, lease)
                             resp.update(
                                 ok=bool(lease and lease.target),
                                 operation_id=operation_id,
                                 message=("" if lease and lease.target else
-                                         "Choose an editable destination before using Deck paste."),
+                                         "Select the destination before using Deck paste."),
                             )
                         except InsertionRequestConflict:
                             resp = {
@@ -3949,6 +4005,8 @@ class Mumble:
                     try:
                         self._ensure_insertion_transaction()
                         status = self._insertion_coordinator.status(operation_id)
+                        if isinstance(status, InsertionResult):
+                            status = status.as_dict()
                         resp = {"ok": status.get("state") != "missing", **status}
                     except (InsertionRequestConflict, InsertionOperationExpired):
                         resp = {"ok": False, "state": "rejected",
@@ -4371,9 +4429,14 @@ class Mumble:
         island message when there is nothing to paste or the paste can't land. (The
         tray "Re-paste last" item calls this too.)"""
         self._bump_feature("quick_paste")
-        target_lease = self._make_insertion_lease(
-            "paste_latest", "invocation", mumble_displaced_target=False)
         operation_id = uuid.uuid4().hex
+        module = getattr(self, "_insertion_module", None)
+        if module is not None:
+            target_lease = module.begin(
+                operation_id, "paste_latest").target_lease
+        else:
+            target_lease = self._make_insertion_lease(
+                "paste_latest", "invocation", mumble_displaced_target=False)
         with self.lock:
             if self.busy or self.recording or self.paused:
                 return
@@ -4396,7 +4459,7 @@ class Mumble:
                 except Exception as e:
                     print("quick-paste error:", e)
                 if result is None:
-                    self._quick_status("Not sent — open Deck to copy the latest result")
+                    self._quick_status("Not inserted — saved in Mumble")
                 elif result.outcome is not InsertionOutcome.CONFIRMED:
                     self._quick_status(result.message)
                 elif result.cleanup_warning:

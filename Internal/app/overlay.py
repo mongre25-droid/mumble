@@ -1247,11 +1247,11 @@ class Island:
             rim = _blend(_PILL_RIM, accent, 0.4)
             outcome = getattr(self, "flash_outcome", "confirmed")
             labels = {
-                "confirmed": "Pasted!",
+                "confirmed": "Inserted",
                 "sent_unconfirmed": "Sent",
-                "not_sent": "Not sent",
-                "uncertain": "Check field",
-                "saved_only": "Saved",
+                "not_sent": "Not inserted",
+                "uncertain": "Delivery uncertain",
+                "saved_only": "Not inserted",
             }
             label = labels.get(outcome, "Saved")
             pasted = outcome == "confirmed"
@@ -1263,13 +1263,8 @@ class Island:
                 "uncertain": "No auto-retry",
             }
             reason_hints = {
-                "higher_integrity": "Paste manually",
-                "unknown_integrity": "Paste manually",
+                "permission_needed": "Saved in Mumble",
                 "held_modifier": "Release held key",
-                "read_only": "Read-only field",
-                "protected_field": "Protected field",
-                "not_editable": "Choose a text field",
-                "editability_unknown": "Choose a supported field",
                 "target_changed": "Target changed",
             }
             hint = (getattr(self, "done_label", "") if pasted else
@@ -1358,18 +1353,13 @@ class Island:
         elif state == "done":
             outcome = getattr(self, "flash_outcome", "confirmed")
             verb = {
-                "confirmed": "Pasted!", "sent_unconfirmed": "Sent",
-                "not_sent": "Not sent", "uncertain": "Check field",
-                "saved_only": "Saved",
+                "confirmed": "Inserted", "sent_unconfirmed": "Sent",
+                "not_sent": "Not inserted", "uncertain": "Delivery uncertain",
+                "saved_only": "Not inserted",
             }.get(outcome, "Saved")
             reason_hints = {
-                "higher_integrity": "Paste manually",
-                "unknown_integrity": "Paste manually",
+                "permission_needed": "Saved in Mumble",
                 "held_modifier": "Release held key",
-                "read_only": "Read-only field",
-                "protected_field": "Protected field",
-                "not_editable": "Choose a text field",
-                "editability_unknown": "Choose a supported field",
                 "target_changed": "Target changed",
             }
             dl = (getattr(self, "done_label", "") if outcome == "confirmed" else

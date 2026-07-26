@@ -14,11 +14,14 @@ from insertion import (
     InsertionCoordinatorCapacityError,
     InsertionOperationExpired,
     InsertionOutcome,
+    InsertionModule,
     InsertionRequestConflict,
     InsertionResult,
+    OperationReceipt,
     TargetContext,
     TargetLease,
 )
+from test_insertion_transaction import FakeClipboard, FakeNativeInput, FakeTarget
 
 
 TARGET_A = TargetContext(101, 201, 301, 401, "medium", "Edit", True)
@@ -164,6 +167,44 @@ class InsertionCallerTests(unittest.TestCase):
                 target_lease=lease, operation_id=current_id)
         return action, result, calls, diagnostics, cleanup_failure
 
+    def test_ordinary_text_and_deck_image_use_the_same_deep_module(self):
+        controller = mumble.Mumble.__new__(mumble.Mumble)
+        target = FakeTarget()
+        clipboard = FakeClipboard()
+        native = FakeNativeInput()
+        module = InsertionModule(
+            target, clipboard, native, settle_delay=lambda _seconds: None)
+        controller._insertion_module = module
+        controller._insertion_target = target
+        controller._insertion_clipboard = clipboard
+        controller._insertion_native = native
+        controller._paste_lock = threading.Lock()
+        controller._trace_mark = lambda *_args, **_kwargs: None
+        controller.clipboard = None
+        controller._prepared_insertion_leases = OrderedDict()
+        controller._prepared_insertion_created_at = {}
+        controller._prepared_insertion_executing = set()
+        controller._prepared_insertion_tombstones = None
+
+        text_lease = TargetLease(TARGET_A, "dictation", "stop", False)
+        target.active = TARGET_A
+        text_result = controller._paste(
+            "ordinary words", source="finalize_text",
+            target_lease=text_lease,
+            operation_id=operation_id("module-text-caller"),
+        )
+        image_lease = TargetLease(
+            TARGET_A, "deck_image", "before_deck_dismiss", False)
+        image_result = controller._paste_image(
+            "fixture.png", source="deck_image",
+            target_lease=image_lease,
+            operation_id=operation_id("module-image-caller"),
+        )
+
+        self.assertEqual(InsertionOutcome.CONFIRMED, text_result.outcome)
+        self.assertEqual(InsertionOutcome.CONFIRMED, image_result.outcome)
+        self.assertEqual(2, native.send_calls)
+
     def test_delayed_finalization_keeps_the_stop_time_lease_and_operation(self):
         controller = self._delayed_controller()
         lease = TargetLease(TARGET_B, "dictation", "stop", False)
@@ -254,6 +295,16 @@ class InsertionCallerTests(unittest.TestCase):
         controller._dictation_insertion_lease = TargetLease(
             TARGET_A, "dictation", "start", False)
         controller._capture_insertion_target = lambda: TARGET_B
+        beginnings = []
+        controller._insertion_module = type("Module", (), {
+            "begin": lambda _self, operation, source: (
+                beginnings.append((operation, source)) or OperationReceipt(
+                    operation,
+                    source,
+                    TargetLease(TARGET_B, source, "stop", False),
+                )
+            ),
+        })()
         controller._trace_mark = lambda *_args, **_kwargs: None
         controller._trace_finish = lambda *_args, **_kwargs: None
         controller._set_state = lambda *_args, **_kwargs: None
@@ -274,6 +325,10 @@ class InsertionCallerTests(unittest.TestCase):
         self.assertEqual(TARGET_B, lease.target)
         self.assertEqual("stop", lease.capture_phase)
         self.assertFalse(lease.mumble_displaced_target)
+        self.assertEqual(1, len(beginnings))
+        self.assertEqual(controller._dictation_insertion_operation_id,
+                         beginnings[0][0])
+        self.assertEqual("dictation", beginnings[0][1])
 
     def test_deck_retains_the_external_destination_before_mumble_takes_focus(self):
         controller = mumble.Mumble.__new__(mumble.Mumble)

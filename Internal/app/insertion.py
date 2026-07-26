@@ -39,6 +39,37 @@ class ClipboardRestoreState(str, Enum):
     FAILED = "failed"
 
 
+class AdapterAttemptState(str, Enum):
+    NO_SEND = "no_send"
+    MAY_HAVE_SENT = "may_have_sent"
+    SENT = "sent"
+
+
+class DeliveryIntent(str, Enum):
+    INSERT = "insert"
+    REPLACE = "replace"
+
+
+INSERT = DeliveryIntent.INSERT
+
+
+@dataclass(frozen=True)
+class TextPayload:
+    text: str
+
+
+@dataclass(frozen=True)
+class ImagePayload:
+    path: str
+
+
+@dataclass(frozen=True)
+class RichPayload:
+    text: str
+    html: str = ""
+    rtf: str = ""
+
+
 class InsertionReason(str, Enum):
     CONFIRMED = "confirmed"
     CONFIRMATION_UNAVAILABLE = "confirmation_unavailable"
@@ -52,6 +83,7 @@ class InsertionReason(str, Enum):
     EDITABILITY_UNKNOWN = "editability_unknown"
     HIGHER_INTEGRITY = "higher_integrity"
     UNKNOWN_INTEGRITY = "unknown_integrity"
+    PERMISSION_NEEDED = "permission_needed"
     CLIPBOARD_SNAPSHOT_FAILED = "clipboard_snapshot_failed"
     CLIPBOARD_UNSAFE = "clipboard_unsafe"
     CLIPBOARD_WRITE_FAILED = "clipboard_write_failed"
@@ -79,15 +111,43 @@ class TargetContext:
     read_only: bool = False
     protected: bool = False
     integrity_relation: str = "unknown"
+    process_creation_id: int = 0
+    uia_runtime_id: Tuple[int, ...] = ()
+    uia_observed: bool = False
+    uia_state: str = "unavailable"
 
-    def same_destination(self, other: Optional["TargetContext"]) -> bool:
+    def same_native_destination(self, other: Optional["TargetContext"]) -> bool:
         if other is None:
             return False
-        return (
-            self.window == other.window
-            and self.process_id == other.process_id
-            and self.thread_id == other.thread_id
-            and self.focused_child == other.focused_child
+        if (
+            self.window != other.window
+            or self.process_id != other.process_id
+            or self.thread_id != other.thread_id
+            or self.focused_child != other.focused_child
+        ):
+            return False
+        # Process creation time prevents a recycled PID/HWND from inheriting an
+        # earlier lease.  One-sided unavailability is diagnostic rather than a
+        # reason to refuse an otherwise stable native target.
+        return not (
+            self.process_creation_id
+            and other.process_creation_id
+            and self.process_creation_id != other.process_creation_id
+        )
+
+    def same_destination(self, other: Optional["TargetContext"]) -> bool:
+        if not self.same_native_destination(other):
+            return False
+        # UI Automation strengthens identity only when both observations are
+        # reliable. Missing, timed-out, transient, or one-sided evidence never
+        # turns a stable native destination into a refusal.
+        return not (
+            self.uia_observed
+            and other is not None
+            and other.uia_observed
+            and bool(self.uia_runtime_id)
+            and bool(other.uia_runtime_id)
+            and self.uia_runtime_id != other.uia_runtime_id
         )
 
 
@@ -99,6 +159,18 @@ class TargetLease:
     source: str
     capture_phase: str
     mumble_displaced_target: bool = False
+
+
+@dataclass(frozen=True)
+class OperationReceipt:
+    operation_id: str
+    source: str
+    target_lease: TargetLease
+    reuse_destination_from: Optional[str] = None
+
+    @property
+    def target(self):
+        return self.target_lease.target
 
 
 @dataclass(frozen=True)
@@ -142,6 +214,25 @@ class NativeAcceptance:
 
 
 @dataclass(frozen=True)
+class AdapterAttempt:
+    adapter: str
+    state: AdapterAttemptState
+    requested: int = 0
+    accepted: Optional[int] = 0
+    reason: str = ""
+
+
+class ElevatedHelperAdapter:
+    """Private installed-helper seam; the immediate candidate ships none."""
+
+    def available(self):
+        return False
+
+    def deliver(self, _request):
+        raise RuntimeError("elevated_helper_unavailable")
+
+
+@dataclass(frozen=True)
 class InsertionRequest:
     operation_id: str
     source: str
@@ -150,6 +241,8 @@ class InsertionRequest:
     target_lease: Optional[TargetLease] = None
     text: str = ""
     image_path: str = ""
+    rich_html: str = ""
+    rich_rtf: str = ""
     restore_focus: bool = True
     restore_clipboard: bool = True
     focus_timeout_s: float = 0.35
@@ -165,6 +258,10 @@ class InsertionRequest:
             str(values.pop("text", "")).encode("utf-8")).hexdigest()
         values["image_path"] = hashlib.sha256(
             str(values.pop("image_path", "")).encode("utf-8")).hexdigest()
+        values["rich_html"] = hashlib.sha256(
+            str(values.pop("rich_html", "")).encode("utf-8")).hexdigest()
+        values["rich_rtf"] = hashlib.sha256(
+            str(values.pop("rich_rtf", "")).encode("utf-8")).hexdigest()
         payload = json.dumps(
             values, sort_keys=True, separators=(",", ":"),
             default=lambda value: "<{}.{}>".format(
@@ -175,16 +272,16 @@ class InsertionRequest:
 
 _MESSAGES = {
     InsertionOutcome.CONFIRMED:
-        "Pasted. The result also remains in Deck and History.",
+        "Inserted. The result also remains in Deck and History.",
     InsertionOutcome.SENT_UNCONFIRMED:
-        "Sent—check the field. The result remains in Deck and History.",
+        "Sent — check the selected destination. The result remains in Deck and History.",
     InsertionOutcome.NOT_SENT:
-        "Not sent. Use Copy or Paste latest from Deck or History.",
+        "Not inserted — saved in Mumble. Use Copy or Paste latest from Deck or History.",
     InsertionOutcome.UNCERTAIN:
-        "Paste not confirmed. Check the field before trying again; "
+        "Delivery uncertain — check the selected destination before trying again; "
         "the result remains in Deck and History.",
     InsertionOutcome.SAVED_ONLY:
-        "Saved in Deck and History only. Click the intended field, then use "
+        "Not inserted — saved in Mumble. Select the destination, then use "
         "Copy or Paste latest.",
 }
 
@@ -209,6 +306,8 @@ _REASON_MESSAGES = {
         "Not sent because the destination has higher Windows privileges. Copy the saved result from Deck and paste it manually.",
     InsertionReason.UNKNOWN_INTEGRITY.value:
         "Not sent because Mumble could not verify the Windows privilege boundary. Copy the saved result from Deck and paste it manually.",
+    InsertionReason.PERMISSION_NEEDED.value:
+        "Permission needed — saved in Mumble.",
     InsertionReason.HELD_MODIFIER.value:
         "Not sent because a Ctrl, Alt, Shift, or Windows key is still held. Release it, then use Paste latest.",
     InsertionReason.CLIPBOARD_UNSAFE.value:
@@ -234,6 +333,8 @@ class InsertionResult:
     clipboard_changed_externally: bool = False
     cleanup_warning: str = ""
     target_lease: Optional[TargetLease] = None
+    attempt_ledger: Tuple[AdapterAttempt, ...] = ()
+    state: str = "terminal"
 
     @property
     def confirmed(self) -> bool:
@@ -261,7 +362,21 @@ class InsertionResult:
             "clipboard_restored": self.clipboard_restored,
             "clipboard_changed_externally": self.clipboard_changed_externally,
             "cleanup_warning": self.cleanup_warning,
+            "state": self.state,
+            "attempt_ledger": [
+                {
+                    "adapter": attempt.adapter,
+                    "state": attempt.state.value,
+                    "requested": attempt.requested,
+                    "accepted": attempt.accepted,
+                    "reason": attempt.reason,
+                }
+                for attempt in self.attempt_ledger
+            ],
         }
+
+
+DeliveryResult = InsertionResult
 
 
 class InsertionRequestConflict(ValueError):
@@ -621,6 +736,7 @@ class InsertionTransaction:
         clipboard_adapter,
         native_input_adapter,
         *,
+        elevated_helper=None,
         settle_delay: Callable[[float], None] = time.sleep,
         trace: Optional[Callable[..., None]] = None,
         cache_size: int = 256,
@@ -628,6 +744,7 @@ class InsertionTransaction:
         self._target = target_adapter
         self._clipboard = clipboard_adapter
         self._native = native_input_adapter
+        self._elevated_helper = elevated_helper
         self._settle_delay = settle_delay
         self._trace = trace or (lambda *_args, **_kwargs: None)
         self._cache_size = max(8, int(cache_size))
@@ -746,50 +863,246 @@ class InsertionTransaction:
             **cleanup,
         )
 
+    @staticmethod
+    def _prepend_attempt(result, attempt):
+        values = result.__dict__.copy()
+        values["attempt_ledger"] = (attempt,) + result.attempt_ledger
+        return InsertionResult(**values)
+
+    def _unicode_fallback(self, request, reason):
+        """Try text-only Unicode input after a proven clipboard no-send."""
+        if request.content_kind != "text" or not hasattr(
+                self._native, "send_unicode"):
+            return self._result(
+                request, InsertionOutcome.SAVED_ONLY, reason,
+                attempt_ledger=(AdapterAttempt(
+                    "clipboard_paste", AdapterAttemptState.NO_SEND,
+                    reason=(reason.value if isinstance(reason, Enum)
+                            else str(reason))),),
+            )
+        current, target_reason = self._fresh_target_reason(
+            (request.target_lease.target if request.target_lease else None)
+            or request.activation_target, request)
+        if target_reason is not None:
+            if target_reason is InsertionReason.HIGHER_INTEGRITY:
+                elevated = self._deliver_elevated(request)
+                values = elevated.__dict__.copy()
+                values["attempt_ledger"] = (
+                    AdapterAttempt(
+                        "clipboard_paste", AdapterAttemptState.NO_SEND,
+                        reason=(reason.value if isinstance(reason, Enum)
+                                else str(reason))),
+                ) + elevated.attempt_ledger
+                return InsertionResult(**values)
+            return self._result(
+                request, InsertionOutcome.SAVED_ONLY, target_reason,
+                attempt_ledger=(AdapterAttempt(
+                    "clipboard_paste", AdapterAttemptState.NO_SEND,
+                    reason=(reason.value if isinstance(reason, Enum)
+                            else str(reason))),),
+            )
+        ready, _ready_reason = self._native.ready(request.modifier_timeout_s)
+        if not ready:
+            return self._result(
+                request, InsertionOutcome.NOT_SENT,
+                InsertionReason.HELD_MODIFIER,
+                attempt_ledger=(AdapterAttempt(
+                    "clipboard_paste", AdapterAttemptState.NO_SEND,
+                    reason=(reason.value if isinstance(reason, Enum)
+                            else str(reason))),),
+            )
+        try:
+            acceptance = self._native.send_unicode(request.text)
+        except Exception:
+            return self._result(
+                request, InsertionOutcome.UNCERTAIN,
+                InsertionReason.PASTE_RESULT_UNKNOWN,
+                send_count=1, native_requested=max(0, len(request.text) * 2),
+                native_accepted=None,
+                attempt_ledger=(
+                    AdapterAttempt(
+                        "clipboard_paste", AdapterAttemptState.NO_SEND,
+                        reason=(reason.value if isinstance(reason, Enum)
+                                else str(reason))),
+                    AdapterAttempt(
+                        "unicode_text", AdapterAttemptState.MAY_HAVE_SENT,
+                        requested=max(0, len(request.text) * 2),
+                        accepted=None, reason="transport_error"),
+                ),
+            )
+        requested = max(0, int(acceptance.requested))
+        accepted = acceptance.accepted
+        if accepted is not None and (accepted < 0 or accepted > requested):
+            outcome = InsertionOutcome.UNCERTAIN
+            terminal_reason = InsertionReason.INVALID_ACCEPTANCE
+            state = AdapterAttemptState.MAY_HAVE_SENT
+        elif accepted is not None and accepted > 0:
+            complete = accepted == requested and requested > 0
+            outcome = (InsertionOutcome.SENT_UNCONFIRMED if complete
+                       else InsertionOutcome.UNCERTAIN)
+            terminal_reason = (InsertionReason.CONFIRMATION_UNAVAILABLE if complete
+                               else InsertionReason.PARTIAL_INPUT)
+            state = (AdapterAttemptState.SENT if complete
+                     else AdapterAttemptState.MAY_HAVE_SENT)
+        elif acceptance.submitted:
+            outcome = InsertionOutcome.SENT_UNCONFIRMED
+            terminal_reason = InsertionReason.CONFIRMATION_UNAVAILABLE
+            state = AdapterAttemptState.MAY_HAVE_SENT
+        else:
+            outcome = InsertionOutcome.NOT_SENT
+            terminal_reason = InsertionReason.ZERO_INPUT
+            state = AdapterAttemptState.NO_SEND
+        return self._result(
+            request, outcome, terminal_reason, send_count=1,
+            native_requested=requested, native_accepted=accepted,
+            attempt_ledger=(
+                AdapterAttempt(
+                    "clipboard_paste", AdapterAttemptState.NO_SEND,
+                    reason=(reason.value if isinstance(reason, Enum)
+                            else str(reason))),
+                AdapterAttempt(
+                    "unicode_text", state, requested=requested,
+                    accepted=accepted, reason=terminal_reason.value),
+            ),
+        )
+
     def _target_safety_reason(self, target):
-        """Return the first fail-closed reason from one fresh target snapshot."""
+        """Return only conditions that prevent a safe delivery attempt.
+
+        Control type, caret, editability, read-only, and protected signals are
+        diagnostics for adapter selection.  They are not global eligibility
+        gates because modern browser, Electron, Office, and rich-edit surfaces
+        often expose incomplete or misleading Win32 control metadata.
+        """
         if target is None or not target.window:
             return InsertionReason.NO_TARGET
-        if not target.focused_child:
-            return InsertionReason.NO_FOCUS
-        if target.protected:
-            return InsertionReason.PROTECTED_FIELD
-        if target.read_only:
-            return InsertionReason.READ_ONLY
-        if target.editability is TargetEditability.NOT_EDITABLE:
-            return InsertionReason.NOT_EDITABLE
-        if target.editability is not TargetEditability.EDITABLE:
-            return InsertionReason.EDITABILITY_UNKNOWN
         injectable = self._target.can_inject(target)
         if injectable is False:
             return InsertionReason.HIGHER_INTEGRITY
-        if injectable is None:
-            return InsertionReason.UNKNOWN_INTEGRITY
         return None
 
-    def _fresh_target_reason(self, activation):
+    def _deliver_elevated(self, request):
+        helper = self._elevated_helper
+        try:
+            available = bool(helper and helper.available())
+        except Exception:
+            available = False
+        if not available:
+            return self._result(
+                request, InsertionOutcome.NOT_SENT,
+                InsertionReason.PERMISSION_NEEDED,
+                attempt_ledger=(AdapterAttempt(
+                    "elevated_helper", AdapterAttemptState.NO_SEND,
+                    reason=InsertionReason.PERMISSION_NEEDED.value),),
+            )
+        try:
+            acceptance = helper.deliver(request)
+        except Exception:
+            return self._result(
+                request, InsertionOutcome.UNCERTAIN,
+                InsertionReason.PASTE_RESULT_UNKNOWN,
+                send_count=1, native_accepted=None,
+                attempt_ledger=(AdapterAttempt(
+                    "elevated_helper", AdapterAttemptState.MAY_HAVE_SENT,
+                    accepted=None, reason="transport_lost_after_dispatch"),),
+            )
+        requested = max(0, int(acceptance.requested))
+        accepted = acceptance.accepted
+        if accepted is not None and (accepted < 0 or accepted > requested):
+            return self._result(
+                request, InsertionOutcome.UNCERTAIN,
+                InsertionReason.INVALID_ACCEPTANCE,
+                send_count=1, native_requested=requested,
+                native_accepted=accepted,
+                attempt_ledger=(AdapterAttempt(
+                    "elevated_helper", AdapterAttemptState.MAY_HAVE_SENT,
+                    requested=requested, accepted=accepted,
+                    reason=InsertionReason.INVALID_ACCEPTANCE.value),),
+            )
+        if accepted is not None and accepted > 0:
+            complete = accepted == requested and requested > 0
+            confirmed = complete and acceptance.confirmation is True
+            return self._result(
+                request, (InsertionOutcome.CONFIRMED if confirmed else
+                          InsertionOutcome.SENT_UNCONFIRMED if complete else
+                          InsertionOutcome.UNCERTAIN),
+                (InsertionReason.CONFIRMED if confirmed else
+                 InsertionReason.CONFIRMATION_UNAVAILABLE if complete else
+                 InsertionReason.PARTIAL_INPUT),
+                send_count=1, native_requested=requested,
+                native_accepted=accepted,
+                attempt_ledger=(AdapterAttempt(
+                    "elevated_helper",
+                    (AdapterAttemptState.SENT if complete else
+                     AdapterAttemptState.MAY_HAVE_SENT),
+                    requested=requested, accepted=accepted),),
+            )
+        if acceptance.submitted:
+            return self._result(
+                request, InsertionOutcome.UNCERTAIN,
+                InsertionReason.PASTE_RESULT_UNKNOWN,
+                send_count=1, native_requested=requested,
+                native_accepted=accepted,
+                attempt_ledger=(AdapterAttempt(
+                    "elevated_helper", AdapterAttemptState.MAY_HAVE_SENT,
+                    requested=requested, accepted=accepted,
+                    reason=InsertionReason.PASTE_RESULT_UNKNOWN.value),),
+            )
+        return self._result(
+            request, InsertionOutcome.NOT_SENT,
+            InsertionReason.PERMISSION_NEEDED,
+            send_count=1, native_requested=requested,
+            native_accepted=accepted,
+            attempt_ledger=(AdapterAttempt(
+                "elevated_helper", AdapterAttemptState.NO_SEND,
+                requested=requested, accepted=accepted,
+                reason=InsertionReason.PERMISSION_NEEDED.value),),
+        )
+
+    def _restore_changed_target(self, request, activation, current):
+        uia_conflict = bool(
+            activation.same_native_destination(current)
+            and activation.uia_observed
+            and current is not None
+            and current.uia_observed
+            and activation.uia_runtime_id
+            and current.uia_runtime_id
+            and activation.uia_runtime_id != current.uia_runtime_id
+        )
+        deck_source = request.source in {
+            "deck_history", "deck_image", "deck_job"
+        }
+        lease = request.target_lease
+        may_restore = bool(
+            not deck_source or
+            (lease is not None and lease.mumble_displaced_target))
+        restored = may_restore and bool(request.restore_focus) and bool(
+            self._target.restore(activation, request.focus_timeout_s))
+        current = self._target.current()
+        exact_restoration = activation.same_destination(current)
+        if uia_conflict:
+            exact_restoration = bool(
+                current is not None
+                and activation.same_native_destination(current)
+                and activation.uia_observed
+                and current.uia_observed
+                and activation.uia_runtime_id == current.uia_runtime_id
+            )
+        return current, bool(restored and exact_restoration)
+
+    def _fresh_target_reason(self, activation, request=None):
         current = self._target.current()
         if not activation.same_destination(current):
-            return current, InsertionReason.TARGET_CHANGED
+            if request is None:
+                return current, InsertionReason.TARGET_CHANGED
+            current, restored = self._restore_changed_target(
+                request, activation, current)
+            if not restored:
+                return current, InsertionReason.TARGET_CHANGED
         reason = self._target_safety_reason(current)
         if reason is not None:
             return current, reason
-        if self._target_safety_signature(activation) != self._target_safety_signature(
-                current):
-            return current, InsertionReason.TARGET_SAFETY_CHANGED
         return current, None
-
-    @staticmethod
-    def _target_safety_signature(target):
-        return (
-            str(target.control_class or "").casefold(),
-            bool(target.has_caret),
-            target.editability,
-            bool(target.read_only),
-            bool(target.protected),
-            str(target.integrity or "unknown"),
-            str(target.integrity_relation or "unknown"),
-        )
 
     def _execute(self, request):
         lease = request.target_lease
@@ -799,48 +1112,42 @@ class InsertionTransaction:
             return self._result(request, InsertionOutcome.SAVED_ONLY,
                                 InsertionReason.NO_TARGET)
 
-        current = self._target.current()
-        if not activation.same_destination(current):
-            may_restore = bool(
-                lease is not None and lease.mumble_displaced_target)
-            restored = may_restore and bool(request.restore_focus) and bool(
-                self._target.restore(activation, request.focus_timeout_s))
-            current = self._target.current()
-            if not restored or not activation.same_destination(current):
-                return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                    InsertionReason.TARGET_CHANGED)
+        current, target_reason = self._fresh_target_reason(
+            activation, request)
+        if target_reason is InsertionReason.TARGET_CHANGED:
+            return self._result(request, InsertionOutcome.SAVED_ONLY,
+                                InsertionReason.TARGET_CHANGED)
 
-        safety_reason = self._target_safety_reason(current)
-        if (safety_reason is None
-                and self._target_safety_signature(activation)
-                != self._target_safety_signature(current)):
-            safety_reason = InsertionReason.TARGET_SAFETY_CHANGED
+        safety_reason = target_reason
         if safety_reason is not None:
+            if safety_reason is InsertionReason.HIGHER_INTEGRITY:
+                return self._deliver_elevated(request)
             return self._result(request, InsertionOutcome.SAVED_ONLY,
                                 safety_reason)
 
         try:
             snapshot = self._clipboard.snapshot()
         except Exception:
-            return self._result(request, InsertionOutcome.SAVED_ONLY,
-                                InsertionReason.CLIPBOARD_SNAPSHOT_FAILED)
+            return self._unicode_fallback(
+                request, InsertionReason.CLIPBOARD_SNAPSHOT_FAILED)
         if request.restore_clipboard and not snapshot.restorable:
-            return self._result(
-                request, InsertionOutcome.SAVED_ONLY,
-                InsertionReason.CLIPBOARD_UNSAFE)
+            return self._unicode_fallback(
+                request, InsertionReason.CLIPBOARD_UNSAFE)
 
         try:
             ownership = self._clipboard.write(request, snapshot)
         except Exception as exc:
-            return self._result(
-                request, InsertionOutcome.SAVED_ONLY,
-                InsertionReason.CLIPBOARD_WRITE_FAILED,
+            result = self._unicode_fallback(
+                request, InsertionReason.CLIPBOARD_WRITE_FAILED)
+            values = result.__dict__.copy()
+            values.update(
                 clipboard_restored=bool(getattr(
                     exc, "clipboard_restored", False)),
                 clipboard_changed_externally=bool(getattr(
                     exc, "clipboard_changed_externally", False)),
                 cleanup_warning=str(getattr(exc, "cleanup_warning", "") or ""),
             )
+            return InsertionResult(**values)
         self._trace_safely(
             "clipboard_ready", operation_id=request.operation_id,
             source=request.source, content_kind=request.content_kind)
@@ -854,6 +1161,7 @@ class InsertionTransaction:
         clipboard_changed = False
         cleanup_warning = ""
         clipboard_cleanup_done = False
+        attempt_ledger = []
 
         def finish_early(result):
             nonlocal clipboard_cleanup_done
@@ -865,24 +1173,44 @@ class InsertionTransaction:
             # The target check is deliberately after the clipboard write and
             # immediately before native input.  A late focus switch therefore
             # cannot redirect the user's dictation to another field.
-            current, safety_reason = self._fresh_target_reason(activation)
+            current, safety_reason = self._fresh_target_reason(
+                activation, request)
             if safety_reason is not None:
-                return finish_early(self._result(
-                    request, InsertionOutcome.SAVED_ONLY, safety_reason))
+                result = (self._deliver_elevated(request)
+                          if safety_reason is InsertionReason.HIGHER_INTEGRITY
+                          else self._result(
+                              request, InsertionOutcome.SAVED_ONLY,
+                              safety_reason))
+                result = self._prepend_attempt(result, AdapterAttempt(
+                    "clipboard_paste", AdapterAttemptState.NO_SEND,
+                    reason=safety_reason.value))
+                return finish_early(result)
 
             ready, _ready_reason = self._native.ready(request.modifier_timeout_s)
             if not ready:
-                return finish_early(self._result(
+                result = self._result(
                     request, InsertionOutcome.NOT_SENT,
-                    InsertionReason.HELD_MODIFIER))
+                    InsertionReason.HELD_MODIFIER)
+                result = self._prepend_attempt(result, AdapterAttempt(
+                    "clipboard_paste", AdapterAttemptState.NO_SEND,
+                    reason=InsertionReason.HELD_MODIFIER.value))
+                return finish_early(result)
 
             # Modifier release can itself consume the focus window. The last
             # authorization therefore uses a new complete target snapshot at
             # the native-input boundary, not facts retained from activation.
-            current, safety_reason = self._fresh_target_reason(activation)
+            current, safety_reason = self._fresh_target_reason(
+                activation, request)
             if safety_reason is not None:
-                return finish_early(self._result(
-                    request, InsertionOutcome.SAVED_ONLY, safety_reason))
+                result = (self._deliver_elevated(request)
+                          if safety_reason is InsertionReason.HIGHER_INTEGRITY
+                          else self._result(
+                              request, InsertionOutcome.SAVED_ONLY,
+                              safety_reason))
+                result = self._prepend_attempt(result, AdapterAttempt(
+                    "clipboard_paste", AdapterAttemptState.NO_SEND,
+                    reason=safety_reason.value))
+                return finish_early(result)
 
             if request.undo_before_paste:
                 send_count = 1
@@ -893,7 +1221,11 @@ class InsertionTransaction:
                         request, InsertionOutcome.UNCERTAIN,
                         InsertionReason.UNDO_RESULT_UNKNOWN,
                         send_count=send_count,
-                        native_requested=4, native_accepted=None))
+                        native_requested=4, native_accepted=None,
+                        attempt_ledger=(AdapterAttempt(
+                            "native_undo", AdapterAttemptState.MAY_HAVE_SENT,
+                            requested=4, accepted=None,
+                            reason=InsertionReason.UNDO_RESULT_UNKNOWN.value),)))
                 undo_requested = max(0, int(undo.requested))
                 undo_accepted = undo.accepted
                 if (not undo.submitted or undo_accepted != undo_requested
@@ -906,18 +1238,30 @@ class InsertionTransaction:
                         InsertionReason.UNDO_NOT_FULLY_ACCEPTED,
                         send_count=send_count,
                         native_requested=undo_requested,
-                        native_accepted=undo_accepted))
+                        native_accepted=undo_accepted,
+                        attempt_ledger=(AdapterAttempt(
+                            "native_undo",
+                            (AdapterAttemptState.MAY_HAVE_SENT
+                             if undo.submitted or (undo_accepted or 0) > 0
+                             else AdapterAttemptState.NO_SEND),
+                            requested=undo_requested,
+                            accepted=undo_accepted,
+                            reason=InsertionReason.UNDO_NOT_FULLY_ACCEPTED.value),)))
                 requested += undo_requested
                 accepted += undo_accepted
+                attempt_ledger.append(AdapterAttempt(
+                    "native_undo", AdapterAttemptState.SENT,
+                    requested=undo_requested, accepted=undo_accepted))
                 _after_undo, after_undo_reason = self._fresh_target_reason(
-                    activation)
+                    activation, request)
                 if after_undo_reason is not None:
                     return finish_early(self._result(
                         request, InsertionOutcome.UNCERTAIN,
                         InsertionReason.TARGET_CHANGED_AFTER_UNDO,
                         send_count=send_count,
                         native_requested=requested,
-                        native_accepted=accepted))
+                        native_accepted=accepted,
+                        attempt_ledger=tuple(attempt_ledger)))
 
             send_count += 1
             try:
@@ -926,6 +1270,10 @@ class InsertionTransaction:
                 outcome = InsertionOutcome.UNCERTAIN
                 reason = InsertionReason.PASTE_RESULT_UNKNOWN
                 accepted = None
+                attempt_ledger.append(AdapterAttempt(
+                    "clipboard_paste", AdapterAttemptState.MAY_HAVE_SENT,
+                    requested=4, accepted=None,
+                    reason=InsertionReason.PASTE_RESULT_UNKNOWN.value))
             else:
                 paste_requested = max(0, int(acceptance.requested))
                 paste_accepted = acceptance.accepted
@@ -960,11 +1308,41 @@ class InsertionTransaction:
                     outcome = InsertionOutcome.NOT_SENT
                     reason = InsertionReason.ZERO_INPUT
 
+                if outcome in {
+                    InsertionOutcome.CONFIRMED,
+                    InsertionOutcome.SENT_UNCONFIRMED,
+                }:
+                    attempt_state = AdapterAttemptState.SENT
+                elif outcome is InsertionOutcome.UNCERTAIN:
+                    attempt_state = AdapterAttemptState.MAY_HAVE_SENT
+                else:
+                    attempt_state = AdapterAttemptState.NO_SEND
+                attempt_ledger.append(AdapterAttempt(
+                    "clipboard_paste", attempt_state,
+                    requested=paste_requested, accepted=paste_accepted,
+                    reason=reason.value))
+
             self._trace_safely(
                 "paste_sent", operation_id=request.operation_id,
                 source=request.source,
                 accepted_count=accepted, requested_count=requested,
                 send_count=send_count)
+            if (outcome is InsertionOutcome.NOT_SENT
+                    and reason is InsertionReason.ZERO_INPUT
+                    and request.content_kind == "text"):
+                fallback = self._unicode_fallback(
+                    request, InsertionReason.ZERO_INPUT)
+                values = fallback.__dict__.copy()
+                values.update(
+                    send_count=send_count + fallback.send_count,
+                    native_requested=requested + fallback.native_requested,
+                    native_accepted=(
+                        None if fallback.native_accepted is None else
+                        (accepted or 0) + fallback.native_accepted),
+                    attempt_ledger=(tuple(attempt_ledger[:-1])
+                                    + fallback.attempt_ledger),
+                )
+                return finish_early(InsertionResult(**values))
             if outcome in {
                 InsertionOutcome.CONFIRMED,
                 InsertionOutcome.SENT_UNCONFIRMED,
@@ -987,6 +1365,7 @@ class InsertionTransaction:
             clipboard_restored=clipboard_restored,
             clipboard_changed_externally=clipboard_changed,
             cleanup_warning=cleanup_warning,
+            attempt_ledger=tuple(attempt_ledger),
         )
 
     def _finish_clipboard(self, request, snapshot, ownership, result):
@@ -1025,3 +1404,280 @@ class InsertionTransaction:
                 "The clipboard changed after Mumble wrote to it, so the newer "
                 "clipboard was left untouched.")
         return "The previous clipboard could not be restored."
+
+
+@dataclass
+class _ModuleOperation:
+    receipt: OperationReceipt
+    payload_fingerprint: str = ""
+    result: Optional[DeliveryResult] = None
+    state: str = "prepared"
+    created_at: float = 0.0
+
+
+class InsertionModule:
+    """One target-bound operation spanning capture, adapters, and polling."""
+
+    def __init__(self, target_adapter, clipboard_adapter, native_input_adapter,
+                 *, elevated_helper=None, settle_delay=time.sleep,
+                 trace=None, retention=256, prepared_ttl_s=15 * 60.0,
+                 clock=time.monotonic):
+        self._target = target_adapter
+        self._clipboard = clipboard_adapter
+        self._native = native_input_adapter
+        self._elevated_helper = elevated_helper or ElevatedHelperAdapter()
+        self._transaction = InsertionTransaction(
+            target_adapter, clipboard_adapter, native_input_adapter,
+            elevated_helper=self._elevated_helper,
+            settle_delay=settle_delay, trace=trace,
+        )
+        self._coordinator = InsertionCoordinator(
+            self._transaction, retention=retention)
+        self._retention = max(8, int(retention))
+        self._prepared_ttl_s = max(0.0, float(prepared_ttl_s))
+        self._clock = clock
+        self._operations = OrderedDict()
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _operation_id(value):
+        operation_id = validated_operation_id(value)
+        if operation_id is None:
+            raise ValueError("invalid_operation_id")
+        return operation_id
+
+    def _reserve_locked(self):
+        self._expire_prepared_locked()
+        while len(self._operations) >= self._retention:
+            removable = next((
+                key for key, value in self._operations.items()
+                if value.state in {"terminal", "abandoned"}
+            ), None)
+            if removable is None:
+                raise InsertionCoordinatorCapacityError(
+                    "insertion module capacity is occupied by active operations")
+            self._operations.pop(removable, None)
+
+    def _expire_prepared_locked(self):
+        now = self._clock()
+        for entry in self._operations.values():
+            if (entry.state == "prepared"
+                    and max(0.0, now - entry.created_at)
+                    >= self._prepared_ttl_s):
+                entry.state = "abandoned"
+
+    def begin(self, operation_id, source, reuse_destination_from=None):
+        operation_id = self._operation_id(operation_id)
+        source = str(source or "").strip()
+        if not source:
+            raise ValueError("invalid_insertion_source")
+        reuse_id = (self._operation_id(reuse_destination_from)
+                    if reuse_destination_from else None)
+        with self._lock:
+            self._expire_prepared_locked()
+            existing = self._operations.get(operation_id)
+            if existing is not None:
+                if existing.state == "abandoned":
+                    raise InsertionOperationExpired(
+                        "prepared insertion operation expired")
+                receipt = existing.receipt
+                if (receipt.source != source
+                        or receipt.reuse_destination_from != reuse_id):
+                    raise InsertionRequestConflict(
+                        "operation_id_reused_with_different_begin")
+                self._operations.move_to_end(operation_id)
+                return receipt
+            if reuse_id:
+                reused = self._operations.get(reuse_id)
+                if reused is None:
+                    raise InsertionOperationExpired(
+                        "reuse destination operation is unavailable")
+                target = reused.receipt.target
+                capture_phase = "reused_destination"
+            else:
+                try:
+                    target = self._target.current()
+                except Exception:
+                    target = None
+                capture_phase = "begin"
+            self._reserve_locked()
+            receipt = OperationReceipt(
+                operation_id=operation_id,
+                source=source,
+                target_lease=TargetLease(
+                    target=target,
+                    source=source,
+                    capture_phase=capture_phase,
+                    mumble_displaced_target=False,
+                ),
+                reuse_destination_from=reuse_id,
+            )
+            self._operations[operation_id] = _ModuleOperation(
+                receipt, created_at=self._clock())
+            return receipt
+
+    def _bind_lease(self, operation_id, source, target_lease):
+        """Bind a caller's earlier Stop/Deck capture to the same deep module."""
+        operation_id = self._operation_id(operation_id)
+        if not isinstance(target_lease, TargetLease):
+            raise TypeError("target_lease_required")
+        source = str(source or "").strip()
+        with self._lock:
+            self._expire_prepared_locked()
+            existing = self._operations.get(operation_id)
+            if existing is not None:
+                if existing.state == "abandoned":
+                    raise InsertionOperationExpired(
+                        "prepared insertion operation expired")
+                receipt = existing.receipt
+                if (receipt.source != source
+                        or receipt.target_lease != target_lease):
+                    raise InsertionRequestConflict(
+                        "operation_id_reused_with_different_destination")
+                self._operations.move_to_end(operation_id)
+                return receipt
+            self._reserve_locked()
+            receipt = OperationReceipt(
+                operation_id=operation_id,
+                source=source,
+                target_lease=target_lease,
+            )
+            self._operations[operation_id] = _ModuleOperation(
+                receipt, created_at=self._clock())
+            return receipt
+
+    @staticmethod
+    def _payload_fingerprint(payload, intent):
+        if isinstance(payload, TextPayload):
+            values = ("text", payload.text)
+        elif isinstance(payload, ImagePayload):
+            values = ("image", payload.path)
+        elif isinstance(payload, RichPayload):
+            values = ("rich", payload.text, payload.html, payload.rtf)
+        else:
+            raise TypeError("unsupported_delivery_payload")
+        digest = hashlib.sha256()
+        digest.update(str(intent.value).encode("ascii"))
+        for value in values:
+            encoded = str(value or "").encode("utf-8")
+            digest.update(len(encoded).to_bytes(8, "little"))
+            digest.update(encoded)
+        return digest.hexdigest()
+
+    def deliver(self, operation_id, payload, intent=INSERT):
+        operation_id = self._operation_id(operation_id)
+        intent = DeliveryIntent(intent)
+        fingerprint = self._payload_fingerprint(payload, intent)
+        with self._lock:
+            self._expire_prepared_locked()
+            entry = self._operations.get(operation_id)
+            if entry is None:
+                raise InsertionOperationExpired(
+                    "begin must capture the destination before delivery")
+            if entry.state == "abandoned":
+                raise InsertionOperationExpired(
+                    "prepared insertion operation expired")
+            if (entry.payload_fingerprint
+                    and entry.payload_fingerprint != fingerprint):
+                raise InsertionRequestConflict(
+                    "operation_id_reused_with_different_payload")
+            if entry.result is not None:
+                return entry.result
+            if entry.state in {"pending", "unknown"}:
+                return self._nonterminal_result(entry)
+            entry.payload_fingerprint = fingerprint
+            entry.state = "pending"
+            receipt = entry.receipt
+
+        if isinstance(payload, TextPayload):
+            content_kind = "text"
+            text = payload.text
+            image_path = rich_html = rich_rtf = ""
+        elif isinstance(payload, ImagePayload):
+            content_kind = "image"
+            image_path = payload.path
+            text = rich_html = rich_rtf = ""
+        else:
+            content_kind = "rich"
+            text = payload.text
+            rich_html = payload.html
+            rich_rtf = payload.rtf
+            image_path = ""
+        request = InsertionRequest(
+            operation_id=operation_id,
+            source=receipt.source,
+            content_kind=content_kind,
+            activation_target=receipt.target,
+            target_lease=receipt.target_lease,
+            text=text,
+            image_path=image_path,
+            rich_html=rich_html,
+            rich_rtf=rich_rtf,
+            undo_before_paste=intent is DeliveryIntent.REPLACE,
+            settle_seconds=(0.30 if content_kind == "image" else
+                            min(1.2, 0.18 + len(text) / 20000.0)),
+        )
+        try:
+            self._coordinator.prepare(request)
+            result = self._coordinator.submit(request)
+        except BaseException:
+            with self._lock:
+                entry = self._operations.get(operation_id)
+                if entry is not None:
+                    entry.state = "unknown"
+                    self._operations.move_to_end(operation_id)
+            raise
+        with self._lock:
+            self._expire_prepared_locked()
+            entry = self._operations.get(operation_id)
+            if entry is not None:
+                entry.result = result
+                entry.state = "terminal"
+                self._operations.move_to_end(operation_id)
+        return result
+
+    @staticmethod
+    def _nonterminal_result(entry):
+        state = entry.state
+        receipt = entry.receipt
+        return DeliveryResult(
+            operation_id=receipt.operation_id,
+            source=receipt.source,
+            outcome=InsertionOutcome.UNCERTAIN,
+            reason=("delivery_uncertain" if state == "unknown" else
+                    "operation_pending" if state == "pending" else
+                    "operation_prepared"),
+            message=(
+                "Delivery uncertain — check the selected destination."
+                if state == "unknown" else
+                "Still working. Mumble will not send this operation twice."
+                if state == "pending" else
+                "The destination is captured and delivery has not started."
+            ),
+            send_count=0,
+            target_lease=receipt.target_lease,
+            state=state,
+        )
+
+    def status(self, operation_id):
+        operation_id = self._operation_id(operation_id)
+        with self._lock:
+            entry = self._operations.get(operation_id)
+            if entry is None:
+                raise InsertionOperationExpired("insertion operation is missing")
+            if entry.result is not None:
+                return entry.result
+            return self._nonterminal_result(entry)
+
+    def abandon(self, operation_id):
+        operation_id = self._operation_id(operation_id)
+        with self._lock:
+            entry = self._operations.get(operation_id)
+            if entry is None:
+                return {"state": "missing", "operation_id": operation_id}
+            if entry.state == "pending":
+                return self._coordinator.abandon(operation_id)
+            if entry.result is not None:
+                return entry.result.as_dict()
+            entry.state = "abandoned"
+        return {"state": "abandoned", "operation_id": operation_id}
