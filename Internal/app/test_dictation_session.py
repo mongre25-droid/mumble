@@ -2,7 +2,10 @@
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import threading
 
 import pytest
@@ -116,6 +119,27 @@ def test_recovery_reclaims_a_range_crashed_after_segment_reservation(tmp_path):
     sealed = recovered.append_pcm16(pcm)
     assert sealed["sample_start"] == 0
     assert sealed["sample_end"] == 2
+
+
+def test_finalization_rejects_reserved_unverified_audio(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=4,
+    )
+    session.fault_injector = DeterministicFaultInjector(
+        "after:segment_reserved"
+    )
+
+    with pytest.raises(InjectedCrash, match="after:segment_reserved"):
+        session.append_pcm16(b"\x01\x00\x02\x00")
+
+    session.fault_injector = None
+    with pytest.raises(DictationSessionError, match="segment_unsealed"):
+        session.claim_finalization(OWNER_ID, OPERATION_ID)
+    assert _manifest(tmp_path)["state"] == "capturing"
 
 
 def test_one_finalization_owner_and_operation_prevent_duplicate_insertion(tmp_path):
@@ -367,6 +391,128 @@ def test_concurrent_finalizers_leave_exactly_one_owner(tmp_path):
     assert (durable["owner_id"], durable["operation_id"]) in identities
 
 
+def test_open_waits_for_an_active_append_before_recovery(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=4,
+    )
+    reservation_published = threading.Event()
+    release_writer = threading.Event()
+    open_started = threading.Event()
+    open_finished = threading.Event()
+    errors = []
+
+    def pause_writer(point):
+        if point == "after:segment_reserved":
+            reservation_published.set()
+            if not release_writer.wait(timeout=2.0):
+                raise AssertionError("test did not release active writer")
+
+    session.fault_injector = pause_writer
+
+    def append():
+        try:
+            session.append_pcm16(b"\x01\x00\x02\x00")
+        except Exception as error:
+            errors.append(error)
+
+    def reopen():
+        open_started.set()
+        try:
+            DurableDictationSession.open(tmp_path, SESSION_ID)
+        except Exception as error:
+            errors.append(error)
+        finally:
+            open_finished.set()
+
+    writer = threading.Thread(target=append)
+    writer.start()
+    assert reservation_published.wait(timeout=2.0)
+    opener = threading.Thread(target=reopen)
+    opener.start()
+    assert open_started.wait(timeout=2.0)
+
+    assert not open_finished.wait(timeout=0.2)
+    release_writer.set()
+    writer.join(timeout=3.0)
+    opener.join(timeout=3.0)
+
+    assert not writer.is_alive()
+    assert not opener.is_alive()
+    assert errors == []
+    assert DurableDictationSession.open(
+        tmp_path, SESSION_ID
+    ).verify()["next_sample"] == 2
+    assert sorted(path.name for path in session.path.glob("*.pcm")) == [
+        "segment-00000000.pcm"
+    ]
+
+
+def test_open_waits_for_an_active_append_across_processes(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=4,
+    )
+    reservation_published = threading.Event()
+    release_writer = threading.Event()
+    writer_errors = []
+
+    def pause_writer(point):
+        if point == "after:segment_reserved":
+            reservation_published.set()
+            if not release_writer.wait(timeout=3.0):
+                raise AssertionError("test did not release active writer")
+
+    session.fault_injector = pause_writer
+
+    def append():
+        try:
+            session.append_pcm16(b"\x01\x00\x02\x00")
+        except Exception as error:
+            writer_errors.append(error)
+
+    writer = threading.Thread(target=append)
+    writer.start()
+    assert reservation_published.wait(timeout=2.0)
+    app_path = str(Path(__file__).resolve().parent)
+    script = (
+        "import sys; "
+        f"sys.path.insert(0, {app_path!r}); "
+        "from dictation_session import DurableDictationSession; "
+        f"DurableDictationSession.open({str(tmp_path)!r}, {SESSION_ID!r}); "
+        "print('opened')"
+    )
+    opener = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            opener.wait(timeout=0.2)
+        release_writer.set()
+        stdout, stderr = opener.communicate(timeout=3.0)
+    finally:
+        release_writer.set()
+        if opener.poll() is None:
+            opener.kill()
+            opener.communicate(timeout=3.0)
+    writer.join(timeout=3.0)
+
+    assert not writer.is_alive()
+    assert writer_errors == []
+    assert opener.returncode == 0, stderr
+    assert stdout.strip() == "opened"
+    assert session.verify()["next_sample"] == 2
+
+
 def test_recovery_rejects_a_segment_path_outside_its_session(tmp_path):
     session = DurableDictationSession.create(
         tmp_path,
@@ -463,3 +609,266 @@ def test_recovery_rejects_untrusted_audio_schema(tmp_path, field, value, error):
 
     with pytest.raises(DictationSessionError, match=error):
         DurableDictationSession.open(tmp_path, SESSION_ID)
+
+
+def test_manifest_rejects_a_segment_larger_than_its_declared_bound(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    session.append_pcm16(b"\x01\x00\x02\x00")
+    manifest = session.read_manifest()
+    manifest["segment_max_samples"] = 1
+    session.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(DictationSessionError, match="segment_bound_exceeded"):
+        DurableDictationSession.open(tmp_path, SESSION_ID)
+
+
+@pytest.mark.parametrize(
+    ("case", "error"),
+    (
+        ("pcm_length", "segment_pcm_length_invalid"),
+        ("unknown_transcript", "manifest_fields_invalid"),
+        ("unknown_clipboard", "manifest_finalization_invalid"),
+        ("contradictory_state", "manifest_state_combination_invalid"),
+        ("bad_checksum_shape", "segment_checksum_invalid"),
+        ("bad_segment_number", "segment_ranges_not_contiguous"),
+    ),
+)
+def test_manifest_schema_fails_closed_for_malformed_or_content_fields(
+        tmp_path, case, error):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    session.append_pcm16(b"\x01\x00\x02\x00")
+    manifest = session.read_manifest()
+    if case == "pcm_length":
+        manifest["segments"][0]["byte_count"] = 2
+    elif case == "unknown_transcript":
+        manifest["transcript"] = "private words"
+    elif case == "unknown_clipboard":
+        manifest["finalization"]["clipboard_text"] = "private words"
+    elif case == "contradictory_state":
+        manifest["state"] = "finalizing"
+    elif case == "bad_checksum_shape":
+        manifest["segments"][0]["sha256"] = "not-a-sha256"
+    else:
+        manifest["segments"][0]["number"] = 9
+    session.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(DictationSessionError, match=error):
+        DurableDictationSession.open(tmp_path, SESSION_ID)
+
+
+def test_manifest_enforces_pcm_bytes_for_multiple_channels(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=2,
+        segment_max_samples=2,
+    )
+    session.append_pcm16(b"\x01\x00\x02\x00\x03\x00\x04\x00")
+    manifest = session.read_manifest()
+    manifest["segments"][0]["byte_count"] = 4
+    session.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(
+            DictationSessionError, match="segment_pcm_length_invalid"):
+        DurableDictationSession.open(tmp_path, SESSION_ID)
+
+
+def test_manifest_rejects_invalid_finalization_ids_and_combinations(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    session.claim_finalization(OWNER_ID, OPERATION_ID)
+    manifest = session.read_manifest()
+    manifest["finalization"]["owner_id"] = "owner"
+    session.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(
+            DictationSessionError, match="manifest_finalization_invalid"):
+        DurableDictationSession.open(tmp_path, SESSION_ID)
+
+    manifest["finalization"]["owner_id"] = OWNER_ID
+    manifest["finalization"]["insertion_state"] = "requested"
+    session.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(
+            DictationSessionError, match="manifest_state_combination_invalid"):
+        DurableDictationSession.open(tmp_path, SESSION_ID)
+
+
+def test_resolved_segment_path_cannot_escape_through_a_symbolic_link(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    segment = session.append_pcm16(b"\x01\x00\x02\x00")
+    target = session.path / segment["filename"]
+    outside = tmp_path / "outside.pcm"
+    outside.write_bytes(target.read_bytes())
+    target.unlink()
+    try:
+        os.symlink(outside, target)
+    except (OSError, NotImplementedError):
+        manifest = session.read_manifest()
+        manifest["segments"][0]["filename"] = "../outside.pcm"
+        session.manifest_path.write_text(
+            json.dumps(manifest), encoding="utf-8")
+        expected_error = "segment_filename_invalid"
+    else:
+        expected_error = "segment_path_outside_session"
+
+    with pytest.raises(DictationSessionError, match=expected_error):
+        DurableDictationSession.open(tmp_path, SESSION_ID)
+
+
+def test_finalization_advances_only_while_every_segment_stays_verified(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    segment = session.append_pcm16(b"\x01\x00\x02\x00")
+    session.claim_finalization(OWNER_ID, OPERATION_ID)
+    (session.path / segment["filename"]).write_bytes(b"\x09\x00\x02\x00")
+
+    with pytest.raises(
+            DictationSessionError, match="segment_checksum_mismatch"):
+        session.mark_history_committed(OWNER_ID, OPERATION_ID)
+
+
+def test_finalization_completion_rechecks_audio_and_insertion_claim(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    segment = session.append_pcm16(b"\x01\x00\x02\x00")
+    session.claim_finalization(OWNER_ID, OPERATION_ID)
+    session.mark_history_committed(OWNER_ID, OPERATION_ID)
+    with pytest.raises(DictationSessionError, match="insertion_not_claimed"):
+        session.complete_finalization(
+            OWNER_ID, OPERATION_ID, insertion_outcome="confirmed")
+    session.claim_final_insertion(OWNER_ID, OPERATION_ID)
+    (session.path / segment["filename"]).write_bytes(b"\x09\x00\x02\x00")
+
+    with pytest.raises(
+            DictationSessionError, match="segment_checksum_mismatch"):
+        session.complete_finalization(
+            OWNER_ID, OPERATION_ID, insertion_outcome="confirmed")
+
+
+def test_completed_session_accounts_for_every_published_segment(tmp_path):
+    session = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    session.append_pcm16(b"\x01\x00\x02\x00")
+    session.claim_finalization(OWNER_ID, OPERATION_ID)
+    session.mark_history_committed(OWNER_ID, OPERATION_ID)
+    session.claim_final_insertion(OWNER_ID, OPERATION_ID)
+    session.complete_finalization(
+        OWNER_ID, OPERATION_ID, insertion_outcome="confirmed")
+    manifest = session.read_manifest()
+    manifest["segments"] = []
+    manifest["next_sample"] = 0
+    session.manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(DictationSessionError, match="unexpected_segment_file"):
+        DurableDictationSession.open(tmp_path, SESSION_ID)
+
+
+def test_interrupted_create_is_idempotently_recreated(tmp_path):
+    injector = DeterministicFaultInjector("after:session_directory_created")
+    with pytest.raises(
+            InjectedCrash, match="after:session_directory_created"):
+        DurableDictationSession.create(
+            tmp_path,
+            session_id=SESSION_ID,
+            sample_rate=16_000,
+            channels=1,
+            segment_max_samples=2,
+            fault_injector=injector,
+        )
+    assert (tmp_path / SESSION_ID).is_dir()
+    assert not (tmp_path / SESSION_ID / "manifest.json").exists()
+
+    recreated = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    repeated = DurableDictationSession.create(
+        tmp_path,
+        session_id=SESSION_ID,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    assert recreated.verify()["next_sample"] == 0
+    assert repeated.verify()["session_id"] == SESSION_ID
+
+
+def test_discovery_reports_incomplete_session_and_returns_healthy_ones(tmp_path):
+    healthy_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    healthy = DurableDictationSession.create(
+        tmp_path,
+        session_id=healthy_id,
+        sample_rate=16_000,
+        channels=1,
+        segment_max_samples=2,
+    )
+    healthy.append_pcm16(b"\x01\x00")
+    incomplete = tmp_path / SESSION_ID
+    incomplete.mkdir()
+    recoverable = incomplete / "segment-00000000.pcm"
+    recoverable.write_bytes(b"\x02\x00")
+    unpublished = incomplete / "segment-00000001.pcm.tmp"
+    unpublished.write_bytes(b"partial audio")
+    issues = []
+
+    discovered = DurableDictationSession.discover(
+        tmp_path, on_error=issues.append)
+
+    assert [item.session_id for item in discovered] == [healthy_id]
+    assert issues == [{
+        "session_id": SESSION_ID,
+        "error": "manifest_unreadable",
+    }]
+    assert recoverable.read_bytes() == b"\x02\x00"
+    assert unpublished.read_bytes() == b"partial audio"
+    with pytest.raises(
+            DictationSessionError,
+            match="incomplete_session_contains_recoverable_data"):
+        DurableDictationSession.create(
+            tmp_path,
+            session_id=SESSION_ID,
+            sample_rate=16_000,
+            channels=1,
+            segment_max_samples=2,
+        )

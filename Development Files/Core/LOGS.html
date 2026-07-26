@@ -147,10 +147,18 @@
   <li><span class="badge b-gated">stage boundary</span> This is an isolated Stage A source candidate from exact parent <code>276619e15320f016af6576425fc0e563c299e0b4</code>. Live capture still uses the ten-minute guard, one in-memory float32 buffer, and independent four-second chunks. Capture queues, backpressure, History idempotency integration, recovery UI/retention cleanup, stable partials, final transcript assembly, over-ten-minute endurance, ports, packages, physical tests, merge, deployment, and release remain later gates.</li>
 </ul>
 
-<h2><span class="sec">16</span>Current product snapshot</h2>
+<h2 data-evidence-boundary="issue-16-stage-a-correction-candidate"><span class="sec">16</span>26 July 2026 &mdash; Issue #16 Stage A rejection corrected locally</h2>
+<ul>
+  <li><span class="badge b-exist">retained rejection</span> Independent review rejected exact candidate <code>14294d1f</code> because reserved audio could be finalised and discarded, recovery could race an active writer, malformed or content-bearing manifests could pass, and an interrupted create could poison discovery.</li>
+  <li><span class="badge b-done">durability and synchronization</span> Added one session-wide thread/process locking contract across create, open, discover, verification, append, recovery, and finalisation. Every finalisation advance now re-verifies sealed contiguous sample ownership, exact files, byte counts, and checksums; published orphan ranges cannot disappear behind a completed zero-sample manifest.</li>
+  <li><span class="badge b-done">fail-closed recovery contract</span> Added exact schema allowlists, PCM16 byte/channel/sample invariants, IDs and state combinations, resolved containment, deterministic symbolic-link coverage, idempotent recreate after the empty-directory crash gap, and discovery reporting that returns healthy sessions while preserving possible audio in incomplete ones.</li>
+  <li><span class="badge b-gated">boundary</span> This is a focused local correction candidate awaiting fresh independent review. The helper remains disconnected from live capture and History; the public ten-minute wording and current in-memory/four-second live path are unchanged. Level B/CI, ports, packages, providers, physical use, merge, deployment, release, rollback, and owner acceptance were not established here.</li>
+</ul>
+
+<h2><span class="sec">17</span>Current product snapshot</h2>
 <p>At this baseline Mumble is a local-first desktop voice workspace with hotkey dictation, local faster-whisper transcription, optional cloud transcription, optional local/cloud text shaping, clipboard-safe paste, the Deck, meetings, Reader, statistics, and supported-platform local search. The golden-black liquid-glass Web UI and floating Island are the current interface surfaces.</p>
 
-<h2><span class="sec">17</span>How to keep this log useful</h2>
+<h2><span class="sec">18</span>How to keep this log useful</h2>
 <ul><li>Use one dated entry for a meaningful completed milestone.</li><li>State what changed and where, without copying a full investigation into this page.</li><li>Put current risks, unfinished tasks, and release gates in <a href="STATUS.html">STATUS</a>.</li><li>Put stable procedures and architecture changes in <a href="HANDBOOK.html">HANDBOOK</a>.</li><li>Keep README focused on the stable product and working agreement.</li></ul>
 
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
