@@ -91,6 +91,8 @@ _MOD_BASE = {
 # Canonical order for the modifier part of a captured combo, so Ctrl+Windows
 # always reads/normalises as 'ctrl+windows' regardless of which was pressed first.
 _MOD_ORDER = ("ctrl", "alt", "shift", "windows")
+_PHYSICAL_BELOW_ESCAPE = "physical:below-escape"
+_PHYSICAL_BELOW_ESCAPE_VK = 50
 
 
 def _order_mods(mods):
@@ -111,6 +113,7 @@ _DARWIN_VK_NAMES = {
 }
 
 _DARWIN_KEY_ALIASES = {
+    "`": _PHYSICAL_BELOW_ESCAPE,
     "control": "ctrl",
     "option": "alt",
     "left option": "left alt",
@@ -130,6 +133,7 @@ _DARWIN_KEY_ALIASES = {
 
 _DARWIN_NAMED_KEYS = (
     set(_DARWIN_VK_NAMES.values())
+    | {_PHYSICAL_BELOW_ESCAPE}
     | {f"f{i}" for i in range(1, 21)}
     | {
         "space", "enter", "esc", "tab", "backspace", "delete",
@@ -213,6 +217,8 @@ def _darwin_character_token(char, vk):
     into the non-ASCII glyph ``∂``; only then do we use the physical virtual key
     to recover the intended base letter.
     """
+    if vk == _PHYSICAL_BELOW_ESCAPE_VK:
+        return _PHYSICAL_BELOW_ESCAPE
     if (isinstance(char, str) and len(char) == 1
             and char.isascii() and char.isprintable()):
         return char.lower()
@@ -572,6 +578,30 @@ def normalize(spec):
     return s
 
 
+def _binding_fingerprint(spec):
+    """Return the physical chord represented by a press binding."""
+    s = normalize(spec)
+    if not s:
+        return None
+    if s.startswith(MOUSE_PREFIX):
+        button = _button(s)
+        return ("mouse", button) if button else ("mouse", s)
+    parts = _darwin_spec_tokens(s)
+    return ("keyboard", frozenset(parts)) if parts else None
+
+
+def conflicts(first, second):
+    """Whether two bindings can fire from the same physical chord."""
+    left = _binding_fingerprint(first)
+    right = _binding_fingerprint(second)
+    if not left or not right or left[0] != right[0]:
+        return False
+    if left[0] == "mouse":
+        return left == right
+    a, b = left[1], right[1]
+    return bool(a and b and (a.issubset(b) or b.issubset(a)))
+
+
 def validate(spec, hold=False):
     """(ok, message). Keyboard specs go through keyboard.parse_hotkey; mouse
     specs must name a real button and need the `mouse` library installed.
@@ -623,7 +653,11 @@ def pretty(spec):
     s = normalize(spec)
     if s.startswith(MOUSE_PREFIX):
         return _MOUSE_DISPLAY.get(_button(s) or "", s)
-    return " + ".join(p.strip().capitalize() for p in s.split("+") if p.strip())
+    return " + ".join(
+        "Physical key below Esc" if p.strip() == _PHYSICAL_BELOW_ESCAPE
+        else p.strip().capitalize()
+        for p in s.split("+") if p.strip()
+    )
 
 
 class _Handle:
@@ -704,7 +738,7 @@ def register_hold(spec, on_down, on_up):
 def unregister(handle):
     """Remove a binding registered above. Safe to call with None or twice."""
     if handle is None:
-        return
+        return True
     try:
         if handle.kind == "mac":
             _MAC_HUB.remove(handle.h)
@@ -718,8 +752,9 @@ def unregister(handle):
         elif handle.kind == "mouse_hold":
             for h in handle.h:
                 _mouse.unhook(h)
+        return True
     except Exception:
-        pass
+        return False
 
 
 def is_pressed(spec):

@@ -186,7 +186,8 @@ const MOCK = {
     hotkey: "Ctrl + Win",
     quick_paste_hotkey: "Ctrl + Alt + V",
     history_hotkey: "Ctrl + Alt + D",
-    search_hotkey: "Ctrl + Alt + S",
+    search_hotkey: "Ctrl + Alt + F",
+    web_search_hotkey: "Ctrl + Alt + S",
     mode_key: "Right Shift",
   },
   transcripts: [
@@ -421,7 +422,8 @@ const MOCK = {
     hotkey: "ctrl+windows",
     quick_paste_hotkey: "ctrl+alt+v",
     history_hotkey: "ctrl+alt+d",
-    search_hotkey: "ctrl+alt+s",
+    search_hotkey: "ctrl+alt+f",
+    web_search_hotkey: "ctrl+alt+s",
     search_engine: "perplexity",
     mode_key: "right shift",
     mode_button_enabled: false,
@@ -1039,6 +1041,20 @@ async function call(name, ...args) {
     case "open_url":
       window.open(args[0], "_blank");
       return true;
+    case "request_web_search": {
+      const requestId = "preview-web-search";
+      setTimeout(() => window.pyWebSearchConsent && window.pyWebSearchConsent({
+        request_id: requestId,
+        provider: "Perplexity",
+        query: String(args[0] || ""),
+        privacy: "These selected words will be sent to Perplexity over the internet only after you choose Search online. Mumble Find stays private on this device.",
+      }), 0);
+      return { ok: true, request_id: requestId };
+    }
+    case "confirm_web_search":
+      return { ok: true, message: "Web Search opened (preview)." };
+    case "cancel_web_search":
+      return { ok: true };
     case "open_data_folder":
       return true;
     case "switch_to_lite":
@@ -1373,6 +1389,45 @@ function confirmModal({
   });
 }
 
+let WEB_SEARCH_CONSENT_CLOSE = null;
+window.pyWebSearchConsent = function pyWebSearchConsent(payload) {
+  if (!payload || !payload.request_id) return;
+  if (WEB_SEARCH_CONSENT_CLOSE) WEB_SEARCH_CONSENT_CLOSE(true);
+  const requestId = String(payload.request_id);
+  const ov = document.createElement("div");
+  ov.className = "overlay";
+  ov.innerHTML = `<div class="modal web-search-consent">
+    <div class="m-icon">${svg("search")}</div>
+    <h3>Search online with ${esc(payload.provider || "your provider")}?</h3>
+    <p>${esc(payload.privacy || "These words will be sent online only after you confirm.")}</p>
+    <blockquote class="web-search-query">${esc(payload.query || "")}</blockquote>
+    <div class="m-actions">
+      <button class="btn btn-ghost" data-no>Keep private</button>
+      <button class="btn btn-gold" data-yes>Search online</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  let deactivate;
+  const close = (replaced = false) => {
+    if (!replaced) call("cancel_web_search", requestId).catch(() => {});
+    if (deactivate) deactivate();
+    ov.remove();
+    if (WEB_SEARCH_CONSENT_CLOSE === close) WEB_SEARCH_CONSENT_CLOSE = null;
+  };
+  WEB_SEARCH_CONSENT_CLOSE = close;
+  $("[data-no]", ov).onclick = () => close();
+  $("[data-yes]", ov).onclick = async (event) => {
+    event.currentTarget.disabled = true;
+    const result = await call("confirm_web_search", requestId).catch(() => null);
+    if (deactivate) deactivate();
+    ov.remove();
+    WEB_SEARCH_CONSENT_CLOSE = null;
+    toast((result && result.message) || "Web Search could not open.",
+      result && result.ok ? "ok" : "err", 2600);
+  };
+  ov.onclick = (event) => { if (event.target === ov) close(); };
+  deactivate = activateDialog(ov, () => close());
+};
+
 /* Convert (History → Transcripts/Clipboard rows): pop up the Smart Modes and run
    the chosen one over THIS item, via the same Deck-job pipeline that powers the
    Deck (run_deck_job with a mode + the one item). Owner: "a Convert button that
@@ -1562,6 +1617,7 @@ async function bootHome() {
   setText("#hk-history", hk.history_hotkey);
   setText("#hk-history-btn", hk.history_hotkey);
   setText("#hk-search", hk.search_hotkey);
+  setText("#hk-web-search", hk.web_search_hotkey);
   // live version everywhere it appears
   setText("#about-version", o.version);
   setText("#update-sub", "You're on v" + o.version);
@@ -3684,6 +3740,7 @@ async function hydrateSettings() {
     "quick_paste_hotkey",
     "history_hotkey",
     "search_hotkey",
+    "web_search_hotkey",
   ].forEach(async (k) => {
     const lab = $(`[data-keylabel="${k}"]`);
     if (lab) {
@@ -7348,15 +7405,15 @@ async function boot() {
   $("#hist-capture")?.addEventListener("click", captureSelection);
   $("#hist-capture-chat")?.addEventListener("click", captureConversation);
   // Deck search button: search selected text in the browser
-  $("#hist-search")?.addEventListener("click", () => {
+  $("#hist-search")?.addEventListener("click", async () => {
     const sel = HX.selected.length > 0 ? HX.selected[0].text : "";
     if (sel && sel.trim()) {
-      const engine = SET.search_engine || "google";
-      const templates = { google: "https://www.google.com/search?q=", perplexity: "https://www.perplexity.ai/search?q=", brave: "https://search.brave.com/search?q=" };
-      const url = (templates[engine] || templates.google) + encodeURIComponent(sel.trim());
-      call("open_url", url);
+      const prepared = await call("request_web_search", sel.trim()).catch(() => null);
+      if (!prepared || !prepared.ok) {
+        toast((prepared && prepared.message) || "Web Search could not prepare.", "err", 3000);
+      }
     } else {
-      toast("Highlight text then press Ctrl+Alt+S for voice search, or select an item first", "info", 3500);
+      window.openSystemSearch && window.openSystemSearch();
     }
   });
   // stats range

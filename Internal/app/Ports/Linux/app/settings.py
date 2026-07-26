@@ -17,7 +17,8 @@ DEFAULTS = {
     # confused the two concepts — now each has its own bind.
     "quick_paste_hotkey": "ctrl+alt+v",
     "history_hotkey": "ctrl+alt+d",
-    "search_hotkey": "ctrl+alt+s",
+    "search_hotkey": "ctrl+alt+f",
+    "web_search_hotkey": "ctrl+alt+s",
     "system_search_include_files": True,
     "system_search_roots": [],
     "system_search_max_items": 75000,
@@ -222,6 +223,8 @@ DEFAULTS = {
     "mode_key_v2_applied": False,
     "local_provider_retired_applied": False,
     "search_perplexity_default_applied": False,
+    "search_hotkey_find_default_applied": False,
+    "web_search_hotkey_default_applied": False,
     "stt_tts_dead_default_healed": False,
     "reader_tts_voice_contract_applied": False,
     "big_shift_applied": False,
@@ -283,6 +286,7 @@ class Settings:
         # stale in-memory value (e.g. a blank API key the controller never saw)
         # can never clobber another process's edit. See _do_save.
         self._dirty = set()
+        self._loaded_keys = set()
         self.load()
         self._migrate()
 
@@ -357,6 +361,16 @@ class Settings:
         # with the question pre-filled and answering. Existing installs were all
         # on the OLD "google" default, so flip google -> perplexity once. A
         # deliberate "brave"/already-"perplexity" choice is left untouched.
+        if not self.data.get("search_hotkey_find_default_applied"):
+            if self.data.get("search_hotkey") == "ctrl+alt+s":
+                self.data["search_hotkey"] = "ctrl+alt+f"
+            self.data["search_hotkey_find_default_applied"] = True
+            changed = True
+        if not self.data.get("web_search_hotkey_default_applied"):
+            if "web_search_hotkey" not in self._loaded_keys:
+                self.data["web_search_hotkey"] = "ctrl+alt+s"
+            self.data["web_search_hotkey_default_applied"] = True
+            changed = True
         if not self.data.get("search_perplexity_default_applied"):
             if self.data.get("search_engine") == "google":
                 self.data["search_engine"] = "perplexity"
@@ -478,6 +492,7 @@ class Settings:
                 return
         if not isinstance(d, dict):
             return
+        self._loaded_keys = set(d)
         for k, v in d.items():
             if k == "modes" and isinstance(v, dict):
                 m = dict(DEFAULTS["modes"])

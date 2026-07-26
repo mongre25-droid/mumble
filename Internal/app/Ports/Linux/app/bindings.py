@@ -63,6 +63,8 @@ _MOD_BASE = {
 # Canonical order for the modifier part of a captured combo, so Ctrl+Windows
 # always reads/normalises as 'ctrl+windows' regardless of which was pressed first.
 _MOD_ORDER = ("ctrl", "alt", "shift", "windows")
+_PHYSICAL_BELOW_ESCAPE = "physical:below-escape"
+_PHYSICAL_SCAN_CODE = 41
 
 
 _LINUX_KEY_CODES = {
@@ -78,6 +80,7 @@ _LINUX_KEY_CODES = {
     "f": (33,), "g": (34,), "h": (35,), "j": (36,), "k": (37,),
     "l": (38,), "semicolon": (39,), "quote": (40,), "'": (40,),
     "`": (41,),
+    _PHYSICAL_BELOW_ESCAPE: (_PHYSICAL_SCAN_CODE,),
     "shift": (42, 54), "left shift": (42,), "backslash": (43,),
     "z": (44,), "x": (45,), "c": (46,), "v": (47,), "b": (48,),
     "n": (49,), "m": (50,), "comma": (51,), "dot": (52,),
@@ -336,6 +339,47 @@ def normalize(spec):
     return s
 
 
+def _keyboard_hotkey(spec):
+    parts = [part.strip() for part in normalize(spec).split("+") if part.strip()]
+    translated = [
+        _PHYSICAL_SCAN_CODE if part == _PHYSICAL_BELOW_ESCAPE else part
+        for part in parts
+    ]
+    return translated if _PHYSICAL_SCAN_CODE in translated else normalize(spec)
+
+
+def _binding_fingerprint(spec):
+    """Return the physical chord represented by a press binding."""
+    s = normalize(spec)
+    if not s:
+        return None
+    if s.startswith(MOUSE_PREFIX):
+        button = _button(s)
+        return ("mouse", button) if button else ("mouse", s)
+    parts = []
+    for raw in s.split("+"):
+        part = raw.strip()
+        if not part:
+            continue
+        part = _MOD_BASE.get(part, part)
+        if part == "`":
+            part = _PHYSICAL_BELOW_ESCAPE
+        parts.append(part)
+    return ("keyboard", frozenset(parts)) if parts else None
+
+
+def conflicts(first, second):
+    """Whether two bindings can fire from the same physical chord."""
+    left = _binding_fingerprint(first)
+    right = _binding_fingerprint(second)
+    if not left or not right or left[0] != right[0]:
+        return False
+    if left[0] == "mouse":
+        return left == right
+    a, b = left[1], right[1]
+    return bool(a and b and (a.issubset(b) or b.issubset(a)))
+
+
 def validate(spec, hold=False):
     """(ok, message). Keyboard specs go through keyboard.parse_hotkey; mouse
     specs must name a real button and need the `mouse` library installed.
@@ -369,7 +413,7 @@ def validate(spec, hold=False):
                        "time you press it. Combine it with another key, e.g. "
                        "Ctrl + Windows.")
     try:
-        keyboard.parse_hotkey(s)
+        keyboard.parse_hotkey(_keyboard_hotkey(s))
         return True, ""
     except Exception:
         return False, "That doesn't look like a valid hotkey."
@@ -380,7 +424,11 @@ def pretty(spec):
     s = normalize(spec)
     if s.startswith(MOUSE_PREFIX):
         return _MOUSE_DISPLAY.get(_button(s) or "", s)
-    return " + ".join(p.strip().capitalize() for p in s.split("+") if p.strip())
+    return " + ".join(
+        "Physical key below Esc" if p.strip() == _PHYSICAL_BELOW_ESCAPE
+        else p.strip().capitalize()
+        for p in s.split("+") if p.strip()
+    )
 
 
 class _Handle:
@@ -418,7 +466,7 @@ def register_hotkey(spec, callback):
             "(it would fire on every press). Use a combo, e.g. 'ctrl+windows'."
         )
     _ensure_keyboard_backend_ready()
-    h = keyboard.add_hotkey(s, callback, suppress=False)
+    h = keyboard.add_hotkey(_keyboard_hotkey(s), callback, suppress=False)
     return _Handle("kb_hotkey", h)
 
 
@@ -447,7 +495,7 @@ def register_hold(spec, on_down, on_up):
 def unregister(handle):
     """Remove a binding registered above. Safe to call with None or twice."""
     if handle is None:
-        return
+        return True
     try:
         if handle.kind == "kb_hotkey":
             keyboard.remove_hotkey(handle.h)
@@ -459,8 +507,9 @@ def unregister(handle):
         elif handle.kind == "mouse_hold":
             for h in handle.h:
                 _mouse.unhook(h)
+        return True
     except Exception:
-        pass
+        return False
 
 
 def is_pressed(spec):
@@ -545,7 +594,13 @@ def capture(timeout=15.0):
                     raw_mods.append(name)
             else:
                 # A non-modifier key completes the combo (with or without mods).
-                emit("+".join(_order_mods(mods) + [name]) if mods else name)
+                physical_name = (
+                    _PHYSICAL_BELOW_ESCAPE
+                    if getattr(e, "scan_code", None) == _PHYSICAL_SCAN_CODE
+                    else name
+                )
+                emit("+".join(_order_mods(mods) + [physical_name])
+                     if mods else physical_name)
         elif et == "up":
             if base and base in mods:
                 if len(mods) == 1:

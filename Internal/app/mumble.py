@@ -125,7 +125,12 @@ from faster_whisper import WhisperModel
 print("[startup] transcription engine loaded", flush=True)
 from history import History
 from overlay import Island
-from settings import Settings, SEARCH_HOTKEY_DEFAULT, TEXT_PROCESSING_PROVIDERS
+from settings import (
+    Settings,
+    SEARCH_HOTKEY_DEFAULT,
+    WEB_SEARCH_HOTKEY_DEFAULT,
+    TEXT_PROCESSING_PROVIDERS,
+)
 import meeting
 from prompt_history import PromptHistory
 from stats import Stats
@@ -199,9 +204,13 @@ class Mumble:
         self.history_hotkey = self.settings.get("history_hotkey", "ctrl+alt+d")
         self.search_hotkey = self.settings.get(
             "search_hotkey", SEARCH_HOTKEY_DEFAULT)
+        self.web_search_hotkey = self.settings.get(
+            "web_search_hotkey", WEB_SEARCH_HOTKEY_DEFAULT)
         # Serialise cold-start and repeated Mumble Find requests so a shortcut
         # burst can launch at most one shell process and deliver each toggle once.
         self._find_toggle_lock = threading.Lock()
+        self._web_search_lock = threading.RLock()
+        self._pending_web_searches = {}
         self.mode_key = self.settings.get("mode_key", "right shift")
 
         # --- THE BIG SHIFT: Prompt is a sticky toggle, not a held key ---
@@ -371,6 +380,7 @@ class Mumble:
         self._hk_quick = None
         self._hk_history = None
         self._hk_search = None
+        self._hk_web_search = None
         # Controller-command connections are handled on separate threads. Keep
         # conflict check -> registration -> persistence -> swap as one critical
         # section so two rapid Settings captures cannot interleave.
@@ -3484,10 +3494,10 @@ class Mumble:
                         self._dictation_finalizer_id,
                         insertion_operation_id,
                     )
-                self._open_search(out)
+                prepared_search = self.request_web_search(out)
                 insertion_result = None
-                confirmed = True
-                print(f"[{mode}] Searched: {out}")
+                confirmed = bool(prepared_search.get("ok"))
+                print(f"[{mode}] Web Search awaiting consent")
             else:
                 should_insert = True
                 if durable_session is not None:
@@ -3538,7 +3548,7 @@ class Mumble:
                 )
                 self._dictation_timing = None
             self._trace_finish(
-                "searched" if search_requested else
+                "web_search_confirmation" if search_requested else
                 ("pasted" if insertion_result.confirmed else
                  insertion_result.outcome.value),
                 success=confirmed,
@@ -3547,9 +3557,10 @@ class Mumble:
             )
             if self.island:
                 if search_requested:
-                    self._tk_schedule(self.island.flash, mode,
-                                      offline=used_offline, pasted=True,
-                                      outcome="confirmed")
+                    self._tk_schedule(
+                        self.island.hint, "Confirm Web Search in Mumble"
+                    )
+                    self._tk_schedule(self.island.wake)
                 else:
                     self._tk_schedule(
                         self.island.flash, mode, offline=used_offline,
@@ -4767,6 +4778,16 @@ class Mumble:
                                 "message": "This paste request no longer matches its operation."}
                 elif cmd == "abandon_insertion":
                     resp.update(self._abandon_prepared_insertion(operation_id))
+                elif cmd == "web_search_request":
+                    resp.update(self.request_web_search(req.get("text") or ""))
+                elif cmd == "web_search_confirm":
+                    resp.update(self.confirm_web_search(
+                        req.get("request_id") or ""
+                    ))
+                elif cmd == "web_search_cancel":
+                    resp.update(self.cancel_web_search(
+                        req.get("request_id") or ""
+                    ))
                 elif cmd == "rebind":
                     # Hotkeys are a transaction owned by the controller: validate,
                     # register the new hook, persist it, then retire only the old
@@ -4779,6 +4800,7 @@ class Mumble:
                         "quick_paste_hotkey": self.apply_quick_paste_hotkey,
                         "history_hotkey": self.apply_history_hotkey,
                         "search_hotkey": self.apply_search_hotkey,
+                        "web_search_hotkey": self.apply_web_search_hotkey,
                     }.get(binding_key)
                     if apply_binding is None:
                         resp = {"ok": False, "applied": False,
@@ -5020,6 +5042,9 @@ class Mumble:
             elif k == "search_hotkey":
                 self._register_search()
                 print(f"[live-apply] search hotkey → {self.search_hotkey!r}")
+            elif k == "web_search_hotkey":
+                self._register_web_search()
+                print(f"[live-apply] Web Search hotkey → {self.web_search_hotkey!r}")
             elif k in ("correction_learning_enabled",
                         "correction_learning_auto_detect"):
                 enabled = bool(
@@ -5303,6 +5328,43 @@ class Mumble:
         ).start()
         return True
 
+    def on_web_search_hotkey(self):
+        """Run Web Search without sharing Mumble Find's local lifecycle."""
+        with self.lock:
+            if self.paused or self.busy:
+                return False
+            if self.recording:
+                self._search_requested = True
+                self.busy = True
+                threading.Thread(
+                    target=self._safe_stop,
+                    name="mumble-stop-for-web-search",
+                    daemon=True,
+                ).start()
+                return True
+            self.busy = True
+
+        def _prepare():
+            try:
+                selected = self._grab_selection_quiet()
+                if selected:
+                    result = self.request_web_search(selected)
+                    if not result.get("ok"):
+                        self._quick_status(result.get("message") or
+                                           "Web Search could not prepare")
+                else:
+                    self._search_requested = True
+                    self._safe_start()
+            finally:
+                self.busy = False
+
+        threading.Thread(
+            target=_prepare,
+            name="mumble-prepare-web-search",
+            daemon=True,
+        ).start()
+        return True
+
     def _toggle_system_search_page(self, operation_id):
         """Toggle the resident local launcher without surfacing the main window."""
         lock = getattr(self, "_find_toggle_lock", None)
@@ -5355,7 +5417,94 @@ class Mumble:
                 return True
         return False
 
-    # Web providers used only for explicit Deck web-search actions.
+    def request_web_search(self, text):
+        """Prepare one online search without sending the words online.
+
+        The controller keeps the authoritative query and chosen provider until
+        the centred Web UI returns the request identity after a deliberate
+        confirmation.  Mumble Find never calls this seam.
+        """
+        query = str(text or "").strip()
+        if not query:
+            return {"ok": False, "message": "Select or dictate words to search."}
+        engine = str(
+            self.settings.get("search_engine", "perplexity") or "perplexity"
+        ).lower()
+        if engine not in self.SEARCH_ENGINES:
+            engine = "perplexity"
+        request_id = uuid.uuid4().hex
+        lock = getattr(self, "_web_search_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            self._web_search_lock = lock
+        with lock:
+            pending = getattr(self, "_pending_web_searches", None)
+            if pending is None:
+                pending = {}
+                self._pending_web_searches = pending
+            cutoff = time.monotonic() - 120.0
+            for old_id, old in list(pending.items()):
+                if float(old.get("created", 0.0)) < cutoff:
+                    pending.pop(old_id, None)
+            while len(pending) >= 8:
+                pending.pop(next(iter(pending)))
+            pending[request_id] = {
+                "query": query,
+                "engine": engine,
+                "created": time.monotonic(),
+            }
+        provider = engine.title()
+        message = {
+            "cmd": "web_search_consent",
+            "request_id": request_id,
+            "provider": provider,
+            "query": query,
+            "privacy": (
+                f"These selected words will be sent to {provider} over the "
+                "internet only after you choose Search online. Mumble Find "
+                "stays private on this device."
+            ),
+        }
+        if self._send_webui(message, timeout=0.8):
+            return {"ok": True, "request_id": request_id}
+        with lock:
+            self._pending_web_searches.pop(request_id, None)
+        return {
+            "ok": False,
+            "message": "Mumble could not show the Web Search privacy confirmation.",
+        }
+
+    def confirm_web_search(self, request_id):
+        """Consume one confirmed request and open its frozen provider route once."""
+        lock = getattr(self, "_web_search_lock", None)
+        if lock is None:
+            return {"ok": False, "message": "That Web Search request expired."}
+        with lock:
+            pending = getattr(self, "_pending_web_searches", {})
+            prepared = pending.pop(str(request_id or ""), None)
+        if not prepared or time.monotonic() - prepared["created"] > 120.0:
+            return {"ok": False, "message": "That Web Search request expired."}
+        import urllib.parse
+
+        template = self.SEARCH_ENGINES[prepared["engine"]]
+        url = template.format(q=urllib.parse.quote(prepared["query"]))
+        try:
+            self.open_in_browser(url)
+        except Exception as exc:
+            return {"ok": False, "message": f"The browser could not open: {exc}"}
+        return {"ok": True, "message": "Web Search opened."}
+
+    def cancel_web_search(self, request_id):
+        lock = getattr(self, "_web_search_lock", None)
+        if lock is None:
+            return {"ok": True}
+        with lock:
+            getattr(self, "_pending_web_searches", {}).pop(
+                str(request_id or ""), None
+            )
+        return {"ok": True}
+
+    # Web providers used only after explicit Web Search confirmation.
     # {q} is the URL-encoded query.
     SEARCH_ENGINES = {
         "google": "https://www.google.com/search?q={q}",
@@ -5405,21 +5554,6 @@ class Mumble:
                     break
         webbrowser.open_new_tab(url)
 
-    def _open_search(self, text):
-        """Open the web search for `text`, using the engine chosen in Settings
-        (Google / Perplexity / Brave) and the chosen browser. Perplexity opens
-        with the question pre-filled and the search already running."""
-        import urllib.parse
-
-        query = urllib.parse.quote((text or "").strip())
-        if not query:
-            return
-        engine = (self.settings.get("search_engine", "perplexity") or
-                  "perplexity").lower()
-        template = self.SEARCH_ENGINES.get(
-            engine, self.SEARCH_ENGINES["perplexity"])
-        self.open_in_browser(template.format(q=query))
-
     def _sane_press_hotkey(self, key, default):
         """Read a SINGLE-PRESS hotkey from settings and refuse a bare modifier.
 
@@ -5456,6 +5590,7 @@ class Mumble:
         "quick_paste_hotkey": "Paste latest",
         "history_hotkey": "Open Deck",
         "search_hotkey": "Open Mumble Find",
+        "web_search_hotkey": "Web Search",
     }
 
     def _press_binding_values(self):
@@ -5467,6 +5602,8 @@ class Mumble:
                 "history_hotkey", "ctrl+alt+d"),
             "search_hotkey": self.settings.get(
                 "search_hotkey", SEARCH_HOTKEY_DEFAULT),
+            "web_search_hotkey": self.settings.get(
+                "web_search_hotkey", WEB_SEARCH_HOTKEY_DEFAULT),
         }
 
     def _binding_conflict(self, key, spec):
@@ -5486,6 +5623,7 @@ class Mumble:
             ("quick_paste_hotkey", "quick_hotkey", "_hk_quick"),
             ("history_hotkey", "history_hotkey", "_hk_history"),
             ("search_hotkey", "search_hotkey", "_hk_search"),
+            ("web_search_hotkey", "web_search_hotkey", "_hk_web_search"),
         ):
             if other_key != key and getattr(self, handle_attr, None) is not None:
                 active[other_key] = getattr(self, attr, "")
@@ -5576,6 +5714,21 @@ class Mumble:
             print("search hotkey error:", e)
             raise  # surface the failure (see _register_quick)
 
+    def _register_web_search(self):
+        spec = self._sane_press_hotkey(
+            "web_search_hotkey", WEB_SEARCH_HOTKEY_DEFAULT)
+        conflict = self._active_binding_conflict("web_search_hotkey", spec)
+        if conflict:
+            raise ValueError(conflict)
+        new_handle = bindings.register_hotkey(spec, self.on_web_search_hotkey)
+        old_handle = self._hk_web_search
+        if not bindings.unregister(old_handle):
+            bindings.unregister(new_handle)
+            raise RuntimeError(
+                "the previous Web Search shortcut could not be released"
+            )
+        self.web_search_hotkey, self._hk_web_search = spec, new_handle
+
     # ===================================================== actions for the UI
     def _apply_press_binding(self, key, hk, attr, handle_attr, callback, success):
         with self._binding_lock:
@@ -5586,13 +5739,19 @@ class Mumble:
             conflict = self._binding_conflict(key, hk)
             if conflict:
                 return False, conflict
+            external_conflict = bindings.external_shortcut_conflict(hk)
+            if external_conflict:
+                return False, external_conflict
             current = bindings.normalize(self.settings.get(key, ""))
             if current == hk and getattr(self, handle_attr, None) is not None:
                 return True, success.format(binding=bindings.pretty(hk))
             try:
                 new_handle = bindings.register_hotkey(hk, callback)
             except Exception as e:
-                return False, f"Couldn't register: {e}"
+                return False, (
+                    "That shortcut could not be registered; another app may "
+                    f"already use it. Mumble kept your previous binding. ({e})"
+                )
             if self.settings.set(key, hk) is False:
                 released_new = bindings.unregister(new_handle)
                 # Settings keeps the attempted value in memory after an I/O
@@ -5637,8 +5796,14 @@ class Mumble:
             "search_hotkey", hk, "search_hotkey", "_hk_search",
             self.on_search_hotkey, "Saved — Mumble Find opens with {binding}.")
 
+    def apply_web_search_hotkey(self, hk):
+        return self._apply_press_binding(
+            "web_search_hotkey", hk, "web_search_hotkey", "_hk_web_search",
+            self.on_web_search_hotkey,
+            "Saved — Web Search starts with {binding}.")
+
     def set_search_engine(self, engine):
-        """Choose the provider used for an explicit Deck web search."""
+        """Choose the provider used for an explicit Web Search."""
         engine = (engine or "perplexity").strip().lower()
         if engine not in self.SEARCH_ENGINES:
             engine = "perplexity"
@@ -8025,6 +8190,7 @@ class Mumble:
             ("paste-latest", self._register_quick),
             ("history", self._register_history),
             ("search", self._register_search),
+            ("web-search", self._register_web_search),
             ("mode-key", self._register_mode_key),
         ):
             try:

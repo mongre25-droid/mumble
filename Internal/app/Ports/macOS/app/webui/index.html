@@ -538,15 +538,15 @@
                         <div class="flex items-center gap8 mb10">
                             <div class="icon-tile"><span data-icon="search"></span></div>
                             <div>
-                                <h3 class="fs13 fw6 t-primary">Instant Web Search</h3>
+                                <h3 class="fs13 fw6 t-primary">Web Search</h3>
                                 <span class="badge" style="margin-top:4px">Ctrl + Option + S</span>
                             </div>
                         </div>
                         <p class="t-mute fs12 lh16 mb10">
                             Highlight text anywhere and press Ctrl+Option+S to
-                            search it instantly. Nothing highlighted? Speak your
-                            query and Mumble searches it. Works with Google,
-                            Perplexity, and Brave.
+                            prepare a Web Search. Mumble explains that the words
+                            will go online and waits for you to choose Search
+                            online. Works with Google, Perplexity, and Brave.
                         </p>
                         <div class="flex gap6 wrap">
                             <span class="feature-chip"><span data-icon="globe"></span>Google, Perplexity, Brave</span>
@@ -591,10 +591,10 @@
                             combo or a mouse button.
                         </p>
                         <div class="flex col" style="gap:8px">
-                            <div class="flex items-center justify-between"><span class="t-dim fs12">Start / Stop Recording</span><span class="kbd" id="hk-record">Ctrl + Option + D</span></div>
-                            <div class="flex items-center justify-between"><span class="t-dim fs12">Paste Latest</span><span class="kbd dim" id="hk-paste-latest">Ctrl + Option + V</span></div>
+                            <div class="flex items-center justify-between"><span class="t-dim fs12">Dictate</span><span class="kbd" id="hk-record">Ctrl + Option + D</span></div>
+                            <div class="flex items-center justify-between"><span class="t-dim fs12">Paste latest</span><span class="kbd dim" id="hk-paste-latest">Ctrl + Option + V</span></div>
                             <div class="flex items-center justify-between"><span class="t-dim fs12">Open Deck</span><span class="kbd dim" id="hk-history">Ctrl + Option + H</span></div>
-                            <div class="flex items-center justify-between"><span class="t-dim fs12">Instant Web Search</span><span class="kbd dim" id="hk-search">Ctrl + Option + S</span></div>
+                            <div class="flex items-center justify-between"><span class="t-dim fs12">Web Search</span><span class="kbd dim" id="hk-web-search">Ctrl + Option + S</span></div>
                         </div>
                     </div>
                 </div>
@@ -1643,16 +1643,16 @@
                     </div>
                     <div class="set-row">
                         <div>
-                            <div class="set-label">Search hotkey</div>
-                            <div class="set-sub">Instant web search</div>
+                            <div class="set-label">Web Search hotkey</div>
+                            <div class="set-sub">Prepare an online search, then ask before sending words</div>
                         </div>
                         <div class="set-ctl">
-                            <span class="kbd" data-keylabel="search_hotkey"
+                            <span class="kbd" data-keylabel="web_search_hotkey"
                                 >Ctrl + Option + S</span
                             ><button
                                 class="btn btn-sm"
-                                data-capture="search_hotkey"
-                                data-label="[data-keylabel='search_hotkey']"
+                                data-capture="web_search_hotkey"
+                                data-label="[data-keylabel='web_search_hotkey']"
                                 data-fb="#set-hk-fb"
                             >
                                 Press…
@@ -1662,9 +1662,9 @@
                     <div class="feedback ok" id="set-hk-fb"></div>
                     <div class="set-row">
                         <div>
-                            <div class="set-label">Search engine</div>
+                            <div class="set-label">Web Search provider</div>
                             <div class="set-sub">
-                                Where the search hotkey sends your query
+                                Used only after you explicitly choose Search online
                             </div>
                         </div>
                         <div class="set-ctl">

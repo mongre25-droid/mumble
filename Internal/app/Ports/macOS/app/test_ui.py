@@ -58,7 +58,7 @@ class StubController:
     def apply_quick_paste_hotkey(self, hk):
         return (True, f"Saved — {hk}")
 
-    def apply_search_hotkey(self, hk):
+    def apply_web_search_hotkey(self, hk):
         return (True, f"Saved — {hk}")
 
     def test_microphone(self, onl, ond):

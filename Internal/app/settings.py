@@ -13,6 +13,8 @@ import branding
 
 SEARCH_HOTKEY_DEFAULT = "ctrl+alt+f"
 SEARCH_HOTKEY_LEGACY_DEFAULT = "ctrl+alt+s"
+WEB_SEARCH_HOTKEY_DEFAULT = "ctrl+alt+s"
+WEB_SEARCH_HOTKEY_CONFLICT_FALLBACK = "ctrl+alt+w"
 
 
 # --- Cross-process file lock (portable) ------------------------------------
@@ -105,11 +107,11 @@ DEFAULTS = {
     # confused the two concepts — now each has its own bind.
     "quick_paste_hotkey": "ctrl+alt+v",
     "history_hotkey": "ctrl+alt+d",
-    # Ctrl+Alt+S is used by external search/assistant workflows. "F" keeps the
-    # mnemonic (Find) while staying distinct from Mumble's actual registered
-    # record, paste-latest and Deck chords.
+    # Local Mumble Find and online Web Search are separate commands. "F" keeps
+    # the local Find mnemonic while "S" remains the explicit Web Search chord.
     "search_hotkey": SEARCH_HOTKEY_DEFAULT,
-    # Used only by explicit Deck web-search actions; Mumble Find stays local.
+    "web_search_hotkey": WEB_SEARCH_HOTKEY_DEFAULT,
+    # Used only by explicit Web Search actions; Mumble Find stays local.
     "search_engine": "perplexity",   # google | perplexity | brave
     "browser": "default",            # browser for an explicit web search
     "system_search_include_files": True,
@@ -326,6 +328,7 @@ DEFAULTS = {
     "local_provider_retired_applied": False,
     "search_perplexity_default_applied": False,
     "search_hotkey_find_default_applied": False,
+    "web_search_hotkey_default_applied": False,
     "big_shift_applied": False,
     "foreign_island_default_applied": False,
     # Cloud sync (Supabase) — credentials entered by the owner
@@ -583,6 +586,14 @@ class Settings:
                 self.data["search_hotkey"] = SEARCH_HOTKEY_DEFAULT
             self.data["search_hotkey_find_default_applied"] = True
 
+        if not self.data.get("web_search_hotkey_default_applied"):
+            if "web_search_hotkey" not in loaded:
+                candidate = WEB_SEARCH_HOTKEY_DEFAULT
+                if self.data.get("search_hotkey") == candidate:
+                    candidate = WEB_SEARCH_HOTKEY_CONFLICT_FALLBACK
+                self.data["web_search_hotkey"] = candidate
+            self.data["web_search_hotkey_default_applied"] = True
+
         # Repair only the known incompatible legacy pair: ``onyx`` is an
         # OpenAI voice and cannot be sent to Gemini. Deliberately preserve every
         # other selected voice and every OpenAI configuration.
@@ -611,6 +622,7 @@ class Settings:
             "stt_tts_dead_default_healed",
             "reader_tts_voice_contract_applied",
             "search_hotkey_find_default_applied",
+            "web_search_hotkey_default_applied",
         }
         for key in guards:
             self.data[key] = True

@@ -1242,7 +1242,8 @@ class Api:
             "hotkey": pp("hotkey", "ctrl+windows"),
             "quick_paste_hotkey": pp("quick_paste_hotkey", "ctrl+alt+v"),
             "history_hotkey": pp("history_hotkey", "ctrl+alt+d"),
-            "search_hotkey": pp("search_hotkey", "ctrl+alt+s"),
+            "search_hotkey": pp("search_hotkey", "ctrl+alt+f"),
+            "web_search_hotkey": pp("web_search_hotkey", "ctrl+alt+s"),
             "mode_key": pp("mode_key", "right shift"),
         }
 
@@ -1426,7 +1427,7 @@ class Api:
             pass
         keys = [
             "user_name", "hotkey", "quick_paste_hotkey", "history_hotkey",
-            "search_hotkey", "system_search_include_files",
+            "search_hotkey", "web_search_hotkey", "system_search_include_files",
             "system_search_roots", "system_search_max_items",
             "search_engine", "browser", "mode_key", "mode_button_enabled",
             "modes", "prompt_mode_enabled", "auto_format",
@@ -1869,16 +1870,66 @@ class Api:
             # raw spec without validating, so this is the real gate). An invalid
             # hotkey otherwise saves, fails to register in the controller, and the
             # UI still shows "active now" — a silent dead key.
-            if key in ("hotkey", "quick_paste_hotkey", "history_hotkey",
-                       "search_hotkey", "mode_key"):
+            press_bindings = (
+                "hotkey", "quick_paste_hotkey", "history_hotkey",
+                "search_hotkey", "web_search_hotkey",
+            )
+            if key in press_bindings or key == "mode_key":
                 try:
                     import bindings
-                    ok, msg = bindings.validate(bindings.normalize(value),
-                                                hold=(key == "mode_key"))
+                    value = bindings.normalize(value)
+                    ok, msg = bindings.validate(value, hold=(key == "mode_key"))
                     if not ok:
                         return {"ok": False, "message": msg or "Invalid binding"}
-                except Exception:
-                    pass  # validator unavailable — fall through to the save
+                    if key in press_bindings:
+                        self.settings.load()
+                        current = {
+                            "hotkey": self.settings.get("hotkey", "ctrl+windows"),
+                            "quick_paste_hotkey": self.settings.get(
+                                "quick_paste_hotkey", "ctrl+alt+v"),
+                            "history_hotkey": self.settings.get(
+                                "history_hotkey", "ctrl+alt+d"),
+                            "search_hotkey": self.settings.get(
+                                "search_hotkey", "ctrl+alt+f"),
+                            "web_search_hotkey": self.settings.get(
+                                "web_search_hotkey", "ctrl+alt+s"),
+                        }
+                        labels = {
+                            "hotkey": "Dictate",
+                            "quick_paste_hotkey": "Paste latest",
+                            "history_hotkey": "Open Deck",
+                            "search_hotkey": "Mumble Find",
+                            "web_search_hotkey": "Web Search",
+                        }
+                        for other_key, other_value in current.items():
+                            if (other_key != key and
+                                    bindings.conflicts(value, other_value)):
+                                return {"ok": False, "applied": False,
+                                        "message": (
+                                            "That shortcut is already used by "
+                                            f"{labels[other_key]}. Mumble kept "
+                                            "your previous shortcut."
+                                        )}
+                        live = _ctrl_send({
+                            "cmd": "rebind", "key": str(key), "value": value,
+                        }, timeout=2.0)
+                        if live is None:
+                            return {"ok": False, "applied": False,
+                                    "message": (
+                                        "Mumble couldn't confirm that shortcut. "
+                                        "Your previous shortcut is still active."
+                                    )}
+                        if not live.get("ok"):
+                            return {"ok": False, "applied": False,
+                                    "message": live.get("message") or
+                                    "The shortcut could not be registered."}
+                        self.settings.load()
+                        return {"ok": True, "value": value, "applied": True,
+                                "message": live.get("message", "")}
+                except Exception as exc:
+                    return {"ok": False, "applied": False, "message": (
+                        "Shortcut validation is unavailable. Your existing "
+                        f"shortcut was kept. ({exc})")}
             # Trim API keys on save: a pasted key often carries a trailing newline/
             # space. openrouter_tts strips before use, but get_openrouter_credits and
             # the has_key check do not — so an untrimmed key would show "connected"
@@ -2245,6 +2296,33 @@ class Api:
                 except Exception:
                     print("open_url failed:", e)
         return False
+
+    def request_web_search(self, text):
+        """Ask the controller to prepare a local, consent-gated Web Search."""
+        result = _ctrl_send({
+            "cmd": "web_search_request", "text": str(text or ""),
+        }, timeout=2.0)
+        return result or {
+            "ok": False,
+            "message": "Mumble could not prepare Web Search.",
+        }
+
+    def confirm_web_search(self, request_id):
+        result = _ctrl_send({
+            "cmd": "web_search_confirm",
+            "request_id": str(request_id or ""),
+        }, timeout=2.0)
+        return result or {
+            "ok": False,
+            "message": "Mumble could not confirm Web Search.",
+        }
+
+    def cancel_web_search(self, request_id):
+        result = _ctrl_send({
+            "cmd": "web_search_cancel",
+            "request_id": str(request_id or ""),
+        }, timeout=0.8)
+        return result or {"ok": False}
 
     def open_data_folder(self):
         try:
@@ -2826,6 +2904,21 @@ def _serve_webui_commands(srv, H, ensure_main, title):
                                 f"window.pyRefresh && window.pyRefresh({what})")
                         except Exception:
                             pass
+                elif cmd == "web_search_consent":
+                    win = ensure_main()
+                    if win is not None:
+                        payload = json.dumps({
+                            key: req.get(key) for key in (
+                                "request_id", "provider", "query", "privacy",
+                            )
+                        })
+                        try:
+                            win.evaluate_js(
+                                "window.pyWebSearchConsent && "
+                                f"window.pyWebSearchConsent({payload})"
+                            )
+                        except Exception as exc:
+                            print("Web Search consent eval failed:", exc)
                 elif cmd in ("history", "deck", "show", "system_search"):
                     win = ensure_main()   # lazily create main if needed
                     if win is not None and cmd in ("history", "deck"):

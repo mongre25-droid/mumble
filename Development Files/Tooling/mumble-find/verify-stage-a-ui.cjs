@@ -100,6 +100,24 @@ async function verifyLinuxLoadedDestinations(browser) {
   }, { assets: linuxAssets });
   await page.goto(pathToFileURL(path.join(linuxAppRoot, "webui", "index.html")).href);
   await page.waitForSelector("#system-search-script", { state: "attached" });
+  await page.waitForFunction(() => typeof window.pyWebSearchConsent === "function");
+  const homeCommands = await page.locator("#hk-record, #hk-paste-latest, #hk-history, #hk-search, #hk-web-search")
+    .evaluateAll(nodes => nodes.map(node => node.previousElementSibling?.textContent?.trim()));
+  assert.deepEqual(
+    homeCommands,
+    ["Dictate", "Paste latest", "Open Deck", "Mumble Find", "Web Search"],
+    "Linux Home must keep the two search commands distinct",
+  );
+  await page.evaluate(() => window.pyWebSearchConsent({
+    request_id: "linux-browser-consent",
+    provider: "Brave",
+    query: "selected private words",
+    privacy: "These selected words will be sent to Brave over the internet only after you choose Search online. Mumble Find stays private on this device.",
+  }));
+  const consent = page.getByRole("dialog", { name: "Search online with Brave?" });
+  await consent.waitFor();
+  assert.match(await consent.innerText(), /Mumble Find stays private on this device/);
+  await consent.getByRole("button", { name: "Keep private" }).click();
   await page.waitForFunction(() => Boolean(document.querySelector('[data-view="system-search"]')));
   await page.evaluate(() => window.openSystemSearch());
   assert.equal(
@@ -125,11 +143,42 @@ async function verifyLinuxLoadedDestinations(browser) {
     "Linux preview results must not embed Web Search",
   );
   await page.close();
-  return { destinations, previewKinds };
+  return { destinations, previewKinds, homeCommands, privacyActionRequired: true };
+}
+
+async function verifyWebSearchConsent(browser) {
+  const page = await browser.newPage({ viewport: { width: 1100, height: 760 } });
+  await page.goto(pathToFileURL(path.join(appRoot, "webui", "index.html")).href);
+  await page.waitForFunction(() => typeof window.pyWebSearchConsent === "function");
+  const homeCommands = await page.locator(".home-shortcut-copy b").allTextContents();
+  assert.deepEqual(
+    homeCommands,
+    ["Dictate", "Paste latest", "Open Deck", "Mumble Find", "Web Search"],
+    "Home must show all five distinct global commands",
+  );
+  await page.evaluate(() => window.pyWebSearchConsent({
+    request_id: "browser-consent",
+    provider: "Brave",
+    query: "selected private words",
+    privacy: "These selected words will be sent to Brave over the internet only after you choose Search online. Mumble Find stays private on this device.",
+  }));
+  const dialog = page.getByRole("dialog", { name: "Search online with Brave?" });
+  await dialog.waitFor();
+  assert.match(await dialog.innerText(), /selected private words/);
+  assert.match(await dialog.innerText(), /Mumble Find stays private on this device/);
+  assert.equal(await dialog.getByRole("button", { name: "Search online" }).count(), 1);
+  assert.equal(await dialog.getByRole("button", { name: "Keep private" }).count(), 1);
+  await dialog.getByRole("button", { name: "Keep private" }).click();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  await page.close();
+  return { homeCommands, privacyActionRequired: true };
 }
 
 async function main() {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.MUMBLE_BROWSER_PATH || undefined,
+  });
   if (verifyCase === "all" || verifyCase === "loader") {
     await verifyLoader(browser);
   }
@@ -138,6 +187,7 @@ async function main() {
     await browser.close();
     return;
   }
+  const webSearch = await verifyWebSearchConsent(browser);
   const linuxLoaded = await verifyLinuxLoadedDestinations(browser);
   const page = await browser.newPage({ viewport: { width: 700, height: 520 } });
   const browserErrors = [];
@@ -354,8 +404,13 @@ async function main() {
     visibleIconRequests: firstPaint.iconCall.ids.length,
     newlyVisibleIconRequests: scrollHydration.second.length,
     destinations,
+    webSearch,
     linuxLoadedDestinations: linuxLoaded.destinations,
     linuxPreviewKinds: linuxLoaded.previewKinds,
+    linuxWebSearch: {
+      homeCommands: linuxLoaded.homeCommands,
+      privacyActionRequired: linuxLoaded.privacyActionRequired,
+    },
   }));
   await browser.close();
 }

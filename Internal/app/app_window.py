@@ -1271,11 +1271,19 @@ class AppWindow:
         )
         self._hotkey_card(
             b,
-            "Search hotkey",
+            "Mumble Find hotkey",
             "Open Mumble Find for local apps, files and folders. "
             "Mumble Find stays independent while dictation is active.",
             "search_hotkey",
             self.ctrl.apply_search_hotkey,
+        )
+        self._hotkey_card(
+            b,
+            "Web Search hotkey",
+            "Prepare selected or dictated words, explain the chosen online "
+            "provider, and wait for Search online before opening the browser.",
+            "web_search_hotkey",
+            self.ctrl.apply_web_search_hotkey,
         )
         self._build_search_engine_card(b)
 
@@ -2323,14 +2331,14 @@ class AppWindow:
         return cb
 
     def _build_search_engine_card(self, b):
-        """Choose the provider used for an explicit Deck web search."""
+        """Choose the provider used for an explicit Web Search."""
         card = self._card(b)
         ui.label(card, "Search engine", size=12, semibold=True,
                  bg=C.surface).pack(anchor="w")
         ui.label(
             card,
-            "Used only when you explicitly search the web from the Deck. "
-            "Mumble Find always keeps local results separate.",
+            "Used only after you explicitly confirm Search online. Mumble Find "
+            "always keeps local results separate.",
             size=10, color=C.text_mute, bg=C.surface, wrap=560,
         ).pack(anchor="w", pady=(2, 8))
         row = tk.Frame(card, bg=C.surface)

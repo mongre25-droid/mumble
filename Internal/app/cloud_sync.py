@@ -363,6 +363,7 @@ _SETTINGS_SYNC_EXCLUDE = frozenset({
     # Option-based bindings onto Windows creates shortcuts which can never be
     # pressed (and syncing Windows-key bindings to macOS is equally broken).
     "hotkey", "quick_paste_hotkey", "history_hotkey", "search_hotkey",
+    "web_search_hotkey",
     "mode_key",
     # Device-local sync bookkeeping must never be imported from another
     # device; doing so can make genuinely newer remote rows look stale.
