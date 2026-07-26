@@ -65,6 +65,16 @@ def test_plain_english_homophone_untouched_without_context():
     assert not r.changed
 
 
+def test_ordinary_english_fix_is_not_rewritten_as_fiqh():
+    ordinary = fb.boost("Fix this issue", ["arabic"])
+
+    assert fb.strip_flags(ordinary.text) == "Fix this issue"
+    assert not ordinary.changed
+    assert fb.strip_flags(
+        fb.boost("fikh ruling", ["arabic"]).text
+    ) == "Fiqh ruling"
+
+
 def test_homophone_boosts_with_gateway_and_low_confidence():
     # "I memorized the first <just> of the Quran" — "Quran" anchors the context
     # and the acoustic slot for "just" was low-confidence -> boost to //Juz.

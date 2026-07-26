@@ -361,6 +361,49 @@ class ModuleNative(FakeNativeInput):
         return self.unicode_acceptance
 
 
+class VirtualDeliveryClock:
+    def __init__(self):
+        self.now = 0.0
+        self.visible_at = None
+
+    def settle(self, seconds):
+        self.now += float(seconds)
+
+    @property
+    def visible(self):
+        return self.visible_at is not None and self.now >= self.visible_at
+
+
+class DeferredUnicodeNative(ModuleNative):
+    """Model Windows accepting a long Unicode batch before it visibly drains."""
+
+    def __init__(self, clock, visible_delay_s):
+        super().__init__()
+        self.clock = clock
+        self.visible_delay_s = float(visible_delay_s)
+
+    def send_unicode(self, text):
+        acceptance = super().send_unicode(text)
+        self.clock.visible_at = self.clock.now + self.visible_delay_s
+        return acceptance
+
+
+class TransientZeroPasteNative(ModuleNative):
+    def __init__(self, after_zero=None):
+        super().__init__()
+        self.after_zero = after_zero
+
+    def send_paste(self):
+        self.send_calls += 1
+        if self.send_calls == 1:
+            if self.after_zero is not None:
+                self.after_zero()
+            return NativeAcceptance(
+                requested=4, accepted=0, submitted=False, confirmation=None)
+        return NativeAcceptance(
+            requested=4, accepted=4, submitted=True, confirmation=None)
+
+
 class ManualClock:
     def __init__(self):
         self.now = 0.0
@@ -400,6 +443,93 @@ class ReliablePasteModuleTests(unittest.TestCase):
             **module_options,
         )
         return module, target, clipboard, native
+
+    def test_short_unicode_fallback_settles_before_terminal_status(self):
+        clock = VirtualDeliveryClock()
+        clipboard = FakeClipboard()
+        clipboard.fail_write = True
+        native = DeferredUnicodeNative(clock, visible_delay_s=0.80)
+        module = InsertionModule(
+            FakeTarget(), clipboard, native, settle_delay=clock.settle)
+        op = operation_id("short-unicode-visible-delivery")
+        # Each symbol occupies two UTF-16 code units on Windows. This catches
+        # status timing that incorrectly counts Python characters instead.
+        prompt = "\U0001f642" * 128
+
+        module.begin(op, "dictation")
+        result = module.deliver(op, TextPayload(prompt))
+
+        measured_gap_ms = max(
+            0.0, ((clock.visible_at or clock.now) - clock.now) * 1000.0)
+        self.assertTrue(
+            clock.visible,
+            "terminal status preceded visible prompt delivery by "
+            "{:.0f}ms".format(measured_gap_ms),
+        )
+        self.assertEqual("terminal", result.state)
+        self.assertEqual(1, native.unicode_calls)
+
+    def test_long_prompt_never_uses_slow_unicode_fallback(self):
+        cases = (
+            ("ascii", "p" * 1000),
+            ("utf16-boundary", "\U0001f642" * 129),
+        )
+        for label, prompt in cases:
+            with self.subTest(label=label):
+                clipboard = FakeClipboard()
+                clipboard.fail_write = True
+                module, _target, _clipboard, native = self.make_module(
+                    clipboard=clipboard)
+                op = operation_id(
+                    "long-prompt-saved-without-slow-unicode-" + label)
+
+                module.begin(op, "dictation")
+                result = module.deliver(op, TextPayload(prompt))
+
+                self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
+                self.assertEqual(0, native.send_calls)
+                self.assertEqual(0, native.unicode_calls)
+                self.assertEqual(
+                    "payload_too_large_for_direct_input",
+                    result.attempt_ledger[-1].reason,
+                )
+
+    def test_transient_zero_paste_retries_fast_clipboard_before_unicode(self):
+        native = TransientZeroPasteNative()
+        module, _target, _clipboard, _native = self.make_module(native=native)
+        op = operation_id("transient-zero-fast-clipboard-retry")
+
+        module.begin(op, "dictation")
+        result = module.deliver(op, TextPayload("p" * 1000))
+
+        self.assertEqual(InsertionOutcome.SENT_UNCONFIRMED, result.outcome)
+        self.assertEqual(2, native.send_calls)
+        self.assertEqual(0, native.unicode_calls)
+        self.assertEqual(
+            ["clipboard_paste", "clipboard_paste"],
+            [attempt.adapter for attempt in result.attempt_ledger],
+        )
+
+    def test_transient_zero_retry_stops_when_target_changes(self):
+        target = FakeTarget()
+        target.restore_result = False
+        original = target.active
+        changed = browser_target(window=909, process_id=808, thread_id=707,
+                                 focused_child=606)
+        native = TransientZeroPasteNative(
+            after_zero=lambda: setattr(target, "active", changed))
+        module, _target, _clipboard, _native = self.make_module(
+            target=target, native=native)
+        op = operation_id("transient-zero-target-changed")
+
+        receipt = module.begin(op, "dictation")
+        result = module.deliver(op, TextPayload("target-bound prompt"))
+
+        self.assertIs(original, receipt.target)
+        self.assertEqual(InsertionOutcome.SAVED_ONLY, result.outcome)
+        self.assertEqual(InsertionReason.TARGET_CHANGED.value, result.reason)
+        self.assertEqual(1, native.send_calls)
+        self.assertEqual(0, native.unicode_calls)
 
     def test_stalled_public_delivery_expires_once_and_late_completion_wins(self):
         clock = ManualClock()
@@ -686,7 +816,7 @@ class ReliablePasteModuleTests(unittest.TestCase):
         result = module.deliver(op, TextPayload("fallback"))
 
         self.assertEqual(InsertionOutcome.SENT_UNCONFIRMED, result.outcome)
-        self.assertEqual(1, native.send_calls)
+        self.assertEqual(2, native.send_calls)
         self.assertEqual(1, native.unicode_calls)
 
     def test_positive_or_partial_paste_events_are_terminal(self):

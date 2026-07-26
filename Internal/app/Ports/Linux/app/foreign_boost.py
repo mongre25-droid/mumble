@@ -221,6 +221,7 @@ _COMMON_ENGLISH = set(islamic_terms._COMMON_ENGLISH) | {
     "just", "some", "sum", "the", "a", "an", "and", "or", "of", "to", "in", "on",
     "is", "it", "as", "at", "be", "by", "so", "we", "he", "i", "you", "for",
     "are", "was", "with", "from", "this", "that", "they", "them", "have", "will",
+    "fix",
     "your", "but", "not", "if", "or", "us", "yes", "no", "ate", "ola",
 }
 

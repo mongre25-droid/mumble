@@ -53,6 +53,14 @@ class DeliveryIntent(str, Enum):
 INSERT = DeliveryIntent.INSERT
 
 
+# Direct Unicode input is an emergency text fallback. Controlled Windows
+# timing measured roughly 2.4 ms per UTF-16 code unit, so keep it for short
+# text only and wait at a conservative rate before reporting terminal status.
+_MAX_DIRECT_UNICODE_CODE_UNITS = 256
+_UNICODE_SETTLE_BASE_S = 0.10
+_UNICODE_SETTLE_PER_CODE_UNIT_S = 0.003
+
+
 @dataclass(frozen=True)
 class TextPayload:
     text: str
@@ -908,6 +916,21 @@ class InsertionTransaction:
                     reason=(reason.value if isinstance(reason, Enum)
                             else str(reason))),),
             )
+        unicode_code_units = len(request.text.encode(
+            "utf-16-le", errors="surrogatepass")) // 2
+        if unicode_code_units > _MAX_DIRECT_UNICODE_CODE_UNITS:
+            return self._result(
+                request, InsertionOutcome.SAVED_ONLY, reason,
+                attempt_ledger=(
+                    AdapterAttempt(
+                        "clipboard_paste", AdapterAttemptState.NO_SEND,
+                        reason=(reason.value if isinstance(reason, Enum)
+                                else str(reason))),
+                    AdapterAttempt(
+                        "unicode_text", AdapterAttemptState.NO_SEND,
+                        reason="payload_too_large_for_direct_input"),
+                ),
+            )
         ready, _ready_reason = self._native.ready(request.modifier_timeout_s)
         if not ready:
             return self._result(
@@ -924,7 +947,7 @@ class InsertionTransaction:
             return self._result(
                 request, InsertionOutcome.UNCERTAIN,
                 InsertionReason.PASTE_RESULT_UNKNOWN,
-                send_count=1, native_requested=max(0, len(request.text) * 2),
+                send_count=1, native_requested=max(0, unicode_code_units * 2),
                 native_accepted=None,
                 attempt_ledger=(
                     AdapterAttempt(
@@ -933,7 +956,7 @@ class InsertionTransaction:
                                 else str(reason))),
                     AdapterAttempt(
                         "unicode_text", AdapterAttemptState.MAY_HAVE_SENT,
-                        requested=max(0, len(request.text) * 2),
+                        requested=max(0, unicode_code_units * 2),
                         accepted=None, reason="transport_error"),
                 ),
             )
@@ -959,6 +982,20 @@ class InsertionTransaction:
             outcome = InsertionOutcome.NOT_SENT
             terminal_reason = InsertionReason.ZERO_INPUT
             state = AdapterAttemptState.NO_SEND
+        if state in {
+            AdapterAttemptState.SENT,
+            AdapterAttemptState.MAY_HAVE_SENT,
+        }:
+            # SendInput acceptance means Windows queued the Unicode events;
+            # even a short fallback can still be visibly draining when the
+            # call returns. Use the conservative rate measured in the native
+            # timing fixture before reporting a terminal state.
+            unicode_settle = (
+                _UNICODE_SETTLE_BASE_S
+                + unicode_code_units * _UNICODE_SETTLE_PER_CODE_UNIT_S
+            )
+            self._settle_delay(max(
+                0.0, request.settle_seconds, unicode_settle))
         return self._result(
             request, outcome, terminal_reason, send_count=1,
             native_requested=requested, native_accepted=accepted,
@@ -1270,18 +1307,20 @@ class InsertionTransaction:
                         native_accepted=accepted,
                         attempt_ledger=tuple(attempt_ledger)))
 
-            send_count += 1
-            try:
-                acceptance = self._native.send_paste()
-            except Exception:
-                outcome = InsertionOutcome.UNCERTAIN
-                reason = InsertionReason.PASTE_RESULT_UNKNOWN
-                accepted = None
-                attempt_ledger.append(AdapterAttempt(
-                    "clipboard_paste", AdapterAttemptState.MAY_HAVE_SENT,
-                    requested=4, accepted=None,
-                    reason=InsertionReason.PASTE_RESULT_UNKNOWN.value))
-            else:
+            for paste_attempt in range(2):
+                send_count += 1
+                try:
+                    acceptance = self._native.send_paste()
+                except Exception:
+                    outcome = InsertionOutcome.UNCERTAIN
+                    reason = InsertionReason.PASTE_RESULT_UNKNOWN
+                    accepted = None
+                    attempt_ledger.append(AdapterAttempt(
+                        "clipboard_paste", AdapterAttemptState.MAY_HAVE_SENT,
+                        requested=4, accepted=None,
+                        reason=InsertionReason.PASTE_RESULT_UNKNOWN.value))
+                    break
+
                 paste_requested = max(0, int(acceptance.requested))
                 paste_accepted = acceptance.accepted
                 requested += paste_requested
@@ -1328,6 +1367,24 @@ class InsertionTransaction:
                     "clipboard_paste", attempt_state,
                     requested=paste_requested, accepted=paste_accepted,
                     reason=reason.value))
+                if not (
+                    paste_attempt == 0
+                    and outcome is InsertionOutcome.NOT_SENT
+                    and reason is InsertionReason.ZERO_INPUT
+                ):
+                    break
+                # A zero acceptance proves no input entered the Windows queue,
+                # so one retry remains exact-once safe. Revalidate the target and
+                # physical modifiers first; if either changed, the established
+                # Unicode fallback will recheck and fail closed.
+                _retry_target, retry_reason = self._fresh_target_reason(
+                    activation, request)
+                if retry_reason is not None:
+                    break
+                retry_ready, _retry_ready_reason = self._native.ready(
+                    request.modifier_timeout_s)
+                if not retry_ready:
+                    break
 
             self._trace_safely(
                 "paste_sent", operation_id=request.operation_id,
