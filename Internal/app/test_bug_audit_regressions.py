@@ -2,6 +2,7 @@
 """Regression coverage for the 2026-07-12 full bug audit."""
 
 import os
+from pathlib import Path
 import queue
 import subprocess
 import sys
@@ -271,6 +272,10 @@ def test_meeting_store_serialises_controller_and_webview_writers():
     )
     env = dict(os.environ)
     env["PYTHONUTF8"] = "1"
+    app_dir = str(Path(__file__).resolve().parent)
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (app_dir, env.get("PYTHONPATH")) if part
+    )
     workers = [
         subprocess.Popen([sys.executable, "-c", code, path, prefix], env=env)
         for prefix in ("controller-", "webview-")

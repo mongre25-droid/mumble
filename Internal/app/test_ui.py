@@ -61,6 +61,9 @@ class StubController:
     def apply_search_hotkey(self, hk):
         return (True, f"Saved — {hk}")
 
+    def apply_web_search_hotkey(self, hk):
+        return (True, f"Saved — {hk}")
+
     def test_microphone(self, onl, ond):
         onl(0.5)
         ond()

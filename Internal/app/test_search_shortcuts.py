@@ -846,6 +846,7 @@ class CoreCurrentTruthTests(unittest.TestCase):
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",
             "8e93c8139ab1a5e4bd3e84811fcccc4a2ae6d1b6",
             "e872cfdf6ace7be3cb60343a305904ca05ed52e9",
+            "3d04e85d361446da58296a90aae508bb0185bf97",
         )
         for exact_ref in exact_refs:
             self.assertIn(exact_ref, current_truth)
@@ -856,12 +857,18 @@ class CoreCurrentTruthTests(unittest.TestCase):
         issue19_row = status.split(
             'href="https://github.com/mongre25-droid/mumble/issues/19"', 1
         )[1].split("</tr>", 1)[0]
-        self.assertNotIn("all-gates adoption", issue19_row)
-        self.assertIn("13 focused tests", issue19_row)
-        self.assertIn("approved", issue19_row.lower())
-        self.assertIn("empty", issue19_row.lower())
-        self.assertIn("non-eligible", issue19_row.lower())
-        self.assertIn("baselines are retained", issue19_row.lower())
+        issue19_truth = issue19_row.lower()
+        self.assertNotIn("all-gates adoption", issue19_truth)
+        self.assertIn("canonically approved run receipt", issue19_truth)
+        self.assertIn("eight opened gate-specific records", issue19_truth)
+        self.assertIn("same bytes", issue19_truth)
+        self.assertIn(
+            "manual/owner evidence cannot grant automated eligibility",
+            issue19_truth,
+        )
+        self.assertIn("approval registry is empty", issue19_truth)
+        self.assertIn("all nine current candidates remain non-eligible", issue19_truth)
+        self.assertIn("both baselines are retained", issue19_truth)
 
 
 class SearchBrowserRoutingTests(unittest.TestCase):
