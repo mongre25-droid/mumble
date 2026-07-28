@@ -996,7 +996,7 @@ if __name__ == "__main__":
                test_search_rebind_registration_failure_keeps_previous_state,
                test_search_rebind_unhook_failure_rolls_back_new_hook_and_setting,
                test_boot_heals_a_preexisting_search_collision_only,
-               test_search_hotkey_cannot_steal_focus_during_dictation,
+               test_find_hotkey_toggles_during_every_dictation_state_without_rebinding_target,
                test_search_open_failure_surfaces_an_island_hint,
                test_word_aligned_transcription_keeps_timestamps_enabled,
                test_cloud_empty_result_falls_back_to_local,
