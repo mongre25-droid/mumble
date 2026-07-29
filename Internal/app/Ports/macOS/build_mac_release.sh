@@ -19,6 +19,7 @@ cd "$DIR"
 # Extract version from branding.py for the output filename.
 VERSION=$(python3 -c "import sys; sys.path.insert(0, '$DIR/app'); from branding import VERSION; print(VERSION)" 2>/dev/null || echo "0.9")
 echo "Building MacMumble v${VERSION}..."
+python3 "$DIR/verify_architecture.py"
 
 ZIPNAME="Mumble-v${VERSION}-macos.zip"
 OUTPUT="$DIR/$ZIPNAME"

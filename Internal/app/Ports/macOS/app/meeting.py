@@ -18,15 +18,16 @@ import math
 import os
 import queue
 import re
+import struct
 import threading
 import time
 import uuid
 import wave
 
-import ai
 import meeting_diarise
 import meeting_store
 import branding
+import ai
 import processing_route
 from recording_limits import (
     LONG_FORM_CHUNK_SECONDS,
@@ -72,6 +73,11 @@ class MeetingRecorder:
         self._recording = False
         self._start_time = 0.0
         self._sample_count = 0
+        # Content-free, bounded input-level truth for the Meetings instrument.
+        # Only this smoothed scalar is kept; existing WAV persistence remains the
+        # sole owner of recorded audio.
+        self._audio_level = 0.0
+        self._effective_microphone = None
         self._audio_filename = None
         self._audio_full_path = None
         self._writer_queue = None
@@ -86,6 +92,8 @@ class MeetingRecorder:
         self._finish_lock = threading.Lock()
         self._capture_finalized = False
         self._last_meeting_id = None
+        self._active_meeting_id = None
+        self._starting = False
         self._limit_reached = False
 
     def start(self):
@@ -94,16 +102,20 @@ class MeetingRecorder:
         import sounddevice as sd
 
         with self._lock:
-            if self._stream is not None or self._recording or (
+            if self._starting or self._audio_full_path is not None or (
+                    self._stream is not None or self._recording) or (
                     self._writer_thread is not None
                     and self._writer_thread.is_alive()):
                 raise RuntimeError("A meeting is already recording.")
+            self._starting = True
 
         self._sample_count = 0
+        self._audio_level = 0.0
         self._writer_error = None
         self._capture_finalized = False
         self._last_meeting_id = None
         self._limit_reached = False
+        self._effective_microphone = None
         self._audio_filename, self._audio_full_path = _new_meeting_audio_path()
         self._writer_queue = queue.Queue(maxsize=1024)
         audio_path = self._audio_full_path
@@ -140,6 +152,12 @@ class MeetingRecorder:
                 try:
                     writer_queue.put_nowait(pcm.tobytes())
                     self._sample_count += accepted
+                    if accepted:
+                        rms = float(np.sqrt(np.mean(
+                            np.square(indata[:accepted], dtype=np.float64))))
+                        target = max(0.0, min(1.0, rms * 4.0))
+                        self._audio_level = (
+                            self._audio_level * 0.78 + target * 0.22)
                     if self._sample_count >= MEETING_MAX_SAMPLES:
                         self._mark_limit_reached()
                 except queue.Full:
@@ -153,23 +171,63 @@ class MeetingRecorder:
 
         stream = None
         writer_thread = None
+        active_meeting_id = None
         try:
             # Construct the stream before starting any background resources. A
             # missing/unavailable microphone must not leave a blocked writer.
+            requested_microphone = self._settings.get("mic_device", None)
             stream = sd.InputStream(
                 samplerate=SAMPLE_RATE, channels=1, dtype="float32",
-                device=self._settings.get("mic_device", None),
+                device=requested_microphone,
                 callback=_cb,
             )
+            effective_index = getattr(stream, "device", requested_microphone)
+            if isinstance(effective_index, (tuple, list)):
+                effective_index = effective_index[0] if effective_index else requested_microphone
+            try:
+                device_info = sd.query_devices(effective_index, "input")
+                effective_name = str(
+                    (device_info or {}).get("name") or "System default"
+                )
+            except Exception:
+                effective_name = (
+                    "System default" if effective_index in (None, -1, "-1")
+                    else f"Device {effective_index}"
+                )
+            self._effective_microphone = {
+                "index": effective_index,
+                "name": effective_name,
+            }
+            # Journal the private filename before capture begins. If the
+            # controller is terminated before Stop, startup recovery can repair
+            # the canonical WAV header and keep the captured prefix instead of
+            # treating it as unreferenced audio.
+            active_meeting_id = meeting_store.save_meeting(
+                title=_auto_meeting_title(0),
+                audio_path=self._audio_filename,
+                duration_sec=0.0,
+                segments=[],
+                speakers=[],
+                processing_mode=_meeting_processing_mode(self._settings),
+                **_meeting_transcription_route(self._settings),
+                status="recording",
+            )
+            if not active_meeting_id:
+                raise RuntimeError("Meeting recovery metadata could not be saved.")
+            self._active_meeting_id = active_meeting_id
             writer_thread = threading.Thread(target=_writer, daemon=True)
             self._writer_thread = writer_thread
             writer_thread.start()
-            self._stream = stream
-            self._start_time = time.time()
-            self._recording = True
+            with self._lock:
+                self._stream = stream
+                self._start_time = time.time()
+                self._recording = True
+                self._starting = False
             stream.start()
         except Exception:
-            self._recording = False
+            with self._lock:
+                self._recording = False
+                self._starting = False
             if stream is not None:
                 try:
                     stream.close()
@@ -181,15 +239,20 @@ class MeetingRecorder:
                 except queue.Full:
                     pass
                 writer_thread.join(timeout=2.0)
-            try:
-                os.remove(audio_path)
-            except OSError:
-                pass
+            if active_meeting_id:
+                meeting_store.delete_meeting(active_meeting_id)
+            else:
+                try:
+                    os.remove(audio_path)
+                except OSError:
+                    pass
             self._stream = None
             self._writer_queue = None
             self._writer_thread = None
             self._audio_filename = None
             self._audio_full_path = None
+            self._active_meeting_id = None
+            self._effective_microphone = None
             raise
 
         # Timer thread for island updates
@@ -216,6 +279,7 @@ class MeetingRecorder:
             return None
         with self._lock:
             self._recording = False
+            self._audio_level = 0.0
 
         if self._stream is not None:
             try:
@@ -255,12 +319,16 @@ class MeetingRecorder:
         self._writer_thread = None
 
         if self._sample_count <= 0:
-            try:
-                os.remove(self._audio_full_path)
-            except OSError:
-                pass
+            if self._active_meeting_id:
+                meeting_store.delete_meeting(self._active_meeting_id)
+            else:
+                try:
+                    os.remove(self._audio_full_path)
+                except OSError:
+                    pass
             self._audio_filename = None
             self._audio_full_path = None
+            self._active_meeting_id = None
             return None
         if not os.path.isfile(self._audio_full_path) or os.path.getsize(
                 self._audio_full_path) <= 44:
@@ -283,24 +351,32 @@ class MeetingRecorder:
         branding.protect_private_path(self._audio_full_path)
         if not title:
             title = _auto_meeting_title(duration)
-        meeting_id = meeting_store.save_meeting(
-            title=title,
-            audio_path=self._audio_filename,
-            duration_sec=round(duration, 1),
-            segments=[],
-            speakers=[],
-            processing_mode=_meeting_processing_mode(self._settings),
-            status="interrupted" if self._writer_error else "processing",
-            error=self._writer_error,
-            capture_warning=self._writer_error,
-        )
-        if not meeting_id:
+        meeting_id = self._active_meeting_id
+        values = {
+            "title": title,
+            "audio_path": self._audio_filename,
+            "duration_sec": round(duration, 1),
+            "segments": [],
+            "speakers": [],
+            "processing_mode": _meeting_processing_mode(self._settings),
+            **_meeting_transcription_route(self._settings),
+            "status": "interrupted" if self._writer_error else "processing",
+            "error": self._writer_error,
+            "capture_warning": self._writer_error,
+        }
+        if meeting_id:
+            saved = meeting_store.update_meeting(meeting_id, **values)
+        else:
+            meeting_id = meeting_store.save_meeting(**values)
+            saved = bool(meeting_id)
+        if not saved:
             raise RuntimeError("The meeting metadata could not be saved.")
         # The durable store now owns the filename.  Clearing the capture path
         # prevents any later lifecycle path from accidentally treating it as a
         # still-open recording.
         self._audio_filename = None
         self._audio_full_path = None
+        self._active_meeting_id = None
         return meeting_id
 
     def process_pending(self, meeting_id):
@@ -335,14 +411,17 @@ class MeetingRecorder:
         try:
             # An interrupted record visibly returns to processing while it is
             # retried.  Do this before expensive audio/model work.
-            meeting_store.update_meeting(
-                meeting_id, status="processing", error=None)
+            if not meeting_store.update_meeting(
+                    meeting_id, status="processing", error=None,
+                    **_meeting_transcription_route(self._settings)):
+                raise RuntimeError("Meeting metadata is temporarily unavailable.")
             segments, speakers = _process_wav_path(
                 path, self._transcribe, self._settings,
                 island_callback=self._island_cb)
-            meeting_store.update_meeting(
-                meeting_id, segments=segments, speakers=speakers,
-                status="ready", error=None)
+            if not meeting_store.update_meeting(
+                    meeting_id, segments=segments, speakers=speakers,
+                    status="ready", error=None):
+                raise RuntimeError("The completed transcript could not be saved.")
             if self._island_cb:
                 self._island_cb("done", record.get("duration_sec", 0),
                                 len(speakers))
@@ -360,13 +439,21 @@ class MeetingRecorder:
             return None
         return self.process_pending(meeting_id)
 
-    def recover_pending(self):
+    def recover_pending(self, on_processed=None):
         """Resume meetings interrupted by a previous shutdown."""
         recovered = []
-        meeting_store.cleanup_orphan_audio()
         for record in meeting_store.list_pending_meetings():
-            if self.process_pending(record.get("id")):
-                recovered.append(record.get("id"))
+            meeting_id = record.get("id")
+            if record.get("status") == "recording":
+                if not _prepare_interrupted_capture(record):
+                    if on_processed:
+                        on_processed(meeting_id)
+                    continue
+            if self.process_pending(meeting_id):
+                recovered.append(meeting_id)
+            if on_processed:
+                on_processed(meeting_id)
+        meeting_store.cleanup_orphan_audio()
         return recovered
 
     def pause(self):
@@ -376,6 +463,7 @@ class MeetingRecorder:
         if self._stream is None or not self._recording:
             return False
         self._recording = False
+        self._audio_level = 0.0
         if self._island_cb:
             self._island_cb("paused", self._captured_seconds(), 0)
         return True
@@ -395,6 +483,38 @@ class MeetingRecorder:
         """Recorded-audio time, excluding time spent paused."""
         return int(self._sample_count / float(SAMPLE_RATE))
 
+    def capture_status(self):
+        """Controller-authoritative snapshot used to reconcile the Web UI."""
+        with self._lock:
+            stream_open = self._stream is not None
+            if self._starting:
+                state = "starting"
+            elif stream_open and self._recording:
+                state = "recording"
+            elif stream_open:
+                state = "paused"
+            elif self._audio_full_path and not self._capture_finalized:
+                state = "finalizing"
+            else:
+                state = "idle"
+            return {
+                "ok": True,
+                "active": state != "idle",
+                "recording": state == "recording",
+                "paused": state == "paused",
+                "state": state,
+                "captured_seconds": self._captured_seconds(),
+                "audio_level": max(
+                    0.0, min(1.0, float(getattr(self, "_audio_level", 0.0)))
+                ) if state == "recording" else 0.0,
+                "max_seconds": MEETING_MAX_SECONDS,
+                "meeting_id": self._active_meeting_id,
+                "microphone": dict(getattr(self, "_effective_microphone", None)) if (
+                    getattr(self, "_effective_microphone", None)
+                ) else None,
+                "message": self._writer_error,
+            }
+
     @property
     def limit_reached(self):
         """Whether capture stopped accepting audio at the four-hour limit."""
@@ -406,6 +526,7 @@ class MeetingRecorder:
             return
         self._limit_reached = True
         self._recording = False
+        self._audio_level = 0.0
         if self._island_cb:
             self._island_cb("limit_reached", MEETING_MAX_SECONDS, 0)
 
@@ -415,6 +536,7 @@ class MeetingRecorder:
         if first_failure:
             self._writer_error = str(message or "Meeting audio capture failed.")
         self._recording = False
+        self._audio_level = 0.0
         if first_failure and self._island_cb:
             self._island_cb("capture_error", self._captured_seconds(), 0)
 
@@ -475,6 +597,59 @@ def _wav_audio_info(path):
         "frame_count": frame_count,
         "duration_sec": duration,
     }
+
+
+def _prepare_interrupted_capture(record):
+    """Repair a canonical capture WAV left open by a hard process exit."""
+    meeting_id = record.get("id")
+    path = _resolve_audio_path(record.get("audio_path"))
+    warning = (
+        "Recording was interrupted before it could be stopped. "
+        "Audio captured before the interruption was saved."
+    )
+    if not path:
+        meeting_store.update_meeting(
+            meeting_id, status="failed", error="Recording file is missing.")
+        return False
+    try:
+        size = os.path.getsize(path)
+        if size <= 44:
+            raise ValueError("The interrupted recording contains no usable audio.")
+        with open(path, "r+b") as f:
+            header = f.read(44)
+            if (len(header) != 44 or header[:4] != b"RIFF"
+                    or header[8:12] != b"WAVE"
+                    or header[12:16] != b"fmt "
+                    or header[36:40] != b"data"
+                    or struct.unpack("<H", header[20:22])[0] != 1
+                    or struct.unpack("<H", header[22:24])[0] != 1
+                    or struct.unpack("<I", header[24:28])[0] != SAMPLE_RATE
+                    or struct.unpack("<H", header[34:36])[0] != 16):
+                raise ValueError("The interrupted recording header is invalid.")
+            data_size = (size - 44) & ~1
+            if data_size <= 0:
+                raise ValueError("The interrupted recording contains no usable audio.")
+            if size != data_size + 44:
+                f.truncate(data_size + 44)
+            f.seek(4)
+            f.write(struct.pack("<I", data_size + 36))
+            f.seek(40)
+            f.write(struct.pack("<I", data_size))
+            f.flush()
+            os.fsync(f.fileno())
+        branding.protect_private_path(path)
+        duration = data_size / float(SAMPLE_RATE * 2)
+        if not meeting_store.update_meeting(
+                meeting_id, duration_sec=round(duration, 1),
+                status="interrupted", error=warning,
+                capture_warning=warning):
+            raise RuntimeError("The recovered meeting metadata could not be saved.")
+        return True
+    except Exception as e:
+        meeting_store.update_meeting(
+            meeting_id, status="failed", error=str(e),
+            capture_warning=warning)
+        return False
 
 
 def _decode_pcm_frames(frames, width, channels):
@@ -764,6 +939,7 @@ def process_audio_file(path, transcribe_fn, settings, title="", on_saved=None):
             segments=[],
             speakers=[],
             processing_mode=_meeting_processing_mode(settings),
+            **_meeting_transcription_route(settings),
             status="processing",
         )
         if meeting_id:
@@ -782,9 +958,10 @@ def process_audio_file(path, transcribe_fn, settings, title="", on_saved=None):
         try:
             segments, speakers = _process_wav_path(
                 _resolve_audio_path(audio_path), transcribe_fn, settings)
-            meeting_store.update_meeting(
-                meeting_id, segments=segments, speakers=speakers,
-                status="ready", error=None)
+            if not meeting_store.update_meeting(
+                    meeting_id, segments=segments, speakers=speakers,
+                    status="ready", error=None):
+                raise RuntimeError("The completed transcript could not be saved.")
             return meeting_id
         except Exception as e:
             meeting_store.update_meeting(
@@ -865,12 +1042,15 @@ _MEETINGS_ANALYSIS_FEATURE = "meetings"
 _MEETINGS_ANALYSIS_LANE = "meeting_analysis"
 
 
-def _analysis_context(settings, context=""):
-    """Resolve the configured LLM call context, or None when unavailable."""
+def _analysis_context(
+    settings,
+    feature=_MEETINGS_ANALYSIS_FEATURE,
+    lane=_MEETINGS_ANALYSIS_LANE,
+    context="",
+):
+    """Freeze the route and provider facts for one meeting action."""
     invocation = processing_route.snapshot_inputs(
-        settings,
-        feature=_MEETINGS_ANALYSIS_FEATURE,
-        lane=_MEETINGS_ANALYSIS_LANE,
+        settings, feature=feature, lane=lane,
         context=context, context_policy="meeting_transcript",
     )
     info = ai.PROVIDERS.get(invocation.route.provider) or {}
@@ -881,11 +1061,14 @@ def _analysis_call(context, system, user, max_tokens, timeout):
     ai_module, info, invocation = context
     decision = invocation.route
     return processing_route.call_provider(
-        decision, ai_module.cerebras_chat,
-        system, user, decision.api_key, model=decision.model, url=info.get("url"),
+        decision,
+        ai_module.cerebras_chat,
+        system, user, decision.api_key,
+        model=decision.model, url=info.get("url"),
         max_tokens=max_tokens, timeout=timeout,
         expected_feature=_MEETINGS_ANALYSIS_FEATURE,
-        expected_lane=_MEETINGS_ANALYSIS_LANE)
+        expected_lane=_MEETINGS_ANALYSIS_LANE,
+    )
 
 
 def _dedupe_strings(items):
@@ -1179,8 +1362,7 @@ def set_processing_mode(mode, settings):
     mode = (mode or "").strip().lower()
     if mode not in ("lightweight", "deep"):
         return False
-    settings.set("meeting_processing_mode", mode)
-    return True
+    return settings.set("meeting_processing_mode", mode) is not False
 
 
 def _meeting_processing_mode(settings):
@@ -1188,6 +1370,18 @@ def _meeting_processing_mode(settings):
     mode = (settings.get("meeting_processing_mode", "lightweight")
             or "lightweight").strip().lower()
     return mode if mode in ("lightweight", "deep") else "lightweight"
+
+
+def _meeting_transcription_route(settings):
+    """Non-secret route metadata for truthful historical disclosure."""
+    mode = str(settings.get("transcription_mode", "local") or "local").lower()
+    if mode == "cloud":
+        provider = str(settings.get(
+            "cloud_transcription_provider", "cloud") or "cloud").lower()
+        return {"transcription_mode": "cloud",
+                "transcription_provider": provider}
+    return {"transcription_mode": "local",
+            "transcription_provider": "local"}
 
 
 # ── Export builders ──────────────────────────────────────────────────────────
@@ -1651,6 +1845,7 @@ def _save_meeting_audio(audio, sample_rate=16000):
     """Write audio to a WAV file in the Mumble data dir. Returns a relative
     path string suitable for storage."""
     import wave
+    import os as _os
 
     filename, path = _new_meeting_audio_path()
 

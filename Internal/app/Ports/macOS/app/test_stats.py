@@ -66,8 +66,8 @@ before_sessions = s.data["reader_sessions"]
 s.record_reader_session(words_read=-5, duration_sec=0.0, doc_completed=False)
 check("negative words_read clamps to 0 (no subtraction)",
       s.data["reader_words_read"] == before_words)
-check("zero-duration session still increments session count",
-      s.data["reader_sessions"] == before_sessions + 1)
+check("zero-duration session is rejected at the persistence boundary",
+      s.data["reader_sessions"] == before_sessions)
 
 
 # ============================================================ reader_summary

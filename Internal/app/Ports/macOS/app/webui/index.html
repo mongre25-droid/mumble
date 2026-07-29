@@ -7,6 +7,8 @@
         <link rel="icon" href="mumble.png" />
         <link rel="stylesheet" href="app.css" />
         <link rel="stylesheet" href="enhanced.css" />
+        <link rel="stylesheet" href="remaster.css?v=20260721-coherent-surfaces" />
+        <link rel="stylesheet" href="focus-stage.css?v=20260724-foundation" />
     </head>
     <body>
         <div id="app">
@@ -30,24 +32,24 @@
             </div>
 
             <!-- ===================== NAV ===================== -->
-            <div class="navbar" role="navigation" aria-label="Primary">
-                <div class="nav glass">
-                    <button class="nav-btn active" data-nav="home">
+            <div class="navbar" role="navigation" aria-label="Primary destinations">
+                <div class="nav glass centred-destination-grid">
+                    <button type="button" class="nav-btn active" data-nav="home" aria-current="page">
                         <span data-icon="home"></span>Home
                     </button>
-                    <button class="nav-btn" data-nav="history">
+                    <button type="button" class="nav-btn" data-nav="history">
                         <span data-icon="history"></span>Deck
                     </button>
-                    <button class="nav-btn" data-nav="stats">
+                    <button type="button" class="nav-btn" data-nav="stats">
                         <span data-icon="chart"></span>Stats
                     </button>
-                    <button class="nav-btn" data-nav="meetings">
+                    <button type="button" class="nav-btn" data-nav="meetings">
                         <span data-icon="mic"></span>Meetings
                     </button>
-                    <button class="nav-btn" data-nav="reader">
+                    <button type="button" class="nav-btn" data-nav="reader">
                         <span data-icon="book"></span>Reader
                     </button>
-                    <button class="nav-btn" data-nav="settings">
+                    <button type="button" class="nav-btn" data-nav="settings">
                         <span data-icon="gear"></span>Settings
                     </button>
                 </div>
@@ -57,11 +59,12 @@
             <!-- ===================== HOME ===================== -->
             <div class="view" data-view="home">
                 <!-- Hero -->
-                <div class="hero">
+                <div class="hero focus-stage">
                     <div class="hero-glow"></div>
                     <div class="hero-topline"></div>
+                    <div class="home-hero-layout">
                     <div
-                        class="relative home-focus-stage__primary"
+                        class="relative home-hero-primary home-focus-stage__primary"
                         style="
                             padding: 30px 32px 22px;
                             display: flex;
@@ -285,9 +288,10 @@
                             ></div>
                         </div>
 
-                        <!-- Record + History CTAs -->
+                        <!-- Dictation + Deck CTAs -->
                         <div
-                            class="flex items-center gap12 wrap justify-center"
+                            id="home-dictation-actions"
+                            class="flex items-center gap12 wrap justify-center control-rail"
                         >
                             <button
                                 id="record-btn"
@@ -312,9 +316,61 @@
                                 >
                             </button>
                         </div>
-                        <p class="help mt8" id="home-dictation-limit">
-                            This platform currently stops one recording after 10 minutes as a temporary safety guard. Finished text is kept in the Deck.
+                        <div id="home-live-state" hidden></div>
+                        <p class="help mt8 home-duration-truth" id="home-dictation-limit">
+                            Mumble saves long dictation in bounded, recovery-safe segments and assembles one final transcript when you stop. A safety stop can still protect your recording if the device cannot keep up.
                         </p>
+                    </div>
+
+                    <section class="home-latest-result" aria-labelledby="home-latest-title" aria-live="polite">
+                        <span class="section-kicker"><span data-icon="history"></span>Continue</span>
+                        <h2 id="home-latest-title">Latest result</h2>
+                        <p id="home-latest-copy">Checking your latest finished dictationâ€¦</p>
+                        <span id="home-latest-meta">Your finished text stays available in the Deck.</span>
+                        <button id="open-history-btn" class="btn btn-sm" type="button">
+                            <span data-icon="history"></span>Open Deck
+                            <span class="kbd dim" id="hk-history-btn">Ctrl + Option + H</span>
+                        </button>
+                    </section>
+
+                    <aside class="home-shortcuts-panel context-ledger" aria-labelledby="home-shortcuts-title">
+                        <div class="home-shortcuts-heading">
+                            <span class="section-kicker"><span data-icon="keyboard"></span>Global shortcuts</span>
+                            <h2 id="home-shortcuts-title">First word to finished work.</h2>
+                            <p>Every global Mumble action, ready without leaving what you are doing.</p>
+                        </div>
+                        <div class="home-shortcut-list">
+                            <div class="home-shortcut-row">
+                                <span class="home-shortcut-icon" data-icon="mic"></span>
+                                <span class="home-shortcut-copy"><b>Dictate</b><small>Start or stop anywhere</small></span>
+                                <span class="kbd" id="hk-record">Ctrl + Option + D</span>
+                            </div>
+                            <div class="home-shortcut-row">
+                                <span class="home-shortcut-icon" data-icon="copy"></span>
+                                <span class="home-shortcut-copy"><b>Paste latest</b><small>Drop in your newest result</small></span>
+                                <span class="kbd dim" id="hk-paste-latest">Ctrl + Option + V</span>
+                            </div>
+                            <div class="home-shortcut-row">
+                                <span class="home-shortcut-icon" data-icon="layers"></span>
+                                <span class="home-shortcut-copy"><b>Open Deck</b><small>Shape, reuse, and finish</small></span>
+                                <span class="kbd dim" id="hk-history">Ctrl + Option + H</span>
+                            </div>
+                            <div class="home-shortcut-row">
+                                <span class="home-shortcut-icon" data-icon="search"></span>
+                                <span class="home-shortcut-copy"><b>Mumble Find</b><small>Find apps &amp; files; the query stays on this device</small></span>
+                                <span class="kbd dim" id="hk-search">Ctrl + Option + F</span>
+                            </div>
+                            <div class="home-shortcut-row">
+                                <span class="home-shortcut-icon" data-icon="globe"></span>
+                                <span class="home-shortcut-copy"><b>Web Search</b><small>Confirm before selected words go online</small></span>
+                                <span class="kbd dim" id="hk-web-search">Ctrl + Option + S</span>
+                            </div>
+                        </div>
+                        <button class="home-shortcuts-edit" id="home-edit-shortcuts" type="button"
+                            data-settings-jump="general" data-settings-target="settings-shortcuts">
+                            <span data-icon="gear"></span>Customise in Settings
+                        </button>
+                    </aside>
                     </div>
 
                     <!-- value badges -->
@@ -387,15 +443,7 @@
                     </div>
                 </div>
 
-                <section class="home-latest-result" aria-labelledby="home-latest-title" aria-live="polite">
-                    <span class="section-kicker"><span data-icon="history"></span>Continue</span>
-                    <h2 id="home-latest-title">Latest result</h2>
-                    <p id="home-latest-copy">Your latest finished dictation is available in the Deck.</p>
-                    <span id="home-latest-meta">Finished text stays on this device.</span>
-                    <button id="open-history-btn" class="btn btn-sm" type="button"><span data-icon="history"></span>Open Deck <span class="kbd dim" id="hk-history-btn">Ctrl + Option + H</span></button>
-                </section>
-
-                <div class="home-workflow" aria-label="How Mumble works">
+                <div class="home-workflow numbered-spine" aria-label="How Mumble works">
                     <div class="home-step">
                         <span class="home-step-no">01</span>
                         <span class="home-step-icon" data-icon="mic"></span>
@@ -454,8 +502,8 @@
                             </div>
                         </div>
                         <p id="home-pro-copy" class="t-mute fs12 lh16 mb12 text-center">
-                            Connect your free Cerebras API key to unlock AI
-                            output shaping in the
+                            Connect a Cerebras API key to unlock AI output shaping
+                            (a rate-limited free tier is currently available) in the
                             <span class="t-gold fw6">Deck</span> — Smart Modes,
                             presets, and polished repurposing of your words.
                             <span class="t-dim">Audio stays local</span> — only
@@ -570,47 +618,70 @@
 
             <!-- ===================== HISTORY ===================== -->
             <div class="view" data-view="history" hidden>
-                <header class="view-intro view-intro-compact">
-                    <span class="section-kicker"><span data-icon="layers"></span>Your working memory</span>
-                    <h1>The Deck</h1>
-                    <p>Capture, find, combine, and transform everything you have dictated — without losing your place.</p>
-                </header>
                 <!-- Top header bar removed (owner, repeatedly requested) — the nav
                      already says Deck; this band only ate vertical space. Its removal
                      also clears the hard black-rectangle artifact (the solid toolbar
                      bg no longer contrasts against a header card above it). -->
-                <div class="deck-toolbar">
-                <div class="flex items-center justify-between wrap gap12">
-                    <div class="flex items-center gap8">
-                        <select
-                            class="select"
-                            id="hist-content-filter"
-                            style="width: 150px"
-                            aria-label="Content type"
-                        >
-                            <option value="">All types</option>
-                            <option value="transcripts">Transcripts</option>
-                            <option value="clipboard">Clipboard</option>
-                            <option value="prompts">Prompts</option>
-                            <option value="favorites">Favourites</option>
-                            <option value="emails">Emails</option>
-                        </select>
-                        <span class="t-mute fs11" id="hist-count">0 items</span>
+                <div
+                    class="deck-toolbar mumble-surface mumble-surface--primary command-surface"
+                    id="deck-command-surface"
+                    aria-label="Deck commands"
+                >
+                    <div class="deck-command-state deck-command-browse" data-deck-state="browse">
+                    <div class="deck-content-browser">
+                        <div class="deck-content-summary">
+                            <span class="section-kicker"><span data-icon="layers"></span>Deck content</span>
+                            <span class="t-mute fs11" id="hist-count" aria-live="polite">0 items</span>
+                        </div>
+                        <div class="deck-content-controls">
+                            <div
+                                class="deck-type-nav"
+                                id="hist-content-nav"
+                                role="tablist"
+                                aria-label="Deck content type"
+                            >
+                                <button class="deck-type-tab active" type="button" role="tab" aria-selected="true" aria-controls="hist-list" tabindex="0" data-content-filter="">
+                                    <span data-icon="layers"></span><span>All</span><span class="deck-type-count" data-content-count="all">0</span>
+                                </button>
+                                <button class="deck-type-tab" type="button" role="tab" aria-selected="false" aria-controls="hist-list" tabindex="-1" data-content-filter="transcripts">
+                                    <span data-icon="type"></span><span>Transcripts</span><span class="deck-type-count" data-content-count="transcripts">0</span>
+                                </button>
+                                <button class="deck-type-tab" type="button" role="tab" aria-selected="false" aria-controls="hist-list" tabindex="-1" data-content-filter="clipboard">
+                                    <span data-icon="copy"></span><span>Clipboard</span><span class="deck-type-count" data-content-count="clipboard">0</span>
+                                </button>
+                                <button class="deck-type-tab" type="button" role="tab" aria-selected="false" aria-controls="hist-list" tabindex="-1" data-content-filter="prompts">
+                                    <span data-icon="wand"></span><span>Prompts</span><span class="deck-type-count" data-content-count="prompts">0</span>
+                                </button>
+                                <button class="deck-type-tab" type="button" role="tab" aria-selected="false" aria-controls="hist-list" tabindex="-1" data-content-filter="emails">
+                                    <span data-icon="envelope"></span><span>Emails</span><span class="deck-type-count" data-content-count="emails">0</span>
+                                </button>
+                            </div>
+                            <button
+                                class="deck-starred-toggle btn btn-sm btn-ghost"
+                                id="hist-starred-toggle"
+                                type="button"
+                                aria-pressed="false"
+                                title="Show only starred items in this content type"
+                            >
+                                <span data-icon="star"></span><span>Starred</span><span class="deck-type-count" id="hist-starred-count">0</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap8">
+                    <div class="deck-toolbar-actions flex items-center gap8 wrap justify-center" id="deck-toolbar-actions">
+                        <div class="deck-primary-actions">
                         <button
                             class="btn btn-sm"
                             id="hist-paste-latest"
-                            title="Paste your most recent transcript into the app you came from (same as the paste-latest hotkey)"
+                            title="Paste the newest item in this content type into the app you came from"
                         >
-                            <span data-icon="type"></span>Paste latest
+                            <span data-icon="type"></span><span id="hist-paste-latest-label">Paste latest</span>
                         </button>
                         <button
                             class="btn btn-sm btn-ghost"
                             id="hist-copy-latest"
-                            title="Copy your most recent transcript to the clipboard"
+                            title="Copy the newest item in this content type"
                         >
-                            <span data-icon="copy"></span>Copy latest
+                            <span data-icon="copy"></span><span id="hist-copy-latest-label">Copy latest</span>
                         </button>
                         <button
                             class="btn btn-sm btn-ghost"
@@ -626,20 +697,32 @@
                         >
                             <span data-icon="layers"></span>Capture chat
                         </button>
-                        <button
-                            class="btn btn-sm btn-ghost"
-                            id="hist-search"
-                            title="Convert selected text into a web search — or start a voice search if nothing is selected"
-                        >
-                            <span data-icon="search"></span>Search
-                        </button>
+                        </div>
                         <button
                             class="btn btn-sm btn-ghost"
                             id="hist-pin"
-                            title="Pin the Deck on top as a floating palette — it stays put and never steals focus, so clicking it (or text elsewhere) never loses your place. Click the search box to type; it wakes for you, then re-pins."
+                            title="Pin the Deck on top as a floating palette"
                         >
-                            <span data-icon="pin"></span
-                            ><span id="hist-pin-label">Pin</span>
+                            <span data-icon="pin"></span><span id="hist-pin-label">Pin</span>
+                        </button>
+                        <button
+                            class="btn btn-sm btn-ghost deck-more-toggle"
+                            id="deck-more-toggle"
+                            type="button"
+                            aria-expanded="false"
+                            aria-controls="deck-secondary-actions"
+                        >
+                            <span data-icon="layers"></span><span id="deck-more-label">More</span>
+                        </button>
+                        <div class="deck-secondary-actions" id="deck-secondary-actions" hidden>
+                        <button
+                            class="btn btn-sm btn-ghost"
+                            id="hist-mumble-find"
+                            type="button"
+                            data-open-system-search
+                            title="Open private Mumble Find for apps and files"
+                        >
+                            <span data-icon="search"></span>Mumble Find
                         </button>
                         <button
                             class="btn btn-sm btn-ghost"
@@ -650,6 +733,13 @@
                         </button>
                         <button
                             class="btn btn-sm btn-ghost"
+                            id="hist-keyboard"
+                            title="Focus the Deck for keyboard navigation. Arrow through content types and items; press Space or Enter to select."
+                        >
+                            <span data-icon="type"></span>Keyboard
+                        </button>
+                        <button
+                            class="btn btn-sm btn-ghost"
                             id="hist-prepost"
                             data-mode="post"
                         >
@@ -657,11 +747,11 @@
                             ><span id="prepost-label">Showing: Post-AI</span>
                         </button>
                         <button class="btn btn-sm btn-danger" id="hist-clear">
-                            <span data-icon="trash"></span><span id="hist-clear-label">Clear current</span>
+                            <span data-icon="trash"></span><span id="hist-clear-label">Clear this type</span>
                         </button>
+                        </div>
                     </div>
-                </div>
-                <div class="flex items-center gap12">
+                <div class="deck-search-row flex items-center gap12">
                     <div class="flex-1 relative">
                         <span
                             style="
@@ -679,7 +769,9 @@
                         <input
                             class="input selectable"
                             id="hist-filter"
-                            placeholder="Filter this tab…"
+                            type="search"
+                            placeholder="Search all Deck content…"
+                            aria-label="Search all Deck content"
                             style="padding-left: 34px"
                         />
                     </div>
@@ -695,91 +787,72 @@
                         <option value="words_all">Most words (all time)</option>
                     </select>
                 </div>
+                    </div>
+
+                    <div
+                        class="deck-command-state deck-command-selection hist-actionbar"
+                        id="hist-actionbar"
+                        data-deck-state="selection"
+                        role="region"
+                        aria-label="Actions for selected Deck items"
+                        hidden
+                    >
+                        <div class="hist-selection-summary">
+                            <span class="hist-selection-mark" data-icon="check"></span>
+                            <div>
+                                <span class="t-primary fs12 fw6" id="hist-sel-info" aria-live="polite">0 selected</span>
+                                <span class="t-mute fs10" id="hist-action-hint">Actions follow selection order</span>
+                            </div>
+                        </div>
+                        <div class="deck-selection-controls">
+                            <button class="btn btn-sm btn-ghost" id="hist-mode-toggle" type="button" aria-label="Smart Mode" aria-expanded="false" aria-controls="hist-mode-menu">
+                                <span data-icon="wand"></span><span id="hist-mode-label">Smart Mode</span>
+                            </button>
+                            <button class="btn btn-sm btn-ghost" id="hist-preset-toggle" type="button" aria-label="Preset" aria-expanded="false" aria-controls="hist-preset-menu">
+                                <span data-icon="sparkle"></span><span id="hist-preset-label">Preset</span>
+                            </button>
+                            <button class="btn btn-sm btn-gold" id="hist-run" aria-label="Run shaping">
+                                <span data-icon="arrowRight"></span><span id="hist-run-label">Run shaping</span>
+                            </button>
+                            <button class="btn btn-sm btn-ghost" id="hist-web-search" aria-label="Search the web">
+                                <span data-icon="search"></span>Search the web
+                            </button>
+                            <button class="btn btn-sm btn-ghost" id="deck-selection-more-toggle" type="button" aria-expanded="false" aria-controls="deck-selection-more">
+                                <span data-icon="layers"></span>More
+                            </button>
+                            <button class="btn btn-sm btn-ghost" id="hist-clear-sel">Clear selection</button>
+                        </div>
+                        <div class="deck-shaping-catalogues">
+                            <section class="deck-shaping-menu" id="hist-mode-menu" aria-label="Smart Mode catalogue" hidden>
+                                <div class="deck-shaping-heading"><span data-icon="wand"></span><strong>Smart Mode</strong><span>Choose the output shape</span></div>
+                                <div class="htb-body" id="hist-runmodes"></div>
+                            </section>
+                            <section class="deck-shaping-menu" id="hist-preset-menu" aria-label="Preset catalogue" hidden>
+                                <div class="deck-shaping-heading"><span data-icon="sparkle"></span><strong>Preset</strong><span>Choose what shaping should do</span></div>
+                                <div class="htb-body" id="hist-runpresets"></div>
+                            </section>
+                            <div class="deck-selection-more" id="deck-selection-more" hidden>
+                                <button class="btn btn-sm" id="hist-merge-copy"><span data-icon="copy"></span><span id="hist-mc-label">Merge &amp; Copy</span></button>
+                                <button class="btn btn-sm" id="hist-merge-paste"><span data-icon="type"></span><span id="hist-mp-label">Merge &amp; Paste</span></button>
+                            </div>
+                        </div>
+                    </div>
                 </div><!-- /deck-toolbar -->
 
-                <!-- HISTORY HUB (owner v4): Smart Mode + Presets sections live here in
-         History now — tick entries below, pick a Smart Mode and/or a Preset, then
-         Run / Merge. One unified place. -->
-                <!-- Smart Mode + Presets are ONE cohesive, always-open widget
-                     (v0.9): the old collapsible nesting saved no real space and
-                     added clicks. Both now sit in a single gold-accented card,
-                     permanently visible, with a clear divider between them. -->
-                <div class="hist-toolbox">
-                    <div class="htb-merged card">
-                        <div class="htb-group">
-                            <div class="htb-grouphead">
-                                <span class="htb-ic" data-icon="wand"></span
-                                ><span class="htb-title">Smart Mode</span
-                                ><span class="htb-sub"
-                                    >the shape of the output</span
-                                >
-                            </div>
-                            <div class="htb-body" id="hist-runmodes"></div>
-                        </div>
-                        <div class="htb-sep"></div>
-                        <div class="htb-group">
-                            <div class="htb-grouphead">
-                                <span class="htb-ic" data-icon="sparkle"></span
-                                ><span class="htb-title">Presets</span
-                                ><span class="htb-sub"
-                                    >what the AI should do</span
-                                >
-                            </div>
-                            <div class="htb-body" id="hist-runpresets"></div>
-                        </div>
-                        <p
-                            class="help text-center"
-                            style="font-size: 11px; margin: 2px 0 0"
-                        >
-                            Tip: arm a Smart Mode or Preset, then
-                            <span class="t-dim"
-                                >hover any item and press Ctrl + H</span
-                            >
-                            to run it on that item — hovering counts as selecting
-                            it.
-                        </p>
-                    </div>
-                </div>
-
+                <section class="deck-workspace mumble-surface mumble-surface--workspace" aria-label="Shape and browse Deck items">
                 <div
                     class="flex items-center gap6 wrap"
                     id="hist-modechips"
                     hidden
                 ></div>
 
-                <!-- selection / merge action bar — appears when ≥1 entry is ticked. Entries
-         are numbered in the order you select them; Merge concatenates them in that
-         order (owner v4 §6b). -->
-                <div class="hist-actionbar" id="hist-actionbar" hidden>
-                    <span class="t-dim fs12" id="hist-sel-info"
-                        >0 selected</span
-                    >
-                    <div class="flex items-center gap8 wrap justify-center">
-                        <button class="btn btn-sm" id="hist-merge-copy">
-                            <span data-icon="copy"></span
-                            ><span id="hist-mc-label">Merge &amp; Copy</span>
-                        </button>
-                        <button class="btn btn-sm" id="hist-merge-paste">
-                            <span data-icon="type"></span
-                            ><span id="hist-mp-label">Merge &amp; Paste</span>
-                        </button>
-                        <button class="btn btn-sm btn-gold" id="hist-run">
-                            <span data-icon="arrowRight"></span
-                            ><span id="hist-run-label">Run on selection</span>
-                        </button>
-                        <button
-                            class="btn btn-sm btn-ghost"
-                            id="hist-clear-sel"
-                        >
-                            Clear
-                        </button>
-                    </div>
-                </div>
-
                 <div
                     class="flex col gap8 scroll-y"
                     id="hist-list"
                     style="flex: 1"
+                    role="region"
+                    aria-label="Deck items"
+                    aria-live="polite"
                 ></div>
                 <div
                     class="flex items-center gap6 t-mute fs11"
@@ -789,135 +862,165 @@
                         data-icon="shield"
                         style="width: 12px; height: 12px; display: inline-flex"
                     ></span
-                    >Capture is automatic and entirely local. Starred items
-                    survive clearing. Tick entries to merge or run a preset/mode
-                    over them; click an entry to expand it.
+                    >Clipboard capture is automatic and entirely local. Starred
+                    items survive clearing. Click a row or use its checkbox to
+                    select it; use the expand button to read long items in full.
                 </div>
+                </section>
             </div>
 
             <!-- ===================== STATS ===================== -->
-            <div class="view" data-view="stats" hidden>
-                <header class="view-intro view-intro-compact">
-                    <span class="section-kicker"><span data-icon="chart"></span>Your momentum</span>
-                    <h1>Stats</h1>
-                    <p>A clear view of what you dictate, when you work, and the habits you are building.</p>
-                </header>
-                <!-- Reset stats moved to Settings (owner) — it doesn't belong on
-                     the Stats dashboard. -->
-                <div
-                    class="tiles"
-                    id="stat-tiles"
-                ></div>
-
-                <div class="card pad">
-                    <div class="flex items-center justify-between mb12 wrap gap8">
-                        <div class="flex items-center gap8">
-                            <div class="icon-tile"><span data-icon="chart"></span></div>
-                            <h3 class="fs13 fw6">Words per day</h3>
-                        </div>
-                        <div class="flex items-center gap10">
-                            <span class="t-mute fs11" id="chart-max"></span>
-                            <div class="segment" id="stat-range">
-                                <button data-r="7" class="active">7 days</button
-                                ><button data-r="30">30 days</button
-                                ><button data-r="90">90 days</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="chart" id="stat-chart"></div>
-                    <div class="chart-labels" id="chart-labels"></div>
+            <div class="view stats-view" data-view="stats" hidden
+                 aria-labelledby="stats-title" aria-busy="false">
+                <h1 id="stats-title" class="sr-only">Stats</h1>
+                <p class="stats-refresh-status" id="stats-refresh-status"
+                   role="status" aria-live="polite" hidden></p>
+                <div class="stats-context" aria-label="Statistics period and definitions">
+                    <p class="stats-data-period" id="stats-data-period">
+                        Waiting for a complete saved snapshot.
+                    </p>
+                    <p class="stats-definitions" id="stats-definitions">
+                        Output words are final words from dictation. An active day has at least one dictation.
+                        WPM is measured from plain Text samples. Hours saved is an estimate at 45 WPM.
+                    </p>
                 </div>
 
-                <!-- Reading | Activity — HALVED side by side (owner, repeatedly
-                     requested) so they share one row instead of two stacked bands. -->
-                <div class="grid g2 gap16">
-                    <div class="card pad">
-                        <div class="flex items-center gap8 mb16">
-                            <div class="icon-tile"><span data-icon="book"></span></div>
-                            <h3 class="fs13 fw6">Reading</h3>
-                            <span class="t-mute fs11 ml-auto" id="reader-streak-label">your Reader activity</span>
+                <section class="stats-snapshot" aria-label="Mumble activity snapshot">
+                    <div class="tiles" id="stat-tiles"></div>
+                </section>
+
+                <figure class="card pad stats-figure" aria-labelledby="words-day-title">
+                    <div class="stats-card-heading">
+                        <div class="flex items-center gap8">
+                            <div class="icon-tile"><span data-icon="chart"></span></div>
+                            <h2 id="words-day-title">Output words per day</h2>
                         </div>
-                        <div class="tiles reader-tiles" id="reader-stat-tiles"></div>
-                        <p class="help mt8 text-center fs10" id="reader-stats-help">
-                            Reading stats are tracked independently from dictation.
-                        </p>
+                        <div class="flex items-center gap10 wrap justify-center">
+                            <span class="t-mute fs11" id="chart-max"></span>
+                            <div class="segment" id="stat-range" role="group"
+                                 aria-label="Daily chart range" aria-controls="stat-chart stat-table">
+                                <button type="button" data-r="7" class="active" aria-pressed="true">7 days</button
+                                ><button type="button" data-r="30" aria-pressed="false">30 days</button
+                                ><button type="button" data-r="90" aria-pressed="false">90 days</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="card pad">
-                        <div class="flex items-center justify-between mb12 wrap gap8">
+                    <div class="chart" id="stat-chart" role="img" aria-describedby="chart-summary"></div>
+                    <div class="chart-labels" id="chart-labels" aria-hidden="true"></div>
+                    <figcaption class="sr-only" id="chart-summary"></figcaption>
+                    <details class="chart-data">
+                        <summary>View daily values</summary>
+                        <div class="chart-table-wrap" id="stat-table"></div>
+                    </details>
+                </figure>
+
+                <section class="grid g2 gap16 stats-feature-grid" aria-label="Reader and Meetings activity">
+                    <article class="card pad activity-card" aria-labelledby="reader-activity-title">
+                        <div class="stats-card-heading">
+                            <div class="flex items-center gap8">
+                                <div class="icon-tile"><span data-icon="book"></span></div>
+                                <h2 id="reader-activity-title">Reader listening</h2>
+                            </div>
+                            <span class="t-mute fs11" id="reader-streak-label">Tracked playback</span>
+                        </div>
+                        <div class="activity-metrics" id="reader-stat-tiles"></div>
+                        <p class="activity-state" id="reader-activity-state" role="status"></p>
+                        <p class="help mt10 text-center fs10" id="reader-stats-help">
+                            Reader activity is separate from dictation totals.
+                        </p>
+                    </article>
+                    <article class="card pad activity-card" aria-labelledby="meeting-activity-title">
+                        <div class="stats-card-heading">
+                            <div class="flex items-center gap8">
+                                <div class="icon-tile"><span data-icon="mic"></span></div>
+                                <h2 id="meeting-activity-title">Saved Meetings</h2>
+                            </div>
+                            <span class="t-mute fs11">Current library</span>
+                        </div>
+                        <div class="activity-metrics" id="meeting-stat-tiles"></div>
+                        <p class="activity-state" id="meeting-activity-state" role="status"></p>
+                        <p class="help mt10 text-center fs10" id="meeting-stats-help">
+                            Counts include recorded and imported audio that is still saved.
+                        </p>
+                    </article>
+                </section>
+
+                <figure class="card pad stats-figure" aria-labelledby="mode-mix-title">
+                    <div class="stats-card-heading">
+                        <div class="flex items-center gap8">
+                            <div class="icon-tile"><span data-icon="sliders"></span></div>
+                            <h2 id="mode-mix-title">Dictation mode mix</h2>
+                        </div>
+                        <span class="t-mute fs11">all tracked · count · output words · share</span>
+                    </div>
+                    <div class="modebars" id="mode-breakdown" role="list"></div>
+                </figure>
+
+                <section class="grid g3 gap16" id="insight-row" aria-labelledby="trend-title">
+                    <h2 class="sr-only" id="trend-title">Dictation trends</h2>
+                    <article class="card pad text-center flex col items-center justify-center">
+                        <h2 class="t-mute fs11 uppercase mb6">Last 7 days</h2>
+                        <div class="fs24 fw7" id="ins-trend">—</div>
+                        <p class="t-mute fs11 mt6 lh15" id="ins-trend-sub">vs the previous 7 days</p>
+                    </article>
+                    <article class="card pad text-center flex col items-center justify-center">
+                        <h2 class="t-mute fs11 uppercase mb6">Last 30 days</h2>
+                        <div class="fs24 fw7" id="ins-month">—</div>
+                        <p class="t-mute fs11 mt6 lh15" id="ins-month-sub">vs the previous 30 days</p>
+                    </article>
+                    <figure class="card pad">
+                        <div class="flex items-center justify-between mb8">
+                            <h2 class="t-mute fs11 uppercase">Weekday rhythm</h2
+                            ><span class="t-gold fs11 fw6" id="ins-peakday"></span>
+                        </div>
+                        <div class="weekday-chart" id="weekday-chart" role="img"
+                             aria-describedby="weekday-summary"></div>
+                        <figcaption class="sr-only" id="weekday-summary"></figcaption>
+                    </figure>
+                </section>
+
+                <section class="grid g2 gap16 stats-rhythm-grid" aria-label="Dictation rhythms">
+                    <figure class="card pad stats-figure" aria-labelledby="activity-title">
+                        <div class="stats-card-heading">
                             <div class="flex items-center gap8">
                                 <div class="icon-tile"><span data-icon="bolt"></span></div>
-                                <h3 class="fs13 fw6">Activity</h3>
-                                <span class="t-mute fs11">13 wks</span>
+                                <h2 id="activity-title">Dictation activity</h2>
                             </div>
-                            <div class="flex items-center gap6 t-mute fs10">
-                                Less
-                                <span class="hm-cell" style="background: var(--track)"></span>
-                                <span class="hm-cell hm1"></span
-                                ><span class="hm-cell hm2"></span
-                                ><span class="hm-cell hm3"></span
-                                ><span class="hm-cell hm4"></span> More
-                            </div>
+                            <span class="t-mute fs11">Last 13 weeks</span>
+                        </div>
+                        <div class="heatmap-legend" aria-hidden="true">
+                            Less <span class="hm-cell"></span><span class="hm-cell hm1"></span
+                            ><span class="hm-cell hm2"></span><span class="hm-cell hm3"></span
+                            ><span class="hm-cell hm4"></span> More
                         </div>
                         <div class="activity-split">
-                            <div class="heatmap" id="heatmap"></div>
+                            <div class="heatmap" id="heatmap" aria-hidden="true"></div>
                             <div class="act-insights">
                                 <div class="act-row"><span class="t-mute fs11">Busiest day</span><span class="fs12 fw6 t-gold" id="act-busiest">—</span></div>
                                 <div class="act-row"><span class="t-mute fs11">Active days</span><span class="fs12 fw6" id="act-active">—</span></div>
                                 <div class="act-row"><span class="t-mute fs11">Avg / active day</span><span class="fs12 fw6" id="act-avg">—</span></div>
-                                <div class="act-row"><span class="t-mute fs11">Time speaking</span><span class="fs12 fw6" id="act-minutes">—</span></div>
-                                <div class="act-row"><span class="t-mute fs11">Speaking pace</span><span class="fs12 fw6" id="act-pace">—</span></div>
+                                <div class="act-row"><span class="t-mute fs11">Output words</span><span class="fs12 fw6" id="act-words">—</span></div>
                             </div>
                         </div>
-                    </div>
-                </div>
+                        <figcaption class="sr-only" id="heatmap-summary"></figcaption>
+                    </figure>
 
-                <!-- Smart Mode breakdown now spans the full width — its row-mate
-                     ("When you dictate") moved to the bottom of the page (owner). -->
-                <div class="card pad">
-                    <div class="flex items-center gap8 mb16">
-                        <div class="icon-tile"><span data-icon="sliders"></span></div>
-                        <h3 class="fs13 fw6">Smart Mode breakdown</h3>
-                        <span class="t-mute fs11 ml-auto">dictations · words</span>
-                    </div>
-                    <div class="modebars" id="mode-breakdown"></div>
-                </div>
-
-                <!-- Growth + weekly rhythm — every number from real history -->
-                <div class="grid g3 gap16" id="insight-row">
-                    <div class="card pad text-center flex col items-center justify-center">
-                        <span class="t-mute fs11 uppercase mb6">This week</span>
-                        <div class="fs24 fw7" id="ins-trend">—</div>
-                        <p class="t-mute fs11 mt6 lh15" id="ins-trend-sub">vs the previous 7 days</p>
-                    </div>
-                    <div class="card pad text-center flex col items-center justify-center">
-                        <span class="t-mute fs11 uppercase mb6">This month</span>
-                        <div class="fs24 fw7" id="ins-month">—</div>
-                        <p class="t-mute fs11 mt6 lh15" id="ins-month-sub">vs the previous 30 days</p>
-                    </div>
-                    <div class="card pad">
-                        <div class="flex items-center justify-between mb8">
-                            <span class="t-mute fs11 uppercase">Weekly rhythm</span
-                            ><span class="t-gold fs11 fw6" id="ins-peakday"></span>
+                    <figure class="card pad stats-figure tod-card" aria-labelledby="tod-title"
+                            aria-describedby="tod-summary">
+                        <div class="stats-card-heading">
+                            <div class="flex items-center gap8">
+                                <div class="icon-tile"><span data-icon="clock"></span></div>
+                                <h2 id="tod-title">When you dictate</h2>
+                            </div>
+                            <span class="t-mute fs11" id="tod-peak">All tracked</span>
                         </div>
-                        <div class="weekday-chart" id="weekday-chart"></div>
-                    </div>
-                </div>
-
-                <!-- "When you dictate" lives at the very bottom of the Stats page
-                     (owner) so it sits below every other stat and never pushes
-                     them up. -->
-                <div class="card pad text-center">
-                    <div class="flex items-center justify-center gap8 mb16">
-                        <div class="icon-tile"><span data-icon="clock"></span></div>
-                        <h3 class="fs13 fw6">When you dictate</h3>
-                        <span class="t-mute fs11" id="tod-peak">—</span>
-                    </div>
-                    <div class="tod-chart" id="tod-chart"></div>
-                    <p class="t-mute fs11 mt10 lh15 text-center" id="tod-note">
-                        Your dictation rhythm across the day.
-                    </p>
-                </div>
-
+                        <div class="tod-chart" id="tod-chart" aria-hidden="true"></div>
+                        <p class="sr-only" id="tod-summary"></p>
+                        <figcaption class="t-mute fs11 mt10 lh15 text-center" id="tod-note">
+                            Output words grouped by the hour each dictation began.
+                        </figcaption>
+                    </figure>
+                </section>
             </div>
 
             <!-- ===================== READER ===================== -->
@@ -925,17 +1028,13 @@
                  through OpenRouter text-to-speech models (AI voices) — no system
                  voices. Keeps a library of opened documents and resumes where you
                  left off. Word-level highlighting synced to the audio. -->
-            <div class="view" data-view="reader" hidden>
-                <header class="view-intro view-intro-compact">
-                    <span class="section-kicker"><span data-icon="book"></span>Listen your way</span>
-                    <h1>Reader</h1>
-                    <p>Turn documents into a focused listening experience, with your library and progress in one calm place.</p>
-                </header>
+            <div class="view" data-view="reader" aria-labelledby="reader-page-title" hidden>
+                <h1 id="reader-page-title" class="sr-only">Reader</h1>
 
                 <!-- NO-KEY notice: the Reader is strictly OpenRouter TTS. The key
                      can be pasted right here (it's the same openrouter_api_key the
                      Settings → AI Provider → OpenRouter field saves). -->
-                <div class="card pad" id="reader-nokey" hidden>
+                <div class="card pad mumble-surface mumble-surface--primary" id="reader-nokey" hidden>
                     <div class="flex col items-center text-center gap8">
                         <div class="icon-tile"><span data-icon="volume"></span></div>
                         <h3 class="fs13 fw6">Add an OpenRouter key for AI voices</h3>
@@ -963,19 +1062,19 @@
                     </div>
                 </div>
 
-                <div class="card pad" id="reader-card">
+                <div class="card pad mumble-surface mumble-surface--workspace" id="reader-card">
                     <!-- VOICE SETTINGS: always visible so the picker works before
                          opening a document. The model+voice controls live HERE;
                          the player bar below keeps playback controls (speed,
                          font, bookmark, etc.) but no longer duplicates voice.
                          Selecting a voice here changes it on the next play. -->
-                    <div id="reader-voice-settings" class="reader-voice-card">
+                    <div id="reader-voice-settings" class="reader-voice-card mumble-subpanel mumble-subpanel--primary">
                         <div class="flex items-center gap8 mb8">
                             <div class="icon-tile"><span data-icon="volume"></span></div>
-                            <h3 class="fs13 fw6">AI voice</h3>
+                            <h2 class="fs13 fw6" id="reader-voice-title">Reading voice</h2>
                             <span class="t-mute fs11 ml-auto" id="reader-voice-count"></span>
                         </div>
-                        <div class="flex items-center gap10 wrap">
+                        <div class="reader-voice-primary flex items-center gap10 wrap" id="reader-voice-primary">
                             <div class="field" style="margin: 0; min-width: 140px">
                                 <label class="label" for="reader-provider">Provider</label>
                                 <select class="select" id="reader-provider"
@@ -1013,10 +1112,14 @@
                             <span class="tag tag-quality fs10" hidden></span>
                             <span class="tag tag-persona fs10" hidden></span>
                         </div>
+                        <details class="reader-voice-technical" id="reader-voice-technical">
+                            <summary>Voice service details <span>Provider and model</span></summary>
+                            <div class="reader-voice-technical-fields flex items-center gap10 wrap"></div>
+                        </details>
                     </div>
                     <div id="reader-main">
                     <!-- LIBRARY: previously opened documents + resume -->
-                    <div id="reader-library" role="region" aria-label="Reader library">
+                    <div id="reader-library" class="reader-section" role="region" aria-label="Reader library">
                         <div class="flex items-center gap8 mb8">
                             <div class="icon-tile"><span data-icon="book"></span></div>
                             <h2 class="fs13 fw6" style="font-size:13px;font-weight:600;margin:0">Your library</h2>
@@ -1068,7 +1171,7 @@
                     </div>
 
                     <!-- INPUT: paste text or open a file → add to library -->
-                    <div id="reader-input" class="mt12">
+                    <div id="reader-input" class="reader-section mt12">
                         <div class="flex items-center gap8 mb8">
                             <div class="icon-tile"><span data-icon="plus"></span></div>
                             <h3 class="fs13 fw6">New document</h3>
@@ -1139,20 +1242,41 @@
                                 <span data-icon="sparkle" aria-hidden="true"></span>Summary
                             </button>
                         </div>
+                        <div class="reader-find" id="reader-find" role="search">
+                            <span data-icon="search" aria-hidden="true"></span>
+                            <input class="input selectable" id="reader-find-input"
+                                   type="search" autocomplete="off" spellcheck="false"
+                                   placeholder="Find in document…" aria-label="Find in document" />
+                            <span class="t-mute fs11" id="reader-find-count" aria-live="polite"></span>
+                            <button class="btn-icon btn-ghost" id="reader-find-prev"
+                                    title="Previous match" aria-label="Previous match">
+                                <span data-icon="chevronDown" style="transform:rotate(180deg)" aria-hidden="true"></span>
+                            </button>
+                            <button class="btn-icon btn-ghost" id="reader-find-next"
+                                    title="Next match" aria-label="Next match">
+                                <span data-icon="chevronDown" aria-hidden="true"></span>
+                            </button>
+                            <button class="btn-icon btn-ghost" id="reader-find-clear"
+                                    title="Close find" aria-label="Close find in document and return to reading">
+                                <span data-icon="x" aria-hidden="true"></span>
+                            </button>
+                        </div>
                         <div class="reader-bm-list" id="reader-bm-list" hidden></div>
-                        <div class="reader-summary" id="reader-summary" hidden>
+                        <div class="reader-summary" id="reader-summary" role="region"
+                             aria-labelledby="reader-summary-title" hidden>
                             <div class="reader-summary-head">
                                 <span data-icon="sparkle"></span>
-                                <span class="fs12 fw6">AI summary</span>
+                                <span class="fs12 fw6" id="reader-summary-title">AI summary</span>
                                 <button class="btn btn-sm btn-gold ml-auto" id="reader-summary-read">
                                     <span data-icon="volume"></span>Read summary
                                 </button>
                                 <button class="btn-icon btn-ghost" id="reader-summary-close"
-                                        title="Close summary" aria-label="Close">
+                                        title="Close summary" aria-label="Close summary and return to Reader controls">
                                     <span data-icon="x"></span>
                                 </button>
                             </div>
-                            <div class="reader-summary-text selectable" id="reader-summary-text"></div>
+                            <div class="reader-summary-text selectable" id="reader-summary-text"
+                                 role="status" aria-live="polite"></div>
                         </div>
                         <div class="reader-pane selectable" id="reader-pane" role="region" aria-label="Document content" tabindex="0"></div>
                         <p class="help mt8" id="reader-status"></p>
@@ -1163,50 +1287,91 @@
             </div>
 
             <!-- ===================== MEETINGS ===================== -->
-            <!-- Meetings: record/import a conversation, transcribe it locally, label
-                 speakers, and (with an AI key) summarise + extract action items,
+            <!-- Meetings: record/import a conversation, transcribe it through the
+                 selected Local or Cloud route, label speakers, and (with an AI key) summarise + extract action items,
                  key decisions, and open questions. Wired to the meeting_* Api bridge
                  (meeting.py / meeting_store.py). -->
             <div class="view" data-view="meetings" hidden>
-                <header class="view-intro view-intro-compact">
-                    <span class="section-kicker"><span data-icon="mic"></span>From conversation to clarity</span>
-                    <h1>Meetings</h1>
-                    <p>Record or import a conversation, then turn it into a transcript, summary, decisions, and next steps.</p>
-                </header>
-                <!-- ---- HEADER: action buttons + processing mode ---- -->
-                <div class="meetings-header">
-                    <div class="flex items-center gap8">
-                        <div class="icon-tile"><span data-icon="mic"></span></div>
-                        <div>
-                            <h3 class="fs13 fw6">Start a meeting</h3>
-                            <p class="t-mute fs11">Record room audio from your selected microphone, or import WAV, MP3, FLAC, or OGG call audio. Maximum length: 4 hours. Speaker labels are best-effort, especially for long or Cloud-mode recordings.</p>
+                <section class="meeting-instrument mumble-surface" id="meeting-instrument" data-phase="before" aria-labelledby="meeting-start-title">
+                <!-- ---- BEFORE: capture and import ---- -->
+                <div class="meetings-header meeting-start-panel meeting-phase" id="meeting-before">
+                    <div class="meeting-start-copy">
+                        <span class="meeting-step-label">Before the meeting</span>
+                        <h2 id="meeting-start-title">Start with a recording</h2>
+                        <p>Use your selected microphone for the room, or import WAV, MP3, FLAC, or OGG audio. Meetings can run for up to four hours, and you can keep using Mumble dictation while one records.</p>
+                        <div class="meeting-route" id="meeting-route-badge">
+                            <span class="meeting-route-dot" aria-hidden="true"></span>
+                            <span id="meeting-route-label">Checking transcription route…</span>
                         </div>
+                        <p class="meeting-route-copy" id="meeting-route-copy">Your recording is saved privately on this device.</p>
                     </div>
-                    <div class="flex items-end gap8">
-                        <div class="field" style="margin:0;min-width:130px">
-                            <label class="label" for="meeting-proc-mode">Processing</label>
-                            <select class="select" id="meeting-proc-mode" title="Processing mode">
-                                <option value="lightweight">Lightweight</option>
-                                <option value="deep">Deep</option>
-                            </select>
+                    <div class="meeting-start-actions">
+                        <button type="button" class="meeting-action-card meeting-action-primary" id="meeting-record" aria-label="Record meeting">
+                            <span class="meeting-action-icon"><span data-icon="circle"></span></span>
+                            <span><span class="meeting-action-kicker">Live conversation</span><strong id="meeting-record-label">Record meeting</strong><small>Capture from the selected microphone</small></span>
+                            <span class="meeting-action-arrow" data-icon="arrowRight" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" class="meeting-action-card" id="meeting-import">
+                            <span class="meeting-action-icon"><span data-icon="folder"></span></span>
+                            <span><span class="meeting-action-kicker">Already recorded</span><strong>Import audio</strong><small>Bring a call or voice recording</small></span>
+                            <span class="meeting-action-arrow" data-icon="arrowRight" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                    <ol class="meeting-flow" aria-label="Meeting workflow">
+                        <li><span>1</span><strong>Capture</strong><small>Private audio is saved first</small></li>
+                        <li><span>2</span><strong>Transcribe</strong><small>Your Local or Cloud route</small></li>
+                        <li><span>3</span><strong>Review</strong><small>Search, label, and export</small></li>
+                    </ol>
+                </div>
+
+                <!-- ---- DURING: authoritative recording state ---- -->
+                <div class="meeting-live-panel meeting-phase" id="meeting-recording" data-state="recording" hidden>
+                    <div class="meeting-live-copy">
+                        <span class="meeting-step-label">During the meeting</span>
+                        <div class="meeting-live-title">
+                            <span class="meeting-live-dot" aria-hidden="true"></span>
+                            <div class="meeting-live-state" role="status" aria-live="polite" aria-atomic="true"><h2 id="meeting-rec-state">Recording</h2><p id="meeting-rec-state-copy">Listening through your selected microphone</p></div>
                         </div>
-                        <button class="btn btn-gold btn-sm" id="meeting-record"><span data-icon="circle"></span><span id="meeting-record-label">Record meeting</span></button>
-                        <button class="btn btn-ghost btn-sm" id="meeting-import"><span data-icon="folder"></span>Import audio</button>
+                        <p class="meeting-live-truth">Audio is being written to a private local WAV as you speak. You can still use the dictation hotkey; meeting transcription starts after you stop.</p>
+                    </div>
+                    <div class="meeting-live-meter" aria-label="Captured meeting duration">
+                        <strong id="meeting-rec-timer">0:00</strong>
+                        <span class="meeting-input-level" id="meeting-input-level" role="meter" aria-label="Microphone input level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="meeting-level-fill"></i></span>
+                        <small id="meeting-level-label">Input level 0%</small>
+                    </div>
+                    <div class="meeting-live-actions">
+                        <button type="button" class="btn btn-sm" id="meeting-pause"><span data-icon="pause"></span><span id="meeting-pause-label">Pause</span></button>
+                        <button type="button" class="btn btn-sm btn-gold" id="meeting-stop"><span data-icon="stop"></span><span id="meeting-stop-label">Stop &amp; save</span></button>
                     </div>
                 </div>
 
-                <!-- ---- RECORDING indicator ---- -->
-                <div class="card pad text-center" id="meeting-recording" hidden>
-                    <div class="flex items-center justify-center gap8">
-                        <span class="dot pulse-dot" style="background:var(--red)"></span>
-                        <span class="fw6">Recording…</span>
-                        <span class="t-mute fs12" id="meeting-rec-timer">0:00</span>
-                    </div>
-                    <p class="help mt8">Audio is saved locally while recording. Transcription follows your selected Local or Cloud mode. Mumble stops and saves automatically at the 4-hour maximum.</p>
-                    <div class="flex items-center justify-center gap8 mt8">
-                        <button class="btn btn-sm" id="meeting-pause"><span data-icon="pause"></span><span id="meeting-pause-label">Pause</span></button>
-                        <button class="btn btn-sm btn-gold" id="meeting-stop"><span data-icon="stop"></span>Stop &amp; save</button>
-                    </div>
+                <dl class="meeting-context-ledger" id="meeting-context-ledger" aria-label="Meeting context">
+                    <div data-context="microphone"><dt>Microphone</dt><dd id="meeting-context-microphone">Checking selected microphone…</dd></div>
+                    <div data-context="saved-location"><dt>Saved location</dt><dd id="meeting-context-saved-location">Private Mumble meeting library</dd></div>
+                    <div data-context="transcription"><dt>Transcription</dt><dd id="meeting-context-transcription">Checking effective route…</dd></div>
+                    <div data-context="analysis"><dt>Analysis, if chosen</dt><dd id="meeting-context-analysis">Checking effective route…</dd></div>
+                </dl>
+
+                <!-- ---- AFTER: local meeting library ---- -->
+                <div class="meeting-library-shell meeting-phase" id="meeting-after" aria-labelledby="meeting-library-title">
+                <div class="meeting-library-head">
+                    <div><span class="meeting-step-label">After the meeting</span><h2 id="meeting-library-title" tabindex="-1">Your meeting library</h2><p>Find the conversation, then review its transcript and outcomes.</p></div>
+                    <span class="meeting-library-total" id="meetings-total" aria-hidden="true">0</span>
+                </div>
+
+                <div class="meetings-filter" id="meetings-filter" role="search">
+                    <span data-icon="search" aria-hidden="true"></span>
+                    <input class="input selectable" id="meetings-search" type="search"
+                           autocomplete="off" spellcheck="false"
+                           placeholder="Search meeting titles and transcripts…"
+                           aria-label="Search meetings" />
+                    <span class="t-mute fs11" id="meetings-search-count" aria-live="polite"></span>
+                </div>
+
+                <div class="meeting-library-error" id="meetings-error" role="alert" hidden>
+                    <span data-icon="alert"></span>
+                    <div><strong>Meeting library unavailable</strong><p id="meetings-error-copy">Your recordings were left untouched.</p></div>
+                    <button type="button" class="btn btn-sm btn-ghost" id="meetings-retry">Try again</button>
                 </div>
 
                 <!-- ---- EMPTY state ---- -->
@@ -1220,33 +1385,38 @@
 
                 <!-- ---- MEETING LIST ---- -->
                 <div class="flex col gap8" id="meetings-list" role="list"></div>
+                </div>
 
                 <!-- ---- MEETING DETAIL ---- -->
-                <div class="card pad" id="meeting-detail" hidden>
+                <div class="card pad mumble-surface mumble-surface--workspace" id="meeting-detail" hidden>
+                    <span class="meeting-step-label">Meeting review</span>
                     <!-- Top toolbar row: title + meta + actions -->
                     <div class="meeting-detail-head">
                         <div class="meeting-detail-title-row">
-                            <input class="input selectable" id="meeting-title" placeholder="Meeting title…" />
-                            <button class="btn btn-icon meeting-star-detail" id="meeting-star-detail" title="Star this meeting"><span data-icon="star"></span></button>
-                            <button class="btn btn-icon btn-ghost meeting-del-detail" id="meeting-del-detail" title="Delete this meeting"><span data-icon="trash"></span></button>
+                            <input class="input selectable" id="meeting-title" aria-label="Meeting title" placeholder="Meeting title…" />
+                            <button type="button" class="btn btn-icon meeting-star-detail" id="meeting-star-detail" title="Star this meeting"><span data-icon="star"></span></button>
+                            <button type="button" class="btn btn-icon btn-ghost meeting-del-detail" id="meeting-del-detail" title="Delete this meeting"><span data-icon="trash"></span></button>
                         </div>
                         <div class="meeting-detail-meta" id="meeting-detail-meta">
                             <span class="t-mute fs11" id="meeting-meta-date"></span>
                             <span class="t-mute fs11" id="meeting-meta-duration"></span>
                             <span class="t-mute fs11" id="meeting-meta-speakers"></span>
                             <span class="t-mute fs11" id="meeting-meta-segments"></span>
+                            <span class="t-mute fs11" id="meeting-meta-route"></span>
                         </div>
                     </div>
 
+                    <div class="meeting-detail-status" id="meeting-detail-status" role="status" hidden></div>
+
                     <!-- AI toolbar: summarise, extract, processing actions -->
                     <div class="meeting-ai-toolbar">
-                        <button class="btn btn-sm btn-ghost" id="meeting-play"><span data-icon="volume"></span>Play recording</button>
-                        <button class="btn btn-sm btn-ghost" id="meeting-retry" hidden><span data-icon="refresh"></span>Retry transcription</button>
-                        <button class="btn btn-sm" id="meeting-summarize"><span data-icon="sparkle"></span>Summarise</button>
-                        <button class="btn btn-sm btn-ghost" id="meeting-actions"><span data-icon="check"></span>Action items</button>
-                        <button class="btn btn-sm btn-ghost" id="meeting-decisions"><span data-icon="star"></span>Key decisions</button>
-                        <button class="btn btn-sm btn-ghost" id="meeting-questions"><span data-icon="comment"></span>Open questions</button>
-                        <button class="btn btn-sm btn-gold" id="meeting-deep-process" title="Run deep processing: extract summary, actions, decisions &amp; questions in one AI call"><span data-icon="bolt"></span>Deep process</button>
+                        <button type="button" class="btn btn-sm btn-ghost" id="meeting-play"><span data-icon="volume"></span>Play recording</button>
+                        <button type="button" class="btn btn-sm btn-ghost" id="meeting-retry" hidden><span data-icon="refresh"></span>Retry transcription</button>
+                        <button type="button" class="btn btn-sm" id="meeting-summarize"><span data-icon="sparkle"></span>Summarise</button>
+                        <button type="button" class="btn btn-sm btn-ghost" id="meeting-actions"><span data-icon="check"></span>Action items</button>
+                        <button type="button" class="btn btn-sm btn-ghost" id="meeting-decisions"><span data-icon="star"></span>Key decisions</button>
+                        <button type="button" class="btn btn-sm btn-ghost" id="meeting-questions"><span data-icon="comment"></span>Open questions</button>
+                        <button type="button" class="btn btn-sm btn-gold" id="meeting-deep-process" title="Generate a summary, actions, decisions, and questions with your configured AI provider"><span data-icon="bolt"></span>Deep process</button>
                         <span class="meeting-toolbar-spacer"></span>
                         <div class="field" style="margin:0;min-width:120px">
                             <select class="select" id="meeting-export-fmt" title="Export format">
@@ -1257,9 +1427,10 @@
                                 <option value="clipboard">Clipboard</option>
                             </select>
                         </div>
-                        <button class="btn btn-sm btn-ghost" id="meeting-export"><span data-icon="download"></span>Export</button>
-                        <button class="btn btn-sm btn-ghost" id="meeting-back"><span data-icon="arrowRight" style="transform:rotate(180deg)"></span>Close</button>
+                        <button type="button" class="btn btn-sm btn-ghost" id="meeting-export"><span data-icon="download"></span>Export</button>
+                        <button type="button" class="btn btn-sm btn-ghost" id="meeting-back"><span data-icon="arrowRight" style="transform:rotate(180deg)"></span>Close</button>
                     </div>
+                    <p class="meeting-analysis-truth" id="meeting-analysis-truth"><span data-icon="shield"></span>AI actions send transcript text—not the original recording—to your configured AI provider only when you choose them.</p>
 
                     <!-- Summary section -->
                     <div id="meeting-summary" class="meeting-section" hidden>
@@ -1313,9 +1484,20 @@
                             <span class="fs12 fw6 uppercase" style="letter-spacing:0.04em">Transcript</span>
                             <span class="t-mute fs11 ml-auto" id="meeting-transcript-count"></span>
                         </div>
-                        <div id="meeting-transcript" class="meeting-transcript"></div>
+                        <div class="meeting-transcript-find" role="search">
+                            <span data-icon="search" aria-hidden="true"></span>
+                            <input class="input selectable" id="meeting-transcript-search"
+                                   type="search" autocomplete="off" spellcheck="false"
+                                   placeholder="Find in transcript…" aria-label="Find in transcript" />
+                            <button type="button" class="btn-icon btn-ghost" id="meeting-transcript-clear"
+                                    title="Clear transcript search" aria-label="Clear transcript search">
+                                <span data-icon="x" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                        <div id="meeting-transcript" class="meeting-transcript" role="region" aria-label="Meeting transcript" tabindex="0"></div>
                     </div>
                 </div>
+                </section>
             </div>
 
             <!-- ===================== SETTINGS ===================== -->
@@ -1324,7 +1506,7 @@
                 <header class="view-intro view-intro-compact">
                     <span class="section-kicker"><span data-icon="gear"></span>Make Mumble yours</span>
                     <h1>Settings</h1>
-                    <p>Configure the way Mumble listens, thinks, saves, and behaves — organised by what you want to change.</p>
+                    <p>Start with the plain-language choices. Technical tuning stays tucked away until you need it.</p>
                 </header>
 
                 <div class="settings-hydration" id="settings-hydration" role="status" aria-live="polite">
@@ -1334,59 +1516,77 @@
                     <button type="button" class="btn btn-sm" id="settings-hydration-retry" hidden>Try again</button>
                 </div>
 
-                <nav class="settings-index" role="tablist" aria-label="Settings categories">
-                    <button type="button" role="tab" aria-selected="true" data-settings-tab="general">Overview</button>
-                    <button type="button" role="tab" aria-selected="false" data-settings-tab="voice">Speech to text</button>
-                    <button type="button" role="tab" aria-selected="false" data-settings-tab="ai">Text shaping</button>
-                    <button type="button" role="tab" aria-selected="false" data-settings-tab="data">Deck &amp; data</button>
-                    <button type="button" role="tab" aria-selected="false" data-settings-tab="system">System</button>
+                <nav class="settings-index" aria-label="Settings sections">
+                    <button type="button" aria-pressed="true" data-settings-tab="general">Overview</button>
+                    <button type="button" aria-pressed="false" data-settings-tab="transcription">Speech to text</button>
+                    <button type="button" aria-pressed="false" data-settings-tab="processing">Text shaping</button>
+                    <button type="button" aria-pressed="false" data-settings-tab="data">Deck &amp; data</button>
+                    <button type="button" aria-pressed="false" data-settings-tab="system">System</button>
                 </nav>
 
                 <div class="settings-group-label" data-settings-category="general"><span>Essentials</span><small>Your current setup and everyday controls</small></div>
 
-                <!-- 1. Your Processing Setup — at-a-glance summary of current
-                     transcription mode, AI provider/Pro Mode, hardware accel,
-                     and loaded model. Always visible, no expanding required. -->
-                <div class="card pad" id="setup-summary" data-settings-always>
+                <div class="card pad settings-recovery" id="settings-recovery-notice"
+                     data-settings-category="general" role="status" aria-live="polite" hidden></div>
+
+                <!-- Two-stage route overview, shown once in context. -->
+                <div class="card pad" id="setup-summary" data-settings-category="general">
                     <div class="flex items-center gap8 mb10">
                         <div class="icon-tile">
                             <span data-icon="cpu"></span>
                         </div>
-                        <h3 class="fs13 fw6">Your Processing Setup</h3>
-                        <span class="t-mute fs11 ml-auto">at a glance</span>
+                        <h3 class="fs13 fw6">How your words are handled</h3>
+                        <span class="t-mute fs11 ml-auto">speech → finished text</span>
                     </div>
-                    <div class="grid g4 gap12" id="setup-summary-grid">
+                    <div class="grid g2 gap12" id="setup-summary-grid">
                         <div class="setup-item">
                             <div class="setup-item-head">
                                 <span data-icon="mic" class="setup-icon"></span>
-                                <span class="setup-label">Transcription</span>
+                                <span class="setup-label">1 · Speech to text</span>
                             </div>
                             <span class="setup-value" id="sum-tx-mode">—</span>
+                            <span class="setup-detail" id="sum-tx-detail">Checking the effective route…</span>
+                            <button type="button" class="btn btn-sm btn-ghost mt8"
+                                    data-settings-jump="transcription" data-settings-target="settings-transcription">Configure speech to text</button>
                         </div>
                         <div class="setup-item">
                             <div class="setup-item-head">
                                 <span data-icon="star" class="setup-icon"></span>
-                                <span class="setup-label">Text shaping</span>
+                                <span class="setup-label">2 · Text shaping</span>
                             </div>
                             <span class="setup-value" id="sum-provider">—</span>
-                        </div>
-                        <div class="setup-item">
-                            <div class="setup-item-head">
-                                <span data-icon="bolt" class="setup-icon"></span>
-                                <span class="setup-label">Hardware</span>
-                            </div>
-                            <span class="setup-value" id="sum-hw">—</span>
-                        </div>
-                        <div class="setup-item">
-                            <div class="setup-item-head">
-                                <span data-icon="cpu" class="setup-icon"></span>
-                                <span class="setup-label">Loaded model</span>
-                            </div>
-                            <span class="setup-value" id="sum-model">—</span>
+                            <span class="setup-detail" id="sum-provider-detail">Checking the effective route…</span>
+                            <button type="button" class="btn btn-sm btn-ghost mt8"
+                                    data-settings-jump="processing" data-settings-target="card-ai">Configure text shaping</button>
                         </div>
                     </div>
-                    <p class="help mt8 text-center">Your current configuration at a glance. Use the categories above to change any part of it.</p>
+                    <p class="help mt8 text-center">Speech to text handles recorded audio. Text shaping receives only the resulting text. Each stage has its own saved and effective privacy route.</p>
+                    <div class="set-row mt8">
+                        <div>
+                            <div class="set-label">Keep every route on this device</div>
+                            <div class="set-sub">Overrides Cloud transcription and hosted text processing without deleting your saved providers, keys, or model choices.</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" data-setting="local_only_mode"
+                                   aria-label="Keep every route on this device" />
+                            <span class="track"></span><span class="thumb"></span>
+                        </label>
+                    </div>
                 </div>
+
+                <section class="card pad feature-route-ledger context-ledger" id="feature-route-ledger"
+                         data-settings-category="general" aria-labelledby="feature-route-ledger-title">
+                    <div class="flex items-start gap8 mb10">
+                        <div class="icon-tile"><span data-icon="route"></span></div>
+                        <div>
+                            <h3 class="fs13 fw6" id="feature-route-ledger-title">Routes by feature</h3>
+                            <p class="help mt4">Every row uses the same immutable decision that the feature must obey for that action.</p>
+                        </div>
+                    </div>
+                    <div class="feature-route-rows" id="feature-route-rows" aria-live="polite">
+                        <p class="help">Checking saved and effective feature routesâ€¦</p>
+                    </div>
+                </section>
 
                 <!-- 2. Hotkeys -->
                 <div class="card pad" id="settings-shortcuts" data-settings-category="general">
@@ -1458,16 +1658,16 @@
                     </div>
                     <div class="set-row">
                         <div>
-                            <div class="set-label">Web Search hotkey</div>
-                            <div class="set-sub">Prepare an online search, then ask before sending words</div>
+                            <div class="set-label">Open Mumble Find</div>
+                            <div class="set-sub">A global shortcut for the local app and file launcher</div>
                         </div>
                         <div class="set-ctl">
-                            <span class="kbd" data-keylabel="web_search_hotkey"
-                                >Ctrl + Option + S</span
+                            <span class="kbd" data-keylabel="search_hotkey"
+                                >Ctrl + Option + F</span
                             ><button
                                 class="btn btn-sm"
-                                data-capture="web_search_hotkey"
-                                data-label="[data-keylabel='web_search_hotkey']"
+                                data-capture="search_hotkey"
+                                data-label="[data-keylabel='search_hotkey']"
                                 data-fb="#set-hk-fb"
                             >
                                 Press…
@@ -1479,7 +1679,7 @@
                         <div>
                             <div class="set-label">Web Search provider</div>
                             <div class="set-sub">
-                                Used only after you explicitly choose Search online
+                                Used only when you explicitly choose a separate Web Search action
                             </div>
                         </div>
                         <div class="set-ctl">
@@ -1496,6 +1696,23 @@
                     </div>
                     <div class="set-row">
                         <div>
+                            <div class="set-label">Web Search shortcut</div>
+                            <div class="set-sub">Selected words stay private until you confirm Search online</div>
+                        </div>
+                        <div class="set-ctl">
+                            <span class="kbd" data-keylabel="web_search_hotkey">Ctrl + Option + S</span
+                            ><button
+                                class="btn btn-sm"
+                                data-capture="web_search_hotkey"
+                                data-label="[data-keylabel='web_search_hotkey']"
+                                data-fb="#set-hk-fb"
+                            >
+                                Press…
+                            </button>
+                        </div>
+                    </div>
+                    <div class="set-row">
+                        <div>
                             <div class="set-label">Browser</div>
                             <div class="set-sub">
                                 Which browser opens searches and links
@@ -1508,18 +1725,18 @@
                                 style="width: 150px"
                             >
                                 <option value="default">System default</option>
-                                <option value="edge">Microsoft Edge</option>
+                                <option value="safari">Safari</option>
                                 <option value="chrome">Google Chrome</option>
                                 <option value="brave">Brave</option>
-                                <option value="safari">Safari</option>
+                                <option value="chromium">Chromium</option>
                             </select>
                         </div>
                     </div>
                 </div>
 
                 <!-- 3. Smart Modes -->
-                <div class="settings-group-label" data-settings-category="voice"><span>Voice &amp; behaviour</span><small>How dictation is activated, shaped, and personalised</small></div>
-                <div class="card pad" id="settings-voice" data-settings-category="voice">
+                <div class="settings-group-label" id="processing-behaviour-label" data-settings-category="processing"><span>Dictation behaviour</span><small>Choose when words stay faithful and when an explicit action reshapes them</small></div>
+                <div class="card pad" id="settings-voice" data-settings-category="processing">
                     <div class="flex items-center gap8 mb12">
                         <div class="icon-tile">
                             <span data-icon="wand"></span>
@@ -1547,23 +1764,6 @@
                             ><input
                                 type="checkbox"
                                 data-setting="prompt_mode_enabled" /><span
-                                class="track"
-                            ></span
-                            ><span class="thumb"></span
-                        ></label>
-                    </div>
-                    <div class="set-row">
-                        <div>
-                            <div class="set-label">Smart auto-format</div>
-                            <div class="set-sub">
-                                Keep clean, faithful plain-text cleanup — no
-                                email guessing.
-                            </div>
-                        </div>
-                        <label class="switch"
-                            ><input
-                                type="checkbox"
-                                data-setting="auto_format" /><span
                                 class="track"
                             ></span
                             ><span class="thumb"></span
@@ -1643,8 +1843,8 @@
                 </div>
 
                 <!-- 3. Prompt preferences -->
-                <div class="settings-group-label" data-settings-category="ai"><span>AI &amp; automation</span><small>Choose how Mumble polishes, prompts, and repurposes your words</small></div>
-                <div class="card pad" id="settings-prompting" data-settings-category="ai">
+                <div class="settings-group-label" id="processing-actions-label" data-settings-category="processing"><span>Actions &amp; providers</span><small>Optional prompt shaping, presets, and the route that receives transcript text</small></div>
+                <div class="card pad" id="settings-prompting" data-settings-category="processing">
                     <div class="flex items-center gap8 mb12">
                         <div class="icon-tile">
                             <span data-icon="sliders"></span>
@@ -1653,7 +1853,8 @@
                             Prompt &amp; polish preferences
                         </h3>
                     </div>
-                    <div class="grid g3 gap12">
+                    <p class="help mb10">These preferences apply when an AI mode transforms text. Everyday dictation remains faithful to what you said.</p>
+                    <div class="grid g2 gap12">
                         <div class="field">
                             <span class="label">Tone</span
                             ><select
@@ -1745,43 +1946,102 @@
                     </div>
                 </div>
 
-                <!-- 4. Personal vocabulary -->
-                <div class="card pad" id="settings-vocabulary" data-settings-category="voice">
-                    <div class="flex col items-center text-center gap8 mb10">
+                <!-- 4. Learning words -->
+                <div class="card pad" id="settings-vocabulary" data-settings-category="transcription">
+                    <div class="flex items-center gap8 mb10">
                         <div class="icon-tile">
                             <span data-icon="book"></span>
                         </div>
-                        <h3 class="fs13 fw6">Personal vocabulary</h3>
+                        <div>
+                            <h3 class="fs13 fw6">Learning words</h3>
+                            <p class="t-mute fs11">Teach Mumble names, brands, and phrases it should recognise.</p>
+                        </div>
                     </div>
-                    <p
-                        class="help mb10 text-center"
-                        style="
-                            max-width: 88ch;
-                            margin-left: auto;
-                            margin-right: auto;
-                        "
-                    >
-                        One per line: plain lines are
-                        <span class="t-dim">terms</span> Mumble listens for and
-                        auto-fixes (names, brands, jargon). Advanced:
-                        <span class="t-dim">wrong = right</span> lines are exact
-                        corrections.
-                    </p>
+                    <p class="help mb10">Add one preferred word or phrase per line. For a recurring mistake, use <span class="t-dim">what Mumble heard = what you meant</span>.</p>
                     <textarea
                         class="textarea selectable"
                         id="set-vocab"
                         style="min-height: 96px"
-                        placeholder="Mumble&#10;Cerebras&#10;mambo = Mumble"
+                        placeholder="Khaleel&#10;Cerebras&#10;mambo = Mumble"
                     ></textarea>
                     <div class="flex items-center justify-center gap12 mt10">
                         <button class="btn btn-sm btn-gold" id="set-vocab-save">
                             Save vocabulary</button
                         ><span class="feedback ok" id="set-vocab-fb"></span>
                     </div>
+
+                    <div
+                        class="card mt14 learning-assist"
+                        id="correction-learning-card"
+                        style="padding: 14px; background: var(--surface-2)"
+                    >
+                        <div class="flex items-center gap8">
+                            <div>
+                                <div class="fs12 fw6">Learn when you correct it</div>
+                                <div class="set-sub">
+                                    A short <b>Fix</b> action appears on the Island after dictation.
+                                </div>
+                            </div>
+                            <label class="switch ml-auto">
+                                <input
+                                    type="checkbox"
+                                    data-setting="correction_learning_enabled"
+                                    data-feedback="#correction-learning-fb"
+                                    aria-label="Learn when you correct it"
+                                /><span class="track"></span
+                                ><span class="thumb"></span>
+                            </label>
+                        </div>
+                        <p class="help mt10">
+                            Edit only the misheard word or short phrase. Mumble proposes a local correction, asks you to approve it, and adds it above. You can undo the latest lesson.
+                        </p>
+                        <div class="set-row mt10" style="padding: 10px 0 0">
+                            <div>
+                                <div class="set-label">Watch for edits after pasting</div>
+                                <div class="set-sub">
+                                    Advanced · Windows only. Watches the exact destination for 30 seconds. Password fields, focus changes, and broad rewrites are ignored; every lesson still needs Island approval.
+                                </div>
+                            </div>
+                            <label class="switch">
+                                <input
+                                    type="checkbox"
+                                    data-setting="correction_learning_auto_detect"
+                                    data-feedback="#correction-learning-fb"
+                                /><span class="track"></span
+                                ><span class="thumb"></span>
+                            </label>
+                        </div>
+                        <div
+                            class="flex items-center gap10 mt10"
+                            style="flex-wrap: wrap"
+                        >
+                            <button
+                                class="btn btn-sm btn-ghost"
+                                id="correction-learning-open"
+                            >
+                                Correct last dictation
+                            </button>
+                            <button
+                                class="btn btn-sm btn-ghost"
+                                id="correction-learning-undo"
+                            >
+                                Undo last learned correction
+                            </button>
+                            <span
+                                class="t-mute fs11"
+                                id="correction-learning-status"
+                                >No learned corrections yet</span
+                            >
+                        </div>
+                        <div
+                            class="feedback mt8"
+                            id="correction-learning-fb"
+                        ></div>
+                    </div>
                 </div>
 
                 <!-- 5. Preset Adder -->
-                <div class="card pad" id="settings-presets" data-settings-category="ai">
+                <div class="card pad" id="settings-presets" data-settings-category="processing">
                     <div class="flex items-center gap8 mb8">
                         <div class="icon-tile">
                             <span data-icon="plus"></span>
@@ -1808,12 +2068,12 @@
                 </div>
 
                 <!-- 6. AI Provider (Pro Mode) -->
-                <div class="card pad" id="card-ai" data-settings-category="ai">
+                <div class="card pad" id="card-ai" data-settings-category="processing">
                     <div class="flex items-center gap8 mb8">
                         <div class="icon-tile">
                             <span data-icon="key"></span>
                         </div>
-                        <h3 class="fs13 fw6">AI Provider</h3>
+                        <h3 class="fs13 fw6">Text shaping route</h3>
                         <label class="switch ml-auto" id="pro-mode-switch-wrap" title="Hosted text processing sends transcript text to your configured provider. Off keeps text shaping on this device.">
                             <span class="fs11 t-dim mr6" style="white-space:nowrap">Hosted text processing</span>
                             <input
@@ -1841,43 +2101,29 @@
                         <div><dt>Quality boundary</dt><dd id="route-fact-quality">Checking…</dd></div>
                         <div><dt>Cost</dt><dd id="route-fact-cost">Checking…</dd></div>
                     </dl>
-                    <section class="card pad feature-route-ledger context-ledger" id="feature-route-ledger" aria-labelledby="feature-route-ledger-title">
-                        <h3 class="fs13 fw6" id="feature-route-ledger-title">Routes by feature</h3>
-                        <p class="help mt4">Every row shows the immutable route decision that feature must obey.</p>
-                        <div class="feature-route-rows" id="feature-route-rows" aria-live="polite"><p class="help">Checking feature routes…</p></div>
-                    </section>
                     <div class="card" style="padding: 12px; background: var(--surface-2); margin-bottom: 14px" id="pro-mode-explain">
                         <p class="t-mute fs12 lh16">
-                            <b>Hosted text processing ON</b>: your transcribed <b>text</b> is sent to your AI provider for cleanup,
-                            formatting and Smart Modes (email, prompt shaping). Smart Modes send transcript text only; transcription privacy follows the Local or Cloud choice below.
+                            <b>Hosted text processing ON</b>: when a supported provider and key are ready, transcript <b>text</b> can be sent for cleanup and explicit actions such as Prompt, Email, and presets. It never sends audio.
                         </p>
                         <p class="t-mute fs12 lh16 mt4">
-                            <b>Hosted text processing OFF</b>: Mumble uses offline, rule-based formatting — no network required,
-                            everything stays local. <span class="t-dim">Smart Modes need hosted text processing + a valid key, or an on-device model (below).</span>
+                            <b>Hosted text processing OFF</b>: text shaping stays on-device. This does not change the separate Speech to text route; Cloud transcription can still send audio when selected and ready.
                         </p>
                     </div>
 
-                    <!-- On-device AI (fully offline) — runs when Pro Mode is off / no key.
-                         Lights up when a small .gguf model is present in the models
-                         folder; otherwise offline shaping uses the rule-based builder. -->
-                    <div class="card" style="padding: 12px; background: var(--surface-2); margin-bottom: 14px" id="local-llm-card">
-                        <div class="flex items-center gap8 mb6">
-                            <div class="icon-tile" style="background:rgba(212,175,55,0.12);border-color:rgba(212,175,55,0.2)">
-                                <span class="t-gold" data-icon="cpu"></span>
-                            </div>
-                            <h4 class="fs12 fw6 t-primary">On-device AI <span class="t-mute" style="font-weight:400">· fully offline</span></h4>
-                            <span class="badge" id="local-llm-status" style="margin-left:auto">checking…</span>
-                        </div>
+                    <!-- On-device AI technical preview. -->
+                    <details class="settings-details" id="local-llm-card">
+                        <summary class="settings-details-summary">
+                            <span><b>On-device AI</b> <span class="badge">technical preview</span></span>
+                            <span class="badge" id="local-llm-status">checking…</span>
+                        </summary>
+                        <div class="settings-details-body">
                         <p class="help mb10">
-                            Shape Smart Modes <b>entirely on your machine</b> — no key, no network. Drop a small
-                            <code>.gguf</code> model into your models folder and Mumble runs prompts, emails, and preset jobs
-                            through the bundled on-device engine. With no model installed, offline shaping falls back to
-                            the faithful rule-based formatter — nothing breaks either way.
+                            The local runtime foundation is implemented, but Mumble does not yet ship a model. Advanced users can supply a compatible <code>.gguf</code> file; availability and performance depend on that model and this PC. Without one, Mumble uses its local rule-based formatter.
                         </p>
                         <div class="set-row">
                             <div>
-                                <div class="set-label">Enable on-device AI</div>
-                                <div class="set-sub">Use a local model for Smart Modes when one is installed.</div>
+                                <div class="set-label">Try a local model</div>
+                                <div class="set-sub">Use a compatible model for Smart Modes when the runtime can load it.</div>
                             </div>
                             <label class="switch"
                                 ><input type="checkbox" data-setting="local_llm_enabled" /><span
@@ -1891,16 +2137,26 @@
                             <input class="input selectable" data-setting="local_llm_model" placeholder="path to a .gguf model" />
                             <div class="help mt4" id="local-llm-help">Looking for a model in your data folder…</div>
                         </div>
-                    </div>
+                        </div>
+                    </details>
                     <!-- MAIN PROVIDER -->
+                    <details class="settings-details" id="hosted-provider-details">
+                    <summary class="settings-details-summary">
+                        <span><b>Hosted provider &amp; API key</b></span>
+                        <span class="t-mute fs11" id="hosted-provider-summary">—</span>
+                    </summary>
+                    <div class="settings-details-body">
+                    <p class="route-capability-status" id="hosted-capability-status" data-available="false" role="status" aria-live="polite">
+                        Hosted text shaping unavailable until the saved policy, provider, key, and model are ready.
+                    </p>
                     <div class="flex items-center gap8 mb6">
                         <div class="icon-tile" style="background:rgba(212,175,55,0.12);border-color:rgba(212,175,55,0.2)">
                             <span class="t-gold" data-icon="sparkle"></span>
                         </div>
-                        <h4 class="fs12 fw6 t-primary">Main Provider</h4>
-                        <span class="t-mute fs11 ml-auto">all AI text processing</span>
+                        <h4 class="fs12 fw6 t-primary">Hosted provider</h4>
+                        <span class="t-mute fs11 ml-auto">optional transcript text processing</span>
                     </div>
-                    <p class="help mb10">The main provider handles <b>all AI text work</b>: cleaning up transcripts, running Smart Modes (emails, prompts), and powering the AUTO lane. <b>Cerebras is free and extremely fast</b> — the recommended default.</p>
+                    <p class="help mb10">This provider receives transcript text only when the effective route above says Hosted. Cerebras is the recommended low-latency choice; OpenRouter offers a curated multi-model route.</p>
                     <div class="grid g2 gap12 mb4">
                         <div class="field">
                             <span class="label">Provider</span
@@ -1909,10 +2165,8 @@
                                 id="set-provider"
                                 data-setting="llm_provider"
                             >
-                                <option value="cerebras">
-                                    Cerebras — fastest, free
-                                </option>
-                                <option value="openrouter">OpenRouter</option>
+                                <option value="cerebras">Cerebras — recommended for speed</option>
+                                <option value="openrouter">OpenRouter — curated model choice</option>
                             </select>
                         </div>
                     </div>
@@ -2001,17 +2255,18 @@
                             >.
                         </p>
                     </div>
-
+                    </div>
+                    </details>
                 </div>
 
                 <!-- 9. Microphone -->
-                <div class="settings-group-label" data-settings-category="voice"><span>Listening &amp; transcription</span><small>Your microphone, engine, language, and processing quality</small></div>
-                <div class="card pad" id="settings-microphone" data-settings-category="voice">
+                <div class="settings-group-label" id="transcription-label" data-settings-category="transcription"><span>Listening &amp; transcription</span><small>Your microphone, speech engine, language, and exact audio route</small></div>
+                <div class="card pad" id="settings-microphone" data-settings-category="transcription">
                     <div class="flex items-center gap8 mb12">
                         <div class="icon-tile">
                             <span data-icon="mic"></span>
                         </div>
-                        <h3 class="fs13 fw6">Microphone</h3>
+                        <h3 class="fs13 fw6">1. Choose your microphone</h3>
                     </div>
                     <div class="flex items-end gap12">
                         <div class="field flex-1">
@@ -2023,35 +2278,45 @@
                         </button>
                     </div>
                     <div class="feedback mt8" id="set-mic-fb"></div>
-                    <p class="help mt6">
-                        By default transcription runs entirely on-device with
-                        faster-whisper — your audio never leaves the machine.
-                        <span class="t-dim"
-                            >(An optional Cloud mode under Transcription can send
-                            audio to a hosted service for extra speed.)</span
-                        >
-                    </p>
+                    <p class="help mt6">This is the microphone Mumble listens to. Test it here before changing any speech settings.</p>
                 </div>
 
                 <!-- 10. Transcription -->
-                <div class="card pad" id="settings-transcription" data-settings-category="voice">
+                <div class="card pad" id="settings-transcription" data-settings-category="transcription">
                     <div class="flex items-center gap8 mb12">
                         <div class="icon-tile">
                             <span data-icon="cpu"></span>
                         </div>
-                        <h3 class="fs13 fw6">Transcription</h3>
+                        <h3 class="fs13 fw6">2. Choose where speech becomes text</h3>
                     </div>
                     <div class="route-status" id="transcription-route-status" role="status" aria-live="polite">
-                        <span class="route-status-dot"></span><div><b id="transcription-route-title">Checking audio route…</b>
-                        <span id="transcription-route-copy">Mumble is resolving the effective transcription path.</span></div>
+                        <span class="route-status-dot"></span>
+                        <div><b id="transcription-route-title">Checking audio route…</b>
+                            <span id="transcription-route-copy">Mumble is resolving the effective transcription path.</span></div>
                     </div>
                     <dl class="processing-route-facts" id="transcription-route-facts">
-                        <div><dt>Saved choice</dt><dd id="tx-fact-saved">Checking…</dd></div><div><dt>Effective route</dt><dd id="tx-fact-effective">Checking…</dd></div>
-                        <div><dt>Why this route</dt><dd id="tx-fact-reason">Checking…</dd></div><div><dt>Input and engine</dt><dd id="tx-fact-engine">Recorded audio · checking…</dd></div>
-                        <div><dt>Location</dt><dd id="tx-fact-location">Checking…</dd></div><div><dt>What leaves this device</dt><dd id="tx-fact-egress">Checking…</dd></div>
-                        <div><dt>Speed</dt><dd id="tx-fact-speed">Checking…</dd></div><div><dt>Privacy</dt><dd id="tx-fact-privacy">Checking…</dd></div>
-                        <div><dt>Quality boundary</dt><dd id="tx-fact-quality">Checking…</dd></div><div><dt>Cost</dt><dd id="tx-fact-cost">Checking…</dd></div>
+                        <div><dt>Saved choice</dt><dd id="tx-fact-saved">Checking…</dd></div>
+                        <div><dt>Effective route</dt><dd id="tx-fact-effective">Checking…</dd></div>
+                        <div><dt>Why this route</dt><dd id="tx-fact-reason">Checking…</dd></div>
+                        <div><dt>Input and engine</dt><dd id="tx-fact-engine">Recorded audio · checking…</dd></div>
+                        <div><dt>Location</dt><dd id="tx-fact-location">Checking…</dd></div>
+                        <div><dt>What leaves this device</dt><dd id="tx-fact-egress">Checking…</dd></div>
+                        <div><dt>Speed</dt><dd id="tx-fact-speed">Checking…</dd></div>
+                        <div><dt>Privacy</dt><dd id="tx-fact-privacy">Checking…</dd></div>
+                        <div><dt>Quality boundary</dt><dd id="tx-fact-quality">Checking…</dd></div>
+                        <div><dt>Cost</dt><dd id="tx-fact-cost">Checking…</dd></div>
                     </dl>
+
+                    <div class="transcription-guide" role="note" aria-label="How transcription works">
+                        <span class="transcription-guide-kicker">The simple version</span>
+                        <div class="transcription-guide-flow">
+                            <span><b>1</b>Your microphone records audio</span>
+                            <i aria-hidden="true">→</i>
+                            <span><b>2</b>Local or Cloud turns it into text</span>
+                            <i aria-hidden="true">→</i>
+                            <span><b>3</b>Mumble pastes the finished words</span>
+                        </div>
+                    </div>
 
                     <!-- FIRST-CLASS: Transcription engine choice — visible,
                          no expanding required. Clear explanations for both
@@ -2059,16 +2324,16 @@
                          privacy/performance trade-off before choosing. -->
                     <div style="max-width: 360px; margin: 0 auto">
                     <div class="field mb10">
-                        <span class="label">Transcription engine</span
+                        <span class="label">Where should transcription happen?</span
                         ><select
                             class="select"
                             data-setting="transcription_mode"
                         >
                             <option value="local">
-                                Local — on-device (private, default)
+                                On this device — private, works offline
                             </option>
                             <option value="cloud">
-                                Cloud — hosted (fastest)
+                                Online provider — may be faster
                             </option>
                         </select>
                     </div>
@@ -2076,29 +2341,32 @@
                         <div id="tx-mode-local-desc" class="tx-desc">
                             <div class="flex items-start gap8">
                                 <span class="t-green" data-icon="shield" style="width:16px;height:16px;flex-shrink:0;margin-top:1px"></span>
-                                <span class="t-mute fs12 lh16"><b>Local</b> transcription runs entirely on your device. Your audio <b>never leaves this machine</b> — it works offline, it's private by default, and nothing is ever uploaded. Recommended for most users.</span>
+                                <span class="t-mute fs12 lh16"><b>Recommended.</b> Your audio stays on this device, works offline, and needs no account or key.</span>
                             </div>
                         </div>
                         <div id="tx-mode-cloud-desc" class="tx-desc" hidden>
                             <div class="flex items-start gap8">
                                 <span data-icon="cloud" style="width:16px;height:16px;flex-shrink:0;margin-top:1px;color:var(--amber)"></span>
-                                <span class="t-mute fs12 lh16"><b>Cloud</b> transcription uploads each audio clip to a low-latency hosted Whisper service — faster on older hardware, but your <b>audio is sent to the provider</b> you choose. Turn this on only if you're comfortable with that privacy trade-off. If a request fails, Mumble silently falls back to local. <span class="t-dim">Network required.</span></span>
+                                <span class="t-mute fs12 lh16"><b>Optional.</b> Recorded audio is sent to the provider you configure below. It needs an internet connection and provider key.</span>
                             </div>
                         </div>
                     </div>
                     </div>
 
-                    <div class="divider-soft my10"></div>
-
-                    <!-- Local model and language controls. -->
-                    <div class="flex items-center gap8 mb6">
-                        <h4 class="fs12 fw6 t-primary">Model &amp; language</h4>
-                    </div>
+                    <details class="settings-details tx-advanced">
+                    <summary class="settings-details-summary">
+                        <span><b>Local language &amp; accuracy</b><small>Mumble chooses sensible defaults automatically</small></span>
+                        <span class="t-mute fs11">Advanced</span>
+                    </summary>
+                    <div class="settings-details-body">
+                    <!-- Automatic local speech model selection. -->
                     <p class="help mb10">
-                        Mumble runs faster-whisper speech models on your device.
-                        Bigger models are more accurate but need more RAM and CPU
-                        time. <b>If a model fails to load, Mumble falls back to a
-                        safe default</b> so transcription remains available.
+                        Mumble runs faster-whisper speech models on your device and
+                        selects a suitable model automatically.
+                        <b>If a model fails to load, Mumble falls back to a safe
+                        default</b> so transcription always works. GPU
+                        acceleration (CUDA) is used automatically when available;
+                        otherwise everything runs efficiently on CPU.
                     </p>
                     <div class="grid g2 gap12">
                         <div class="field">
@@ -2120,8 +2388,9 @@
                         </div>
                     </div>
                     <p class="help mt8">
-                        Turn off “English only” if you dictate in other languages.
-                        The exact model remains available under Advanced.
+                        Mumble picks the right on-device speech model for this device and
+                        language — you don’t need to choose one. Turn off “English
+                        only” if you dictate in other languages.
                     </p>
                     <details class="mt8">
                         <summary class="label" style="cursor: pointer">
@@ -2185,6 +2454,8 @@
                         much slower. Not recommended unless you have a high-end CPU.
                     </p>
                     </details>
+                    </div>
+                    </details>
 
                     <!-- Cloud provider configuration — collapsed by default since
                          the transcription engine choice is first-class above.
@@ -2192,14 +2463,13 @@
                     <details class="cloud-stt" id="cloud-stt">
                         <summary class="cloud-stt-summary">
                             <span data-icon="cloud"></span>
-                            <span>Cloud provider settings</span>
+                            <span>Optional cloud setup</span>
                             <span class="t-mute fs11 ml-auto"
                                 >keys &amp; models</span
                             >
                         </summary>
                         <p class="help mt10 mb10">
-                            Choose your cloud transcription provider below. Enter
-                            your API key once — it's shared across all features.
+                            Choose the provider that may receive recorded audio. A key is stored once and reused only by routes configured for that same provider; selecting a provider here does not enable hosted text processing.
                         </p>
                         <div id="cloud-stt-fields">
                             <div class="field mb10" style="max-width: 360px">
@@ -2375,6 +2645,14 @@
 
                 <!-- 12. System -->
                 <div class="settings-group-label" data-settings-category="system"><span>System &amp; maintenance</span><small>Appearance, startup, updates, and reset controls</small></div>
+                <div class="card pad" id="macos-permissions" data-settings-category="system">
+                    <div class="flex items-center gap8 mb12"><div class="icon-tile"><span data-icon="shield"></span></div><h3 class="fs13 fw6">macOS permissions</h3></div>
+                    <p class="help mb8">Mumble reports current operating-system access honestly. Restore revoked access here; shortcuts re-arm without a restart.</p>
+                    <div class="set-row"><div><div class="set-label">Microphone</div><div class="set-sub" data-macos-permission-status="microphone">Checking…</div></div><div class="set-ctl flex gap8"><button type="button" class="btn btn-sm" data-macos-permission-request="microphone">Request</button><button type="button" class="btn btn-sm" data-macos-permission-open="microphone">Open Settings</button></div></div>
+                    <div class="set-row"><div><div class="set-label">Accessibility</div><div class="set-sub" data-macos-permission-status="accessibility">Checking…</div></div><div class="set-ctl flex gap8"><button type="button" class="btn btn-sm" data-macos-permission-request="accessibility">Request</button><button type="button" class="btn btn-sm" data-macos-permission-open="accessibility">Open Settings</button></div></div>
+                    <div class="set-row"><div><div class="set-label">Input Monitoring</div><div class="set-sub" data-macos-permission-status="input_monitoring">Checking…</div></div><div class="set-ctl flex gap8"><button type="button" class="btn btn-sm" data-macos-permission-request="input_monitoring">Request</button><button type="button" class="btn btn-sm" data-macos-permission-open="input_monitoring">Open Settings</button></div></div>
+                </div>
+
                 <div class="card pad" id="settings-system" data-settings-category="system">
                     <div class="flex items-center gap8 mb12">
                         <div class="icon-tile">
@@ -2384,7 +2662,7 @@
                     </div>
                     <div class="set-row">
                         <div>
-                            <div class="set-label">Start at login</div>
+                            <div class="set-label">Start at Login</div>
                         </div>
                         <label class="switch"
                             ><input
@@ -2481,8 +2759,9 @@
                         <div>
                             <div class="set-label">Reset statistics</div>
                             <div class="set-sub">
-                                Permanently clears every dictation and reading
-                                statistic — totals, streaks, charts and history.
+                                Permanently clears tracked dictation and Reader
+                                totals, streaks and charts. Saved transcripts,
+                                Reader documents and Meetings stay in place.
                                 This cannot be undone.
                             </div>
                         </div>
@@ -2701,7 +2980,7 @@
                     </div>
                     <div class="ob-sub">
                         Voice-to-text that turns your speech into polished text,
-                        anywhere on your Mac.
+                        anywhere on Windows.
                     </div>
                     <div class="ob-pills">
                         <div class="ob-pill">
@@ -2895,12 +3174,12 @@
                     <div class="ob-sub">
                         Your AI provider cleans up transcripts and powers Smart Modes.
                         Only <span class="t-dim">text</span> is sent — your audio
-                        stays local. <b>Cerebras is free and fast.</b>
+                        stays local. <b>Cerebras is the recommended low-latency option and currently offers a rate-limited free tier.</b>
                     </div>
                     <div class="field mb10" style="max-width:320px;text-align:left;margin:0 auto">
                         <span class="label">AI provider</span>
                         <select class="select" id="ob-provider">
-                            <option value="cerebras">Cerebras — fastest, free (recommended)</option>
+                            <option value="cerebras">Cerebras — low latency, free tier (recommended)</option>
                             <option value="openrouter">OpenRouter — one key, many models</option>
                         </select>
                     </div>
@@ -2965,11 +3244,9 @@
                                 max-width: 340px;
                             "
                         >
-                            ⚠ Without a valid API key,
-                            <b>AI polish and every Smart Mode</b> (Prompt,
-                            Email, Foreign, Convert) stay
-                            <b>off</b>. Mumble still transcribes locally, but
-                            you lose the cleanup and modes that make it shine.
+                            Without a valid API key, cloud polish and cloud-powered
+                            modes are unavailable. Mumble still transcribes locally
+                            and preserves its deterministic on-device formatting.
                             You can add a key any time in Settings → AI.
                         </p>
                     </div>
@@ -3059,7 +3336,7 @@
                         </div>
                     </div>
                 </div>
-                <!-- Step 10: Shortcuts + how modes work now -->
+                <!-- First-run shortcut tour (shown after setup). -->
                 <div class="ob-panel" data-step="99" hidden>
                     <div class="ob-title">Shortcuts &amp; the new way</div>
                     <div class="ob-sub">
@@ -3081,8 +3358,8 @@
                             ><span class="ps">Open the Deck</span>
                         </div>
                         <div class="ob-pill" style="padding: 10px 12px">
-                            <span class="kbd dim">Ctrl+Option+S</span
-                            ><span class="ps">Web search</span>
+                            <span class="kbd dim" id="hk-search-onboarding">Ctrl+Option+F</span
+                            ><span class="ps">Mumble Find</span>
                         </div>
                     </div>
                     <div class="ob-pills mb12" style="text-align: left">
@@ -3233,32 +3510,7 @@
                             >Launch at startup</span
                         ></label
                     >
-                    <div class="field mb8" style="text-align: left">
-                        <span class="label">Make Mumble easy to find</span>
-                        <div class="ob-pills" style="margin-bottom: 0">
-                            <div class="ob-pill" style="padding: 11px 14px">
-                                <span data-icon="folder"></span>
-                                <div>
-                                    <div class="pt">Applications</div>
-                                    <div class="ps">
-                                        Mumble is installed in your Applications folder
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="ob-pill" style="padding: 11px 14px">
-                                <span data-icon="pin"></span>
-                                <div>
-                                    <div class="pt">Keep in Dock</div>
-                                    <div class="ps">
-                                        Open Mumble, Control-click its Dock icon, then choose Options → Keep in Dock
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <p class="help text-center">
-                        Launch at startup can be changed later in Settings → System.
-                    </p>
+
                 </div>
 
                 <div class="ob-nav">
@@ -3362,8 +3614,11 @@
             </div>
         </div>
 
-        <div id="toast-wrap"></div>
+        <div id="toast-wrap" role="status" aria-live="polite" aria-atomic="true"></div>
 
-        <script src="app.js"></script>
+        <script src="focus-stage.js?v=20260724-foundation"></script>
+        <script src="app.js?v=20260717-settings4"></script>
+        <!-- Fixed local bridge loader; each maintained desktop uses its native index seam. -->
+        <script src="system-search-loader.js"></script>
     </body>
 </html>

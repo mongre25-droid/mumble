@@ -4523,9 +4523,29 @@ async function hydrateSettings() {
   });
   // Account card (cloud sync)
   hydrateAccountCard();
+  await refreshMacOSPermissions();
   if (requestId !== SETTINGS_HYDRATION_VERSION) return false;
   setSettingsHydrationState("ready");
   return true;
+}
+
+async function refreshMacOSPermissions() {
+  const card = $("#macos-permissions");
+  if (!card) return;
+  let result;
+  try {
+    result = await call("get_macos_permissions");
+  } catch (_) {
+    result = null;
+  }
+  ["microphone", "accessibility", "input_monitoring"].forEach((name) => {
+    const output = $(`[data-macos-permission-status="${name}"]`);
+    if (!output) return;
+    const state = String((result && result[name]) || "unknown");
+    output.textContent = state === "ready" ? "Ready" :
+      state === "unknown" ? "Status unavailable" :
+      "Not available — restore access to use this feature";
+  });
 }
 function nested(o, path) {
   return path.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
@@ -9294,6 +9314,23 @@ function wireSettingsCategoryNav() {
 
 function wireSettingsControls() {
   wireSettingsCategoryNav();
+  $$('[data-macos-permission-request]').forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      try {
+        await call("request_macos_permission", button.dataset.macosPermissionRequest);
+        await refreshMacOSPermissions();
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+  $$('[data-macos-permission-open]').forEach((button) => {
+    button.addEventListener("click", async () => {
+      await call("open_macos_permission_settings", button.dataset.macosPermissionOpen);
+      setTimeout(refreshMacOSPermissions, 800);
+    });
+  });
   const hostedDetails = $("#hosted-provider-details");
   const hostedSummary = hostedDetails?.querySelector("summary");
   const markHostedChoice = () => {

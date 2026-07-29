@@ -11,6 +11,11 @@ import branding
 import model_authority
 
 
+SEARCH_HOTKEY_DEFAULT = "ctrl+option+f"
+WEB_SEARCH_HOTKEY_DEFAULT = "ctrl+option+s"
+TEXT_PROCESSING_PROVIDERS = tuple(model_authority.SUPPORTED_PROVIDERS)
+
+
 # --- Cross-process file lock (best-effort, portable) -----------------------
 # The controller and the web window are SEPARATE processes that share one
 # settings.json. A simple per-process threading.Lock cannot coordinate across
@@ -68,7 +73,8 @@ DEFAULTS = {
     # confused the two concepts — now each has its own bind.
     "quick_paste_hotkey": "ctrl+option+v",
     "history_hotkey": "ctrl+option+h",
-    "web_search_hotkey": "ctrl+option+s",
+    "search_hotkey": SEARCH_HOTKEY_DEFAULT,
+    "web_search_hotkey": WEB_SEARCH_HOTKEY_DEFAULT,
     # Perplexity is the default (owner 2026-06-20): it opens with the question
     # pre-filled and the answer already generating — a better instant-search
     # result than a plain SERP. Google/Brave stay selectable in Settings.
@@ -250,6 +256,7 @@ DEFAULTS = {
     "local_provider_retired_applied": False,
     "search_perplexity_default_applied": False,
     "web_search_hotkey_default_applied": False,
+    "search_hotkey_find_default_applied": False,
     "big_shift_applied": False,
     # One-time repair for builds whose shared settings file accidentally carried
     # the Windows Ctrl+Win / Ctrl+Alt defaults into the macOS distribution.
@@ -423,9 +430,9 @@ class Settings:
             else:
                 self.data["web_search_hotkey_default_applied"] = True
                 changed = True
-        if "search_hotkey" in self.data:
-            self.data.pop("search_hotkey", None)
-            self._dirty.add("search_hotkey")
+        if not self.data.get("search_hotkey_find_default_applied"):
+            self.data["search_hotkey"] = SEARCH_HOTKEY_DEFAULT
+            self.data["search_hotkey_find_default_applied"] = True
             changed = True
         if not self.data.get("search_perplexity_default_applied"):
             if self.data.get("search_engine") == "google":
@@ -489,6 +496,9 @@ class Settings:
                 },
                 "web_search_hotkey": {
                     "ctrl+alt+s": "ctrl+option+s",
+                },
+                "search_hotkey": {
+                    "ctrl+alt+f": SEARCH_HOTKEY_DEFAULT,
                 },
             }
             for key, mapping in replacements.items():

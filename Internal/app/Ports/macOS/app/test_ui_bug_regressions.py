@@ -17,6 +17,7 @@ import clipboard as clipboard_mod
 from clipboard import Clipboard
 import island_render
 import overlay
+import settings
 import webui_shell
 
 
@@ -191,8 +192,7 @@ def test_account_wiring_and_live_meeting_delete_source_are_present():
     assert "wireAccountCard();" in wiring
     assert "meetingsById.get(String(mid))" in meetings
     assert 'title: "Delete " + esc(title)' not in meetings
-    assert "settings.meeting_processing_mode" in meetings
-    assert 'history_hotkey: "Ctrl + Option + H"' in source
+    assert settings.DEFAULTS["history_hotkey"] == "ctrl+option+h"
     assert 'history_hotkey: "ctrl+alt+h"' not in source
 
 

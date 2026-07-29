@@ -96,6 +96,14 @@ def _arm(m, *, paused, model, cloud):
     m._tk_schedule = lambda *a, **k: None
     m._maybe_warm_ai = lambda *a, **k: None
     m._open_input_stream = lambda: _FakeStream()
+    ready = type("Permission", (), {"value": "ready"})()
+    snapshot = type("Snapshot", (), {"microphone": ready})()
+    m._permission_authority = type(
+        "Authority", (), {"refresh": staticmethod(lambda: snapshot)}
+    )()
+    m._start_durable_dictation = lambda: setattr(
+        m, "_dictation_session", object()
+    )
     # resource_saver=True => start_recording skips spawning the live worker thread
     # (keeps the test free of background threads), exercising the same gate+stream.
     m.settings = type("S", (), {"get": staticmethod(lambda k, d=None:

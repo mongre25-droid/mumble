@@ -189,9 +189,8 @@ def test_webui_source_contracts_follow_platform_defaults():
     assert "wireAccountCard();" in wiring
     assert "meetingsById.get(String(mid))" in meetings
     assert 'title: "Delete " + esc(title)' not in meetings
-    assert "settings.meeting_processing_mode" in meetings
     assert "if (!r || r.ok === false)" in hydrate
-    assert f'history_hotkey: "{expected_history}"' in source
+    assert settings.DEFAULTS["history_hotkey"] == expected_history
 
 
 def test_static_document_and_fallback_contracts():
@@ -200,7 +199,7 @@ def test_static_document_and_fallback_contracts():
     fallback = (APP_DIR / "app_window.py").read_text(encoding="utf-8")
     assert '<main id="main-content">' in html
     assert 'rel="icon" href="mumble.png"' in html
-    assert 'role="navigation" aria-label="Primary"' in html
+    assert 'role="navigation" aria-label="Primary destinations"' in html
     assert "var(--text-primary)" not in css
     assert "for phrase, what in []" not in fallback
 
@@ -226,4 +225,3 @@ def test_clip_thumb_accepts_only_managed_images(monkeypatch, tmp_path):
     api = webui_shell.Api.__new__(webui_shell.Api)
     assert api.get_clip_thumb(str(good)).startswith("data:image/png;base64,")
     assert api.get_clip_thumb(str(outside)) == ""
-

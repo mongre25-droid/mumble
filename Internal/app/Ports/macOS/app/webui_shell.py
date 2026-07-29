@@ -20,6 +20,7 @@ webview inside the controller process for instant live-apply (STATUS).
 Run standalone:  .venv\\Scripts\\python.exe webui_shell.py
 """
 
+import atexit
 import hmac
 import json
 import os
@@ -28,6 +29,8 @@ import socket
 import subprocess
 import sys
 import threading
+import time
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,8 +54,15 @@ import reader_store  # noqa: E402
 from clipboard import Clipboard  # noqa: E402
 from favorites import Favorites  # noqa: E402
 from history import History  # noqa: E402
+from macos_focus import MacForegroundFocus  # noqa: E402
+from mumble_find import MumbleFindLifecycle  # noqa: E402
 from prompt_history import PromptHistory  # noqa: E402
-from settings import REMOVED_SETTINGS, Settings  # noqa: E402
+from settings import (  # noqa: E402
+    REMOVED_SETTINGS,
+    SEARCH_HOTKEY_DEFAULT,
+    WEB_SEARCH_HOTKEY_DEFAULT,
+    Settings,
+)
 from stats import Stats  # noqa: E402
 
 
@@ -63,6 +73,31 @@ CMD_PORT = 49519
 WEBUI_PORT = 49520
 MAX_READER_IMPORT_BYTES = 32 * 1024 * 1024
 MAX_READER_TEXT_CHARS = 600000
+
+_PROCESS_SYSTEM_SEARCH = None
+_PROCESS_SYSTEM_SEARCH_LOCK = threading.RLock()
+_PROCESS_SYSTEM_SEARCH_ATEXIT = False
+
+
+def _get_process_system_search():
+    global _PROCESS_SYSTEM_SEARCH, _PROCESS_SYSTEM_SEARCH_ATEXIT
+    with _PROCESS_SYSTEM_SEARCH_LOCK:
+        if _PROCESS_SYSTEM_SEARCH is None:
+            from experimental.system_search import SystemSearchService
+            _PROCESS_SYSTEM_SEARCH = SystemSearchService()
+        if not _PROCESS_SYSTEM_SEARCH_ATEXIT:
+            atexit.register(_shutdown_process_system_search)
+            _PROCESS_SYSTEM_SEARCH_ATEXIT = True
+        return _PROCESS_SYSTEM_SEARCH
+
+
+def _shutdown_process_system_search():
+    global _PROCESS_SYSTEM_SEARCH
+    with _PROCESS_SYSTEM_SEARCH_LOCK:
+        service = _PROCESS_SYSTEM_SEARCH
+        _PROCESS_SYSTEM_SEARCH = None
+    if service is not None:
+        service.shutdown()
 
 
 def _clamp_design_size(work_width=None, work_height=None,
@@ -203,9 +238,12 @@ def _to_int(value, default):
 class Api:
     """window.pywebview.api.* — read + write over the live on-disk stores."""
 
-    def __init__(self):
+    def __init__(self, system_search_service=None):
         self.settings = Settings()
         self._sync_manager = None  # lazy-init, shared across cloud_* calls
+        self._system_search = None
+        self._system_search_service = system_search_service
+        self._system_search_lease = None
 
     # ---- live-controller bridge -----------------------------------------
     def controller_alive(self):
@@ -223,6 +261,149 @@ class Api:
                     "active_mode": r.get("active_mode")}
         return {"live": False, "state": "idle", "text": "Ready",
                 "recording": False, "active_mode": None}
+
+    def get_macos_permissions(self):
+        return _ctrl_send({"cmd": "macos_permissions"}, timeout=0.8) or {
+            "ok": False,
+            "microphone": "unknown",
+            "accessibility": "unknown",
+            "input_monitoring": "unknown",
+        }
+
+    def request_macos_permission(self, permission):
+        return _ctrl_send({
+            "cmd": "macos_permission_request",
+            "permission": str(permission or ""),
+        }, timeout=0.8) or {"ok": False}
+
+    def open_macos_permission_settings(self, permission):
+        return _ctrl_send({
+            "cmd": "macos_permission_settings",
+            "permission": str(permission or ""),
+        }, timeout=0.8) or {"ok": False}
+
+    # ---- local Mumble Find -------------------------------------------------
+    def _get_system_search(self):
+        if self._system_search is not None:
+            return self._system_search
+        service = self._system_search_service or _get_process_system_search()
+        self._system_search_service = service
+        engine, lease = service.acquire(
+            settings=self.settings, data_dir=branding.DATA_DIR,
+            url_opener=self.open_url,
+        )
+        self._system_search = engine
+        self._system_search_lease = lease
+        return engine
+
+    def _release_system_search(self):
+        service, lease = self._system_search_service, self._system_search_lease
+        self._system_search = None
+        self._system_search_lease = None
+        if service is not None and lease is not None:
+            service.release(lease)
+
+    def system_search_status(self):
+        try:
+            return self._get_system_search().status()
+        except Exception as exc:
+            return {"ok": False, "supported": True, "message": str(exc)[:200]}
+
+    def system_search_query(self, query="", category="all", limit=12,
+                            generation=None, deadline_ms=75):
+        try:
+            return self._get_system_search().search(
+                query, category, limit, generation, deadline_ms
+            )
+        except Exception as exc:
+            return {"ok": False, "results": [], "message": str(exc)[:200]}
+
+    def system_search_cancel(self, generation):
+        try:
+            return self._get_system_search().cancel(generation)
+        except Exception:
+            return False
+
+    def system_search_refresh(self):
+        try:
+            return self._get_system_search().start_refresh(force=True)
+        except Exception as exc:
+            return {"ok": False, "message": str(exc)[:200]}
+
+    def system_search_execute(self, result_id, action="open"):
+        try:
+            return self._get_system_search().execute(result_id, action)
+        except Exception as exc:
+            return {"ok": False, "message": str(exc)[:200]}
+
+    def system_search_drag(self, result_id):
+        return self.system_search_execute(result_id, "drag")
+
+    def system_search_icons(self, result_ids, generation=None, icon_version=None):
+        try:
+            return self._get_system_search().icons(
+                result_ids, generation, icon_version
+            )
+        except Exception:
+            return {"ok": True, "icons": {}}
+
+    def system_search_show(self):
+        callback = getattr(self, "_show_system_search", None)
+        return callback() if callback else {
+            "ok": False, "state": "unavailable",
+            "message": "Mumble Find is unavailable.",
+        }
+
+    def system_search_hide(self):
+        callback = getattr(self, "_hide_system_search", None)
+        return callback() if callback else {
+            "ok": False, "state": "unavailable",
+            "message": "Mumble Find is unavailable.",
+        }
+
+    def system_search_toggle(self, operation_id=None):
+        callback = getattr(self, "_toggle_system_search", None)
+        if callback is None:
+            return {"ok": False, "state": "unavailable",
+                    "message": "Mumble Find is unavailable."}
+        return callback(operation_id) if operation_id is not None else callback()
+
+    def system_search_assets(self):
+        try:
+            root = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "experimental", "system_search",
+            )
+            with open(os.path.join(root, "ui.css"), encoding="utf-8") as handle:
+                css = handle.read()
+            with open(os.path.join(root, "ui.js"), encoding="utf-8") as handle:
+                javascript = handle.read()
+            return {"ok": True, "css": css, "js": javascript}
+        except Exception:
+            return {"ok": False, "message": "Mumble Find is unavailable."}
+
+    def correction_learning_status(self):
+        r = _ctrl_send({"cmd": "correction_learning_status"}, timeout=0.8)
+        return r or {
+            "ok": False,
+            "enabled": bool(self.settings.get(
+                "correction_learning_enabled", False
+            )),
+            "capture_available": False,
+            "undo_available": False,
+            "message": "Start the full Mumble app to use correction learning.",
+        }
+
+    def correction_learning_open(self):
+        return _ctrl_send(
+            {"cmd": "correction_learning_open"}, timeout=0.8
+        ) or {"ok": False, "message": "Mumble's controller is not running."}
+
+    def correction_learning_undo(self):
+        r = _ctrl_send({"cmd": "correction_learning_undo"}, timeout=1.2)
+        if r and r.get("ok"):
+            self.settings.load()
+        return r or {"ok": False, "message": "Mumble's controller is not running."}
 
     def set_island_mode(self, mode):
         """Set the island's active processing mode from the web UI (Deck Smart
@@ -244,30 +425,134 @@ class Api:
                 "message": "Recording runs in the full app — start Mumble "
                            "from the tray and press the hotkey anywhere."}
 
-    def _dismiss_for_paste(self):
-        """Get the main window out of the way so focus returns to the app being
-        pasted into (its History paste buttons call this before deck_paste)."""
+    def _dismiss_for_paste(self, operation_id, source):
+        prepared = _ctrl_send({
+            "cmd": "prepare_insertion",
+            "operation_id": operation_id,
+            "source": source,
+            "ui_process_id": os.getpid(),
+        }, timeout=1.0)
+        if not prepared or not prepared.get("ok"):
+            if not self.controller_alive():
+                return {
+                    "ok": False,
+                    "live": False,
+                    "message": (
+                        "Start Mumble from the tray, select a destination, "
+                        "and try again."
+                    ),
+                }
+            return prepared or {
+                "ok": False,
+                "live": False,
+                "message": (
+                    "Start Mumble from the tray, select a destination, and try again."
+                ),
+            }
         try:
             win = getattr(self, "_window", None)
             if win is not None:
                 win.minimize()
         except Exception:
             pass
+        return prepared
+
+    def _restore_after_failed_paste(self):
+        try:
+            win = getattr(self, "_window", None)
+            if win is not None:
+                win.restore()
+                win.show()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _insertion_reply(reply, operation_id):
+        if not reply:
+            return None
+        values = dict(reply)
+        values.setdefault("operation_id", operation_id)
+        values.setdefault("confirmed", values.get("outcome") == "confirmed")
+        values.setdefault("pasted", bool(values.get("confirmed")))
+        return values
+
+    @staticmethod
+    def _abandon_insertion(operation_id):
+        try:
+            return _ctrl_send({
+                "cmd": "abandon_insertion", "operation_id": operation_id,
+            }, timeout=1.0)
+        except Exception:
+            return None
+
+    def _submit_insertion(self, command):
+        operation_id = str(command.get("operation_id") or "")
+        reply = _ctrl_send(command, timeout=4.0)
+        if reply is None:
+            reply = _ctrl_send({
+                "cmd": "insertion_status", "operation_id": operation_id,
+            }, timeout=1.0)
+        deadline = time.monotonic() + 4.0
+        while reply and reply.get("state") == "pending" and time.monotonic() < deadline:
+            time.sleep(0.10)
+            reply = _ctrl_send({
+                "cmd": "insertion_status", "operation_id": operation_id,
+            }, timeout=1.0)
+        if reply is None or reply.get("state") == "pending":
+            self._abandon_insertion(operation_id)
+            reply = {
+                "ok": True,
+                "state": "unknown",
+                "outcome": "unknown",
+                "confirmed": False,
+                "pasted": False,
+                "reason": "terminal_result_timeout",
+                "message": (
+                    "The insertion result is unknown. Do not retry until you "
+                    "have checked the selected destination."
+                ),
+            }
+        return self._insertion_reply(reply, operation_id)
 
     def deck_paste(self, text):
         """Quick-paste from History: get this window out of the way so focus
         returns to the app the user came from, then have the controller paste
         there — the same confirmed-restore pipeline as every other paste."""
-        self._dismiss_for_paste()
-        r = _ctrl_send({"cmd": "paste", "text": text or ""})
-        if r and r.get("ok"):
-            return {"ok": True, "live": True}
-        return {"ok": False, "live": False}
+        text = text or ""
+        if not text:
+            return {"ok": False, "message": "There is no text to paste."}
+        operation_id = uuid.uuid4().hex
+        prepared = self._dismiss_for_paste(operation_id, "deck_history")
+        if not prepared or not prepared.get("ok"):
+            return prepared
+        time.sleep(0.20)
+        r = self._submit_insertion({
+            "cmd": "insert_text",
+            "operation_id": operation_id,
+            "source": "deck_history",
+            "text": text,
+        })
+        if r and r.get("outcome") in {"not_sent", "saved_only"}:
+            self._restore_after_failed_paste()
+        return r
 
     def deck_paste_image(self, path):
-        self._dismiss_for_paste()
-        r = _ctrl_send({"cmd": "paste_image", "path": path or ""})
-        return {"ok": bool(r and r.get("ok")), "live": bool(r)}
+        if not path:
+            return {"ok": False, "message": "That image is no longer available."}
+        operation_id = uuid.uuid4().hex
+        prepared = self._dismiss_for_paste(operation_id, "deck_image")
+        if not prepared or not prepared.get("ok"):
+            return prepared
+        time.sleep(0.20)
+        r = self._submit_insertion({
+            "cmd": "insert_image",
+            "operation_id": operation_id,
+            "source": "deck_image",
+            "path": path,
+        })
+        if r and r.get("outcome") in {"not_sent", "saved_only"}:
+            self._restore_after_failed_paste()
+        return r
 
     def set_app_focused(self, focused):
         """Perf: tell the controller the main window gained/lost focus so the
@@ -1010,6 +1295,39 @@ class Api:
             print("meeting_list failed:", e)
             return []
 
+    def meeting_search(self, query):
+        try:
+            import meeting_store
+            items = meeting_store.search_meetings(query)
+            return {"ok": True, "items": items,
+                    "total": len(meeting_store.list_meetings())}
+        except Exception:
+            return {"ok": False, "items": [],
+                    "message": "The local meeting library could not be searched."}
+
+    def meeting_context(self):
+        routes = self._settings_route_state()
+        selected = self.settings.get("mic_device", None)
+        microphone = next((
+            str(item.get("name") or "System default")
+            for item in self.list_microphones()
+            if str(item.get("index")) == str(selected)
+        ), "System default")
+        analysis = processing_route.snapshot_inputs(
+            self.settings,
+            feature="meetings",
+            lane="meeting_analysis",
+            context="",
+            context_policy="meeting_transcript",
+        ).route.public_dict()
+        return {
+            "ok": True,
+            "microphone": microphone,
+            "saved_location": "Private Mumble meeting library",
+            "transcription": dict(routes["transcription"]),
+            "analysis": analysis,
+        }
+
     def meeting_open(self, meeting_id):
         """Full meeting data with segments + speakers."""
         try:
@@ -1196,6 +1514,11 @@ class Api:
         return {"ok": False, "message": (
             r or {}).get("message", "Controller unavailable.")}
 
+    def meeting_recording_status(self):
+        r = _ctrl_send({"cmd": "meeting_record_status"}, timeout=5.0)
+        return r or {"ok": False, "active": False, "state": "unknown",
+                     "message": "Controller unavailable."}
+
     def meeting_retry(self, meeting_id):
         """Retry transcription for a durable interrupted/failed meeting."""
         r = _ctrl_send(
@@ -1331,7 +1654,9 @@ class Api:
             "hotkey": pp("hotkey", "ctrl+option+d"),
             "quick_paste_hotkey": pp("quick_paste_hotkey", "ctrl+option+v"),
             "history_hotkey": pp("history_hotkey", "ctrl+option+h"),
-            "web_search_hotkey": pp("web_search_hotkey", "ctrl+option+s"),
+            "search_hotkey": pp("search_hotkey", SEARCH_HOTKEY_DEFAULT),
+            "web_search_hotkey": pp(
+                "web_search_hotkey", WEB_SEARCH_HOTKEY_DEFAULT),
         }
 
     def get_transcripts(self, limit=50):
@@ -1508,7 +1833,7 @@ class Api:
     def get_settings(self):
         keys = [
             "user_name", "hotkey", "quick_paste_hotkey", "history_hotkey",
-            "web_search_hotkey",
+            "search_hotkey", "web_search_hotkey",
             "search_engine", "browser",
             "modes", "prompt_mode_enabled", "auto_format",
             "prompt_prefs", "polish_aggressiveness",
@@ -1523,6 +1848,7 @@ class Api:
             "local_url", "local_model", "model", "language", "mic_device",
             "history_max", "clipboard_enabled", "clipboard_max", "autostart",
             "vocabulary_terms", "vocabulary", "ui_effects", "resource_saver",
+            "correction_learning_enabled", "correction_learning_auto_detect",
             # ITEM 4: Foreign is an independent, opt-in island toggle (hidden by
             # default); island_modes lets the user pick which processing modes the
             # island can switch between (Prompt/Email).
@@ -1765,6 +2091,46 @@ class Api:
             "today_words": s.get("today_words", 0),
         }
 
+    def get_stats_dashboard(self):
+        try:
+            snapshot = self._stats().dashboard_snapshot(98)
+            summary = snapshot.get("summary") or {}
+            dictation = {
+                "available": snapshot.get("health") != "corrupt",
+                "health": snapshot.get("health", "ok"),
+                "has_activity": bool(summary.get("total_transcripts", 0)),
+                "summary": summary,
+                "current_streak": snapshot.get("current_streak", 0),
+                "best_streak": snapshot.get("best_streak", 0),
+                "daily": [
+                    {"day": day, "words": words, "transcripts": count}
+                    for day, words, count in snapshot.get("daily", [])
+                ],
+                "modes": [
+                    {"mode": mode, "count": count, "words": words}
+                    for mode, count, words in snapshot.get("modes", [])
+                ],
+                "insights": self.get_insights(),
+            }
+            reader_summary = snapshot.get("reader") or {}
+            reader = {
+                "available": snapshot.get("health") != "corrupt",
+                "health": snapshot.get("health", "ok"),
+                "has_activity": bool(reader_summary.get("total_sessions", 0)),
+                "scope": "tracked_playback",
+                **reader_summary,
+            }
+        except Exception:
+            dictation = {"available": False, "health": "error", "has_activity": None}
+            reader = {"available": False, "health": "error", "has_activity": None}
+        try:
+            import meeting_store
+            meetings = meeting_store.activity_summary()
+        except Exception:
+            meetings = {"available": False, "health": "error", "has_activity": None}
+        return {"ok": True, "generated_at": time.time(),
+                "dictation": dictation, "reader": reader, "meetings": meetings}
+
     def get_clip_thumb(self, path):
         """Tiny base64 PNG for a clipboard image row (the webview can't read
         %APPDATA% file paths directly). Returns '' on any failure."""
@@ -1949,7 +2315,7 @@ class Api:
             # UI still shows "active now" — a silent dead key.
             press_bindings = (
                 "hotkey", "quick_paste_hotkey", "history_hotkey",
-                "web_search_hotkey",
+                "search_hotkey", "web_search_hotkey",
             )
             if key in press_bindings:
                 try:
@@ -1965,13 +2331,16 @@ class Api:
                             "quick_paste_hotkey", "ctrl+option+v"),
                         "history_hotkey": self.settings.get(
                             "history_hotkey", "ctrl+option+h"),
+                        "search_hotkey": self.settings.get(
+                            "search_hotkey", SEARCH_HOTKEY_DEFAULT),
                         "web_search_hotkey": self.settings.get(
-                            "web_search_hotkey", "ctrl+option+s"),
+                            "web_search_hotkey", WEB_SEARCH_HOTKEY_DEFAULT),
                     }
                     labels = {
                         "hotkey": "Dictate",
                         "quick_paste_hotkey": "Paste latest",
                         "history_hotkey": "Open Deck",
+                        "search_hotkey": "Mumble Find",
                         "web_search_hotkey": "Web Search",
                     }
                     for other_key, other_value in current.items():
@@ -2257,12 +2626,18 @@ class Api:
              "text": (i or {}).get("text", "")}
             for i in (items or [])
         ]
-        self._dismiss_for_paste()
+        operation_id = uuid.uuid4().hex
+        prepared = self._dismiss_for_paste(operation_id, "deck_job")
+        if not prepared or not prepared.get("ok"):
+            return prepared
         r = _ctrl_send({"cmd": "deck_job", "slot": preset_slot,
-                        "mode": mode, "items": payload})
+                        "mode": mode, "items": payload,
+                        "operation_id": operation_id})
         if r and r.get("ok"):
             return {"ok": True, "live": True,
                     "message": "Working — the result will paste at your cursor."}
+        self._abandon_insertion(operation_id)
+        self._restore_after_failed_paste()
         return {
             "ok": False, "live": False,
             "message": ("Start Mumble (the tray app) to run Deck jobs — "
@@ -2914,6 +3289,10 @@ def _serve_webui_commands(srv, H, ensure_main, title):
                             )
                         except Exception as exc:
                             print("Web Search consent eval failed:", exc)
+                elif cmd == "system_search_toggle":
+                    callback = H.get("toggle_search")
+                    if callback is not None:
+                        callback(req.get("operation_id"))
                 elif cmd in ("history", "deck", "show"):
                     win = ensure_main()   # lazily create main if needed
                     if win is not None and cmd in ("history", "deck"):
@@ -3026,6 +3405,76 @@ def main():
     # closure pointing at the current window (and whether it is minimized, so the
     # refresh router skips a window that's off-screen).
     H = {"main": None, "main_min": False, "cmd_started": False}
+    start_mode = str(os.environ.get("MUMBLE_START", "app")).strip().lower()
+    from experimental.system_search import SystemSearchService
+    system_search_service = SystemSearchService()
+    search_html = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "webui", "search-popup.html",
+    )
+    search_title = "Mumble Find"
+    search_lifecycle = None
+
+    def _create_search_window(hidden=True, centered=True):
+        del centered
+        if sys.platform == "darwin":
+            from experimental.system_search.macos_drag import (
+                install_macos_drag_monitor,
+            )
+            install_macos_drag_monitor()
+        search_api = Api(system_search_service=system_search_service)
+        search_window = webview.create_window(
+            search_title,
+            search_html,
+            js_api=search_api,
+            width=720,
+            height=520,
+            min_size=(560, 360),
+            resizable=True,
+            hidden=bool(hidden),
+            background_color="#0A0A0B",
+        )
+        search_api._window = search_window
+        search_api._show_system_search = search_lifecycle.show
+        search_api._hide_system_search = search_lifecycle.hide
+        search_api._toggle_system_search = search_lifecycle.toggle
+        H["search_api"] = search_api
+        def _search_closed(*_args):
+            search_api._release_system_search()
+            if H.get("search_api") is search_api:
+                H.pop("search_api", None)
+            search_lifecycle.window_closed(search_window)
+
+        try:
+            search_window.events.closed += _search_closed
+        except Exception:
+            pass
+        return search_window
+
+    def _show_search(window):
+        try:
+            window.show()
+            window.restore()
+            window.on_top = True
+            return True
+        except Exception:
+            return False
+
+    def _hide_search(window):
+        try:
+            window.hide()
+            return True
+        except Exception:
+            return False
+
+    search_lifecycle = MumbleFindLifecycle(
+        _create_search_window,
+        MacForegroundFocus(),
+        show_window=_show_search,
+        hide_window=_hide_search,
+    )
+    search_lifecycle.ensure_resident()
+    H["toggle_search"] = search_lifecycle.toggle
 
     def _start_cmd_server():
         if H["cmd_started"]:
@@ -3036,7 +3485,7 @@ def main():
     def _make_main(hidden):
         if H["main"] is not None:
             return H["main"]
-        a = Api()
+        a = Api(system_search_service=system_search_service)
         a._design_size = (DESIGN_W, DESIGN_H)
         a._title = title
         # RESIZABLE: users may grow the window freely; the layout is fluid and the
@@ -3046,6 +3495,9 @@ def main():
             resizable=True, min_size=(640, 480), hidden=hidden,
             background_color="#0A0A0B")
         a._window = w
+        a._show_system_search = search_lifecycle.show
+        a._hide_system_search = search_lifecycle.hide
+        a._toggle_system_search = search_lifecycle.toggle
         H["main"] = w
         H["api"] = a   # closures read the live pin state via H["api"].settings
         # Reflect creation visibility so the refresh router doesn't treat a window
@@ -3170,9 +3622,26 @@ def main():
     # STARTUP SMOOTHNESS: create the window hidden so the WebView2 content
     # renders off-screen first. The loaded event handler (_ml) will call
     # w.show() once the golden-black theme is painted — no white flash.
-    _make_main(hidden=True)
+    if start_mode == "find":
+        _start_cmd_server()
+    else:
+        _make_main(hidden=True)
 
-    webview.start()
+    try:
+        webview.start()
+    finally:
+        search_api = H.get("search_api")
+        if search_api is not None:
+            search_api._release_system_search()
+        if sys.platform == "darwin":
+            try:
+                from experimental.system_search.macos_drag import (
+                    release_macos_drag_monitor,
+                )
+                release_macos_drag_monitor()
+            except Exception:
+                pass
+        system_search_service.shutdown()
 
 
 if __name__ == "__main__":

@@ -38,6 +38,7 @@ Owner 2026-06-29 — meeting-mode milestone.
 
 import json
 import glob
+import math
 import os
 import shutil
 import threading
@@ -190,14 +191,20 @@ def _save(rows):
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
-def list_meetings():
-    """Return meeting metadata (without full segments), newest first."""
-    rows = _load()
-    out = []
-    for r in rows:
-        segments = r.get("segments") or []
-        speakers = r.get("speakers") or []
-        out.append({
+def _audio_available(filename):
+    """Whether a stored recording points to a usable private audio file."""
+    path = _safe_audio_path(filename)
+    try:
+        return bool(path and os.path.isfile(path) and os.path.getsize(path) > 44)
+    except OSError:
+        return False
+
+
+def _meeting_projection(r):
+    """List-safe meeting metadata, excluding the full transcript payload."""
+    segments = r.get("segments") or []
+    speakers = r.get("speakers") or []
+    return {
             "id": r.get("id"),
             "title": r.get("title", "Untitled Meeting"),
             "created": r.get("created", 0),
@@ -212,15 +219,116 @@ def list_meetings():
             "key_decision_count": len(r.get("key_decisions") or []),
             "open_question_count": len(r.get("open_questions") or []),
             "processing_mode": r.get("processing_mode", "lightweight"),
+            "transcription_mode": r.get("transcription_mode"),
+            "transcription_provider": r.get("transcription_provider"),
             "starred": bool(r.get("starred")),
             "tags": r.get("tags") or [],
             "preview": (segments[0].get("text", "") if segments else "")[:120],
             "audio_path": r.get("audio_path"),
+            "audio_available": _audio_available(r.get("audio_path")),
             "status": r.get("status", "ready"),
             "error": r.get("error"),
             "capture_warning": r.get("capture_warning"),
-        })
-    return out
+        }
+
+
+def list_meetings():
+    """Return meeting metadata (without full segments), newest first."""
+    return [_meeting_projection(r) for r in _load()]
+
+
+def search_meetings(query):
+    """Search titles and complete transcripts locally, newest first."""
+    needle = str(query or "").strip().casefold()
+    rows = _load()
+    if not needle:
+        return [_meeting_projection(r) for r in rows]
+    matches = []
+    for row in rows:
+        speakers = row.get("speakers") or []
+        segments = row.get("segments") or []
+        haystack = [
+            row.get("title", ""), row.get("status", ""),
+            *(row.get("tags") or []),
+            *(s.get("label", "") for s in speakers if isinstance(s, dict)),
+            *(s.get("name", "") for s in speakers if isinstance(s, dict)),
+            *(s.get("text", "") for s in segments if isinstance(s, dict)),
+        ]
+        if any(needle in str(value or "").casefold() for value in haystack):
+            matches.append(_meeting_projection(row))
+    return matches
+
+
+def store_health():
+    """Last observed metadata health for truthful empty/error UI states."""
+    return _LAST_LOAD_HEALTH
+
+
+def activity_summary():
+    """Return privacy-minimal activity derived from currently saved meetings.
+
+    These are retained-library metrics, not lifetime counters: deleting a meeting
+    removes it from the totals, and imported audio is included. Bad duration fields
+    never erase valid rows or turn the whole widget into a fabricated zero state.
+    """
+    rows = _load()
+    health = _LAST_LOAD_HEALTH
+    if health == "corrupt":
+        return {
+            "available": False,
+            "health": health,
+            "has_activity": None,
+            "saved_count": None,
+            "saved_duration_seconds": None,
+            "duration_complete": False,
+            "latest_created": None,
+            "processing_count": None,
+            "attention_count": None,
+        }
+
+    total_seconds = 0.0
+    duration_complete = True
+    latest_created = None
+    processing_count = 0
+    attention_count = 0
+    for row in rows:
+        try:
+            if "duration_sec" not in row:
+                raise ValueError("missing duration")
+            duration = float(row.get("duration_sec", 0) or 0)
+            if not math.isfinite(duration) or duration < 0:
+                raise ValueError("invalid duration")
+            total_seconds += duration
+        except (TypeError, ValueError, OverflowError, AttributeError):
+            duration_complete = False
+
+        try:
+            created = float(row.get("created", 0) or 0)
+            if math.isfinite(created) and created > 0:
+                latest_created = max(latest_created or created, created)
+        except (TypeError, ValueError, OverflowError, AttributeError):
+            pass
+
+        status = str(row.get("status", "ready") or "ready").lower()
+        if status in ("pending", "processing"):
+            processing_count += 1
+        if (status in ("failed", "interrupted")
+                or status not in ("ready", "pending", "processing")
+                or bool(row.get("capture_warning"))
+                or bool(row.get("error"))):
+            attention_count += 1
+
+    return {
+        "available": True,
+        "health": health,
+        "has_activity": bool(rows),
+        "saved_count": len(rows),
+        "saved_duration_seconds": round(total_seconds, 1),
+        "duration_complete": duration_complete,
+        "latest_created": latest_created,
+        "processing_count": processing_count,
+        "attention_count": attention_count,
+    }
 
 
 def get_meeting(meeting_id):
@@ -234,10 +342,13 @@ def get_meeting(meeting_id):
                 "duration_sec": r.get("duration_sec", 0),
                 "duration_display": _fmt_duration(r.get("duration_sec", 0)),
                 "audio_path": r.get("audio_path"),
+                "audio_available": _audio_available(r.get("audio_path")),
                 "status": r.get("status", "ready"),
                 "error": r.get("error"),
                 "capture_warning": r.get("capture_warning"),
                 "processing_mode": r.get("processing_mode", "lightweight"),
+                "transcription_mode": r.get("transcription_mode"),
+                "transcription_provider": r.get("transcription_provider"),
                 "segments": r.get("segments") or [],
                 "speakers": r.get("speakers") or [],
                 "segment_count": len(r.get("segments") or []),
@@ -256,7 +367,8 @@ def save_meeting(title, audio_path, duration_sec, segments, speakers,
                  summary=None, action_items=None,
                  key_decisions=None, open_questions=None,
                  processing_mode="lightweight", status="ready", error=None,
-                 capture_warning=None):
+                 capture_warning=None, transcription_mode=None,
+                 transcription_provider=None):
     """Persist a new meeting. Returns the meeting id."""
     title = (title or "").strip()
     if not title:
@@ -275,6 +387,8 @@ def save_meeting(title, audio_path, duration_sec, segments, speakers,
             "duration_sec": duration_sec,
             "audio_path": audio_path,
             "processing_mode": processing_mode or "lightweight",
+            "transcription_mode": transcription_mode,
+            "transcription_provider": transcription_provider,
             "status": status or "ready",
             "error": error,
             "capture_warning": capture_warning,
@@ -307,6 +421,9 @@ def update_meeting(meeting_id, **kwargs):
                           "action_items", "key_decisions", "open_questions",
                           "processing_mode", "segments", "audio_path", "status",
                           "error", "capture_warning", "duration_sec"):
+                    if k in kwargs:
+                        r[k] = kwargs[k]
+                for k in ("transcription_mode", "transcription_provider"):
                     if k in kwargs:
                         r[k] = kwargs[k]
                 hit = True
@@ -368,14 +485,13 @@ def delete_meeting(meeting_id):
         # Metadata is the source of truth. Delete it durably first so a later
         # filesystem failure can leave only a harmless orphan, never a meeting
         # record whose audio has already been destroyed.
-        _delete_audio_file(target.get("audio_path"), missing_ok=True)
-        return True
+        return _delete_audio_file(target.get("audio_path"), missing_ok=True)
 
 
 def list_pending_meetings():
     """Return durable recordings whose transcription was interrupted."""
     return [r for r in _load()
-            if r.get("status") in ("processing", "interrupted")
+            if r.get("status") in ("recording", "processing", "interrupted")
             and r.get("audio_path")]
 
 

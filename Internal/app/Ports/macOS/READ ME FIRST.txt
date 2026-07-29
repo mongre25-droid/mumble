@@ -19,11 +19,13 @@ INSTALL  (one time)
   3) Let it finish (a few minutes the first time - it needs the
      internet to download what it needs).
 
-  4) Grant the two permissions macOS asks for - this is required:
+  4) Grant the three permissions macOS asks for - this is required:
         -> Microphone     (so it can hear you)
         -> Accessibility  (so the hotkey works and it can type for you)
+        -> Input Monitoring (so global shortcuts work outside Mumble)
      You can also set these in
-        System Settings -> Privacy & Security -> Microphone / Accessibility
+        System Settings -> Privacy & Security ->
+        Microphone / Accessibility / Input Monitoring
      (turn the switch ON for "python" / "Terminal").
 
   Mumble then lives in your MENU BAR (top-right of the screen) and
@@ -41,6 +43,8 @@ HOW TO USE IT
      Prompt toggle -> shapes your next dictation into a detailed AI prompt
      Deck           -> runs Email, List, Search, Reply, and other actions
   Re-paste your last dictation anywhere with  Control + Option + V .
+  Open local Mumble Find with Control + Option + F. Web Search remains a
+  separate Control + Option + S action and asks before sending words online.
 
   Local transcription keeps audio on your Mac. Optional Cloud transcription
   sends each audio clip to the provider you select. Pro Mode sends transcript
