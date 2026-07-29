@@ -1941,8 +1941,8 @@ class Api:
         try:
             if str(key) in REMOVED_SETTINGS:
                 return {"ok": False, "message": "That setting has been retired."}
-            if key == "llm_provider" and value not in ("cerebras", "openrouter"):
-                return {"ok": False, "message": "Choose Cerebras or OpenRouter."}
+            if str(key) == "llm_provider":
+                return self.activate_model_provider(value)
             # Validate a binding BEFORE persisting it (capture_binding returns a
             # raw spec without validating, so this is the real gate). An invalid
             # hotkey otherwise saves, fails to register in the controller, and the

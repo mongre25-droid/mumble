@@ -1877,6 +1877,8 @@ class Api:
             root_key = str(key).split(".", 1)[0]
             if root_key not in DEFAULTS or root_key in REMOVED_SETTINGS:
                 return {"ok": False, "message": "Unknown or retired setting."}
+            if str(key) == "llm_provider":
+                return self.activate_model_provider(value)
             # Validate a binding BEFORE persisting it (capture_binding returns a
             # raw spec without validating, so this is the real gate). An invalid
             # hotkey otherwise saves, fails to register in the controller, and the
