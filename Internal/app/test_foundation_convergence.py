@@ -20,6 +20,17 @@ class MemorySettings:
             "llm_provider": "cerebras",
             "cerebras_api_key": "test-only-key",
             "cerebras_model": "gpt-oss-120b",
+            "_confirmed_text_models": {
+                "cerebras": {
+                    "credential_identity": processing_route.model_credential_identity(
+                        "cerebras", "test-only-key"
+                    ),
+                    "generation": 1,
+                    "confirmed_generation": 1,
+                    "state": "confirmed",
+                    "models": ["gpt-oss-120b"],
+                }
+            },
             "user_name": "Test User",
             "prompt_prefs": {},
             "primary_language": "en",
@@ -32,6 +43,9 @@ class MemorySettings:
 
     def get(self, key, default=None):
         return self.values.get(key, default)
+
+    def authority_read(self):
+        return dict(self.values)
 
 
 def _snapshot(settings):

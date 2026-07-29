@@ -50,6 +50,7 @@ def test_cloud_transcription_uses_shared_hotword_sanitizer(monkeypatch):
                 "transcription_mode": "cloud",
                 "cloud_transcription_provider": "groq",
                 "groq_api_key": "key",
+                "groq_transcription_model": "whisper-large-v3-turbo",
                 "vocabulary_terms": "Alice Smith",
             }.get(key, default)
 
@@ -405,11 +406,35 @@ def test_anthropic_provider_preserves_assistant_turns(monkeypatch):
 
     monkeypatch.setattr(anthropic, "_anthropic_chat", fake_chat)
     provider = anthropic.AnthropicProvider("key")
+    model = "claude-opus-4-8"
+
+    class Settings:
+        def __init__(self):
+            self.values = {
+                "pro_mode": True, "local_only_mode": False,
+                "instant_text": False, "llm_provider": "anthropic",
+                "anthropic_api_key": "key", "anthropic_model": model,
+                "_confirmed_text_models": {
+                    "anthropic": {
+                        "credential_identity": processing_route.model_credential_identity(
+                            "anthropic", "key"
+                        ),
+                        "generation": 1,
+                        "confirmed_generation": 1,
+                        "state": "confirmed",
+                        "models": [model],
+                    }
+                },
+            }
+
+        def get(self, key, default=None):
+            return self.values.get(key, default)
+
+        def authority_read(self):
+            return dict(self.values)
+
     decision = processing_route.snapshot(
-        {
-            "pro_mode": True, "local_only_mode": False, "instant_text": False,
-            "llm_provider": "anthropic", "anthropic_api_key": "key",
-        },
+        Settings(),
         feature="prompt", lane="prompt",
     )
     assert provider.chat([

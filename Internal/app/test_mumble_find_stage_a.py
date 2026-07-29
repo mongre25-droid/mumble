@@ -1110,7 +1110,7 @@ class MumbleFindUiContractTests(unittest.TestCase):
         )
         self.assertIn("Find apps &amp; files", self.linux_html)
         self.assertIn(
-            "Mumble Find stays local. Web Search is a separate explicit action.",
+            "Used only when you explicitly choose a separate Web Search action",
             self.linux_html,
         )
         for provider in ("Google", "Perplexity", "Brave"):

@@ -114,6 +114,7 @@ def test_cloud_request_rejects_audio_over_single_request_limit(monkeypatch):
         "transcription_mode": "cloud",
         "cloud_transcription_provider": "groq",
         "groq_api_key": "test-only-key",
+        "groq_transcription_model": "whisper-large-v3-turbo",
     }
     invocation = processing_route.snapshot_inputs(
         settings, feature="dictation", lane="speech_to_text"

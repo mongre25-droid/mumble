@@ -27,6 +27,7 @@ import branding
 import meeting
 import meeting_diarise
 import meeting_store
+import model_authority
 import recording_limits
 
 _fails = []
@@ -45,6 +46,21 @@ class _FakeSettings:
     """Minimal settings-like object for tests."""
 
     def __init__(self, **kw):
+        provider = str(kw.get("llm_provider", "") or "").strip().lower()
+        key = str(kw.get(f"{provider}_api_key", "") or "").strip()
+        if provider == "cerebras" and key:
+            model = str(kw.setdefault("cerebras_model", "gpt-oss-120b"))
+            kw.setdefault("_confirmed_text_models", {
+                provider: {
+                    "credential_identity": model_authority.model_credential_identity(
+                        provider, key
+                    ),
+                    "generation": 1,
+                    "confirmed_generation": 1,
+                    "state": "confirmed",
+                    "models": [model],
+                }
+            })
         self._d = dict(kw)
 
     def get(self, key, default=None):
@@ -52,6 +68,9 @@ class _FakeSettings:
 
     def set(self, key, value):
         self._d[key] = value
+
+    def authority_read(self):
+        return dict(self._d)
 
 
 class _FakeTranscribe:
