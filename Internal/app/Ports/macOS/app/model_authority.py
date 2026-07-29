@@ -7,6 +7,7 @@ from uuid import uuid4
 
 AUTHORITY_KEY = "_confirmed_text_models"
 ACTIVATION_KEY = "__provider_activation__"
+SUPPORTED_PROVIDERS = ("cerebras", "openrouter")
 SYNCHRONOUS_RELOAD_KEYS = frozenset((AUTHORITY_KEY, "llm_provider"))
 
 
@@ -126,7 +127,7 @@ class ModelDiscoveryAuthority:
         self.fetch_models = fetch_models
         self.controller_reload = controller_reload
         self.supported_providers = frozenset(
-            supported_providers or ("cerebras", "openrouter")
+            supported_providers or SUPPORTED_PROVIDERS
         )
 
     def _provider(self, provider):

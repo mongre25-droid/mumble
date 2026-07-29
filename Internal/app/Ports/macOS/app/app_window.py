@@ -218,7 +218,7 @@ class AppWindow:
         import model_authority
 
         provider = str(provider or "").strip().lower()
-        if provider not in ("cerebras", "openrouter"):
+        if provider not in model_authority.SUPPORTED_PROVIDERS:
             return False, "Unknown provider."
         info = ai.PROVIDERS[provider]
         pending = {}
@@ -241,6 +241,7 @@ class AppWindow:
             controller_reload=lambda changed_key: {
                 "ok": bool(self.ctrl._apply_settings_change(changed_key))
             },
+            supported_providers=model_authority.SUPPORTED_PROVIDERS,
         )
         result = authority.activate_provider(provider)
         if not result.get("ok"):
@@ -1659,21 +1660,21 @@ class AppWindow:
 
         # ---- AI Provider (Change 10): dropdown + key / local-URL + Save & test ----
         import ai as _ai
+        import model_authority as _model_authority
 
         ui.label(
             card, "AI Provider", size=11, semibold=True, bg=C.surface
         ).pack(anchor="w", pady=(14, 0))
         ui.label(
             card,
-            "Cerebras is the fastest and the default. Route through OpenAI or "
-            "Anthropic with your own key, or a Local LLM (Ollama / LM Studio — "
-            "no key, fully offline).",
+            "Cerebras is the recommended low-latency default. OpenRouter offers "
+            "one-key access to Mumble's curated model list.",
             size=9,
             color=C.text_mute,
             bg=C.surface,
             wrap=510,
         ).pack(anchor="w", pady=(2, 4))
-        _DROPDOWN = ["cerebras", "openai", "anthropic", "local"]
+        _DROPDOWN = _model_authority.SUPPORTED_PROVIDERS
         self._provider_labels = {
             _ai.PROVIDERS[pid]["label"]: pid for pid in _DROPDOWN
         }

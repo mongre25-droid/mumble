@@ -81,6 +81,109 @@ def test_ordinary_port_bridge_uses_guarded_provider_activation(port):
     assert evidence["reloads"] == [{"cmd": "reload", "key": "ui_effects"}]
 
 
+def test_macos_backup_every_visible_provider_reaches_guarded_activation():
+    port_app = APP_DIR / "Ports" / "macOS" / "app"
+    script = r'''
+import ast
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+with tempfile.TemporaryDirectory(prefix="ui_wave_macos_provider_set_") as owned:
+    os.environ["MUMBLE_TEST_DATA_DIR"] = owned
+    os.environ["MUMBLE_OFFLINE_TESTS"] = "1"
+    sys.path.insert(0, sys.argv[1])
+    import model_authority
+    from settings import Settings
+
+    source = Path(sys.argv[1], "app_window.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    app_window_class = next(
+        node for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "AppWindow"
+    )
+    activation_method = next(
+        node for node in app_window_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_activate_model_provider"
+    )
+    dropdown_assignment = next(
+        node
+        for node in ast.walk(app_window_class)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_DROPDOWN"
+                for target in node.targets)
+    )
+    dropdown_namespace = {"_model_authority": model_authority}
+    exec(compile(ast.fix_missing_locations(ast.Module(
+        body=[dropdown_assignment], type_ignores=[]
+    )), "app_window.py", "exec"), dropdown_namespace)
+    dropdown = list(dropdown_namespace["_DROPDOWN"])
+    namespace = {}
+    exec(compile(ast.fix_missing_locations(ast.Module(
+        body=[activation_method], type_ignores=[]
+    )), "app_window.py", "exec"), namespace)
+
+    settings = Settings()
+    activations = []
+    original_activation = model_authority.ModelDiscoveryAuthority.activate_provider
+    model_authority.ModelDiscoveryAuthority.activate_provider = (
+        lambda _authority, provider: (
+            activations.append(provider)
+            or {"ok": True, "models": ["canonical-model"]}
+        )
+    )
+
+    class Controller:
+        pro_key_failed = True
+
+        @staticmethod
+        def _apply_settings_change(_key):
+            return True
+
+    window = type("BackupWindow", (), {})()
+    window._activate_model_provider = namespace["_activate_model_provider"].__get__(window)
+    window.ctrl = Controller()
+    window.settings = settings
+    authority = model_authority.ModelDiscoveryAuthority(
+        settings=settings,
+        providers={},
+        fetch_models=lambda *_args: [],
+        controller_reload=lambda _key: {"ok": True},
+    )
+    canonical = sorted(authority.supported_providers)
+    results = []
+    try:
+        for provider in dropdown:
+            results.append(window._activate_model_provider(
+                provider, "canonical-model", key=f"{provider}-key"
+            ))
+    finally:
+        model_authority.ModelDiscoveryAuthority.activate_provider = original_activation
+
+    print(json.dumps({
+        "visible": dropdown,
+        "canonical": canonical,
+        "activations": activations,
+        "results": results,
+    }))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(port_app)],
+        cwd=APP_DIR,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+
+    assert evidence["visible"] == evidence["canonical"]
+    assert evidence["activations"] == evidence["canonical"]
+    assert all(outcome[0] is True for outcome in evidence["results"])
+
+
 def test_macos_backup_settings_uses_current_confirmed_acknowledged_activation():
     port_app = APP_DIR / "Ports" / "macOS" / "app"
     script = r'''
