@@ -9,6 +9,12 @@ import pytest
 
 
 APP_DIR = Path(__file__).resolve().parent
+PLATFORM_APP_DIRS = (
+    APP_DIR,
+    APP_DIR / "Ports" / "macOS" / "app",
+    APP_DIR / "Ports" / "Linux" / "app",
+)
+REQUIRED_HOSTED_PROVIDERS = ("cerebras", "openrouter")
 
 
 def _bridge_result(port):
@@ -82,6 +88,13 @@ def test_ordinary_port_bridge_uses_guarded_provider_activation(port):
 
 
 def test_macos_backup_every_visible_provider_reaches_guarded_activation():
+    authority_paths = [path / "model_authority.py" for path in PLATFORM_APP_DIRS]
+    authority_sources = [
+        path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        for path in authority_paths
+    ]
+    assert authority_sources[1:] == authority_sources[:1] * 2
+
     port_app = APP_DIR / "Ports" / "macOS" / "app"
     script = r'''
 import ast
@@ -127,10 +140,12 @@ with tempfile.TemporaryDirectory(prefix="ui_wave_macos_provider_set_") as owned:
 
     settings = Settings()
     activations = []
+    helper_provider_sets = []
     original_activation = model_authority.ModelDiscoveryAuthority.activate_provider
     model_authority.ModelDiscoveryAuthority.activate_provider = (
-        lambda _authority, provider: (
-            activations.append(provider)
+        lambda authority, provider: (
+            helper_provider_sets.append(sorted(authority.supported_providers))
+            or activations.append(provider)
             or {"ok": True, "models": ["canonical-model"]}
         )
     )
@@ -146,13 +161,7 @@ with tempfile.TemporaryDirectory(prefix="ui_wave_macos_provider_set_") as owned:
     window._activate_model_provider = namespace["_activate_model_provider"].__get__(window)
     window.ctrl = Controller()
     window.settings = settings
-    authority = model_authority.ModelDiscoveryAuthority(
-        settings=settings,
-        providers={},
-        fetch_models=lambda *_args: [],
-        controller_reload=lambda _key: {"ok": True},
-    )
-    canonical = sorted(authority.supported_providers)
+    canonical = list(model_authority.SUPPORTED_PROVIDERS)
     results = []
     try:
         for provider in dropdown:
@@ -165,6 +174,7 @@ with tempfile.TemporaryDirectory(prefix="ui_wave_macos_provider_set_") as owned:
     print(json.dumps({
         "visible": dropdown,
         "canonical": canonical,
+        "helper_provider_sets": helper_provider_sets,
         "activations": activations,
         "results": results,
     }))
@@ -179,8 +189,14 @@ with tempfile.TemporaryDirectory(prefix="ui_wave_macos_provider_set_") as owned:
     assert result.returncode == 0, result.stderr or result.stdout
     evidence = json.loads(result.stdout.strip().splitlines()[-1])
 
-    assert evidence["visible"] == evidence["canonical"]
-    assert evidence["activations"] == evidence["canonical"]
+    expected = list(REQUIRED_HOSTED_PROVIDERS)
+    assert evidence["canonical"] == expected
+    assert evidence["visible"] == expected
+    assert evidence["helper_provider_sets"] == [sorted(expected)] * len(expected)
+    assert evidence["activations"] == expected
+    assert "local" not in evidence["canonical"]
+    assert "local" not in evidence["visible"]
+    assert "local" not in evidence["activations"]
     assert all(outcome[0] is True for outcome in evidence["results"])
 
 
