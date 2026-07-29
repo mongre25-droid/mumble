@@ -323,10 +323,18 @@
   <li><span class="badge b-gated">handoff boundary</span> The closing session starts no new feature issue. Publication and its exact-head CI are external evidence recorded in GitHub receipts after this documentation commit; physical, installed, deployed, released, rollback, and owner-acceptance gates remain open.</li>
 </ul>
 
-<h2><span class="sec">36</span>Current product snapshot</h2>
+<h2 data-evidence-boundary="meeting-lock-local-correction"><span class="sec">36</span>29 July 2026 &mdash; intermittent Windows meeting-store lock hand-off corrected locally</h2>
+<ul>
+  <li><span class="badge b-exist">retained red evidence</span> The repaired two-process regression reproduced one failed save on its fifth local run. A 10,000-acquisition lock probe captured Windows returning <code>PermissionError: [Errno 13]</code> intermittently while two processes rapidly handed off the same marker; the helper had treated that temporary release state as an immediate permanent failure.</li>
+  <li><span class="badge b-done">bounded correction</span> The shared lock helper now treats Windows' transient permission result like ordinary contention inside the unchanged timeout. Persistent denial still fails closed, and the existing stale-marker recovery path is unchanged.</li>
+  <li><span class="badge b-done">focused evidence</span> Deterministic transient and persistent-permission regressions passed through both pytest and the maintained procedural entry point; the direct two-process lock probe completed 10,000 acquisitions with zero failures; the required two-process meeting test passed 30 repository-root runs and 15 application-folder runs with exactly 40 records and 40 unique IDs per run; live-lock exclusion and crashed stale-lock recovery passed; the requested three-file group passed 52 tests plus 28 subtests; and fatal lint passed.</li>
+  <li><span class="badge b-gated">boundary</span> This is an unpushed local direct-child correction from exact parent <code>4c5221a74cb50a71a0920a59c7ad9650327512a4</code>. Failed GitHub run <code>30408545984</code> remains failed evidence for its exact older candidate. New exact-head CI, physical meeting use, package, installation, deployment, release, rollback, and owner acceptance remain open.</li>
+</ul>
+
+<h2><span class="sec">37</span>Current product snapshot</h2>
 <p>At this baseline Mumble is a local-first desktop voice workspace with hotkey dictation, local faster-whisper transcription, optional cloud transcription, optional local/cloud text shaping, clipboard-safe paste, the Deck, meetings, Reader, statistics, private Mumble Find, and a separate consent-gated Web Search. The accepted local-AI evidence path retains faster-whisper and deterministic text as baselines; it does not adopt another model. The golden-black liquid-glass Web UI and floating Island are the current interface surfaces.</p>
 
-<h2><span class="sec">37</span>How to keep this log useful</h2>
+<h2><span class="sec">38</span>How to keep this log useful</h2>
 <ul><li>Use one dated entry for a meaningful completed milestone.</li><li>State what changed and where, without copying a full investigation into this page.</li><li>Put current risks, unfinished tasks, and release gates in <a href="STATUS.html">STATUS</a>.</li><li>Put stable procedures and architecture changes in <a href="HANDBOOK.html">HANDBOOK</a>.</li><li>Keep README focused on the stable product and working agreement.</li></ul>
 
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>

@@ -20,7 +20,10 @@ def exclusive_file_lock(data_path, timeout=3.0, stale=30.0):
     while fd is None:
         try:
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+            # Windows can report EACCES instead of EEXIST while another
+            # process is closing/removing the marker. Treat that brief hand-off
+            # as contention, but keep the same bounded timeout and fail closed.
             try:
                 if time.time() - os.path.getmtime(lock_path) > stale:
                     os.remove(lock_path)

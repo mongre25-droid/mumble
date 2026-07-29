@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Regression coverage for the 2026-07-12 full bug audit."""
 
+import errno
 import os
 from pathlib import Path
 import queue
@@ -19,6 +20,7 @@ import meeting_store
 import presets as presets_mod
 import prompt_history
 import settings
+import storage_lock
 import webui_shell
 
 
@@ -290,6 +292,49 @@ def test_meeting_store_serialises_controller_and_webview_writers():
         meeting_store.PATH = original_path
     assert len(rows) == 40
     assert len({row["id"] for row in rows}) == 40
+
+
+def test_storage_lock_retries_transient_windows_permission_error():
+    with tempfile.TemporaryDirectory(prefix="mumble_lock_handoff_") as root:
+        data_path = os.path.join(root, "meetings.json")
+        real_open = storage_lock.os.open
+        open_calls = []
+
+        def open_after_handoff(path, flags):
+            open_calls.append(path)
+            if len(open_calls) == 1:
+                raise PermissionError(
+                    errno.EACCES, "simulated Windows hand-off", path)
+            return real_open(path, flags)
+
+        storage_lock.os.open = open_after_handoff
+        try:
+            with storage_lock.exclusive_file_lock(
+                    data_path, timeout=0.1) as acquired:
+                assert acquired is True
+        finally:
+            storage_lock.os.open = real_open
+
+        assert len(open_calls) == 2
+        assert not os.path.exists(data_path + ".lock")
+
+
+def test_storage_lock_persistent_permission_error_fails_closed():
+    with tempfile.TemporaryDirectory(prefix="mumble_lock_denied_") as root:
+        data_path = os.path.join(root, "meetings.json")
+        real_open = storage_lock.os.open
+
+        def denied(path, _flags):
+            raise PermissionError(
+                errno.EACCES, "simulated permission denial", path)
+
+        storage_lock.os.open = denied
+        try:
+            with storage_lock.exclusive_file_lock(
+                    data_path, timeout=0.0) as acquired:
+                assert acquired is False
+        finally:
+            storage_lock.os.open = real_open
 
 
 def test_web_bridge_propagates_store_clear_failures():
