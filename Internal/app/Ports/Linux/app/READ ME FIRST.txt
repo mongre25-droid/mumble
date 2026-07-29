@@ -31,9 +31,10 @@ HOW TO USE IT
 LINUX NOTES
 
   Mumble keeps X11 and Wayland separate. On Wayland, global shortcuts use the
-  desktop approval window provided by xdg-desktop-portal. Approve each shortcut
-  when GNOME or KDE asks. Mumble does not silently send shortcuts through the
-  XWayland compatibility layer.
+  desktop approval window only when the live xdg-desktop-portal
+  GlobalShortcuts service is available. Approve each shortcut when GNOME or KDE
+  asks. If that service cannot be proved, Mumble reports a degraded or unknown
+  route and does not silently send shortcuts through XWayland.
 
   On X11, global hotkeys need permission to read input devices. If the app
   warns about permissions, run:
@@ -58,6 +59,8 @@ LINUX NOTES
   Flatpak, Snap, compositor policy, and distribution package availability can
   limit these routes. Source checks are not proof of real GNOME, KDE, X11,
   Wayland, microphone, tray, autostart, focus, clipboard, or drag behaviour.
+  Login autostart is ready only after Mumble can validate its enabled XDG entry
+  and installed launch route; otherwise Settings keeps the limitation visible.
 
 PRIVACY
 

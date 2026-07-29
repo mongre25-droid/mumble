@@ -24,6 +24,18 @@ class DesktopSession:
     xwayland_available: bool = False
     sandbox: str = "none"
 
+    @property
+    def is_x11(self):
+        return self.session_type == "x11"
+
+    @property
+    def is_wayland(self):
+        return self.session_type == "wayland"
+
+    @property
+    def is_headless(self):
+        return self.session_type == "headless"
+
     @classmethod
     def detect(cls, env=None):
         env = os.environ if env is None else env
@@ -205,23 +217,51 @@ class LinuxSearchAdapter:
         return SearchResponse("ready", provider, tuple(paths))
 
 
+def _probe_global_shortcuts_portal(*, which=shutil.which,
+                                   runner=subprocess.run):
+    """Return True/False for a real portal interface, or None if unproven."""
+    executable = which("gdbus")
+    if not executable:
+        return None
+    try:
+        completed = runner(
+            [executable, "introspect", "--session", "--dest",
+             "org.freedesktop.portal.Desktop", "--object-path",
+             "/org/freedesktop/portal/desktop"],
+            capture_output=True, text=True, timeout=0.75, check=False,
+            shell=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode:
+        return False
+    return "org.freedesktop.portal.GlobalShortcuts" in (completed.stdout or "")
+
+
 def shortcut_capability(session=None, *, which=shutil.which,
-                        readable_input=False, portal_available=None):
+                        readable_input=False, portal_available=None,
+                        portal_probe=None):
     session = session or DesktopSession.detect()
-    if session.session_type == "wayland":
+    if session.is_wayland:
         if portal_available is None:
             try:
-                import gi  # noqa: F401 - capability probe only
-                portal_available = True
+                probe = portal_probe or (
+                    lambda: _probe_global_shortcuts_portal(which=which))
+                portal_available = probe()
             except Exception:
-                portal_available = False
-        if portal_available:
+                portal_available = None
+        if portal_available is True:
             return Capability(
                 "degraded", "xdg-global-shortcuts-portal",
                 "The Wayland portal client is available, but the shortcut is "
                 "not ready until the compositor accepts registration and the "
                 "user approves it.",
                 "Approve the requested shortcuts in the desktop prompt.")
+        if portal_available is None:
+            return Capability(
+                "unknown", "none",
+                "The current session did not prove an XDG GlobalShortcuts "
+                "portal interface.",
+                "Check the desktop portal service or use application controls.")
         if readable_input:
             return Capability(
                 "degraded", "evdev-read-only",
@@ -229,11 +269,11 @@ def shortcut_capability(session=None, *, which=shutil.which,
                 "listening is permission-dependent and not compositor-managed.",
                 "Install xdg-desktop-portal support or grant narrow input access.")
         return Capability(
-            "unsupported", "none",
-            "This Wayland compositor has no available GlobalShortcuts portal "
-            "route and input devices are not readable.",
+            "degraded", "none",
+            "The current session does not expose an XDG GlobalShortcuts "
+            "portal route and input devices are not readable.",
             "Enable the desktop portal or use the application controls.")
-    if session.session_type == "x11":
+    if session.is_x11:
         if readable_input:
             return Capability("ready", "evdev", "X11 global input is readable.")
         return Capability(
@@ -246,7 +286,7 @@ def shortcut_capability(session=None, *, which=shutil.which,
 
 def clipboard_capability(session=None, *, which=shutil.which):
     session = session or DesktopSession.detect()
-    if session.session_type == "wayland":
+    if session.is_wayland:
         if not (which("wl-copy") and which("wl-paste")):
             return Capability(
                 "unsupported", "none",
@@ -262,7 +302,7 @@ def clipboard_capability(session=None, *, which=shutil.which):
             "degraded", "wl-clipboard",
             "Clipboard copy is available, but this compositor has no supported "
             "text insertion helper.", alternatives=("copy",))
-    if session.session_type == "x11":
+    if session.is_x11:
         clipboard = "xclip" if which("xclip") else "xsel" if which("xsel") else ""
         if clipboard and which("xdotool"):
             return Capability("ready", f"{clipboard}+xdotool",
@@ -279,12 +319,12 @@ def clipboard_capability(session=None, *, which=shutil.which):
 
 def drag_capability(session=None, *, gtk_available=None):
     session = session or DesktopSession.detect()
-    if session.session_type == "wayland":
+    if session.is_wayland:
         return Capability(
             "unsupported", "compositor-policy",
             "Native cross-application drag cannot be initiated reliably under "
             "this Wayland compositor.", alternatives=("open", "reveal"))
-    if session.session_type == "x11":
+    if session.is_x11:
         if gtk_available is None:
             try:
                 from linux_native_drag import LinuxNativeDragAdapter
@@ -306,11 +346,11 @@ def drag_capability(session=None, *, gtk_available=None):
 
 def focus_window_capability(session=None, *, which=shutil.which):
     session = session or DesktopSession.detect()
-    if session.session_type == "x11" and which("xdotool"):
+    if session.is_x11 and which("xdotool"):
         return Capability(
             "ready", "xdotool",
             "X11 window identity, activation, and positioning are available.")
-    if session.session_type == "wayland":
+    if session.is_wayland:
         return Capability(
             "degraded", "compositor-policy",
             "Wayland controls cross-application focus and window placement; "
@@ -324,7 +364,7 @@ def focus_window_capability(session=None, *, which=shutil.which):
 
 def tray_capability(session=None, *, appindicator_available=None):
     session = session or DesktopSession.detect()
-    if session.session_type == "headless":
+    if session.is_headless:
         return Capability("unsupported", "none",
                           "A system tray requires a graphical desktop session.")
     if appindicator_available is None:
@@ -348,9 +388,9 @@ def tray_capability(session=None, *, appindicator_available=None):
         alternatives=("main-window",))
 
 
-def autostart_capability(session=None):
+def autostart_capability(session=None, *, autostart_probe=None):
     session = session or DesktopSession.detect()
-    if session.session_type == "headless":
+    if session.is_headless:
         return Capability("unsupported", "none",
                           "Desktop login autostart is unavailable headlessly.")
     if session.sandbox != "none":
@@ -358,9 +398,18 @@ def autostart_capability(session=None):
             "degraded", "xdg-autostart-sandboxed",
             f"{session.sandbox.title()} may block writes to the host autostart folder.",
             "Use the sandbox's background/startup permission or host settings.")
+    try:
+        if autostart_probe is None:
+            import autostart
+            autostart_probe = autostart.probe_route
+        status, message = autostart_probe()
+    except Exception as exc:
+        status, message = "unknown", f"Autostart route probe failed: {exc}"
+    if status not in {"ready", "degraded", "unknown"}:
+        status = "unknown"
     return Capability(
-        "ready", "xdg-autostart",
-        "The XDG per-user autostart route is available.")
+        status, "xdg-autostart" if status == "ready" else "none", message,
+        "Enable login startup in Settings after the route is available.")
 
 
 def permissions_capability(session=None, *, readable_input=False,
@@ -372,7 +421,7 @@ def permissions_capability(session=None, *, readable_input=False,
             "denied", "microphone",
             "Microphone permission is denied.",
             "Allow microphone access in desktop or sandbox settings.")
-    if session.session_type == "x11" and not readable_input:
+    if session.is_x11 and not readable_input:
         return Capability(
             "denied", "input-devices",
             "Global shortcut input devices are not readable.",
@@ -435,20 +484,23 @@ def prefers_reduced_motion(env=None, *, which=shutil.which,
 
 def capability_snapshot(*, env=None, which=shutil.which,
                         readable_input=False, sounddevice_module=None,
-                        appindicator_available=None):
+                        appindicator_available=None, portal_probe=None,
+                        autostart_probe=None):
     session = DesktopSession.detect(env)
     audio = (audio_capability(sounddevice_module)
              if sounddevice_module is not None else None)
     payload = {
         "session": asdict(session),
         "shortcuts": asdict(shortcut_capability(
-            session, which=which, readable_input=readable_input)),
+            session, which=which, readable_input=readable_input,
+            portal_probe=portal_probe)),
         "clipboard_insertion": asdict(clipboard_capability(session, which=which)),
         "drag": asdict(drag_capability(session)),
         "focus_window": asdict(focus_window_capability(session, which=which)),
         "tray": asdict(tray_capability(
             session, appindicator_available=appindicator_available)),
-        "autostart": asdict(autostart_capability(session)),
+        "autostart": asdict(autostart_capability(
+            session, autostart_probe=autostart_probe)),
         "permissions": asdict(permissions_capability(
             session, readable_input=readable_input, microphone=audio)),
         "evidence": "source-probe-only",

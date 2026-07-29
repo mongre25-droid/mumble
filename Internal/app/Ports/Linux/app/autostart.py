@@ -140,6 +140,37 @@ def is_enabled():
             or (_legacy_entry_owned() and _desktop_valid(LEGACY_DESKTOP_PATH)))
 
 
+def probe_route():
+    """Read-only proof of the current XDG login-startup route."""
+    try:
+        main_exists = os.path.isfile(_MUMBLE_MAIN)
+        launcher_exists = (
+            os.path.isfile(_INSTALL_LAUNCHER)
+            and os.access(_INSTALL_LAUNCHER, os.X_OK))
+        python_exists = (
+            os.path.isfile(_VENV_PYTHON)
+            and os.access(_VENV_PYTHON, os.X_OK))
+        if not main_exists or not (launcher_exists or python_exists):
+            return (
+                "degraded",
+                "No installed Mumble launch route is available for autostart.")
+        if is_enabled():
+            return "ready", "A valid Mumble XDG autostart entry is enabled."
+        destination = AUTOSTART_DIR
+        while not os.path.exists(destination):
+            parent = os.path.dirname(destination)
+            if parent == destination:
+                return "unknown", "The XDG autostart destination was not proven."
+            destination = parent
+        if not os.path.isdir(destination) or not os.access(destination, os.W_OK):
+            return "degraded", "The XDG autostart destination is not writable."
+        return (
+            "degraded",
+            "The XDG autostart route is writable but no enabled entry was found.")
+    except OSError as exc:
+        return "unknown", f"The XDG autostart route could not be checked: {exc}"
+
+
 def enable():
     """Atomically write the .desktop file to the XDG autostart directory."""
     tmp_path = ""

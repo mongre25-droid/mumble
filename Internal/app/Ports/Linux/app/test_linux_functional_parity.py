@@ -147,8 +147,8 @@ def test_wayland_shortcuts_prefer_portal_and_report_missing_route():
     assert ready.backend == "xdg-global-shortcuts-portal"
     missing = linux_desktop.shortcut_capability(
         session, which=_which(), readable_input=False)
-    assert missing.status == "unsupported"
-    assert "compositor" in missing.message.lower()
+    assert missing.status == "unknown"
+    assert "did not prove" in missing.message.lower()
 
 
 def test_wayland_clipboard_and_insertion_do_not_fall_back_to_x11():

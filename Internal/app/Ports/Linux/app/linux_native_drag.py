@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import threading
+import time
 
 
 class LinuxNativeDragAdapter:
@@ -26,7 +27,7 @@ class LinuxNativeDragAdapter:
 
     def start(self, path, timeout=1.0):
         target = Path(path).expanduser()
-        if (self.session.session_type != "x11" or not target.is_absolute()
+        if (not self.session.is_x11 or not target.is_absolute()
                 or not target.exists()):
             return {"ok": False, "status": "unsupported",
                     "message": "Native drag requires a trusted existing X11 path.",
@@ -42,15 +43,16 @@ class LinuxNativeDragAdapter:
         finished = threading.Event()
         cancelled = threading.Event()
         start_lock = threading.Lock()
+        wait_timeout = max(0.0, min(2.0, float(timeout)))
+        deadline = time.monotonic() + wait_timeout
         result = {"ok": False, "status": "failed",
                   "message": "The native drag owner did not start.",
                   "alternatives": ["open", "reveal"]}
 
         def begin():
             window = None
-            with start_lock:
+            try:
                 if cancelled.is_set():
-                    finished.set()
                     return False
                 try:
                     display = Gdk.Display.get_default()
@@ -89,17 +91,33 @@ class LinuxNativeDragAdapter:
                     event.window = window.get_window()
                     event.x = event.y = 1.0
                     event.x_root, event.y_root = float(x_root), float(y_root)
-                    context = Gtk.drag_begin_with_coordinates(
-                        window, Gtk.TargetList.new(targets), Gdk.DragAction.COPY,
-                        1, event, -1, -1)
+                    with start_lock:
+                        if cancelled.is_set() or time.monotonic() >= deadline:
+                            cancelled.set()
+                            cleanup()
+                            result.update({
+                                "ok": False, "status": "timeout",
+                                "message": "The GTK drag owner did not start in time.",
+                            })
+                            return False
+                        context = Gtk.drag_begin_with_coordinates(
+                            window, Gtk.TargetList.new(targets),
+                            Gdk.DragAction.COPY, 1, event, -1, -1)
                     if context is None:
                         cleanup()
                         raise RuntimeError("GTK refused to start the drag")
-                    result.update({
-                        "ok": True, "status": "started", "dropped": False,
-                        "message": "Native drag started; drop acceptance is target-owned.",
-                        "alternatives": ["open", "reveal"],
-                    })
+                    if cancelled.is_set() or time.monotonic() >= deadline:
+                        cleanup()
+                        result.update({
+                            "ok": False, "status": "timeout",
+                            "message": "The GTK drag owner did not start in time.",
+                        })
+                    else:
+                        result.update({
+                            "ok": True, "status": "started", "dropped": False,
+                            "message": "Native drag started; drop acceptance is target-owned.",
+                            "alternatives": ["open", "reveal"],
+                        })
                 except Exception as exc:
                     if window is not None:
                         try:
@@ -108,13 +126,15 @@ class LinuxNativeDragAdapter:
                             pass
                     result["message"] = str(exc)[:240]
                 finally:
-                    finished.set()
+                    pass
+            finally:
+                finished.set()
             return False
 
         idle_source = GLib.idle_add(begin)
-        if not finished.wait(max(0.1, min(2.0, float(timeout)))):
+        if not finished.wait(wait_timeout):
             with start_lock:
-                if finished.is_set():
+                if finished.is_set() and result.get("status") != "started":
                     return result
                 cancelled.set()
                 try:

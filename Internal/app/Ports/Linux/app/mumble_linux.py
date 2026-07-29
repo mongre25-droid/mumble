@@ -805,7 +805,7 @@ class Mumble:
     @staticmethod
     def _reconcile_timestamped_segment(
             committed, tentative, words, *, index, segment_samples,
-            overlap_samples, sample_rate):
+            overlap_samples, sample_rate, previous_text_authoritative=False):
         parsed = []
         for word in words or []:
             if not isinstance(word, dict):
@@ -822,7 +822,12 @@ class Mumble:
         segment_seconds = segment_samples / float(sample_rate)
         if index:
             revised = [value for value, mid in parsed if mid < overlap_seconds]
-            committed = list(committed) + (revised if revised else list(tentative))
+            committed = list(committed)
+            if previous_text_authoritative:
+                committed = Mumble._merge_stable_prefix(
+                    " ".join(committed), " ".join(revised)).split()
+            else:
+                committed += revised if revised else list(tentative)
             owned = [(value, mid) for value, mid in parsed if mid >= overlap_seconds]
             tail_starts = overlap_seconds + max(
                 0.0, segment_seconds - overlap_seconds)
@@ -852,6 +857,7 @@ class Mumble:
     def _decode_durable_session(self, session, manifest, *, local_only=False):
         """Decode immutable segments once with a bounded prior-audio overlap."""
         merged, committed, tentative = "", [], []
+        previous_text_authoritative = False
         timestamped = len(manifest["segments"]) > 1
         for index, segment in enumerate(manifest["segments"]):
             audio = self._durable_inference_audio(session, manifest, index)
@@ -869,12 +875,22 @@ class Mumble:
                 segment_samples=int(segment["sample_count"]),
                 overlap_samples=overlap,
                 sample_rate=int(manifest["audio"]["sample_rate"]),
+                previous_text_authoritative=previous_text_authoritative,
             ) if timestamped else None
             if reconciled is not None:
                 committed, tentative = reconciled
                 merged = " ".join(committed + tentative)
+                previous_text_authoritative = False
             else:
                 merged = self._merge_stable_prefix(merged, text)
+                if timestamped and str(text or "").strip():
+                    # A provider may return useful text without word timing.
+                    # Keep that text in the authoritative state so a later
+                    # timestamped segment cannot rebuild from stale lists and
+                    # erase it. The next timed overlap is already represented
+                    # by this stable text and must not be appended twice.
+                    committed, tentative = merged.split(), []
+                    previous_text_authoritative = True
         return merged.strip()
 
     def _stream_worker(self):
@@ -1840,19 +1856,17 @@ class Mumble:
         dictation; it falls back to local on ANY error so a flaky network never
         loses a dictation.
 
-        When `want_words` is True (mode key was held) we ALWAYS use local: the
-        mode-key feature needs per-word timestamps to map the button window onto the
-        spoken keyword, which the cloud path doesn't provide. Returns a plain string
-        normally, or (text, words) when want_words=True."""
+        A word-timestamp request never overrides the user's selected cloud route.
+        Cloud providers without word timing return an empty word list, and durable
+        reconciliation preserves their text through the plain-text seam. Returns a
+        plain string normally, or (text, words) when want_words=True."""
         invocation_snapshot = (getattr(
             self, "_durable_transcription_snapshot", None)
             or self._transcription_snapshot())
-        if not want_words and self._cloud_transcription_on(
-            invocation_snapshot.route
-        ):
+        if self._cloud_transcription_on(invocation_snapshot.route):
             text = self._cloud_transcribe(audio, invocation_snapshot)
-            if text and text.strip():
-                return text
+            if text is not None:
+                return (text, []) if want_words else text
             # cloud failed → fall through to local so the dictation still lands
         return self._local_transcribe(audio, want_words=want_words)
 

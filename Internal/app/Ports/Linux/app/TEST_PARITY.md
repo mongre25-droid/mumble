@@ -14,9 +14,16 @@ Updated 2026-07-29 for Issue #27 from exact accepted baseline `c34e7baa`.
 - Windows DirectML, PowerShell installer, Win32 overlay, and `.bat` updater
   assertions are intentionally not Linux gates.
 - Deterministic probes cover GNOME LocalSearch/Tracker, KDE Baloo, degraded
-  plocate, the XDG GlobalShortcuts portal, native X11/Wayland clipboard helpers,
-  PipeWire/PulseAudio states, and compositor-limited drag alternatives. They do
-  not claim that those tools or desktops were physically exercised.
+  plocate, the actual XDG GlobalShortcuts D-Bus interface, the enabled XDG
+  autostart entry and launch route, native X11/Wayland clipboard helpers,
+  PipeWire/PulseAudio states, and compositor-limited drag alternatives. A
+  generic GTK/D-Bus library never reports these routes ready; missing or
+  unproven services remain degraded or unknown. These checks do not claim that
+  those tools or desktops were physically exercised.
+- The Issue #27 correction regressions mix timestamped and plain transcript
+  segments, keep an explicitly selected cloud speech route without a local
+  model, and delay GTK preparation beyond a short deadline to prove that no
+  late drag side effect or success can occur.
 - Native release sign-off still requires real GNOME Wayland, KDE Wayland, a
   representative X11 desktop, supported distributions, and sandboxed packages
   for shortcut approval, focus/paste, text/image clipboard, search freshness,
