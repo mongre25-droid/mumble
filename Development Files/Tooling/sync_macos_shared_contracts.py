@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Synchronize platform-neutral accepted contracts into the macOS product tree."""
+"""Synchronize platform-neutral accepted contracts into the macOS product tree.
+
+Generated text uses LF newlines, and checks ignore only CRLF-versus-LF checkout
+representation. Every other byte remains part of the maintained contract.
+"""
 
 from __future__ import annotations
 
@@ -101,8 +105,12 @@ def mappings():
             yield source, MAC / "experimental" / "system_search" / source.name
 
 
+def normalized_newlines(payload):
+    return payload.replace(b"\r\n", b"\n")
+
+
 def expected_bytes(source, target):
-    payload = source.read_bytes()
+    payload = normalized_newlines(source.read_bytes())
     try:
         relative = target.relative_to(MAC).as_posix()
     except ValueError:
@@ -131,6 +139,14 @@ def expected_bytes(source, target):
     return text.encode("utf-8")
 
 
+def contents_match(source, target):
+    return (
+        target.is_file()
+        and expected_bytes(source, target)
+        == normalized_newlines(target.read_bytes())
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
@@ -141,15 +157,13 @@ def main(argv=None):
         if not source.is_file():
             drift.append(f"missing authority: {source.relative_to(ROOT)}")
             continue
-        expected = expected_bytes(source, target)
-        same = target.is_file() and expected == target.read_bytes()
-        if same:
+        if contents_match(source, target):
             continue
         if args.check:
             drift.append(str(target.relative_to(ROOT)))
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(expected)
+        target.write_bytes(expected_bytes(source, target))
         copied.append(str(target.relative_to(ROOT)))
     if drift:
         print("macOS shared-contract drift:")
