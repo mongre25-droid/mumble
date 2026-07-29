@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Settings route projection, validation, and failure-path regressions."""
+import copy
 import sys
+import threading
 import types
 
 # The settings bridge imports the clipboard adapter at module import time. These
@@ -51,6 +53,7 @@ class MemorySettings:
         self.data.update(values)
         self.atomic_calls = []
         self.fail_saves = False
+        self._authority_lock = threading.RLock()
 
     def get(self, key, default=None):
         return self.data.get(key, default)
@@ -67,6 +70,17 @@ class MemorySettings:
         self.data[key] = mapping
         self.atomic_calls.append((key, dict(mapping)))
         return mapping
+
+    def authority_read(self):
+        with self._authority_lock:
+            return copy.deepcopy(self.data)
+
+    def authority_update(self, mutator):
+        with self._authority_lock:
+            current = copy.deepcopy(self.data)
+            result = mutator(current)
+            self.data = current
+            return result
 
 
 def api_for(settings):
@@ -86,14 +100,35 @@ def main():
           route["effective"] == "local" and route["reason"] == "no_key")
     settings.data["groq_api_key"] = "gsk-ready"
     route = api._settings_route_state()["transcription"]
+    check("Cloud without an explicit selected model stays on-device",
+          route["effective"] == "local" and route["reason"] == "no_model")
+    settings.data["groq_transcription_model"] = "whisper-large-v3-turbo"
+    route = api._settings_route_state()["transcription"]
     check("Cloud with the matching key sends audio to that provider",
           route["effective"] == "cloud" and route["sends_audio"] is True)
 
     print("== VAL-ROUTE-002: processing and transcription remain separate ==")
     settings.data.update(
         llm_provider="cerebras", cerebras_api_key="csk-ready",
+        cerebras_model="gpt-oss-120b",
         pro_mode=True, instant_text=True,
     )
+    unconfirmed = api._settings_route_state()["action_processing"]
+    check("a selected model absent from the confirmed catalogue stays inactive",
+          unconfirmed["effective"] == "local"
+          and unconfirmed["reason"] == "unconfirmed_model")
+    settings.data["_confirmed_text_models"] = {
+        "cerebras": {
+            "credential_identity": processing_route.model_credential_identity(
+                "cerebras", "csk-ready"
+            ),
+            "generation": 1,
+            "request_id": "manual-ready",
+            "confirmed_generation": 1,
+            "state": "confirmed",
+            "models": ["gpt-oss-120b"],
+        }
+    }
     routes = api._settings_route_state()
     check("instant plain dictation stays local",
           routes["plain_processing"]["effective"] == "local")
@@ -102,6 +137,19 @@ def main():
           and routes["action_processing"]["sends_text"] is True)
     check("hosted processing does not alter Cloud transcription readiness",
           routes["transcription"]["effective"] == "cloud")
+    feature_routes = routes["feature_routes"]
+    check("all seven Settings feature routes are projected separately",
+          list(feature_routes) == [
+              "plain_dictation", "prompt", "email", "reply",
+              "deck_actions", "meetings_analysis", "reader_actions",
+          ])
+    check("each Settings row retains its exact policy feature and lane",
+          [(route["feature"], route["lane"]) for route in feature_routes.values()] == [
+              ("dictation", "text"), ("prompt", "prompt"),
+              ("email", "email"), ("reply", "reply"),
+              ("deck", "deck_action"), ("meetings", "meeting_analysis"),
+              ("reader", "reader_summary"),
+          ])
 
     print("== VAL-ROUTE-003: device-only and unsupported routes fail closed ==")
     settings.data["local_only_mode"] = True
@@ -174,6 +222,140 @@ def main():
         rejected = exc.reason == "unsupported_provider"
     check("unknown runtime STT provider is rejected before any upload",
           rejected)
+
+    print("== VAL-ROUTE-007: speech readiness requires its model and hosted policy ==")
+    speech = MemorySettings(
+        pro_mode=True,
+        transcription_mode="cloud",
+        cloud_transcription_provider="groq",
+        groq_api_key="gsk-ready",
+    )
+    missing_model = processing_route.snapshot(
+        speech, feature="dictation", lane="speech_to_text"
+    )
+    check("runtime Cloud speech fails closed without its selected model",
+          missing_model.effective_route == "local"
+          and missing_model.reason == "missing_model")
+    speech.data["groq_transcription_model"] = "whisper-large-v3-turbo"
+    speech.data["pro_mode"] = False
+    ready_speech = processing_route.snapshot(
+        speech, feature="dictation", lane="speech_to_text"
+    )
+    check("turning off hosted processing fails Cloud speech closed everywhere",
+          ready_speech.effective_route == "local"
+          and ready_speech.reason == "hosted_processing_off")
+
+    print("== VAL-ROUTE-008: hosted text requires an explicit selected model ==")
+    text = MemorySettings(
+        pro_mode=True,
+        local_only_mode=False,
+        instant_text=False,
+        llm_provider="cerebras",
+        cerebras_api_key="csk-ready",
+        cerebras_model="",
+    )
+    missing_text_model = processing_route.snapshot(
+        text, feature="prompt", lane="prompt"
+    )
+    check("runtime hosted text fails closed without its selected model",
+          missing_text_model.effective_route == "local"
+          and missing_text_model.reason == "missing_model"
+          and missing_text_model.model == "")
+
+    print("== VAL-ROUTE-009: Settings and real actions share confirmation ==")
+    confirmed = MemorySettings(
+        pro_mode=True,
+        local_only_mode=False,
+        instant_text=False,
+        llm_provider="cerebras",
+        cerebras_api_key="csk-confirmed",
+        cerebras_model="gpt-oss-120b",
+    )
+    api = api_for(confirmed)
+    before_display = api._settings_route_state()["action_processing"]["decision"]
+    before_runtime = processing_route.snapshot(
+        confirmed, feature="prompt", lane="prompt"
+    ).public_dict()
+    check("unconfirmed Settings and real Prompt snapshot both fail closed",
+          before_display["effective_route"] == "local"
+          and before_runtime["effective_route"] == "local"
+          and before_display["reason"] == before_runtime["reason"]
+          == "unconfirmed_model")
+
+    original_fetch = webui_shell.ai.fetch_models
+    original_ctrl_send = webui_shell._ctrl_send
+    webui_shell.ai.fetch_models = lambda _provider, _key: ["gpt-oss-120b"]
+    webui_shell._ctrl_send = lambda _message, timeout=0.8: {"ok": True}
+    try:
+        discovered = api.list_models("cerebras")
+    finally:
+        webui_shell.ai.fetch_models = original_fetch
+        webui_shell._ctrl_send = original_ctrl_send
+    after_display = api._settings_route_state()["action_processing"]["decision"]
+    action_routes = [
+        processing_route.snapshot(confirmed, feature=feature, lane=lane)
+        for feature, lane in (
+            ("prompt", "prompt"), ("email", "email"),
+            ("reply", "reply"), ("deck", "deck_action"),
+            ("reader", "reader_summary"),
+        )
+    ]
+    check("one confirmed model enables Settings and every real action snapshot",
+          discovered.get("ok") is True
+          and after_display["effective_route"] == "hosted"
+          and all(route.effective_route == "hosted" for route in action_routes)
+          and all(route.model == after_display["model"] for route in action_routes))
+
+    print("== VAL-ROUTE-010: older model discovery cannot overwrite newer truth ==")
+    raced = MemorySettings(
+        pro_mode=True,
+        local_only_mode=False,
+        instant_text=False,
+        llm_provider="cerebras",
+        cerebras_api_key="csk-old",
+        cerebras_model="old-model",
+    )
+    race_api = api_for(raced)
+    first_started = threading.Event()
+    release_first = threading.Event()
+    original_fetch = webui_shell.ai.fetch_models
+    original_ctrl_send = webui_shell._ctrl_send
+
+    def fetch_models(_provider, key):
+        if key == "csk-old":
+            first_started.set()
+            release_first.wait(timeout=5)
+            return ["old-model"]
+        return ["new-model"]
+
+    webui_shell.ai.fetch_models = fetch_models
+    webui_shell._ctrl_send = lambda _message, timeout=0.8: {"ok": True}
+    first_result = {}
+    first = threading.Thread(
+        target=lambda: first_result.update(race_api.list_models("cerebras"))
+    )
+    try:
+        first.start()
+        first_started.wait(timeout=5)
+        raced.data.update(
+            cerebras_api_key="csk-new", cerebras_model="new-model"
+        )
+        second_result = race_api.list_models("cerebras")
+        release_first.set()
+        first.join(timeout=5)
+    finally:
+        release_first.set()
+        first.join(timeout=5)
+        webui_shell.ai.fetch_models = original_fetch
+        webui_shell._ctrl_send = original_ctrl_send
+    final_route = processing_route.snapshot(
+        raced, feature="prompt", lane="prompt"
+    )
+    check("reversed completion keeps the newer credential and model authoritative",
+          second_result.get("ok") is True
+          and first_result.get("obsolete") is True
+          and final_route.effective_route == "hosted"
+          and final_route.model == "new-model")
 
     print()
     if FAIL:

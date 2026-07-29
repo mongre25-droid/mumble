@@ -492,6 +492,17 @@ const MOCK = {
       transcription: { requested: "local", provider: "groq", provider_supported: true, has_key: false, effective: "local", reason: "selected", sends_audio: false },
       plain_processing: { effective: "local", reason: "instant_text", sends_text: false },
       action_processing: { provider: "cerebras", provider_supported: true, has_key: false, effective: "local", reason: "no_key", sends_text: false },
+      feature_routes: Object.fromEntries([
+        ["plain_dictation", "dictation", "text"], ["prompt", "prompt", "prompt"],
+        ["email", "email", "email"], ["reply", "reply", "reply"],
+        ["deck_actions", "deck", "deck_action"], ["meetings_analysis", "meetings", "meeting_analysis"],
+        ["reader_actions", "reader", "reader_summary"],
+      ].map(([key, feature, lane]) => [key, {
+        feature, lane, requested_route: key === "plain_dictation" ? "local" : "hosted",
+        effective_route: "local", reason: key === "plain_dictation" ? "instant_text" : "missing_key",
+        provider: "cerebras", model: "gpt-oss-120b", ready: key === "plain_dictation",
+        provider_supported: true, key_present: false, pro_mode: true, device_only: false,
+      }])),
       local_only: false,
     },
   },
@@ -1255,6 +1266,20 @@ async function call(name, ...args) {
     }
     case "meeting_start_recording":
       return { ok: false, message: "Preview — recording runs in the full app" };
+    case "meeting_context":
+      return {
+        ok: true,
+        microphone: (MOCK.mics[0] && MOCK.mics[0].name) || "System default",
+        saved_location: "Private Mumble meeting library",
+        transcription: { ...(MOCK.settings._route_state || {}).transcription },
+        analysis: {
+          feature: "meetings", lane: "meeting_analysis",
+          requested_route: "hosted", effective_route: "blocked",
+          reason: "missing_key", provider: MOCK.settings.llm_provider || "cerebras",
+          ready: false, provider_supported: true, key_present: false,
+          pro_mode: !!MOCK.settings.pro_mode, device_only: !!MOCK.settings.local_only_mode,
+        },
+      };
     case "meeting_recording_status":
       return { ok: true, active: false, recording: false, paused: false,
         state: "idle", captured_seconds: 0, max_seconds: 14400 };
@@ -1729,8 +1754,9 @@ function debounce(fn, ms) {
 }
 
 async function bootHome() {
-  const [o, hk, liveStatus] = await Promise.all([
-    call("get_overview"), call("get_hotkeys"), call("get_app_status")
+  const [o, hk, liveStatus, latestItems] = await Promise.all([
+    call("get_overview"), call("get_hotkeys"), call("get_app_status"),
+    call("get_transcripts", 1).catch(() => null),
   ]);
   // hotkey labels — plain text everywhere ("Hold Right Shift", never a glyph),
   // and EVERY surface that shows a binding live-updates after a rebind
@@ -1754,11 +1780,17 @@ async function bootHome() {
       "Signed update checks are not configured yet";
   }
   if (!o.update_enabled) setText("#update-sub", "Signed update channel not configured");
-  const cloudStt = o.transcription_mode === "cloud";
+  const transcriptionRoute = o.transcription_route || {
+    requested: o.transcription_mode || "local",
+    effective: o.effective_transcription_mode || o.transcription_mode || "local",
+    reason: "selected",
+  };
+  const cloudStt = transcriptionRoute.effective === "cloud";
+  const savedCloudFallback = transcriptionRoute.requested === "cloud" && !cloudStt;
   const cloudProvider = o.cloud_transcription_provider || "your provider";
   const dictationLimit = $("#home-dictation-limit");
   if (dictationLimit) dictationLimit.textContent =
-    `Normal dictation records for up to ${o.dictation_max_display || "10:00"} at a time.`;
+    "Mumble saves long dictation in bounded, recovery-safe segments and assembles one final transcript when you stop. A safety stop can still protect your recording if the device cannot keep up.";
   const hero = $("#home-hero-copy");
   if (hero) hero.innerHTML = cloudStt
     ? `Dictate into any app, shape rough thoughts into useful output, capture meetings, and listen to documents. Voice clips currently go to <span class="t-gold fw6">${esc(cloudProvider)}</span> for transcription.`
@@ -1772,7 +1804,23 @@ async function bootHome() {
     : `Use Smart Modes and presets in the <span class="t-gold fw6">Deck</span> to polish, summarise, and repurpose your words. AI shaping sends transcript text only; your audio stays on this device.`;
   setText("#home-audio-detail", cloudStt
     ? `Cloud transcription sends audio to ${cloudProvider}; AI shaping receives transcript text.`
-    : "Local transcription keeps audio on this device; AI shaping receives transcript text only.");
+    : savedCloudFallback
+      ? `Local transcription keeps audio on this device. Your ${cloudProvider} Cloud choice remains saved but is not effective (${String(transcriptionRoute.reason || "not ready").replaceAll("_", " ")}).`
+      : "Local transcription keeps audio on this device; AI shaping receives transcript text only.");
+  const latestCopy = $("#home-latest-copy");
+  const latestMeta = $("#home-latest-meta");
+  const latest = Array.isArray(latestItems) ? latestItems[0] : null;
+  if (latestCopy && latestMeta && latestItems === null) {
+    latestCopy.textContent = "Your latest result could not be checked right now.";
+    latestMeta.textContent = "Open the Deck to see saved text already on this device.";
+  } else if (latestCopy && latestMeta && latest && latest.text) {
+    latestCopy.textContent = latest.text;
+    latestMeta.textContent = [latest.mode || "Dictation", latest.time || latest.stamp]
+      .filter(Boolean).join(" · ") || "Most recent finished dictation";
+  } else if (latestCopy && latestMeta) {
+    latestCopy.textContent = "No finished dictation yet.";
+    latestMeta.textContent = "Start dictation above; completed text will appear here and in the Deck.";
+  }
   // pro key status
   const pk = $("#pro-status"),
     pb = $("#pro-btn");
@@ -2767,10 +2815,10 @@ function imageRowHTML(i, idx, latest) {
     ? `<span class="latest-chip" title="The most recent clipboard item — what Ctrl+V would paste right now">● Current</span>`
     : "";
   return `<article class="row clipboard-image-row${latest ? " is-latest" : ""}" data-idx="${idx}" data-stamp="${esc(i.stamp || "")}" data-kind="clip" data-image-path="${esc(i.path || "")}" data-image-hash="${esc(i.hash || "")}">
-    <div class="thumb flex items-center justify-center t-mute" data-thumb-path="${esc(i.path || "")}">${svg("layers")}</div>
+    <div class="thumb hist-image-thumb flex items-center justify-center t-mute" data-thumb-path="${esc(i.path || "")}">${svg("layers")}</div>
     <div class="row-main"><div class="row-meta"><span class="tag" style="color:var(--mode-context);background:color-mix(in srgb,var(--mode-context) 16%,transparent)">image</span><span class="row-metatext">${esc(i.time)} · ${esc(i.size || "")}</span>${liveChip}
       <div class="row-actions">
-        <button class="btn-icon btn-ghost" data-pasteimage="${esc(i.path || "")}" title="Paste this image into the app you came from" aria-label="Paste image">${svg("type")}</button>
+        <button class="btn btn-sm btn-gold deck-image-paste" data-pasteimage="${esc(i.path || "")}" title="Paste this image into the app you came from" aria-label="Paste image into previous app">${svg("type")}<span>Paste image</span></button>
         <button class="btn-icon btn-ghost" data-del title="Delete" aria-label="Delete">${svg("trash")}</button>
       </div></div>
       <div class="row-text t-mute">Clipboard image · paste it back into any compatible app</div></div></article>`;
@@ -3092,13 +3140,38 @@ function refreshSelectionUI(root) {
   });
   updateHistActionbar();
 }
+const DECK_SELECTION_MENUS = [
+  ["#hist-mode-toggle", "#hist-mode-menu"],
+  ["#hist-preset-toggle", "#hist-preset-menu"],
+  ["#deck-selection-more-toggle", "#deck-selection-more"],
+];
+
 function updateHistActionbar() {
   const bar = $("#hist-actionbar");
   if (!bar) return;
   const n = HX.selected.length;
   bar.hidden = n === 0;
+  const browse = document.querySelector('[data-deck-state="browse"]');
+  if (browse) browse.hidden = n > 0;
   const historyView = document.querySelector('[data-view="history"]');
   if (historyView) historyView.classList.toggle("selection-active", n > 0);
+  if (n) {
+    const browseActions = $("#deck-toolbar-actions");
+    const browseMore = $("#deck-more-toggle");
+    const browseSecondary = $("#deck-secondary-actions");
+    browseActions?.classList.remove("more-open");
+    if (browseSecondary) browseSecondary.hidden = true;
+    browseMore?.setAttribute("aria-expanded", "false");
+    setText("#deck-more-label", "More");
+  }
+  if (!n) {
+    for (const [toggleSelector, menuSelector] of DECK_SELECTION_MENUS) {
+      const menu = $(menuSelector);
+      if (menu) menu.hidden = true;
+      const toggle = $(toggleSelector);
+      if (toggle) toggle.setAttribute("aria-expanded", "false");
+    }
+  }
   const single = n === 1;
   // ONE selected → a plain "Copy"/"Paste" (merging a single item is just copying
   // it), and that Copy becomes the gold hero the linked-copy connector lands on.
@@ -3128,13 +3201,20 @@ function updateHistActionbar() {
   const presetName = HX.runPreset
     ? (HX.presets.find((p) => p[0] === HX.runPreset) || [])[1] || ""
     : "";
-  const what = `${presetName}${presetName && HX.runMode ? " + " : ""}${HX.runMode || ""}`;
-  setText("#hist-run-label", what ? `Run · ${what}` : "Run on selection");
+  setText("#hist-mode-label", HX.runMode ? `Smart Mode · ${MODE_LABELS[HX.runMode] || HX.runMode}` : "Smart Mode");
+  setText("#hist-preset-label", presetName ? `Preset · ${presetName}` : "Preset");
+  setText("#hist-run-label", "Run shaping");
+  const webSearch = $("#hist-web-search");
+  if (webSearch) webSearch.hidden = !selectedItems().some((item) => (item.text || "").trim());
   syncLinkedCopy(single);
 }
 function clearHistSelection() {
+  const restoreBrowseFocus = !!document.activeElement?.closest?.("#hist-actionbar");
   HX.selected = [];
   refreshSelectionUI();
+  if (restoreBrowseFocus) {
+    requestAnimationFrame(() => $("#hist-filter")?.focus({ preventScroll: true }));
+  }
   if (HX.refreshPending.size) {
     HX.refreshPending.clear();
     renderHistory().catch(() => toast("Couldn't refresh the Deck", "err"));
@@ -3269,6 +3349,22 @@ async function histRun() {
     setTimeout(() => {
       _deckJobBusy = false;
     }, 1200);
+  }
+}
+
+async function deckWebSearch() {
+  const text = selectedItems()
+    .map((item) => item.text || "")
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+  if (!text) {
+    toast("Select a text item before searching the web.", "info", 2200);
+    return;
+  }
+  const prepared = await call("request_web_search", text).catch(() => null);
+  if (!prepared || !prepared.ok) {
+    toast((prepared && prepared.message) || "Web Search could not prepare.", "err", 3000);
   }
 }
 
@@ -4254,6 +4350,18 @@ async function hydrateSettings() {
         if (el.dataset.type === "number") v = Number(v);
         // Never write an untouched masked key back over the real one.
         if (el.dataset.masked === "1" || (typeof v === "string" && v.indexOf("•") >= 0)) return;
+        if (key === "llm_provider") {
+          const activated = await activateProviderChoice(v, key, mutationId);
+          if (mutationId !== SETTINGS_MUTATION_VERSION[key]) return;
+          if (!activated || activated.ok !== true) {
+            el.value = previous == null ? "" : previous;
+            toast((activated && activated.message) || "The provider could not be checked", "err", 2600);
+            return;
+          }
+          confirmSaved(el, key, v, activated);
+          if (el.dataset.feedback) flash($(el.dataset.feedback), "Saved", "ok");
+          return;
+        }
         let r;
         try {
           r = await call("set_setting", key, v);
@@ -4275,7 +4383,6 @@ async function hydrateSettings() {
         setNested(SET, key, v);
         confirmSaved(el, key, v, r);
         if (el.dataset.feedback) flash($(el.dataset.feedback), "Saved", "ok");
-        if (key === "llm_provider") { reflectProvider(); updateSetupSummary(); }
         if (
           key === "transcription_mode" ||
           key === "cloud_transcription_provider"
@@ -4296,7 +4403,15 @@ async function hydrateSettings() {
         // dropdown fills with valid ids (the core "enter key, then pick a model" flow).
         if (key.endsWith("_api_key")) {
           const pr = key.slice(0, -8);
-          populateModels(pr, true);
+          // Model confirmation is part of the saved-key transition.  Wait for it
+          // before route hydration refreshes the readiness summary, otherwise the
+          // screen can remain on a stale "unavailable" result until another action.
+          const modelRefresh = populateModels(pr, true);
+          // fillModelSelect invalidates confirmation synchronously for a forced
+          // refresh.  Reflect that fail-closed state while network discovery runs.
+          updateSetupSummary();
+          await modelRefresh;
+          if (mutationId !== SETTINGS_MUTATION_VERSION[key]) return;
           // One OpenRouter key, shared everywhere OpenRouter is used.
           if (key === "openrouter_api_key") syncOpenRouterKey(v);
         }
@@ -4305,6 +4420,8 @@ async function hydrateSettings() {
           "local_only_mode", "pro_mode", "llm_provider", "instant_text",
           "cerebras_api_key", "openrouter_api_key", "groq_api_key",
           "openai_api_key", "local_llm_enabled", "local_llm_model",
+          "cerebras_model", "openrouter_model", "groq_transcription_model",
+          "openai_transcription_model", "openrouter_transcription_model",
         ].includes(key)) {
           await refreshRouteState();
         }
@@ -4854,6 +4971,23 @@ const PROVIDER_DESC = {
    is saved we fetch availability once per session. OpenRouter is filtered back to
    the reviewed shortlist; otherwise we use the offline curated choices. */
 const MODELS_FETCHED = {};
+const MODEL_DISCOVERY_VERSION = {};
+function invalidateHostedConfirmation(provider) {
+  const routes = SET._route_state || {};
+  const invalidate = (decision) => decision && decision.provider === provider && decision.requested_route === "hosted"
+    ? { ...decision, effective_route: "local", reason: "unconfirmed_model", ready: false }
+    : decision;
+  const action = routes.action_processing;
+  if (action && action.provider === provider) {
+    action.effective = "local";
+    action.reason = "unconfirmed_model";
+    action.sends_text = false;
+    action.decision = invalidate(action.decision);
+  }
+  if (routes.feature_routes) Object.keys(routes.feature_routes).forEach((key) => {
+    routes.feature_routes[key] = invalidate(routes.feature_routes[key]);
+  });
+}
 async function fillModelSelect(sel, provider, force) {
   if (!sel) return false;
   provider = (provider || "").toLowerCase();
@@ -4861,9 +4995,24 @@ async function fillModelSelect(sel, provider, force) {
   let models = (MODELS[provider] || []).slice();
   let live = false;
   const hasKey = !!String(nested(SET, provider + "_api_key") || "").trim();
+  // A forced discovery follows a changed credential.  Confirmation belongs to
+  // the credential that produced it, so invalidate the old catalogue even when
+  // the replacement is empty or no bridge request can be made.
+  let discoveryId = MODEL_DISCOVERY_VERSION[provider] || 0;
+  if (force) {
+    discoveryId += 1;
+    MODEL_DISCOVERY_VERSION[provider] = discoveryId;
+    delete MODELS_FETCHED[provider];
+    invalidateHostedConfirmation(provider);
+  }
   if (HAS_PY() && hasKey && (force || !MODELS_FETCHED[provider])) {
+    if (!force) {
+      discoveryId += 1;
+      MODEL_DISCOVERY_VERSION[provider] = discoveryId;
+    }
     try {
       const r = await call("list_models", provider);
+      if (discoveryId !== MODEL_DISCOVERY_VERSION[provider]) return false;
       if (r && r.ok && Array.isArray(r.models) && r.models.length) {
         if (provider === "openrouter") {
           // OpenRouter has hundreds of models. The product deliberately exposes
@@ -4876,9 +5025,10 @@ async function fillModelSelect(sel, provider, force) {
           models = r.models;
         }
         live = true;
-        MODELS_FETCHED[provider] = true;
+        MODELS_FETCHED[provider] = new Set(r.models.map((model) => String(model)));
       }
     } catch (_) {
+      if (discoveryId !== MODEL_DISCOVERY_VERSION[provider]) return false;
       /* keep the fallback list */
     }
   }
@@ -4935,7 +5085,7 @@ function fillSttSelect(provider) {
   sel.value = list.some(([v]) => v === saved) ? saved : list[0]?.[0] || "";
 }
 
-function reflectProvider() {
+async function reflectProvider(force = false) {
   const p = SET.llm_provider || "cerebras";
   const supported = ["cerebras", "openrouter"].includes(p);
   $$("[data-provider-field]").forEach(
@@ -4960,7 +5110,69 @@ function reflectProvider() {
   if (desc) desc.textContent = supported
     ? PROVIDER_DESC[p] || ""
     : "This saved provider is not supported by this build. It remains preserved but inactive until you choose a supported route.";
-  if (supported) populateModels(p);
+  const live = supported ? await populateModels(p, force) : false;
+  if (live || force) await refreshRouteState();
+  else updateSetupSummary();
+}
+
+async function activateProviderChoice(provider, mutationKey, mutationId) {
+  const result = await call("activate_model_provider", provider);
+  if (mutationId !== SETTINGS_MUTATION_VERSION[mutationKey])
+    return {ok:false, obsolete:true};
+  if (!result || result.ok !== true) return result || {ok:false};
+  if (Array.isArray(result.models)) {
+    MODELS[provider] = result.models.slice();
+    MODELS_FETCHED[provider] = new Set(result.models);
+  }
+  SET.llm_provider = provider;
+  await reflectProvider(false);
+  await refreshRouteState();
+  return result;
+}
+
+function wireOnboardingProvider() {
+  const control = $("#ob-provider");
+  if (!control || control.dataset.routeWired === "1") return;
+  control.dataset.routeWired = "1";
+  control.addEventListener("change", async () => {
+    const previous = OB.provider || SET.llm_provider || "cerebras";
+    const v = control.value;
+    const mutationId = (SETTINGS_MUTATION_VERSION.onboarding_llm_provider || 0) + 1;
+    SETTINGS_MUTATION_VERSION.onboarding_llm_provider = mutationId;
+    const r = await activateProviderChoice(v, "onboarding_llm_provider", mutationId);
+    if (mutationId !== SETTINGS_MUTATION_VERSION.onboarding_llm_provider) return;
+    if (!r || r.ok === false) {
+      control.value = previous;
+      toast((r && r.message) || "Could not save the provider.", "err");
+      return;
+    }
+    OB.provider = v;
+    const openUrl = v === "openrouter" ? "https://openrouter.ai/keys" : "https://cloud.cerebras.ai/";
+    const getKeyBtn = $("#ob-get-key");
+    if (getKeyBtn) getKeyBtn.onclick = () => call("open_url", openUrl);
+  });
+}
+
+function resolveHostedReadiness(route, decision = (route || {}).decision || {}) {
+  route = route || {};
+  const provider = route.provider || decision.provider || "";
+  const model = String(decision.model || "").trim();
+  const reason = route.reason || decision.reason || "selected";
+  const ready = decision.ready === true && decision.effective_route === "hosted" && route.effective === "cloud";
+  return { ready, reason, provider, model };
+}
+
+function applyHostedReadiness(route, decision = (route || {}).decision || {}) {
+  const readiness = resolveHostedReadiness(route, decision);
+  const requested = route.requested || decision.requested_route ||
+    (route.effective === "cloud" || decision.effective_route === "hosted" ? "hosted" : "local");
+  if (readiness.ready || !["cloud", "hosted"].includes(requested))
+    return { route, decision, readiness };
+  return {
+    route: { ...route, effective: "local", reason: readiness.reason, sends_text: false },
+    decision: { ...decision, effective_route: "local", reason: readiness.reason, ready: false },
+    readiness,
+  };
 }
 
 /* Advanced cloud-transcription section: show the provider/key/model fields only
@@ -5003,14 +5215,74 @@ function reflectCloudStt() {
    running and where, without expanding any Advanced/details elements. Called
    from reflectCloudStt (on settings load + transcription-mode change) and from
    the main settings change handler for AI provider / hardware / model changes. */
+function buildRouteFacts({ kind, route, decision, providerLabel, reasonText, localEngine }) {
+  const effective = route.effective || (decision.effective_route === "hosted" ? "cloud" : "local");
+  const hosted = effective === "cloud";
+  const rawReason = route.reason || decision.reason || "";
+  const reason = { device_only: "local_only", hosted_processing_off: "pro_off", missing_key: "no_key", ready: "selected" }[rawReason] || rawReason;
+  const requested = route.requested || decision.requested_route || "local";
+  const localProvider = decision.provider === "local";
+  const saved = localProvider
+    ? reason === "unsupported_provider"
+      ? "On-device local model · saved, unavailable"
+      : `On-device local model${decision.model ? ` · ${decision.model}` : ""}`
+    : requested === "hosted" || requested === "cloud"
+      ? `Hosted · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}`
+      : "On this device";
+  if (kind === "speech") {
+    return {
+      saved,
+      effective: hosted ? `Online provider · ready (${providerLabel})` : "On this device",
+      reason: reasonText[reason] || "Mumble used the safest available speech route.",
+      engine: hosted ? `Recorded audio · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}` : `Recorded audio · ${localEngine}`,
+      location: hosted ? `${providerLabel} hosted service` : "This device",
+      egress: hosted ? "The recorded audio clip" : "Nothing for speech to text",
+      speed: hosted ? "Depends on your connection and provider; no universal speed promise" : "Depends on this device and selected speech model",
+      privacy: hosted ? `Recorded audio is shared with ${providerLabel}` : "Recorded audio stays on this device",
+      quality: hosted ? "Recognition depends on the selected provider and model" : "Recognition depends on the selected model, language, microphone, and device",
+      cost: hosted ? "Your provider may charge for transcription" : "No provider charge",
+    };
+  }
+  return {
+    saved,
+    effective: hosted ? `Hosted · ready (${providerLabel})` : "On this device",
+    reason: reasonText[reason] || "Mumble used the safest available text route.",
+    engine: hosted ? `Transcript text · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}` : `Transcript text · ${localEngine}`,
+    location: hosted ? `${providerLabel} hosted service` : "This device",
+    egress: hosted ? "Transcript text and action context; never microphone audio" : "Nothing for text shaping",
+    speed: hosted ? "Depends on your connection and provider; no universal speed promise" : "Depends on this device and the available local engine",
+    privacy: hosted ? `Transcript text and action context are shared with ${providerLabel}` : "Text shaping stays on this device",
+    quality: hosted ? "Results depend on the selected provider, model, and task" : "Results depend on the local formatter or ready on-device model",
+    cost: hosted ? "Your provider may charge for text processing" : "No provider charge",
+  };
+}
+
+function writeRouteFacts(prefix, facts) {
+  Object.entries(facts).forEach(([key, value]) => setText(`#${prefix}-fact-${key}`, value));
+}
+
 function updateSetupSummary() {
   const routes = SET._route_state || {};
   const tx = routes.transcription || {};
   const plain = routes.plain_processing || {};
-  const action = routes.action_processing || {};
+  const rawAction = routes.action_processing || {};
+  const actionPresentation = applyHostedReadiness(rawAction, rawAction.decision || {});
+  const action = actionPresentation.route;
   const names = {
     cerebras: "Cerebras", openrouter: "OpenRouter",
     groq: "Groq", openai: "OpenAI",
+  };
+  const reasonText = {
+    selected: "Your saved choice is ready.",
+    instant_text: "Instant plain dictation keeps this feature on this device.",
+    local_provider: "You selected an on-device model.",
+    local_only: "Keep audio and text on this device overrides the saved hosted choice.",
+    pro_off: "Hosted text processing is switched off.",
+    no_key: "The selected provider does not have a saved key.",
+    no_model: "The selected provider does not have a saved transcription model.",
+    missing_model: "The selected provider does not have a saved model.",
+    unconfirmed_model: "The selected model has not been confirmed by the provider.",
+    unsupported_provider: "This build does not support the saved provider.",
   };
 
   let txTitle = "On-device transcription";
@@ -5045,6 +5317,19 @@ function updateSetupSummary() {
     $("#transcription-route-title").textContent = txTitle;
     $("#transcription-route-copy").textContent = txCopy;
   }
+  const txProviderLabel = names[tx.provider] || tx.provider || "No provider";
+  writeRouteFacts("tx", buildRouteFacts({
+    kind: "speech", route: tx,
+    decision: {
+      requested_route: tx.requested === "cloud" ? "hosted" : "local",
+      effective_route: tx.effective === "cloud" ? "hosted" : "local",
+      reason: tx.reason,
+      model: tx.model || SET[`${tx.provider}_transcription_model`] || "",
+    },
+    providerLabel: txProviderLabel,
+    reasonText,
+    localEngine: `faster-whisper${SET.model ? ` · ${SET.model}` : ""}`,
+  }));
 
   let processingTitle = "On-device text shaping";
   let processingCopy = "Transcript text stays on-device for formatting and explicit actions.";
@@ -5090,30 +5375,10 @@ function updateSetupSummary() {
     $("#processing-route-title").textContent = processingTitle;
     $("#processing-route-copy").textContent = processingCopy;
   }
-  const decision = action.decision || {};
+  const decision = actionPresentation.decision;
   const providerLabel = names[action.provider] || action.provider || "No provider";
-  setText("#route-fact-saved", localProvider
-    ? `On-device local model${decision.model ? ` · ${decision.model}` : ""}`
-    : SET.pro_mode
-    ? `Hosted text processing · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}`
-    : "On-device text shaping");
-  setText("#route-fact-effective", action.effective === "cloud"
-    ? `Hosted · ready (${providerLabel})`
-    : `On this device · ${processingTitle.split(" · ").slice(1).join(" · ") || "local"}`);
-  setText("#route-fact-engine", action.effective === "cloud"
-    ? `Transcript text · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}`
-    : localProvider
-      ? `Transcript text · local model${decision.model ? ` · ${decision.model}` : ""}`
-      : "Transcript text · local text-shaping pipeline");
-  setText("#route-fact-location", action.effective === "cloud"
-    ? `${providerLabel} hosted service`
-    : "This device");
-  setText("#route-fact-egress", action.effective === "cloud"
-    ? "Transcript text and any action context; never microphone audio on this route"
-    : "Nothing for text shaping");
-  setText("#route-fact-tradeoff", action.effective === "cloud"
-    ? "Network and provider affect speed and quality. Provider usage may cost money; Mumble makes no unmeasured speed promise."
-    : "No provider charge and strongest privacy. Speed and quality depend on this device and the available local engine.");
+  writeRouteFacts("route", buildRouteFacts({ kind: "text", route: action, decision, providerLabel, reasonText, localEngine: localProvider ? `local model${decision.model ? ` · ${decision.model}` : ""}` : "local text-shaping pipeline" }));
+  renderFeatureRouteLedger({ featureRoutes: routes.feature_routes || {}, names, reasonText });
   const hostedSummary = $("#hosted-provider-summary");
   if (hostedSummary) {
     const name = names[action.provider] || action.provider || "unavailable";
@@ -5124,16 +5389,76 @@ function updateSetupSummary() {
   const hostedDetails = $("#hosted-provider-details");
   if (hostedDetails && !hostedDetails.dataset.userToggled)
     hostedDetails.open = ["no_key", "unsupported_provider"].includes(action.reason);
+  const hostedCapability = $("#hosted-capability-status");
+  if (hostedCapability) {
+    const available = actionPresentation.readiness.ready;
+    const blocker = action.reason === "local_only" ? "the device-only privacy policy is on"
+      : action.reason === "pro_off" ? "hosted text processing is off"
+      : action.reason === "unsupported_provider" ? "the saved provider is unsupported"
+      : action.reason === "no_key" ? "the selected provider has no saved key"
+      : action.reason === "missing_model" ? "no model is selected"
+      : action.reason === "unconfirmed_model" ? "the selected model has not been confirmed by the provider"
+      : "the hosted route is not ready";
+    hostedCapability.dataset.available = available ? "true" : "false";
+    hostedCapability.textContent = available
+      ? `Hosted text shaping available · ${providerLabel}${action.decision.model ? ` · ${action.decision.model}` : ""}`
+      : `Hosted text shaping unavailable · ${blocker}.`;
+  }
 }
 
+const FEATURE_ROUTE_ROWS = [
+  ["Plain dictation", "plain_dictation"],
+  ["Prompt", "prompt"],
+  ["Email", "email"],
+  ["Reply", "reply"],
+  ["Deck actions", "deck_actions"],
+  ["Meetings analysis", "meetings_analysis"],
+  ["Reader actions", "reader_actions"],
+];
+
+function renderFeatureRouteLedger({ featureRoutes, names, reasonText }) {
+  const root = $("#feature-route-rows");
+  if (!root) return;
+  root.innerHTML = FEATURE_ROUTE_ROWS.map(([label, key]) => {
+    const rawDecision = featureRoutes[key] || {};
+    const presentation = applyHostedReadiness({
+      requested: rawDecision.requested_route,
+      effective: rawDecision.effective_route === "hosted" ? "cloud" : "local",
+      reason: rawDecision.reason,
+      provider: rawDecision.provider,
+      provider_supported: rawDecision.provider_supported,
+      has_key: rawDecision.key_present,
+    }, rawDecision);
+    const decision = presentation.decision;
+    const provider = names[decision.provider] || decision.provider || "No provider";
+    const facts = buildRouteFacts({
+      kind: "text",
+      route: {},
+      decision,
+      providerLabel: provider,
+      reasonText,
+      localEngine: key === "plain_dictation" ? "local formatter" : "local text-shaping pipeline",
+    });
+    const details = Object.entries(facts).map(([key, value]) =>
+      `<div><dt>${esc(key === "egress" ? "What leaves this device" : key === "quality" ? "Quality boundary" : key === "engine" ? "Input and engine" : key[0].toUpperCase() + key.slice(1))}</dt><dd data-route-value="${key}">${esc(value)}</dd></div>`
+    ).join("");
+    return `<article class="feature-route-row" data-route-feature="${esc(label.toLowerCase().replace(/\s+/g, "-"))}"><h4>${esc(label)}</h4><dl>${details}</dl></article>`;
+  }).join("");
+}
+
+let ROUTE_REFRESH_VERSION = 0;
 async function refreshRouteState() {
+  const requestId = ++ROUTE_REFRESH_VERSION;
   try {
     const fresh = await call("get_settings");
+    if (requestId !== ROUTE_REFRESH_VERSION) return false;
     if (fresh && fresh._route_state) SET._route_state = fresh._route_state;
   } catch (_) {
+    if (requestId !== ROUTE_REFRESH_VERSION) return false;
     // The save path already surfaced its error; retain the last known route.
   }
   updateSetupSummary();
+  return true;
 }
 
 /* ONE OpenRouter key, shared by text processing and Reader. Enter it once and mirror it into every OpenRouter
@@ -5621,6 +5946,15 @@ async function finishOnboarding() {
   const name = $("#ob-name")?.value?.trim() || "";
   const txMode = $("#ob-tx-mode .active")?.dataset.tx || "local";
   const provider = $("#ob-provider")?.value || "cerebras";
+  const providerMutation = (SETTINGS_MUTATION_VERSION.onboarding_llm_provider || 0) + 1;
+  SETTINGS_MUTATION_VERSION.onboarding_llm_provider = providerMutation;
+  const providerResult = await activateProviderChoice(
+    provider, "onboarding_llm_provider", providerMutation
+  );
+  if (!providerResult || providerResult.ok !== true) {
+    toast((providerResult && providerResult.message) || "The provider could not be activated", "err", 3200);
+    return;
+  }
   // Persist the language choice; local model sizing is automatic.
   const lang = $("#ob-lang .active")?.dataset.lang || OB.lang || "en";
   const englishOnly = lang === "en";
@@ -5635,7 +5969,6 @@ async function finishOnboarding() {
   const saved = await call("finish_onboarding", {
     user_name: name,
     transcription_mode: txMode,
-    llm_provider: provider,
     primary_language: primary,
     autostart: !!$("#ob-autostart")?.checked,
     ui_effects: fx,
@@ -5647,7 +5980,6 @@ async function finishOnboarding() {
   }
   SET.user_name = name;
   SET.transcription_mode = txMode;
-  SET.llm_provider = provider;
   SET.english_only = englishOnly;
   SET.primary_language = primary;
   // discoverability: real, icon-bearing shortcuts per the step-6 choices
@@ -7403,11 +7735,13 @@ async function readerSaveKey() {
    originally added externally and lost in a UI rollback; rebuilt here on baseline.
    ========================================================================== */
 const MEET = { recording: false, paused: false, stopping: false,
-  recTimer: null, recStart: 0, capturedSeconds: 0,
+  recTimer: null, statusTimer: null, recStart: 0, capturedSeconds: 0,
   maxSeconds: 14400, autoStopping: false, statusKnown: false,
+  captureVersion: 0, statusRequestId: 0, finalizedGeneration: -1,
+  activeMicrophone: null,
   openId: null, openStarred: false, wired: false,
   listAll: null, listQuery: "", openMeeting: null, transcriptQuery: "",
-  settings: null, searchSeq: 0, returnFocusId: null };
+  settings: null, context: null, searchSeq: 0, returnFocusId: null };
 const _ell = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
 
 function meetingWire() {
@@ -7499,23 +7833,123 @@ function meetingProviderLabel(value) {
   return names[String(value || "").toLowerCase()] || String(value || "your provider");
 }
 
-function meetingApplyPrivacy(settings) {
+function meetingTranscriptionTruth(route) {
+  const tx = route || {};
+  const provider = meetingProviderLabel(tx.provider);
+  if (tx.effective === "cloud") return {
+    tone: "cloud",
+    label: provider + " hosted transcription",
+    copy: "The private WAV stays here. After you stop, meeting audio is sent to " + provider + " for transcription.",
+  };
+  if (tx.reason === "local_only") return {
+    tone: "local", label: "On-device transcription · device-only override",
+    copy: "Your hosted choice remains saved, but meeting audio is not sent while device-only is on.",
+  };
+  if (tx.reason === "no_key") return {
+    tone: "warning", label: "On-device transcription · hosted route not ready",
+    copy: "No usable " + provider + " key is saved, so meeting audio stays on this device.",
+  };
+  if (tx.reason === "unsupported_provider") return {
+    tone: "warning", label: "On-device transcription · provider unavailable",
+    copy: "The saved hosted provider is unsupported, so meeting audio is not sent.",
+  };
+  return {
+    tone: "local", label: "On-device transcription",
+    copy: "The recording and transcript remain on this device. Nothing is sent for transcription.",
+  };
+}
+
+function meetingAnalysisTruth(route) {
+  const analysis = route || {};
+  const provider = meetingProviderLabel(analysis.provider);
+  if (analysis.ready && analysis.effective_route === "hosted")
+    return provider + " hosted analysis · transcript text only, when you choose";
+  if (analysis.ready && analysis.effective_route === "local")
+    return "On-device analysis · transcript text stays on this device";
+  const reasons = {
+    device_only: "Unavailable · device-only is on",
+    hosted_processing_off: "Unavailable · hosted processing is off",
+    missing_key: "Unavailable · provider key is missing",
+    unsupported_provider: "Unavailable · saved provider is unsupported",
+  };
+  return reasons[analysis.reason] || "Unavailable · no effective analysis route";
+}
+
+function meetingApplyContext(context) {
+  if (context && context.ok !== false) MEET.context = context;
+  const current = MEET.context || {};
+  const microphone = MEET.recording && MEET.activeMicrophone
+    ? MEET.activeMicrophone.name
+    : current.microphone;
+  setText("#meeting-context-microphone", microphone || "System default");
+  setText("#meeting-context-saved-location", current.saved_location || "Private Mumble meeting library");
+  const txTruth = meetingTranscriptionTruth(current.transcription);
+  setText("#meeting-context-transcription", txTruth.label);
+  setText("#meeting-context-analysis", meetingAnalysisTruth(current.analysis));
+}
+
+function meetingApplyPrivacy(settings, context) {
   if (settings) MEET.settings = settings;
   const s = MEET.settings || {};
-  const cloud = s.transcription_mode === "cloud";
-  const sttProvider = meetingProviderLabel(s.cloud_transcription_provider);
-  const llmProvider = meetingProviderLabel(s.llm_provider);
+  const tx = (context && context.transcription) || (s._route_state || {}).transcription || {
+    effective: s.transcription_mode === "cloud" ? "cloud" : "local",
+    provider: s.cloud_transcription_provider,
+    reason: "selected",
+  };
+  const truth = meetingTranscriptionTruth(tx);
   const route = $("#meeting-route-badge");
-  if (route) route.dataset.route = cloud ? "cloud" : "local";
-  setText("#meeting-route-label", cloud
-    ? sttProvider + " Cloud transcription"
-    : "Local transcription · stays on this device");
-  setText("#meeting-route-copy", cloud
-    ? "The private WAV stays here. After you stop, meeting audio is sent to " + sttProvider + " for transcription."
-    : "The recording and transcript remain on this device. Nothing is sent for transcription.");
-  const truth = $("#meeting-analysis-truth");
-  if (truth) truth.innerHTML = '<span data-icon="shield"></span>AI actions send transcript text—not the original recording—to ' +
-    esc(llmProvider) + ' only when you choose them.';
+  if (route) route.dataset.route = truth.tone;
+  setText("#meeting-route-label", truth.label);
+  setText("#meeting-route-copy", truth.copy);
+  meetingApplyContext(context || {
+    ok: true,
+    transcription: tx,
+    analysis: null,
+  });
+  const analysisTruth = $("#meeting-analysis-truth");
+  if (analysisTruth) analysisTruth.innerHTML = '<span data-icon="shield"></span>' +
+    esc(meetingAnalysisTruth((context || {}).analysis)) + '. The original recording is never sent for analysis.';
+}
+
+function meetingSetPhase(phase) {
+  const instrument = $("#meeting-instrument");
+  if (instrument && instrument.dataset.phase !== phase) instrument.dataset.phase = phase;
+  const during = phase === "during";
+  const before = $("#meeting-before"), after = $("#meeting-after");
+  if (before) before.hidden = during;
+  if (after) after.hidden = during;
+}
+
+function meetingScheduleStatusPoll(active) {
+  clearTimeout(MEET.statusTimer);
+  MEET.statusTimer = null;
+  if (!active || MEET.stopping) return;
+  const generation = MEET.captureVersion;
+  MEET.statusTimer = setTimeout(async () => {
+    MEET.statusTimer = null;
+    const requestId = ++MEET.statusRequestId;
+    try {
+      const status = await call("meeting_recording_status");
+      if (generation !== MEET.captureVersion || requestId !== MEET.statusRequestId || MEET.stopping)
+        return;
+      if (status && status.ok) meetingApplyCaptureStatus(status);
+    } catch (_) {
+      // Keep the local elapsed clock visible and retry the authoritative,
+      // content-free level/status snapshot after a transient bridge failure.
+    } finally {
+      if (generation === MEET.captureVersion && requestId === MEET.statusRequestId &&
+          !MEET.statusTimer && MEET.recording && !MEET.stopping)
+        meetingScheduleStatusPoll(true);
+    }
+  }, 500);
+}
+
+function meetingRestoreStopFocus(ownedFocus, reconciled) {
+  if (!ownedFocus) return;
+  const target = reconciled && reconciled.active
+    ? $("#meeting-stop")
+    : ($("#meeting-library-title") || $("#meeting-record"));
+  target?.focus({ preventScroll: true });
 }
 
 async function closeMeeting() {
@@ -7535,11 +7969,28 @@ function meetingApplyCaptureStatus(snapshot) {
   const state = String(snapshot.state || (snapshot.active ? "recording" : "idle"));
   const active = !!snapshot.active;
   MEET.recording = active;
+  if (active && snapshot.microphone && snapshot.microphone.name) {
+    MEET.activeMicrophone = {
+      index: snapshot.microphone.index,
+      name: String(snapshot.microphone.name),
+    };
+    meetingApplyContext(MEET.context);
+  } else if (!active) {
+    MEET.activeMicrophone = null;
+  }
   MEET.paused = state === "paused";
   MEET.capturedSeconds = Math.max(0, Number(snapshot.captured_seconds) || 0);
   MEET.maxSeconds = Number(snapshot.max_seconds) || 14400;
   MEET.recStart = Date.now() - MEET.capturedSeconds * 1000;
+  const level = Math.max(0, Math.min(1, Number(snapshot.audio_level) || 0));
+  const levelPercent = Math.round(level * 100);
+  const meter = $("#meeting-input-level"), levelFill = $("#meeting-level-fill");
+  if (meter) meter.setAttribute("aria-valuenow", String(levelPercent));
+  if (levelFill) levelFill.style.setProperty("--meeting-level", String(level));
+  setText("#meeting-level-label", "Input level " + levelPercent + "%");
   const panel = $("#meeting-recording");
+  const focusWasInDuring = Boolean(panel && panel.contains(document.activeElement));
+  const focusedDuringControl = focusWasInDuring ? document.activeElement : null;
   if (panel) {
     panel.hidden = !active;
     panel.dataset.state = MEET.stopping ? "stopping" : state;
@@ -7553,8 +8004,9 @@ function meetingApplyCaptureStatus(snapshot) {
     finalizing: ["Needs to finish saving", snapshot.message || "The recording is safe; try saving it again."],
   };
   const copy = labels[displayState] || labels.recording;
-  setText("#meeting-rec-state", copy[0]);
-  setText("#meeting-rec-state-copy", copy[1]);
+  const stateLabel = $("#meeting-rec-state"), stateCopy = $("#meeting-rec-state-copy");
+  if (stateLabel && stateLabel.textContent !== copy[0]) stateLabel.textContent = copy[0];
+  if (stateCopy && stateCopy.textContent !== copy[1]) stateCopy.textContent = copy[1];
   setText("#meeting-record-label", active ? copy[0] : "Record meeting");
   setText("#meeting-pause-label", MEET.paused ? "Resume" : "Pause");
   setText("#meeting-stop-label", state === "finalizing" ? "Retry save" : (
@@ -7567,27 +8019,36 @@ function meetingApplyCaptureStatus(snapshot) {
   if (imported) imported.disabled = active || MEET.stopping;
   if (pause) pause.disabled = MEET.stopping || !["recording", "paused"].includes(state);
   if (stop) stop.disabled = MEET.stopping || !active;
-  $(".meeting-start-panel")?.classList.toggle("capture-active", active);
+  meetingSetPhase(active ? "during" : ((MEET.listAll || []).length ? "after" : "before"));
+  if (active && focusedDuringControl && !focusedDuringControl.disabled)
+    focusedDuringControl.focus({ preventScroll: true });
+  else if (!active && focusWasInDuring)
+    ($("#meeting-library-title") || $("#meeting-record"))?.focus();
   clearInterval(MEET.recTimer);
   if (state === "recording" && !MEET.stopping) startMeetingTimer();
+  meetingScheduleStatusPoll(active);
 }
 
 async function renderMeetings() {
   meetingWire();
   if (MEET.openId) return;
   const seq = ++MEET.searchSeq;
+  const captureVersion = MEET.captureVersion;
   const query = String(MEET.listQuery || "").trim();
   const safe = (name, ...args) => call(name, ...args).catch((error) => ({
     ok: false, message: error && error.message ? error.message : "Mumble did not respond."
   }));
-  const [listResult, settings, status] = await Promise.all([
+  const [listResult, settings, status, context] = await Promise.all([
     safe(query ? "meeting_search" : "meeting_list", ...(query ? [query] : [])),
     safe("get_settings"),
     safe("meeting_recording_status"),
+    safe("meeting_context"),
   ]);
   if (seq !== MEET.searchSeq || MEET.openId) return;
-  if (settings && settings.ok !== false) meetingApplyPrivacy(settings);
-  if (status && status.ok) meetingApplyCaptureStatus(status);
+  if (settings && settings.ok !== false) meetingApplyPrivacy(settings, context && context.ok ? context : null);
+  else if (context && context.ok) meetingApplyContext(context);
+  if (status && status.ok && captureVersion === MEET.captureVersion)
+    meetingApplyCaptureStatus(status);
   let list = [], total = 0, loadError = "";
   if (Array.isArray(listResult)) {
     list = listResult;
@@ -7600,6 +8061,7 @@ async function renderMeetings() {
     loadError = (listResult && listResult.message) || "The meeting library could not be loaded.";
   }
   MEET.listAll = list;
+  if (!MEET.recording) meetingSetPhase(total ? "after" : "before");
   const wrap = $("#meetings-list");
   const empty = $("#meetings-empty");
   const filter = $("#meetings-filter");
@@ -7945,6 +8407,7 @@ async function openMeeting(id) {
 async function meetingToggleRecord() {
   if (MEET.recording || MEET.stopping) return;
   if (!HAS_PY()) { toast("Recording runs in the app (the tray controller owns the mic)", "info"); return; }
+  MEET.captureVersion += 1;
   const button = $("#meeting-record");
   if (button) button.disabled = true;
   setText("#meeting-record-label", "Opening microphone…");
@@ -8018,9 +8481,29 @@ async function meetingTogglePause() {
   }
 }
 
+async function meetingReconcileFailedStop(stopGeneration, stopOwnedFocus, message, toastMessage) {
+  const reconciled = await meetingReconcileRecording({ ok: true, active: true, state: "finalizing",
+    recording: false, paused: false, captured_seconds: MEET.capturedSeconds,
+    max_seconds: MEET.maxSeconds, message });
+  if (reconciled && reconciled.active === false) {
+    await meetingCompleteStopped(stopGeneration, stopOwnedFocus, {
+      processing: true, reconciled: true,
+    });
+    return;
+  }
+  meetingRestoreStopFocus(stopOwnedFocus, reconciled);
+  toast(toastMessage, "err", 4200);
+}
+
 async function meetingStopRecord() {
   if (!MEET.recording || MEET.stopping) return;
+  const stopOwnedFocus = Boolean($("#meeting-recording")?.contains(document.activeElement));
   clearInterval(MEET.recTimer);
+  clearTimeout(MEET.statusTimer);
+  MEET.statusTimer = null;
+  MEET.captureVersion += 1;
+  MEET.statusRequestId += 1;
+  const stopGeneration = MEET.captureVersion;
   MEET.stopping = true;
   meetingApplyCaptureStatus({ ok: true, active: true,
     state: MEET.paused ? "paused" : "recording",
@@ -8031,38 +8514,52 @@ async function meetingStopRecord() {
     var r = await call("meeting_stop_recording", "");
     MEET.stopping = false;
     if (!r || r.ok === false) {
-      await meetingReconcileRecording({ ok: true, active: true, state: "finalizing",
-        recording: false, paused: false, captured_seconds: MEET.capturedSeconds,
-        max_seconds: MEET.maxSeconds,
-        message: (r && r.message) || "Mumble could not confirm the save." });
-      toast((r && r.message) || "Couldn't save the meeting. The live recorder state is shown above.", "err", 4200);
+      const message = (r && r.message) || "Mumble could not confirm the save.";
+      await meetingReconcileFailedStop(stopGeneration, stopOwnedFocus, message,
+        (r && r.message) || "Couldn't save the meeting. The live recorder state is shown above.");
       return;
     }
-    MEET.autoStopping = false;
-    meetingApplyCaptureStatus({ ok: true, active: false, state: "idle",
-      recording: false, paused: false, captured_seconds: 0,
-      max_seconds: MEET.maxSeconds });
-    toast(r.processing ? "Meeting saved · transcription is running" : "Meeting saved",
-      r.processing ? "info" : "ok", 3200);
-    renderMeetings();
+    await meetingCompleteStopped(stopGeneration, stopOwnedFocus, r);
   } catch (e) {
     MEET.stopping = false;
-    await meetingReconcileRecording({ ok: true, active: true, state: "finalizing",
-      recording: false, paused: false, captured_seconds: MEET.capturedSeconds,
-      max_seconds: MEET.maxSeconds,
-      message: "Mumble could not confirm the save." });
-    toast("Mumble didn't confirm the save. The controls now show the live recorder state.", "err", 4200);
+    await meetingReconcileFailedStop(stopGeneration, stopOwnedFocus,
+      "Mumble could not confirm the save.",
+      "Mumble didn't confirm the save. The controls now show the live recorder state.");
   }
 }
 
+async function meetingCompleteStopped(generation, stopOwnedFocus, result) {
+  if (MEET.finalizedGeneration === generation) return;
+  MEET.finalizedGeneration = generation;
+  MEET.autoStopping = false;
+  if (MEET.recording) {
+    meetingApplyCaptureStatus({ ok: true, active: false, state: "idle",
+      recording: false, paused: false, captured_seconds: 0,
+      max_seconds: MEET.maxSeconds });
+  }
+  const reconciled = !!(result && result.reconciled);
+  const processing = !!(result && result.processing);
+  toast(reconciled ? "Meeting saved · completion confirmed from the live recorder" : (
+    processing ? "Meeting saved · transcription is running" : "Meeting saved"),
+  processing || reconciled ? "info" : "ok", 3200);
+  await renderMeetings();
+  if (stopOwnedFocus) $("#meeting-library-title")?.focus();
+}
+
 async function meetingReconcileRecording(fallback) {
+  const generation = MEET.captureVersion;
+  const requestId = ++MEET.statusRequestId;
   try {
     const status = await call("meeting_recording_status");
+    if (generation !== MEET.captureVersion || requestId !== MEET.statusRequestId)
+      return null;
     if (status && status.ok) {
       meetingApplyCaptureStatus(status);
       return status;
     }
   } catch (e) {}
+  if (generation !== MEET.captureVersion || requestId !== MEET.statusRequestId)
+    return null;
   if (fallback) meetingApplyCaptureStatus(fallback);
   return fallback || null;
 }
@@ -8508,9 +9005,30 @@ async function boot() {
   deckMore?.addEventListener("click", () => {
     const open = !deckActions?.classList.contains("more-open");
     deckActions?.classList.toggle("more-open", open);
+    if (deckActions) {
+      const secondary = $("#deck-secondary-actions", deckActions);
+      if (secondary) secondary.hidden = !open;
+    }
     deckMore.setAttribute("aria-expanded", String(open));
     setText("#deck-more-label", open ? "Fewer" : "More");
   });
+  const toggleSelectionMenu = (toggleId, menuId) => {
+    const toggle = $(toggleId);
+    const menu = $(menuId);
+    toggle?.addEventListener("click", () => {
+      const opening = !!menu?.hidden;
+      for (const [otherToggleId, otherMenuId] of DECK_SELECTION_MENUS) {
+        const otherToggle = $(otherToggleId);
+        const otherMenu = $(otherMenuId);
+        if (otherMenu) otherMenu.hidden = true;
+        otherToggle?.setAttribute("aria-expanded", "false");
+      }
+      if (menu) menu.hidden = !opening;
+      toggle.setAttribute("aria-expanded", String(opening));
+    });
+  };
+  DECK_SELECTION_MENUS.forEach(([toggleId, menuId]) =>
+    toggleSelectionMenu(toggleId, menuId));
   $("#hist-starred-toggle")?.addEventListener("click", () => setStarredFilter(!HX.favoriteOnly));
   $("#hist-filter").addEventListener(
     "input",
@@ -8554,9 +9072,8 @@ async function boot() {
   // hotkey (owner v9), so you never need to remember the bind.
   $("#hist-paste-latest")?.addEventListener("click", pasteLatest);
   $("#hist-copy-latest")?.addEventListener("click", copyLatest);
-  // History hub — the absorbed Deck. Smart Mode + Presets are now ONE always-open
-  // merged widget (v0.9), so there are no collapsible headers to wire here; the
-  // merge/run action bar, clear-selection and pin-on-top controls follow.
+  // History hub — the absorbed Deck. Smart Mode, Preset, and uncommon selection
+  // actions now live in separate on-demand menus within the selection state.
   $("#hist-merge-copy")?.addEventListener("click", () => histMerge(false));
   $("#hist-merge-paste")?.addEventListener("click", () => histMerge(true));
   $("#hist-run")?.addEventListener("click", histRun);
@@ -8565,20 +9082,9 @@ async function boot() {
   $("#hist-keyboard")?.addEventListener("click", focusDeckForKeyboard);
   $("#hist-capture")?.addEventListener("click", captureSelection);
   $("#hist-capture-chat")?.addEventListener("click", captureConversation);
-  // Deck search button: selected item -> consent-gated Web Search; otherwise
-  // open the separate private local launcher. It never starts/stops dictation.
-  $("#hist-search")?.addEventListener("click", async () => {
-    const sel = selectedItems()[0]?.text || "";
-    if (sel && sel.trim()) {
-      const prepared = await call("request_web_search", sel.trim()).catch(() => null);
-      if (!prepared || !prepared.ok) {
-        toast((prepared && prepared.message) || "Web Search could not prepare.", "err", 3000);
-      }
-    } else {
-      if (typeof window.openSystemSearch === "function") window.openSystemSearch();
-      else toast("Mumble Find is still loading. Try again in a moment.", "info", 2500);
-    }
-  });
+  // Web Search remains a distinct, consent-gated selection action. The browse
+  // state already has one local Deck filter, so it does not duplicate Search.
+  $("#hist-web-search")?.addEventListener("click", deckWebSearch);
   // stats range
   $$("#stat-range button").forEach(
     (b) => (b.onclick = () => setStatsRange(+b.dataset.r)),
@@ -8657,24 +9163,7 @@ async function boot() {
     }
     SET.user_name = v;
   });
-  // Provider choice in onboarding: save the chosen LLM provider
-  $("#ob-provider")?.addEventListener("change", async () => {
-    const previous = SET.llm_provider || "cerebras";
-    const v = $("#ob-provider").value;
-    OB.provider = v;
-    const r = await call("set_setting", "llm_provider", v);
-    if (!r || r.ok === false) {
-      $("#ob-provider").value = previous;
-      OB.provider = previous;
-      toast((r && r.message) || "Could not save the provider.", "err");
-      return;
-    }
-    SET.llm_provider = v;
-    // Update the get-key button URL
-    const openUrl = v === "openrouter" ? "https://openrouter.ai/keys" : "https://cloud.cerebras.ai/";
-    const getKeyBtn = $("#ob-get-key");
-    if (getKeyBtn) getKeyBtn.onclick = () => call("open_url", openUrl);
-  });
+  wireOnboardingProvider();
   $("#ob-mic-test")?.addEventListener("click", async () => {
     flash($("#ob-mic-fb"), "Listening 5s…", "busy");
     const r = await call("test_mic", +($("#ob-mic")?.value ?? -1));

@@ -35,6 +35,11 @@ const evidenceScreenshotNames = [
   "02-focus-stage-navigation-narrow.png",
   "03-shared-state-surfaces.png",
   "04-forced-colours-focus.png",
+  "05-deck-command-surface.png",
+  "06-deck-selection-narrow.png",
+  "05-meetings-before.png",
+  "06-meetings-during.png",
+  "07-meetings-after.png",
 ];
 const results = [];
 const screenshotHashes = {};
@@ -76,7 +81,7 @@ function loadAndValidateEvidenceManifest(browserVersion) {
   assert.deepEqual(
     Object.keys(manifest.screenshots).sort(),
     [...evidenceScreenshotNames].sort(),
-    "screenshot evidence manifest must name exactly the four current production images",
+    "screenshot evidence manifest must name exactly the nine current production images",
   );
   return manifest;
 }
@@ -145,11 +150,325 @@ async function testShell(browser) {
   assert.equal(await page.locator('.nav-btn[aria-current="page"]').count(), 1, "one current destination must be announced");
   assert.equal(await page.locator('.nav-btn[aria-current="page"]').innerText(), "Home");
   assert.equal(await page.locator(".focus-stage").count(), 1, "the existing Home hero must use the Focus Stage primitive");
-  assert.equal(await page.locator(".context-ledger").count(), 1, "the Home shortcut panel must use the optional context ledger primitive");
+  assert.equal(await page.locator('[data-view="home"] .context-ledger').count(), 1, "the Home shortcut panel must use the optional context ledger primitive");
   assert.equal(await page.locator(".numbered-spine").count(), 1, "the genuine Home sequence must use the numbered spine primitive");
   assert.equal(await page.locator(".command-surface").count(), 1, "the existing Deck toolbar must use the command surface primitive");
   assert.equal(await page.locator(".focus-stage .control-rail").count(), 1, "the production dictation actions must use the Control Rail primitive");
   assert.equal(await page.locator(".focus-stage .btn-gold").count(), 1, "the Focus Stage must expose one primary action");
+  assert.equal(await page.locator(".home-focus-stage__primary").count(), 1, "Home must expose one centred voice-first primary stage");
+  assert.equal(await page.locator(".home-latest-result").count(), 1, "Home must retain one restrained latest-result area");
+  assert.equal(await page.locator(".home-capabilities-grid, .home-capabilities-archive").count(), 0, "Home must remove the permanent marketing capability grid rather than hide or rename it");
+  const homeText = (await page.locator('[data-view="home"]').innerText()).replace(/\s+/g, " ");
+  assert.equal(/10\s*(minutes?|:00)/i.test(homeText), false, "Home must not sell dictation as a ten-minute feature");
+  assert.equal(/More than dictation|Everything in one place/i.test(homeText), false, "Home must not retain the old capability-tour marketing copy");
+  assert.match(homeText, /bounded, recovery-safe segments/i, "Home must describe segmented dictation truthfully");
+  const shortcutLabels = await page.locator(".home-shortcut-row b").allTextContents();
+  assert.deepEqual(shortcutLabels, ["Dictate", "Paste latest", "Open Deck", "Mumble Find", "Web Search"]);
+  assert.match(await page.locator(".home-shortcut-row").nth(3).innerText(), /stays on this device/i);
+  assert.match(await page.locator(".home-shortcut-row").nth(4).innerText(), /confirm.*online/i);
+  const homeFallbackTruth = await page.evaluate(async () => {
+    MOCK.overview.transcription_mode = "cloud";
+    MOCK.overview.cloud_transcription_provider = "groq";
+    MOCK.overview.transcription_route = {
+      requested: "cloud", effective: "local", reason: "no_key",
+      provider: "groq", sends_audio: false,
+    };
+    await bootHome();
+    return {
+      hero: document.querySelector("#home-hero-copy")?.textContent || "",
+      badge: document.querySelector("#home-audio-badge")?.textContent || "",
+      detail: document.querySelector("#home-audio-detail")?.textContent || "",
+    };
+  });
+  assert.match(homeFallbackTruth.hero, /on this device/i, "Home must describe the effective local transcription route");
+  assert.match(homeFallbackTruth.badge, /locally/i, "Home's audio badge must use effective route truth");
+  assert.match(homeFallbackTruth.detail, /Cloud.*saved|saved.*Cloud/i, "Home must explain the preserved saved Cloud choice separately");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  assert.deepEqual(
+    await page.locator("[data-settings-tab]").allTextContents().then(labels => labels.map(label => label.trim())),
+    ["Overview", "Speech to text", "Text shaping", "Deck & data", "System"],
+    "Settings must use the five plain-language sections",
+  );
+  await page.waitForFunction(() => document.querySelector('[data-view="settings"]')?.dataset.settingsState === "ready");
+  const requiredRouteFacts = [
+    "Saved choice", "Effective route", "Why this route", "Input and engine", "Location",
+    "What leaves this device", "Speed", "Privacy", "Quality boundary", "Cost",
+  ];
+  assert.deepEqual(
+    await page.locator("#transcription-route-facts dt").allTextContents(),
+    requiredRouteFacts,
+    "Speech to text must explain every route fact in normal-user language",
+  );
+  assert.deepEqual(
+    await page.locator("#processing-route-facts dt").allTextContents(),
+    requiredRouteFacts,
+    "Text shaping must explain every route fact in normal-user language",
+  );
+  assert.equal(await page.locator("[data-route-feature]").count(), 7, "the feature route ledger must cover all seven policy features");
+  assert.deepEqual(
+    await page.locator("[data-route-feature] h4").allTextContents(),
+    ["Plain dictation", "Prompt", "Email", "Reply", "Deck actions", "Meetings analysis", "Reader actions"],
+  );
+  assert.deepEqual(
+    await page.locator("[data-route-feature]").evaluateAll(rows => rows.map(row => row.dataset.routeFeature)),
+    ["plain-dictation", "prompt", "email", "reply", "deck-actions", "meetings-analysis", "reader-actions"],
+    "each route row must retain a distinct feature-policy identity",
+  );
+  const featureFacts = await page.locator("[data-route-feature]").evaluateAll(rows => rows.map(row => ({
+    saved: row.querySelector('[data-route-value="saved"]')?.textContent.trim(),
+    effective: row.querySelector('[data-route-value="effective"]')?.textContent.trim(),
+    reason: row.querySelector('[data-route-value="reason"]')?.textContent.trim(),
+    engine: row.querySelector('[data-route-value="engine"]')?.textContent.trim(),
+    location: row.querySelector('[data-route-value="location"]')?.textContent.trim(),
+    egress: row.querySelector('[data-route-value="egress"]')?.textContent.trim(),
+    speed: row.querySelector('[data-route-value="speed"]')?.textContent.trim(),
+    privacy: row.querySelector('[data-route-value="privacy"]')?.textContent.trim(),
+    quality: row.querySelector('[data-route-value="quality"]')?.textContent.trim(),
+    cost: row.querySelector('[data-route-value="cost"]')?.textContent.trim(),
+  })));
+  for (const [index, facts] of featureFacts.entries()) {
+    assert.equal(Object.values(facts).every(Boolean), true, `feature route row ${index + 1} has an unexplained fact: ${JSON.stringify(facts)}`);
+  }
+  const savedLocalProvider = await page.evaluate(() => buildRouteFacts({
+    kind: "text", route: {},
+    decision: { requested_route: "hosted", effective_route: "local", reason: "unsupported_provider", provider: "local", model: "" },
+    providerLabel: "local",
+    reasonText: { unsupported_provider: "This build does not support the saved provider." },
+    localEngine: "local text-shaping pipeline",
+  }).saved);
+  assert.equal(savedLocalProvider, "On-device local model · saved, unavailable", "a preserved unsupported local provider must never be labelled Hosted");
+  const hostedCapability = await page.locator("#hosted-capability-status").evaluate(node => ({
+    available: node.dataset.available,
+    text: node.textContent.trim(),
+  }));
+  assert.equal(hostedCapability.available, "false");
+  assert.match(hostedCapability.text, /unavailable/i, "missing-key hosted processing must be labelled unavailable");
+  const unifiedReadiness = await page.evaluate(() => {
+    delete MODELS_FETCHED.cerebras;
+    const hostedDecision = {
+      requested_route: "hosted", effective_route: "local", reason: "unconfirmed_model",
+      provider: "cerebras", provider_supported: true, key_present: true,
+      model: "gpt-oss-120b", ready: false,
+    };
+    SET._route_state = {
+      ...SET._route_state,
+      action_processing: {
+        provider: "cerebras", provider_supported: true, has_key: true,
+        effective: "local", reason: "unconfirmed_model", decision: hostedDecision,
+      },
+      feature_routes: Object.fromEntries(FEATURE_ROUTE_ROWS.map(([, key]) => [key, {...hostedDecision}])),
+    };
+    updateSetupSummary();
+    return {
+      banner: document.querySelector("#hosted-capability-status")?.textContent || "",
+      rows: Array.from(document.querySelectorAll('[data-route-value="effective"]')).map(node => node.textContent.trim()),
+    };
+  });
+  assert.match(unifiedReadiness.banner, /unavailable/i);
+  assert.equal(unifiedReadiness.rows.every(value => !/Hosted.*ready/i.test(value)), true,
+    "the banner and all seven rows must share one fail-closed readiness authority");
+  const failClosedMatrix = await page.evaluate(() => {
+    const cases = [
+      { name: "missing model", reason: "missing_model", supported: true, key: true, model: "", fetched: [] },
+      { name: "missing key", reason: "missing_key", supported: true, key: false, model: "gpt-oss-120b", fetched: ["gpt-oss-120b"] },
+      { name: "unsupported provider", reason: "unsupported_provider", supported: false, key: false, model: "", fetched: [] },
+      { name: "hosted off", reason: "hosted_processing_off", supported: true, key: true, model: "gpt-oss-120b", fetched: ["gpt-oss-120b"] },
+      { name: "device only", reason: "device_only", supported: true, key: true, model: "gpt-oss-120b", fetched: ["gpt-oss-120b"] },
+      { name: "unconfirmed model", reason: "ready", supported: true, key: true, model: "saved-but-absent", fetched: ["listed-model"] },
+    ];
+    return cases.map(item => {
+      MODELS_FETCHED.cerebras = new Set(item.fetched);
+      const decision = {
+        requested_route: "hosted", effective_route: "local",
+        reason: item.name === "unconfirmed model" ? "unconfirmed_model" : item.reason,
+        provider: "cerebras", provider_supported: item.supported,
+        key_present: item.key, model: item.model, ready: false,
+      };
+      SET._route_state = {
+        ...SET._route_state,
+        action_processing: {
+          requested: "hosted", effective: decision.effective_route === "hosted" ? "cloud" : "local",
+          reason: item.reason, provider: "cerebras", provider_supported: item.supported,
+          has_key: item.key, decision,
+        },
+        feature_routes: Object.fromEntries(FEATURE_ROUTE_ROWS.map(([, key]) => [key, { ...decision }])),
+      };
+      updateSetupSummary();
+      return {
+        name: item.name,
+        banner: document.querySelector("#hosted-capability-status")?.dataset.available,
+        rows: Array.from(document.querySelectorAll('[data-route-value="effective"]')).map(node => node.textContent.trim()),
+      };
+    });
+  });
+  for (const item of failClosedMatrix) {
+    assert.equal(item.banner, "false", `${item.name} must fail the banner closed`);
+    assert.equal(item.rows.length, 7, `${item.name} must render all seven feature decisions`);
+    assert.equal(item.rows.every(value => !/Hosted.*ready/i.test(value)), true,
+      `${item.name} must fail every feature row closed`);
+  }
+  const keyChangeReadiness = await page.evaluate(async () => {
+    delete MODELS_FETCHED.cerebras;
+    let releaseModels;
+    const modelResponse = new Promise(resolve => { releaseModels = resolve; });
+    const cloudRoute = {
+      ...SET._route_state,
+      action_processing: {
+        provider: "cerebras", provider_supported: true, has_key: true,
+        effective: "cloud", reason: "selected", sends_text: true,
+        decision: { requested_route: "hosted", effective_route: "hosted", reason: "ready", provider: "cerebras", model: "gpt-oss-120b", ready: true },
+      },
+    };
+    window.pywebview = { api: {
+      set_setting: async () => ({ ok: true }),
+      list_models: async () => modelResponse,
+      get_settings: async () => ({ _route_state: cloudRoute }),
+    } };
+    const key = document.querySelector('[data-setting="cerebras_api_key"]');
+    key.dataset.masked = "";
+    key.value = "saved-test-key";
+    key.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 25));
+    const before = document.querySelector("#hosted-capability-status").dataset.available;
+    releaseModels({ ok: true, models: ["gpt-oss-120b"] });
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (document.querySelector("#hosted-capability-status").dataset.available === "true") break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const node = document.querySelector("#hosted-capability-status");
+    const after = node.dataset.available;
+    const text = node.textContent.trim();
+    let releaseReplacement;
+    const replacementResponse = new Promise(resolve => { releaseReplacement = resolve; });
+    window.pywebview.api.list_models = async () => replacementResponse;
+    key.value = "invalid-replacement-key";
+    key.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 25));
+    const duringInvalidReplacement = document.querySelector("#hosted-capability-status").dataset.available;
+    releaseReplacement({ ok: false, models: [] });
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      if (document.querySelector("#hosted-capability-status").dataset.available === "false") break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    return {
+      before, after, text,
+      duringInvalidReplacement,
+      afterInvalidReplacement: document.querySelector("#hosted-capability-status").dataset.available,
+      afterClearedKey: await (async () => {
+        SET._route_state = {
+          ...cloudRoute,
+          action_processing: {
+            provider: "cerebras", provider_supported: true, has_key: true,
+            effective: "cloud", reason: "selected", sends_text: true,
+            decision: { requested_route: "hosted", effective_route: "hosted", reason: "ready", provider: "cerebras", model: "gpt-oss-120b", ready: true },
+          },
+        };
+        updateSetupSummary();
+        if (document.querySelector("#hosted-capability-status").dataset.available !== "true") return "setup-failed";
+        window.pywebview.api.get_settings = async () => { throw new Error("route refresh unavailable"); };
+        key.value = "";
+        key.dispatchEvent(new Event("change", { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 25));
+        return document.querySelector("#hosted-capability-status").dataset.available;
+      })(),
+      afterOverlappingKeys: await (async () => {
+        let releaseFirst;
+        let releaseSecond;
+        const responses = [
+          new Promise(resolve => { releaseFirst = resolve; }),
+          new Promise(resolve => { releaseSecond = resolve; }),
+        ];
+        let responseIndex = 0;
+        window.pywebview.api.list_models = async () => responses[responseIndex++];
+        window.pywebview.api.get_settings = async () => ({ _route_state: cloudRoute });
+        key.value = "first-overlapped-key";
+        key.dispatchEvent(new Event("change", { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 10));
+        key.value = "second-overlapped-key";
+        key.dispatchEvent(new Event("change", { bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 10));
+        releaseSecond({ ok: false, models: [] });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        releaseFirst({ ok: true, models: ["gpt-oss-120b"] });
+        await new Promise(resolve => setTimeout(resolve, 40));
+        return document.querySelector("#hosted-capability-status").dataset.available;
+      })(),
+    };
+  });
+  assert.deepEqual(
+    { before: keyChangeReadiness.before, after: keyChangeReadiness.after },
+    { before: "false", after: "true" },
+    "a saved key must refresh hosted readiness as soon as the selected model is confirmed",
+  );
+  assert.match(keyChangeReadiness.text, /available/i);
+  assert.equal(
+    keyChangeReadiness.duringInvalidReplacement,
+    "false",
+    "a replacement key must fail closed while live model confirmation is pending",
+  );
+  assert.equal(
+    keyChangeReadiness.afterInvalidReplacement,
+    "false",
+    "a failing replacement key must invalidate model confirmation from the previous key",
+  );
+  assert.equal(
+    keyChangeReadiness.afterClearedKey,
+    "false",
+    "clearing a key must invalidate prior model confirmation even if route refresh fails",
+  );
+  assert.equal(
+    keyChangeReadiness.afterOverlappingKeys,
+    "false",
+    "an older model-discovery response must not restore readiness after a newer key fails",
+  );
+  const modelRefreshes = await page.evaluate(async () => {
+    const modelKeys = [
+      "cerebras_model", "openrouter_model", "groq_transcription_model",
+      "openai_transcription_model", "openrouter_transcription_model",
+    ];
+    const refreshed = [];
+    let releaseOlder;
+    const older = new Promise(resolve => { releaseOlder = resolve; });
+    let getIndex = 0;
+    window.pywebview = { api: {
+      set_setting: async () => ({ok:true}),
+      get_settings: async () => {
+        getIndex += 1;
+        if (getIndex === 1) return older;
+        return { _route_state: { ...SET._route_state, action_processing: {
+          provider:"openrouter", provider_supported:true, has_key:true,
+          effective:"local", reason:"unconfirmed_model", decision:{model:"newer-model"},
+        } } };
+      },
+    } };
+    for (const [index, key] of modelKeys.entries()) {
+      const control = document.querySelector(`[data-setting="${key}"]`);
+      if (!control) throw new Error(`missing real model control: ${key}`);
+      const option = document.createElement("option");
+      option.value = `correction-model-${index}`;
+      option.textContent = option.value;
+      control.appendChild(option);
+      control.value = option.value;
+      control.dispatchEvent(new Event("change", {bubbles:true}));
+      await new Promise(resolve => setTimeout(resolve, 20));
+      refreshed.push(getIndex);
+    }
+    releaseOlder({ _route_state: { ...SET._route_state, action_processing: {
+      provider:"cerebras", provider_supported:true, has_key:true,
+      effective:"cloud", reason:"selected", decision:{model:"stale-model"},
+    } } });
+    await new Promise(resolve => setTimeout(resolve, 40));
+    return {refreshed, finalModel:SET._route_state.action_processing.decision.model};
+  });
+  assert.deepEqual(modelRefreshes.refreshed, [1,2,3,4,5], "all five real model controls must refresh route truth");
+  assert.equal(modelRefreshes.finalModel, "newer-model", "an older route response must not replace newer model truth");
+  await page.locator('[data-settings-tab="system"]').click();
+  assert.deepEqual(
+    await page.locator('[data-setting="ui_effects"] option').allTextContents(),
+    ["Light", "Standard", "Full effects"],
+    "Appearance must be visibly separate from processing mode",
+  );
+  await page.getByRole("button", { name: "Home", exact: true }).click();
   for (const destination of packagedContract.destinations) {
     await page.getByRole("button", { name: destination.label, exact: true }).click();
     await page.waitForTimeout(40);
@@ -315,6 +634,112 @@ async function testStates(browser) {
   );
   record("stable loading, empty, degraded, error, and success anatomy");
   await page.close();
+}
+
+async function testDeck(browser) {
+  const desktop = await openProductionPage(browser, { reducedMotion: "reduce" });
+  assert.equal(desktop.browserErrors.length, 0, desktop.browserErrors.join(" | "));
+  await desktop.page.getByRole("button", { name: "Deck", exact: true }).click();
+  await desktop.page.waitForTimeout(180);
+
+  const surface = desktop.page.locator("#deck-command-surface");
+  assert.equal(await surface.count(), 1, "Deck must expose one stable command surface");
+  const browse = surface.locator('[data-deck-state="browse"]');
+  const selection = surface.locator('[data-deck-state="selection"]');
+  assert.equal(await browse.isVisible(), true, "browse controls must be the default command-surface state");
+  assert.equal(await selection.isHidden(), true, "selection controls must stay out of permanent view");
+  for (const selector of [
+    "#hist-content-nav", "#hist-filter", "#hist-sort", "#hist-starred-toggle",
+    "#hist-pin", "#deck-more-toggle",
+  ]) {
+    assert.equal(await browse.locator(selector).count(), 1, `${selector} must belong to the browse state`);
+  }
+  assert.equal(await desktop.page.locator("#hist-search").count(), 0, "Deck must not keep a duplicate Search control");
+  assert.equal(await desktop.page.locator(".hist-toolbox").count(), 0, "preset catalogues must not stay permanently visible");
+  assert.equal(await desktop.page.locator("#deck-secondary-actions").isHidden(), true,
+    "uncommon browse actions must be closed initially");
+  await browse.getByRole("button", { name: "More", exact: true }).click();
+  assert.equal(await desktop.page.locator("#deck-secondary-actions").isVisible(), true,
+    "the labelled More control must reveal uncommon browse actions");
+  for (const name of ["Capture", "Capture chat", "Mumble Find", "Refresh", "Keyboard"]) {
+    assert.equal(await browse.getByRole("button", { name, exact: true }).count(), 1,
+      `${name} must remain available from More`);
+  }
+  await desktop.page.evaluate(() => {
+    window.__deckRouteCalls = { mumbleFind: 0, webSearch: [] };
+    window.pywebview = { api: {
+      system_search_show: async () => {
+        window.__deckRouteCalls.mumbleFind += 1;
+        return { ok: true };
+      },
+      request_web_search: async text => {
+        window.__deckRouteCalls.webSearch.push(text);
+        return { ok: true, request_id: "deck-route-test" };
+      },
+    } };
+  });
+  await browse.getByRole("button", { name: "Mumble Find", exact: true }).click();
+  assert.deepEqual(
+    await desktop.page.evaluate(() => window.__deckRouteCalls),
+    { mumbleFind: 1, webSearch: [] },
+    "browse Mumble Find must call only the existing private system-search route",
+  );
+  await browse.getByRole("button", { name: "Fewer", exact: true }).click();
+
+  const imageAction = desktop.page.getByRole("button", { name: "Paste image into previous app", exact: true });
+  assert.equal(await imageAction.count(), 1, "image rows need one explicit accessible paste action");
+  const imageRow = imageAction.locator("xpath=ancestor::article[1]");
+  assert.equal(await imageRow.locator(".hist-image-thumb").count(), 1, "image rows must be thumbnail-led");
+
+  const firstTextRow = desktop.page.locator(".deck-selectable-row").first();
+  await firstTextRow.focus();
+  await firstTextRow.press("Space");
+  assert.equal(await firstTextRow.evaluate(node => document.activeElement === node), true,
+    "focus must remain on the selected row while the command surface transforms");
+  assert.equal(await selection.isVisible(), true, "selection must transform the same command surface");
+  assert.equal(await browse.isHidden(), true, "browse controls must yield to selection controls in the same surface");
+  assert.match(await selection.locator("#hist-sel-info").innerText(), /^1 selected/);
+  for (const name of ["Smart Mode", "Preset", "Run shaping", "Search the web", "Clear selection"]) {
+    assert.equal(await selection.getByRole("button", { name, exact: true }).count(), 1,
+      `${name} must be available in selection state`);
+  }
+  const selectedText = await firstTextRow.locator(".row-text").innerText();
+  await selection.getByRole("button", { name: "Search the web", exact: true }).click();
+  assert.deepEqual(
+    await desktop.page.evaluate(() => window.__deckRouteCalls),
+    { mumbleFind: 1, webSearch: [selectedText.trim()] },
+    "selected Search the web must stay separate and use only the consent-preparation route",
+  );
+  await selection.getByRole("button", { name: "Smart Mode", exact: true }).click();
+  assert.equal(await selection.locator("#hist-mode-menu").isVisible(), true,
+    "Smart Mode catalogue must open only when requested");
+  assert.equal(await selection.locator("#hist-preset-menu").isHidden(), true);
+  await selection.getByRole("button", { name: "Preset", exact: true }).click();
+  assert.equal(await selection.locator("#hist-mode-menu").isHidden(), true);
+  assert.equal(await selection.locator("#hist-preset-menu").isVisible(), true,
+    "Preset catalogue must replace the other on-demand catalogue");
+  const reducedTransition = await surface.evaluate(node => getComputedStyle(node).transitionDuration);
+  assert.equal(reducedTransition, "0s", "selection remains understandable without motion");
+  await selection.getByRole("button", { name: "Clear selection", exact: true }).click();
+  await desktop.page.waitForTimeout(40);
+  assert.equal(await browse.isVisible(), true, "Clear must restore the browse state");
+  assert.equal(await desktop.page.locator("#hist-filter").evaluate(node => document.activeElement === node), true,
+    "a disappearing selection control must move focus to the browse filter");
+  await desktop.page.close();
+
+  const narrow = await openProductionPage(browser, {
+    viewport: { width: 430, height: 900 }, reducedMotion: "reduce",
+  });
+  assert.equal(narrow.browserErrors.length, 0, narrow.browserErrors.join(" | "));
+  await narrow.page.getByRole("button", { name: "Deck", exact: true }).click();
+  await narrow.page.waitForTimeout(180);
+  const narrowImageAction = narrow.page.getByRole("button", { name: "Paste image into previous app", exact: true });
+  assert.equal(await narrowImageAction.isVisible(), true, "image paste must stay visible at narrow widths");
+  const narrowRowActions = narrowImageAction.locator("xpath=ancestor::*[contains(@class,'row-actions')][1]");
+  assert.equal(await narrowRowActions.evaluate(node => getComputedStyle(node).opacity), "1",
+    "hover actions must remain visible without hover at narrow widths");
+  await narrow.page.close();
+  record("Deck browse/selection surface, image action, focus, reduced motion, and narrow layout");
 }
 
 async function testKeyboard(browser) {
@@ -548,6 +973,253 @@ async function testStatsReader(browser) {
   record("Stats and Reader truth, focus, reflow, reduced motion, and deterministic screenshots");
 }
 
+async function testMeetings(browser) {
+  const current = await openProductionPage(browser, { reducedMotion: "reduce" });
+  assert.equal(current.browserErrors.length, 0, current.browserErrors.join(" | "));
+  await current.page.evaluate(() => {
+    MOCK.meetings = [];
+    window.__meetingStopCalls = 0;
+    window.__meetingStopFailures = ["active", "inactive"];
+    window.__meetingListCalls = 0;
+    window.__deferMeetingStatus = false;
+    window.__meetingStatusPending = false;
+    window.__releaseMeetingStatus = null;
+    window.__meetingCapture = { active: false, state: "idle", captured_seconds: 0, audio_level: 0, microphone: null };
+    window.pywebview = { api: {
+      meeting_list: async () => {
+        window.__meetingListCalls += 1;
+        return MOCK.meetings;
+      },
+      meeting_start_recording: async () => {
+        window.__meetingCapture = {
+          active: true, state: "recording", captured_seconds: 0, audio_level: 0.34,
+          microphone: { index: 7, name: "Conference microphone" },
+        };
+        return { ok: true, ...window.__meetingCapture, recording: true, paused: false, max_seconds: 14400 };
+      },
+      meeting_recording_status: async () => {
+        const snapshot = {
+          ok: true, ...window.__meetingCapture,
+          recording: window.__meetingCapture.state === "recording",
+          paused: window.__meetingCapture.state === "paused",
+          max_seconds: 14400,
+        };
+        if (window.__deferMeetingStatus) {
+          window.__deferMeetingStatus = false;
+          window.__meetingStatusPending = true;
+          return new Promise(resolve => {
+            window.__releaseMeetingStatus = () => {
+              window.__meetingStatusPending = false;
+              resolve(snapshot);
+            };
+          });
+        }
+        return snapshot;
+      },
+      meeting_pause_recording: async () => {
+        window.__meetingCapture.state = "paused";
+        return { ok: true };
+      },
+      meeting_resume_recording: async () => {
+        window.__meetingCapture.state = "recording";
+        return { ok: true };
+      },
+      meeting_stop_recording: async () => {
+        window.__meetingStopCalls += 1;
+        const failure = window.__meetingStopFailures.shift();
+        if (failure) {
+          if (failure === "inactive")
+            window.__meetingCapture = { active: false, state: "idle", captured_seconds: 0, audio_level: 0 };
+          if (failure === "inactive" && !MOCK.meetings.length) MOCK.meetings.push({
+            id: "issue23-reconciled", title: "Reconciled meeting", created: Date.now() / 1000,
+            duration_sec: 65, duration_display: "1:05", segment_count: 0,
+            speaker_count: 0, speakers: [], status: "processing", preview: "Recording saved locally",
+          });
+          return { ok: false, message: "Test save was not confirmed" };
+        }
+        window.__meetingCapture = { active: false, state: "idle", captured_seconds: 0, audio_level: 0 };
+        if (!MOCK.meetings.length) MOCK.meetings.push({
+          id: "issue23-saved", title: "Saved keyboard meeting", created: Date.now() / 1000,
+          duration_sec: 65, duration_display: "1:05", segment_count: 1,
+          speaker_count: 1, speakers: [], status: "processing", preview: "Recording saved locally",
+        });
+        return { ok: true, processing: true, meeting_id: "issue23-saved" };
+      },
+    } };
+  });
+  await current.page.getByRole("button", { name: "Meetings", exact: true }).click();
+  await current.page.waitForFunction(() => document.querySelector("#meeting-instrument")?.dataset.phase === "before");
+
+  const before = await current.page.evaluate(() => ({
+    instruments: document.querySelectorAll("#meeting-instrument").length,
+    phase: document.querySelector("#meeting-instrument")?.dataset.phase,
+    ledger: [...document.querySelectorAll("#meeting-context-ledger [data-context]")]
+      .map(node => [node.dataset.context, node.querySelector("dd")?.textContent.trim()]),
+    cancel: [...document.querySelectorAll("button")]
+      .some(node => /cancel processing/i.test(node.textContent)),
+  }));
+  assert.equal(before.instruments, 1, "Meetings must use one transforming instrument");
+  assert.equal(before.phase, "before");
+  assert.deepEqual(before.ledger.map(row => row[0]), ["microphone", "saved-location", "transcription", "analysis"]);
+  assert.ok(before.ledger.every(row => row[1]), `every Meetings context fact needs visible truth: ${JSON.stringify(before.ledger)}`);
+  assert.equal(before.cancel, false, "processing Cancel must stay absent without safe cancellation semantics");
+  const analysisTruth = await current.page.evaluate(() => ({
+    local: meetingAnalysisTruth({ ready: true, effective_route: "local", reason: "local_provider" }),
+    blocked: ["device_only", "hosted_processing_off", "missing_key", "unsupported_provider"]
+      .map(reason => meetingAnalysisTruth({ ready: false, effective_route: "local", reason })),
+  }));
+  assert.match(analysisTruth.local, /on-device analysis.*stays on this device/i);
+  assert.ok(analysisTruth.blocked.every(value => /^Unavailable/.test(value)),
+    `blocked effective routes must remain unavailable: ${JSON.stringify(analysisTruth.blocked)}`);
+
+  await current.page.getByRole("button", { name: "Record meeting", exact: true }).focus();
+  await current.page.keyboard.press("Enter");
+  await current.page.waitForFunction(() => document.querySelector("#meeting-instrument")?.dataset.phase === "during");
+  const during = await current.page.evaluate(() => {
+    const instrument = document.querySelector("#meeting-instrument");
+    const level = document.querySelector("#meeting-input-level");
+    return {
+      phase: instrument?.dataset.phase,
+      recording: document.querySelector("#meeting-rec-state")?.textContent.trim(),
+      timer: document.querySelector("#meeting-rec-timer")?.textContent.trim(),
+      level: level?.getAttribute("aria-valuenow"),
+      microphone: document.querySelector('[data-context="microphone"] dd')?.textContent.trim(),
+      saved: document.querySelector('[data-context="saved-location"] dd')?.textContent.trim(),
+      pause: document.querySelector("#meeting-pause")?.textContent.trim(),
+      stop: document.querySelector("#meeting-stop")?.textContent.trim(),
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      meterAnimation: getComputedStyle(document.querySelector("#meeting-level-fill")).animationName,
+      liveContainsMeter: document.querySelector(".meeting-live-state")?.contains(level),
+    };
+  });
+  assert.equal(during.phase, "during");
+  assert.equal(during.recording, "Recording");
+  assert.match(during.timer, /^\d+:\d{2}$/);
+  assert.match(during.level, /^\d+$/);
+  assert.ok(during.microphone.length > 0 && during.saved.length > 0);
+  assert.match(during.pause, /Pause/);
+  assert.match(during.stop, /Stop.*save/i);
+  assert.ok(during.overflow <= 1, `Meetings overflowed by ${during.overflow}px`);
+  assert.equal(during.meterAnimation, "none");
+  assert.equal(during.liveContainsMeter, false, "continuous level changes must stay outside the polite live region");
+  const frozenMicrophone = await current.page.evaluate(() => {
+    meetingApplyContext({ ok: true, microphone: "Later Settings microphone" });
+    return document.querySelector('[data-context="microphone"] dd')?.textContent.trim();
+  });
+  assert.equal(frozenMicrophone, "Conference microphone",
+    "Settings changes must not rewrite the effective microphone for an active meeting");
+
+  await current.page.waitForTimeout(1600);
+  await current.page.locator("#meeting-pause").focus();
+  const focusBeforeStatus = await current.page.evaluate(() => ({
+    id: document.activeElement?.id, disabled: document.querySelector("#meeting-pause")?.disabled,
+    panelHidden: document.querySelector("#meeting-recording")?.hidden,
+  }));
+  await current.page.evaluate(() => {
+    meetingApplyCaptureStatus({
+      ok: true, active: true, state: "recording", recording: true, paused: false,
+      captured_seconds: 65, audio_level: 0.42, max_seconds: 14400,
+    });
+    clearInterval(MEET.recTimer);
+    clearTimeout(MEET.statusTimer);
+    MEET.recTimer = null;
+    MEET.statusTimer = null;
+  });
+  const focusAfterStatus = await current.page.evaluate(() => ({
+    id: document.activeElement?.id, disabled: document.querySelector("#meeting-pause")?.disabled,
+    panelHidden: document.querySelector("#meeting-recording")?.hidden,
+  }));
+  assert.equal(
+    focusAfterStatus.id === "meeting-pause",
+    true,
+    `authoritative recording updates must not steal focus: ${JSON.stringify({ focusBeforeStatus, focusAfterStatus })}`,
+  );
+  const first = await current.page.screenshot();
+  const second = await current.page.screenshot();
+  assert.ok(first.equals(second), "Meetings During screenshot must be deterministic");
+  await current.page.keyboard.press("Space");
+  await current.page.waitForFunction(() => document.querySelector("#meeting-recording")?.dataset.state === "paused");
+  assert.match(await current.page.locator("#meeting-pause").innerText(), /Resume/);
+  await current.page.locator("#meeting-pause").focus();
+  await current.page.keyboard.press("Enter");
+  await current.page.waitForFunction(() => document.querySelector("#meeting-recording")?.dataset.state === "recording");
+  await current.page.locator("#meeting-stop").focus();
+  await current.page.keyboard.press("Enter");
+  await current.page.waitForFunction(() => !document.querySelector("#meeting-stop")?.disabled);
+  assert.equal(await current.page.evaluate(() => document.activeElement?.id), "meeting-stop",
+    "a rejected keyboard Stop must restore focus to the retryable Stop action");
+  assert.equal(await current.page.evaluate(() => window.__meetingStopCalls), 1);
+  const beforeInactiveReconciliation = await current.page.evaluate(() => {
+    clearTimeout(MEET.statusTimer);
+    MEET.statusTimer = null;
+    window.__deferMeetingStatus = true;
+    meetingScheduleStatusPoll(true);
+    const instrument = document.querySelector("#meeting-instrument");
+    window.__meetingAfterTransitions = 0;
+    window.__meetingPhaseObserver = new MutationObserver(() => {
+      if (instrument.dataset.phase === "after") window.__meetingAfterTransitions += 1;
+    });
+    window.__meetingPhaseObserver.observe(instrument, { attributes: true, attributeFilter: ["data-phase"] });
+    return { listCalls: window.__meetingListCalls };
+  });
+  await current.page.waitForFunction(() => window.__meetingStatusPending === true);
+  await current.page.keyboard.press("Enter");
+  await current.page.waitForFunction(() =>
+    document.querySelector("#meeting-instrument")?.dataset.phase === "after" &&
+    document.activeElement?.id === "meeting-library-title");
+  assert.equal(await current.page.evaluate(() => document.activeElement?.id), "meeting-library-title",
+    "inactive reconciliation must move focus to visible content, not hidden Stop");
+  const inactiveReconciliation = await current.page.evaluate(async () => {
+    const release = window.__releaseMeetingStatus;
+    window.__releaseMeetingStatus = null;
+    release();
+    await new Promise(resolve => setTimeout(resolve, 700));
+    window.__meetingPhaseObserver.disconnect();
+    return {
+      phase: document.querySelector("#meeting-instrument")?.dataset.phase,
+      listRefreshes: window.__meetingListCalls,
+      afterTransitions: window.__meetingAfterTransitions,
+      pollingRestarted: Boolean(MEET.statusTimer),
+      recording: MEET.recording,
+      focus: document.activeElement?.id,
+    };
+  });
+  assert.equal(inactiveReconciliation.phase, "after", "a stale pre-Stop status reply must not restore During");
+  assert.equal(inactiveReconciliation.recording, false, "a stale pre-Stop status reply must remain rejected");
+  assert.equal(inactiveReconciliation.pollingRestarted, false, "a stale pre-Stop reply must not restart polling");
+  assert.equal(inactiveReconciliation.focus, "meeting-library-title");
+  assert.equal(inactiveReconciliation.listRefreshes, beforeInactiveReconciliation.listCalls + 1,
+    "inactive reconciliation must refresh the meeting library exactly once");
+  assert.equal(inactiveReconciliation.afterTransitions, 1,
+    "inactive reconciliation must enter the After state exactly once");
+  await current.page.getByRole("button", { name: "Record meeting", exact: true }).focus();
+  await current.page.keyboard.press("Enter");
+  await current.page.waitForFunction(() => document.querySelector("#meeting-instrument")?.dataset.phase === "during");
+  await current.page.locator("#meeting-stop").focus();
+  await current.page.keyboard.press("Enter");
+  await current.page.keyboard.press("Enter");
+  await current.page.waitForFunction(() => document.querySelector("#meeting-instrument")?.dataset.phase === "after");
+  assert.equal(await current.page.evaluate(() => window.__meetingStopCalls), 3,
+    "repeated keyboard activation must not add a second successful finalisation");
+  await current.page.waitForFunction(() => document.activeElement?.id === "meeting-library-title");
+  await current.page.close();
+
+  const narrow = await openProductionPage(browser, {
+    viewport: { width: 430, height: 900 }, reducedMotion: "reduce",
+  });
+  assert.equal(narrow.browserErrors.length, 0, narrow.browserErrors.join(" | "));
+  await narrow.page.evaluate(() => { MOCK.meetings = []; });
+  await narrow.page.getByRole("button", { name: "Meetings", exact: true }).click();
+  const narrowTruth = await narrow.page.evaluate(() => ({
+    columns: getComputedStyle(document.querySelector("#meeting-context-ledger")).gridTemplateColumns.split(" ").length,
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  }));
+  assert.equal(narrowTruth.columns, 1, "the Meetings ledger must reflow to one column when narrow");
+  assert.ok(narrowTruth.overflow <= 1, `narrow Meetings overflowed by ${narrowTruth.overflow}px`);
+  await narrow.page.close();
+  record("Meetings instrument, context truth, capture controls, focus, reflow, reduced motion, and deterministic screenshot");
+}
+
 function contrastRatio(first, second) {
   const linear = value => {
     const channel = value / 255;
@@ -690,7 +1362,7 @@ async function testBrowserZoom() {
       assert.equal(geometry.visible, true, `${selector} must remain visible at 200% browser zoom`);
       assert.equal(geometry.clippedHorizontally, false, `${selector} must not be horizontally clipped at 200% browser zoom`);
     }
-    for (const destination of ["Stats", "Reader"]) {
+    for (const destination of ["Stats", "Reader", "Meetings"]) {
       await page.getByRole("button", { name: destination, exact: true }).click();
       await page.waitForTimeout(180);
       const destinationGeometry = await page.locator('.view:not([hidden])').evaluate(node => ({
@@ -700,6 +1372,31 @@ async function testBrowserZoom() {
       }));
       assert.equal(destinationGeometry.visible, true, `${destination} must remain visible at 200% browser zoom`);
       assert.ok(destinationGeometry.overflow <= 1, `${destination} must not overflow at 200% browser zoom`);
+      if (destination === "Meetings") {
+        await page.evaluate(() => {
+          meetingApplyCaptureStatus({
+            ok: true, active: true, state: "recording", recording: true, paused: false,
+            captured_seconds: 65, audio_level: 0.42, max_seconds: 14400,
+          });
+          clearInterval(MEET.recTimer);
+          clearTimeout(MEET.statusTimer);
+          MEET.recTimer = null;
+          MEET.statusTimer = null;
+        });
+        const instrument = await page.locator("#meeting-instrument").evaluate(node => {
+          const box = node.getBoundingClientRect();
+          const stop = document.querySelector("#meeting-stop").getBoundingClientRect();
+          return {
+            phase: node.dataset.phase,
+            visible: box.width > 0 && box.height > 0,
+            clippedHorizontally: box.left < -1 || box.right > window.innerWidth + 1,
+            stopHeight: stop.height,
+          };
+        });
+        assert.equal(instrument.visible, true, "the Meetings instrument must remain visible at genuine 200% zoom");
+        assert.equal(instrument.clippedHorizontally, false, "the Meetings instrument must not clip at genuine 200% zoom");
+        assert.ok(instrument.stopHeight >= 40, `the zoomed Meetings Stop target must remain operable: ${JSON.stringify(instrument)}`);
+      }
     }
     await page.getByRole("button", { name: "Home", exact: true }).click();
     const coreControls = await page.locator(".nav-btn, #record-btn, #open-history-btn").evaluateAll(nodes =>
@@ -921,6 +1618,8 @@ async function testVisual(browser) {
   assert.equal(productionState.state, "loading", "the real dictation workflow must expose a loading State Surface while recording");
   assert.equal(productionState.rail, true, "the real dictation actions must be a Control Rail");
   assert.equal(productionState.stopControl, "stop", "the active dictation action must be identified as the time-critical stop control");
+  await reduced.page.locator("#record-btn").click();
+  await reduced.page.waitForTimeout(180);
   await reduced.page.evaluate(() => document.querySelector("#toast-wrap").replaceChildren());
 
   const effectsContract = await reduced.page.evaluate(() => {
@@ -936,6 +1635,27 @@ async function testVisual(browser) {
 
   if (capture) fs.mkdirSync(outputRoot, { recursive: true });
   await stableScreenshot(reduced.page, "01-focus-stage-home-desktop.png");
+  await reduced.page.getByRole("button", { name: "Meetings", exact: true }).click();
+  await reduced.page.waitForFunction(() => document.querySelector("#meeting-instrument")?.dataset.phase === "after");
+  await stableScreenshot(reduced.page, "07-meetings-after.png");
+  await reduced.page.evaluate(async () => {
+    MOCK.meetings = [];
+    MEET.listAll = null;
+    await renderMeetings();
+  });
+  await reduced.page.waitForFunction(() => document.querySelector("#meeting-instrument")?.dataset.phase === "before");
+  await stableScreenshot(reduced.page, "05-meetings-before.png");
+  await reduced.page.evaluate(() => {
+    meetingApplyCaptureStatus({
+      ok: true, active: true, state: "recording", recording: true, paused: false,
+      captured_seconds: 65, audio_level: 0.42, max_seconds: 14400,
+    });
+    clearInterval(MEET.recTimer);
+    clearTimeout(MEET.statusTimer);
+    MEET.recTimer = null;
+    MEET.statusTimer = null;
+  });
+  await stableScreenshot(reduced.page, "06-meetings-during.png");
   await reduced.page.evaluate(() => {
     document.querySelectorAll(".view, .titlebar, .navbar").forEach(node => { node.hidden = true; });
     document.querySelector("#toast-wrap").replaceChildren();
@@ -956,14 +1676,24 @@ async function testVisual(browser) {
 
   const forced = await openProductionPage(browser, { forcedColors: "active" });
   assert.equal(forced.browserErrors.length, 0, forced.browserErrors.join(" | "));
-  const forcedButton = forced.page.getByRole("button", { name: "Home", exact: true });
+  await forced.page.getByRole("button", { name: "Meetings", exact: true }).click();
+  await forced.page.waitForFunction(() => document.querySelector("#meeting-instrument")?.dataset.phase === "after");
+  const forcedButton = forced.page.getByRole("button", { name: "Record meeting", exact: true });
   await forcedButton.focus();
-  const forcedStyle = await forcedButton.evaluate(node => ({
-    border: getComputedStyle(node).borderStyle,
-    outline: getComputedStyle(node).outlineStyle,
+  await forced.page.keyboard.press("Shift+Tab");
+  await forced.page.keyboard.press("Tab");
+  assert.equal(await forcedButton.evaluate(node => node === document.activeElement), true,
+    "forced-colour verification must keyboard-focus the Meetings Record control");
+  const forcedStyle = await forced.page.evaluate(() => ({
+    buttonBorder: getComputedStyle(document.querySelector("#meeting-record")).borderStyle,
+    buttonOutline: getComputedStyle(document.querySelector("#meeting-record")).outlineStyle,
+    instrumentBorder: getComputedStyle(document.querySelector("#meeting-instrument")).borderStyle,
+    phase: document.querySelector("#meeting-instrument").dataset.phase,
   }));
-  assert.equal(forcedStyle.border, "solid");
-  assert.equal(forcedStyle.outline, "solid");
+  assert.equal(forcedStyle.phase, "after");
+  assert.equal(forcedStyle.instrumentBorder, "solid");
+  assert.equal(forcedStyle.buttonBorder, "solid");
+  assert.equal(forcedStyle.buttonOutline, "solid");
   await stableScreenshot(forced.page, "04-forced-colours-focus.png");
   await forced.page.close();
 
@@ -971,8 +1701,29 @@ async function testVisual(browser) {
   assert.equal(narrow.browserErrors.length, 0, narrow.browserErrors.join(" | "));
   await stableScreenshot(narrow.page, "02-focus-stage-navigation-narrow.png");
   await narrow.page.close();
+
+  const deck = await openProductionPage(browser, { reducedMotion: "reduce" });
+  assert.equal(deck.browserErrors.length, 0, deck.browserErrors.join(" | "));
+  await deck.page.getByRole("button", { name: "Deck", exact: true }).click();
+  await deck.page.waitForTimeout(180);
+  await deck.page.locator('[data-content-filter="clipboard"]').click();
+  await deck.page.waitForTimeout(80);
+  await stableScreenshot(deck.page, "05-deck-command-surface.png");
+  await deck.page.close();
+
+  const deckNarrow = await openProductionPage(browser, {
+    viewport: { width: 430, height: 900 }, reducedMotion: "reduce",
+  });
+  assert.equal(deckNarrow.browserErrors.length, 0, deckNarrow.browserErrors.join(" | "));
+  await deckNarrow.page.getByRole("button", { name: "Deck", exact: true }).click();
+  await deckNarrow.page.waitForTimeout(180);
+  const selectedRow = deckNarrow.page.locator(".deck-selectable-row").first();
+  await selectedRow.focus();
+  await selectedRow.press("Space");
+  await stableScreenshot(deckNarrow.page, "06-deck-selection-narrow.png");
+  await deckNarrow.page.close();
   if (capture) writeEvidenceManifest(browser.version());
-  record("effect invariance, reduced motion, forced colours, Control Rail safety, and deterministic screenshots");
+  record("effect invariance, reduced motion, Meetings forced colours, Control Rail safety, and deterministic screenshots");
 }
 
 (async () => {
@@ -981,7 +1732,9 @@ async function testVisual(browser) {
     if (requestedCase === "all" || requestedCase === "shell") await testShell(browser);
     if (requestedCase === "all" || requestedCase === "states") await testStates(browser);
     if (requestedCase === "all" || requestedCase === "keyboard") await testKeyboard(browser);
+    if (requestedCase === "all" || requestedCase === "deck") await testDeck(browser);
     if (requestedCase === "all" || requestedCase === "stats-reader") await testStatsReader(browser);
+    if (requestedCase === "all" || requestedCase === "meetings") await testMeetings(browser);
     if (requestedCase === "all" || requestedCase === "reflow") await testReflow(browser);
     if (requestedCase === "zoom") record("genuine 200% browser zoom probe", await testBrowserZoom());
     if (requestedCase === "all" || requestedCase === "visual") await testVisual(browser);

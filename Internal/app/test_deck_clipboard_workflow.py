@@ -117,10 +117,24 @@ def test_web_contracts():
           'row.addEventListener("click"' in js and "toggleRowSelection(row)" in js)
     check("selection resolves source-aware identities",
           "HX.itemByKey.get(key)" in js and "HX.selected[0].text" not in js)
-    check("image paste has an explicit action", "data-pasteimage" in js)
-    check("selection bar is viewport-centred",
-          ".hist-actionbar" in css and "position: fixed" in css
-          and "transform: translateX(-50%)" in css)
+    check("browse and selection share one stable command surface",
+          'id="deck-command-surface"' in html
+          and 'data-deck-state="browse"' in html
+          and 'data-deck-state="selection"' in html)
+    check("preset catalogues stay selection-owned and hidden until requested",
+          'id="hist-preset-menu"' in html
+          and 'aria-controls="hist-preset-menu"' in html
+          and 'id="hist-preset-menu" aria-label="Preset catalogue" hidden' in html
+          and 'class="hist-toolbox"' not in html)
+    check("browse search is not duplicated",
+          'id="hist-filter"' in html and 'id="hist-search"' not in html)
+    check("image paste has the exact explicit accessible action",
+          "data-pasteimage" in js
+          and 'aria-label="Paste image into previous app"' in js
+          and "hist-image-thumb" in js)
+    check("keyboard and narrow layouts reveal row actions",
+          ".row:focus-within .row-actions" in css
+          and "@media (max-width: 760px)" in css)
     capture = controller[controller.index("def _capture_focused_copy"):
                          controller.index("def capture_conversation", controller.index("def _capture_focused_copy"))]
     check("selection capture no longer writes a NUL sentinel", "\\x00" not in capture)

@@ -51,6 +51,11 @@ class _Skip(Exception):
 
 
 _TRANSPARENT = "#ff00ff"
+WS_EX_LAYERED = 0x80000
+WS_EX_TRANSPARENT = 0x20
+WS_EX_NOACTIVATE = 0x08000000
+WS_EX_TOOLWINDOW = 0x80
+WS_EX_TOPMOST = 0x8
 _PILL_BG = "#0C0B09"
 _PILL_RIM = "#3A3320"
 _PILL_HI = "#5A5240"  # warm hairline highlight (top inner edge of the pill)
@@ -398,6 +403,28 @@ class _LayeredDC:
             pass
 
 
+def _layered_exstyle(existing, transparent):
+    """Pure extended-style contract shared by status and control windows."""
+    value = int(existing) | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
+    if transparent:
+        return value | WS_EX_TRANSPARENT
+    return (value | WS_EX_TOPMOST) & ~WS_EX_TRANSPARENT
+
+
+def _prefers_reduced_motion():
+    """Read the Windows client-animation preference without changing it."""
+    if not _HAVE_CTYPES:
+        return False
+    try:
+        enabled = ctypes.c_int(1)
+        ok = ctypes.windll.user32.SystemParametersInfoW(
+            0x1042, 0, ctypes.byref(enabled), 0  # SPI_GETCLIENTAREAANIMATION
+        )
+        return bool(ok) and not bool(enabled.value)
+    except Exception:
+        return False
+
+
 def _style_layered(win, transparent):
     """Apply layered-window extended styles to a Toplevel and return its HWND.
     If transparent is True, WS_EX_TRANSPARENT is added (click-through).
@@ -406,12 +433,7 @@ def _style_layered(win, transparent):
     hwnd = w.u.GetAncestor(win.winfo_id(), 2)  # GA_ROOT (real OS window)
     GWL_EXSTYLE = -20
     ex = w.u.GetWindowLongW(hwnd, GWL_EXSTYLE)
-    # layered (per-pixel alpha) + noactivate + toolwindow
-    ex |= 0x80000 | 0x08000000 | 0x80
-    if transparent:
-        ex |= 0x20     # WS_EX_TRANSPARENT: click-through
-    else:
-        ex |= 0x8      # WS_EX_TOPMOST: always-on-top, clicks land
+    ex = _layered_exstyle(ex, transparent)
     w.u.SetWindowLongW(hwnd, GWL_EXSTYLE, ex)
     return hwnd
 
@@ -617,9 +639,10 @@ class _WidgetBar:
         except Exception as ex:
             print("bar hit-test failed:", ex)
             return
-        x = event.x
-        stop = layout.get("stop")
-        if stop and stop[0] <= x < stop[1]:
+        x, y = event.x, event.y
+        stop_bounds = layout.get("stop_bounds")
+        if (stop_bounds and stop_bounds[0] <= x < stop_bounds[2]
+                and stop_bounds[1] <= y < stop_bounds[3]):
             self._fire(self.on_stop)
             return
         review = layout.get("control_review")
@@ -726,12 +749,16 @@ class _WidgetBar:
         self.place_below(ix, iy, iw, ih)
         if not self.visible:
             try:
+                # Apply NOACTIVATE while the native window is still withdrawn;
+                # first display must never create a focus-stealing frame.
+                self._ensure_styled()
                 self.win.deiconify()
                 self.win.attributes("-topmost", True)
                 self.win.lift()
                 self.visible = True
-            except Exception:
-                pass
+            except Exception as error:
+                print("bar show failed — bar remains hidden:", error)
+                self.ok = False
 
     def hide(self):
         if not self.ok or not self.visible:
@@ -753,6 +780,7 @@ class Island:
         # `enhanced` stays True for the canvas fallback's one path.
         self.style = "enhanced"
         self.enhanced = True
+        self.reduced_motion = _prefers_reduced_motion()
         self.state = "idle"
         self.level = 0.0
         self.frame = 0
@@ -815,6 +843,7 @@ class Island:
             "control_review_available": False,
             "stop_enabled": False,
             "stop_label": "Stop",
+            "reduced_motion": self.reduced_motion,
             # Retained for snapshots/tests from the retired dropdown layout.
             "expanded": False,
         }
@@ -1200,7 +1229,8 @@ class Island:
 
     def _armed_ring(self, c, x0, pill_w, w, h):
         """A thin near-white ring around the pill while the mode key is held."""
-        pulse = 0.55 + 0.45 * (math.sin(self.frame * 0.22) + 1) / 2
+        frame = 0 if self.reduced_motion else self.frame
+        pulse = 0.55 + 0.45 * (math.sin(frame * 0.22) + 1) / 2
         col = _blend(_PILL_BG, _ARMED_RING, pulse)
         ui.round_rect(c, x0 - 1, 0, x0 + pill_w + 1, h, (h) // 2, fill="", outline=col)
 
@@ -1236,6 +1266,7 @@ class Island:
         timer = ""
         colors = None
         offline = False
+        reduced_motion = bool(getattr(self, "reduced_motion", False))
         # `gathering` = a context/History job is pulling material in → the island
         # shows the gold-particle ABSORPTION motion (owner v6, no context colour).
         gathering = bool(getattr(self, "is_gathering", False))
@@ -1319,10 +1350,11 @@ class Island:
         # their final frames instead of snapping to nothing (owner v6: "it should
         # fade away"). 1.0 = fully opaque.
         fade = 1.0
-        if state == "hint":
-            fade = max(0.0, min(1.0, self.hint_left / float(FADE_OUT_FRAMES)))
-        elif state == "done":
-            fade = max(0.0, min(1.0, self.done_left / 6.0))
+        if not reduced_motion:
+            if state == "hint":
+                fade = max(0.0, min(1.0, self.hint_left / float(FADE_OUT_FRAMES)))
+            elif state == "done":
+                fade = max(0.0, min(1.0, self.done_left / 6.0))
         # Fade-IN on first appearance (refinement pass §1): the moment the island
         # goes from idle to an active state, ramp its whole-pill opacity up over
         # APPEAR_FRAMES so it eases into view rather than snapping. The counter is
@@ -1333,12 +1365,13 @@ class Island:
             self._appear_left = APPEAR_FRAMES
         self._was_active = active_now
         appear = getattr(self, "_appear_left", 0)
-        if appear > 0:
+        if appear > 0 and not reduced_motion:
             ramp = APPEAR_FLOOR + (1.0 - APPEAR_FLOOR) * (
                 1.0 - appear / float(APPEAR_FRAMES))
             fade = min(fade, ramp)
         return {
             "frame": self.frame, "state": state,
+            "reduced_motion": reduced_motion,
             "level": max(0.0, min(1.0, self.level)),
             "armed": bool(
                 self.armed and state in ("listening", "transcribing", "building")
@@ -1371,6 +1404,7 @@ class Island:
         cy = H / 2
         f = self._label_font()
         state = self.state
+        motion_frame = 0 if self.reduced_motion else self.frame
         is_hint = state == "hint"
 
         # ---- compose: [dot] [animation] [label] — pill hugs its content ----
@@ -1408,7 +1442,8 @@ class Island:
         pill_w = max(PILL_W, min(W - 4, pill_w))
         # Enhanced = animated rim glow + travelling glass sheen; Basic = a clean
         # static pill (lighter per-frame, no ambient glints).
-        x0p = self._pill(c, pill_w, W, H, animate=self.enhanced)
+        x0p = self._pill(c, pill_w, W, H,
+                         animate=self.enhanced and not self.reduced_motion)
         if self.armed and state in ("listening", "transcribing"):
             self._armed_ring(c, x0p, pill_w, W, H)
 
@@ -1419,14 +1454,14 @@ class Island:
             base = {"listening": C.gold, "transcribing": C.amber,
                     "building": self.build_color,
                     "done": self.done_color}.get(state, C.gold)
-        pulse = 0.55 + 0.45 * (math.sin(self.frame * 0.16) + 1) / 2
+        pulse = 0.55 + 0.45 * (math.sin(motion_frame * 0.16) + 1) / 2
         dx = x0p + PAD_X + dot_r
         dot_col = _blend(_PILL_BG, base, 0.35 + 0.65 * pulse)
         # UX-Pilot ripple-ring while listening: a ring expands from the dot and
         # fades — drawn as one outline oval whose colour sinks into the pill.
         # Enhanced-only ambient flourish; Basic keeps just the dot.
-        if state == "listening" and self.enhanced:
-            rp = (self.frame % 36) / 36.0          # ~1.6s cycle at 22fps
+        if state == "listening" and self.enhanced and not self.reduced_motion:
+            rp = (motion_frame % 36) / 36.0          # ~1.6s cycle at 22fps
             rr = dot_r + 1.5 + rp * 6.0
             ring = _blend(_PILL_BG, base, max(0.0, 0.5 * (1.0 - rp)))
             c.create_oval(dx - rr, cy - rr, dx + rr, cy + rr,
@@ -1443,7 +1478,7 @@ class Island:
             profile = (0.55, 0.75, 1.0, 1.0, 0.85, 0.65, 0.45)
             n, gap, bw, maxh = 7, 8.5, 2.6, H - 11
             for i in range(n):
-                ph = (math.sin(self.frame * 0.4 + i * 0.8) + 1) / 2
+                ph = (math.sin(motion_frame * 0.4 + i * 0.8) + 1) / 2
                 h = 3 + (maxh - 3) * lvl * (0.55 + 0.45 * ph)
                 xi = x + i * gap
                 col = _blend(_PILL_BG, C.gold_hi,
@@ -1456,7 +1491,7 @@ class Island:
             n, gap, bw, maxh = 7, 8.5, 2.6, H - 11
             search_blue = "#5AA9E6"
             for i in range(n):
-                ph = (math.sin(self.frame * 0.4 + i * 0.8) + 1) / 2
+                ph = (math.sin(motion_frame * 0.4 + i * 0.8) + 1) / 2
                 h = 3 + (maxh - 3) * lvl * (0.55 + 0.45 * ph)
                 xi = x + i * gap
                 col = _blend(_PILL_BG, search_blue,
@@ -1466,7 +1501,7 @@ class Island:
         elif state == "transcribing":
             n, gap, r = 3, 10, 2.4
             for i in range(n):
-                ph = (math.sin(self.frame * 0.18 - i * 0.9) + 1) / 2
+                ph = (math.sin(motion_frame * 0.18 - i * 0.9) + 1) / 2
                 col = _blend(_PILL_BG, C.amber, 0.25 + 0.75 * ph)
                 xi = x + i * gap
                 c.create_oval(xi - r, cy - r, xi + r, cy + r, fill=col, outline="")
@@ -1474,7 +1509,7 @@ class Island:
             n, gap, r = 5, 8, 2.3
             colors = getattr(self, "build_colors", [self.build_color])
             for i in range(n):
-                ph = (math.sin(self.frame * 0.26 - i * 0.7) + 1) / 2
+                ph = (math.sin(motion_frame * 0.26 - i * 0.7) + 1) / 2
                 if len(colors) >= 2:
                     t = i / (n - 1) if n > 1 else 0
                     idx = min(int(t * (len(colors) - 1)), len(colors) - 2)
@@ -1518,13 +1553,13 @@ class Island:
         # ---- label / hint text ----
         if label:
             if is_hint:
-                tp = 0.65 + 0.35 * (math.sin(self.frame * 0.16) + 1) / 2
+                tp = 0.65 + 0.35 * (math.sin(motion_frame * 0.16) + 1) / 2
                 tint = _SUGGEST if self.is_suggest else C.gold_hi
                 col = _blend(_PILL_BG, tint, tp)
             elif state == "building":
                 # UX-Pilot shimmer: the Building label breathes between dim
                 # text and the active mode's colour while the AI works.
-                sp = (math.sin(self.frame * 0.12) + 1) / 2
+                sp = (math.sin(motion_frame * 0.12) + 1) / 2
                 col = _blend(C.text_dim, self.build_color, 0.45 * sp)
             else:
                 col = C.text_dim

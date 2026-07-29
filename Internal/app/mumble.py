@@ -85,6 +85,7 @@ import foreign_boost  # local (offline) Foreign-Mode phonetic term correction
 import formatting
 import islamic_terms  # Foreign mode: slash-candidate annotation for Arabic/Islamic terms
 import local_engine  # cloud-dominance routing gate (cloud-primary-when-key, local degrade)
+import model_authority
 import processing_route  # immutable, privacy-enforcing text-shaping decisions
 import recording_limits
 import transcription  # optional cloud STT (advanced); local faster-whisper is default
@@ -4364,7 +4365,10 @@ class Mumble:
         deck_snapshot = processing_route.snapshot_inputs(
             self.settings,
             feature="deck",
-            lane=mode or "deck_reason",
+            # Smart Mode shapes the output instruction; it is not a separate
+            # authorization lane. Every Deck provider call consumes the same
+            # frozen Deck authority at the final network boundary.
+            lane="deck_reason",
             context=ctx_block,
             context_policy="deck_selection",
             local_model_ready=local_engine.local_llm_ready(),
@@ -4816,10 +4820,13 @@ class Mumble:
                     # state — a rebind or model switch must never wait for a
                     # restart to take effect.
                     changed_key = str(req.get("key") or "")
-                    threading.Thread(
-                        target=self._apply_settings_change,
-                        args=(changed_key,), daemon=True,
-                    ).start()
+                    resp = model_authority.controller_reload_response(
+                        self._apply_settings_change,
+                        changed_key,
+                        lambda action: threading.Thread(
+                            target=action, daemon=True
+                        ).start(),
+                    )
                 elif cmd == "deck_job":
                     import presets as _presets
                     slot = req.get("slot")
@@ -6279,25 +6286,6 @@ class Mumble:
 
     def _ai_key(self):
         return self._ai_cfg()["key"]
-
-    def set_llm_provider(self, provider, model="", key=None):
-        """Switch the AI engine (Settings → AI Provider). Saves the provider,
-        model and key, then returns (ok, message)."""
-        if provider not in TEXT_PROCESSING_PROVIDERS:
-            return False, "Unknown provider."
-        info = ai.PROVIDERS[provider]
-        updates = {"llm_provider": provider}
-        if model:
-            updates[info["model_setting"]] = model
-        if key is not None:
-            updates[info["key_setting"]] = (key or "").strip()
-        if self.settings.update(**updates) is False:
-            return False, "Could not save the provider configuration."
-        if key is not None:
-            self.pro_key_failed = False
-        cfg = self._ai_cfg()
-        label = info["label"].split(" (")[0]
-        return True, f"Using {label} — model '{cfg['model']}'."
 
     def test_provider(self):
         """Live connection test for the active provider. Returns (ok, message)."""

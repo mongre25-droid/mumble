@@ -2,9 +2,11 @@
 
 import json
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -36,16 +38,128 @@ def test_settings_hydration_and_microphone_error_contract_exists_on_every_platfo
 
         assert 'data-settings-state="loading" aria-busy="true"' in html
         assert 'id="settings-hydration"' in html
-        assert '<option value="lite">Light effects</option>' in html
-        assert '<option value="standard">Standard effects</option>' in html
+        assert '<option value="lite">Light</option>' in html
+        assert '<option value="standard">Standard</option>' in html
         assert '<option value="enhanced">Full effects</option>' in html
         assert '<option value="lite">Basic</option>' not in html
+        assert "Normal dictation records for up to 10 minutes" not in html
+        if platform_app != APP_DIR:
+            assert "10 minutes as a temporary safety guard" in html
+            assert "bounded, recovery-safe segments" not in html
+        assert "home-capabilities-grid" not in html
+        assert 'class="home-latest-result"' in html
+        tab_labels = [
+            "Overview", "Speech to text", "Text shaping", "Deck &amp; data", "System"
+        ]
+        assert all(f'>{label}</button>' in html for label in tab_labels)
+        required_route_facts = (
+            "Saved choice", "Effective route", "Why this route",
+            "Input and engine", "Location", "What leaves this device",
+            "Speed", "Privacy", "Quality boundary", "Cost",
+        )
+        for route_id in ("transcription-route-facts", "processing-route-facts"):
+            match = re.search(
+                rf'<dl class="processing-route-facts" id="{route_id}">(.*?)</dl>',
+                html,
+                re.DOTALL,
+            )
+            assert match
+            assert re.findall(r"<dt>(.*?)</dt>", match.group(1)) == list(
+                required_route_facts
+            )
+        assert 'id="feature-route-rows"' in html
+        assert "FEATURE_ROUTE_ROWS" in js
+        assert "renderFeatureRouteLedger" in js
+        if platform_app != APP_DIR:
+            assert 'setText("#route-fact-' not in js
+            assert js.count('writeRouteFacts("route"') == 1
+            assert "route-fact-tradeoff" not in js
+        assert "async function reflectProvider" in js
+        assert 'call("activate_model_provider", provider)' in js
+        finish_source = js[js.index("async function finishOnboarding"):]
+        finish_source = finish_source.split(
+            "/* ============================================================================", 1
+        )[0]
+        assert 'set_setting", "llm_provider"' not in finish_source
+        assert 'llm_provider: provider' not in finish_source
+        shell = (platform_app / "webui_shell.py").read_text(encoding="utf-8")
+        assert "self._confirmed_models" not in shell
+        assert "model_authority.ModelDiscoveryAuthority" in shell
+        authority = (platform_app / "model_authority.py").read_text(encoding="utf-8")
+        assert 'AUTHORITY_KEY = "_confirmed_text_models"' in authority
+        cloud_sync = (platform_app / "cloud_sync.py").read_text(encoding="utf-8")
+        assert '"_confirmed_text_models"' in cloud_sync
+        if platform_app.name == "app" and platform_app.parent.name == "macOS":
+            controller = (platform_app / "mumble_mac.py").read_text(encoding="utf-8")
+            process = controller[controller.index("    def _process("):]
+            process = process[:process.index("    def ", 5)]
+            assert "capture_text_provider_settings(self.settings)" in process
+        else:
+            controller_name = "mumble_linux.py" if platform_app.parent.name == "Linux" else "mumble.py"
+            controller = (platform_app / controller_name).read_text(encoding="utf-8")
+        assert 'const cloudStt = transcriptionRoute.effective === "cloud"' in js
+        assert "Cloud choice remains saved" in js
+        assert "ROUTE_REFRESH_VERSION" in js
+        for model_key in (
+            "cerebras_model", "openrouter_model", "groq_transcription_model",
+            "openai_transcription_model", "openrouter_transcription_model",
+        ):
+            assert model_key in js
         assert "SETTINGS_HYDRATION_VERSION" in js
         assert 'mics = await call("list_microphones")' in js
         assert 'if (requestId !== SETTINGS_HYDRATION_VERSION) return false;' in js
         assert '"Microphones could not be checked.' in js
         assert 'setSettingsHydrationState("ready")' in js
         assert '[data-settings-state="ready"] .settings-hydration' in css
+
+
+@pytest.mark.parametrize("platform_app", PLATFORM_APP_DIRS, ids=("windows", "macos", "linux"))
+def test_model_authority_reload_acknowledgement_is_synchronous(platform_app):
+    script = r'''
+import json
+import sys
+sys.path.insert(0, sys.argv[1])
+import model_authority
+
+events = []
+def apply_change(key):
+    events.append(("apply", key))
+    return key == "_confirmed_text_models"
+
+def start_background(action):
+    events.append(("background", None))
+    action()
+
+authority = model_authority.controller_reload_response(
+    apply_change, "_confirmed_text_models", start_background
+)
+provider = model_authority.controller_reload_response(
+    apply_change, "llm_provider", start_background
+)
+ordinary = model_authority.controller_reload_response(
+    apply_change, "language", start_background
+)
+print(json.dumps({"authority": authority, "provider": provider,
+                  "ordinary": ordinary, "events": events}))
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(platform_app)],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        cwd=platform_app,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    evidence = json.loads(result.stdout.strip().splitlines()[-1])
+    assert evidence["authority"] == {"ok": True}
+    assert evidence["provider"] == {
+        "ok": False, "message": "Settings reload failed."
+    }
+    assert evidence["ordinary"] == {"ok": True}
+    assert evidence["events"][:2] == [
+        ["apply", "_confirmed_text_models"], ["apply", "llm_provider"]
+    ]
+    assert evidence["events"][2] == ["background", None]
 
 
 def _free_port():
@@ -218,12 +332,159 @@ for (let i=0; i<100; i++) {
 }
 const ready = await evaluate(`(() => { const v=document.querySelector('[data-view="settings"]'); const s=document.querySelector('[data-setting="ui_effects"]'); return {state:v.dataset.settingsState,disabled:s.disabled,visibility:getComputedStyle(s).visibility,value:s.value}; })()`);
 if (ready.state !== 'ready' || ready.disabled || ready.visibility === 'hidden' || ready.value !== 'enhanced') throw new Error('bad ready state: '+JSON.stringify(ready));
+const routeDisclosure = await evaluate(`(() => ({
+  transcription:Array.from(document.querySelectorAll('#transcription-route-facts dt')).map(node=>node.textContent.trim()),
+  processing:Array.from(document.querySelectorAll('#processing-route-facts dt')).map(node=>node.textContent.trim()),
+  features:Array.from(document.querySelectorAll('[data-route-feature]')).map(row=>({
+    id:row.dataset.routeFeature,
+    facts:Array.from(row.querySelectorAll('dt')).map(node=>node.textContent.trim()),
+  })),
+}))()`);
+const requiredFacts = ['Saved choice','Effective route','Why this route','Input and engine','Location','What leaves this device','Speed','Privacy','Quality boundary','Cost'];
+const requiredFeatureFacts = ['Saved','Effective','Reason','Input and engine','Location','What leaves this device','Speed','Privacy','Quality boundary','Cost'];
+if (routeDisclosure.transcription.join('|') !== requiredFacts.join('|') || routeDisclosure.processing.join('|') !== requiredFacts.join('|')) throw new Error('incomplete route facts: '+JSON.stringify(routeDisclosure));
+if (routeDisclosure.features.length !== 7 || routeDisclosure.features.some(row=>row.facts.join('|') !== requiredFeatureFacts.join('|'))) throw new Error('incomplete feature decisions: '+JSON.stringify(routeDisclosure));
+
+const discoveryOrder = await evaluate(`(async () => {
+  const originalBridge = window.pywebview;
+  const order = [];
+  let releaseDiscovery;
+  const discovery = new Promise(resolve => { releaseDiscovery = resolve; });
+  window.pywebview = {api:{
+    set_setting: async () => { order.push('saved'); return {ok:true}; },
+    list_models: async () => { order.push('discovery-start'); const result = await discovery; order.push('discovery-done'); return result; },
+    get_settings: async () => { order.push('route-refresh'); return {_route_state:SET._route_state}; },
+  }};
+  const key = document.querySelector('[data-setting="cerebras_api_key"]');
+  key.dataset.masked = '';
+  key.value = 'ordered-test-key';
+  key.dispatchEvent(new Event('change',{bubbles:true}));
+  await new Promise(resolve => setTimeout(resolve,30));
+  const beforeRelease = [...order];
+  releaseDiscovery({ok:true,models:['gpt-oss-120b']});
+  for (let attempt=0; attempt<80 && !order.includes('route-refresh'); attempt++) await new Promise(resolve => setTimeout(resolve,10));
+  const afterRelease = [...order];
+  window.pywebview = originalBridge;
+  return {beforeRelease,afterRelease};
+})()`);
+if (discoveryOrder.beforeRelease.includes('route-refresh') || !discoveryOrder.afterRelease.includes('route-refresh') || discoveryOrder.afterRelease.indexOf('route-refresh') < discoveryOrder.afterRelease.indexOf('discovery-done')) throw new Error('model discovery and route refresh were out of order: '+JSON.stringify(discoveryOrder));
+
+const providerDiscoveryOrder = await evaluate(`(async () => {
+  const originalBridge = window.pywebview;
+  const order = [];
+  let releaseDiscovery;
+  const discovery = new Promise(resolve => { releaseDiscovery = resolve; });
+  SET.openrouter_api_key = 'ordered-openrouter-key';
+  window.pywebview = {api:{
+    activate_model_provider: async () => { order.push('activation-start'); const result = await discovery; order.push('activation-done'); return result; },
+    get_settings: async () => { order.push('route-refresh'); return {_route_state:SET._route_state}; },
+  }};
+  const provider = document.querySelector('[data-setting="llm_provider"]');
+  provider.value = 'openrouter';
+  provider.dispatchEvent(new Event('change',{bubbles:true}));
+  await new Promise(resolve => setTimeout(resolve,30));
+  const beforeRelease = [...order];
+  releaseDiscovery({ok:true,models:['openrouter/ordered-model']});
+  for (let attempt=0; attempt<80 && !order.includes('route-refresh'); attempt++) await new Promise(resolve => setTimeout(resolve,10));
+  const afterRelease = [...order];
+  window.pywebview = originalBridge;
+  return {skipped:false,beforeRelease,afterRelease};
+})()`);
+if (!providerDiscoveryOrder.skipped && (providerDiscoveryOrder.beforeRelease.join('|') !== 'activation-start' || !providerDiscoveryOrder.afterRelease.includes('route-refresh') || providerDiscoveryOrder.afterRelease.indexOf('route-refresh') < providerDiscoveryOrder.afterRelease.indexOf('activation-done'))) throw new Error('provider discovery and route refresh were out of order: '+JSON.stringify(providerDiscoveryOrder));
+
+const onboardingProviderOrder = await evaluate(`(async () => {
+  const originalBridge = window.pywebview;
+  const order = [];
+  SET.cerebras_api_key = 'ordered-onboarding-key';
+  window.pywebview = {api:{
+    activate_model_provider: async () => { order.push('activation'); return {ok:true,models:['gpt-oss-120b']}; },
+    get_settings: async () => { order.push('route-refresh'); return {_route_state:SET._route_state}; },
+  }};
+  wireOnboardingProvider();
+  const provider = document.querySelector('#ob-provider');
+  provider.value = 'cerebras';
+  provider.dispatchEvent(new Event('change',{bubbles:true}));
+  for (let attempt=0; attempt<80 && !order.includes('route-refresh'); attempt++) await new Promise(resolve => setTimeout(resolve,10));
+  window.pywebview = originalBridge;
+  return {skipped:false,order};
+})()`);
+if (!onboardingProviderOrder.skipped && onboardingProviderOrder.order.join('|') !== 'activation|route-refresh') throw new Error('onboarding provider activation was out of order: '+JSON.stringify(onboardingProviderOrder));
+
+const supersededProvider = await evaluate(`(async () => {
+  const originalBridge = window.pywebview;
+  let releaseFirst;
+  const first = new Promise(resolve => { releaseFirst = resolve; });
+  let calls = 0;
+  window.pywebview = {api:{
+    activate_model_provider: async provider => {
+      calls += 1;
+      if (calls === 1) return first;
+      return {ok:true,models:[provider + '/current']};
+    },
+    get_settings: async () => ({_route_state:SET._route_state}),
+  }};
+  const provider = document.querySelector('[data-setting="llm_provider"]');
+  provider.value = 'openrouter';
+  provider.dispatchEvent(new Event('change',{bubbles:true}));
+  await new Promise(resolve => setTimeout(resolve,20));
+  provider.value = 'cerebras';
+  provider.dispatchEvent(new Event('change',{bubbles:true}));
+  for (let attempt=0; attempt<80 && SET.llm_provider !== 'cerebras'; attempt++) await new Promise(resolve => setTimeout(resolve,10));
+  releaseFirst({ok:true,models:['openrouter/stale']});
+  await new Promise(resolve => setTimeout(resolve,50));
+  const result = {calls, saved:SET.llm_provider, control:provider.value};
+  window.pywebview = originalBridge;
+  return result;
+})()`);
+if (supersededProvider.calls !== 2 || supersededProvider.saved !== 'cerebras' || supersededProvider.control !== 'cerebras') throw new Error('superseded provider activation won: '+JSON.stringify(supersededProvider));
+
+const onboardingFinish = await evaluate(`(async () => {
+  const originalBridge = window.pywebview;
+  const order = [];
+  let finishPayload = null;
+  window.pywebview = {api:{
+    activate_model_provider: async provider => { order.push('activation:' + provider); return {ok:true,models:[provider + '/confirmed']}; },
+    get_settings: async () => ({_route_state:SET._route_state}),
+    finish_onboarding: async payload => { order.push('finish'); finishPayload = payload; return {ok:true}; },
+    apply_shortcuts: async () => ({ok:true}),
+    set_onboarding_mode: async () => true,
+  }};
+  document.querySelector('#ob-provider').value = 'cerebras';
+  await finishOnboarding();
+  window.pywebview = originalBridge;
+  return {order, finishPayload};
+})()`);
+if (onboardingFinish.order[0] !== 'activation:cerebras' || onboardingFinish.order[onboardingFinish.order.length - 1] !== 'finish' || Object.prototype.hasOwnProperty.call(onboardingFinish.finishPayload || {}, 'llm_provider')) throw new Error('Finish bypassed guarded provider activation: '+JSON.stringify(onboardingFinish));
+
+const failClosedMatrix = await evaluate(`(() => {
+  const cases = [
+    {name:'missing_model', reason:'missing_model', supported:true, key:true, model:'', fetched:new Set()},
+    {name:'missing_key', reason:'missing_key', supported:true, key:false, model:'gpt-oss-120b', fetched:new Set(['gpt-oss-120b'])},
+    {name:'unsupported_provider', reason:'unsupported_provider', supported:false, key:false, model:'', fetched:new Set()},
+    {name:'hosted_processing_off', reason:'hosted_processing_off', supported:true, key:true, model:'gpt-oss-120b', fetched:new Set(['gpt-oss-120b'])},
+    {name:'device_only', reason:'device_only', supported:true, key:true, model:'gpt-oss-120b', fetched:new Set(['gpt-oss-120b'])},
+    {name:'unconfirmed_model', reason:'ready', supported:true, key:true, model:'saved-but-absent', fetched:new Set(['listed-model'])},
+  ];
+  return cases.map(item => {
+    MODELS_FETCHED.cerebras = item.fetched;
+    const decision = {requested_route:'hosted', effective_route:'local', reason:item.name === 'unconfirmed_model' ? 'unconfirmed_model' : item.reason, provider:'cerebras', provider_supported:item.supported, key_present:item.key, model:item.model, ready:false};
+    SET._route_state = {...SET._route_state,
+      action_processing:{requested:'hosted', effective:decision.effective_route === 'hosted' ? 'cloud' : 'local', reason:item.reason, provider:'cerebras', provider_supported:item.supported, has_key:item.key, decision},
+      feature_routes:Object.fromEntries(FEATURE_ROUTE_ROWS.map(([,key]) => [key,{...decision}])),
+    };
+    updateSetupSummary();
+    const banner = document.querySelector('#hosted-capability-status') || document.querySelector('#processing-route-status');
+    return {name:item.name, banner:banner?.dataset.available, rows:Array.from(document.querySelectorAll('[data-route-value="effective"]')).map(node=>node.textContent.trim())};
+  });
+})()`);
+if (failClosedMatrix.some(item => item.banner !== 'false' || item.rows.length !== 7 || item.rows.some(value => /Hosted.*ready/i.test(value)))) throw new Error('fail-closed route matrix contradicted itself: '+JSON.stringify(failClosedMatrix));
 
 const hosted = {...base, instant_text:false, _route_state:{
   transcription:{effective:'local',reason:'selected',provider:'groq'},
   plain_processing:{effective:'cloud',reason:'selected'},
-  action_processing:{effective:'cloud',reason:'selected',provider:'cerebras',provider_supported:true,has_key:true,decision:{model:'gpt-oss-120b'}}
+  action_processing:{effective:'cloud',reason:'selected',provider:'cerebras',provider_supported:true,has_key:true,decision:{requested_route:'hosted',effective_route:'hosted',reason:'ready',provider:'cerebras',model:'gpt-oss-120b',ready:true}}
 }};
+await evaluate(`MODELS_FETCHED.cerebras = new Set(['gpt-oss-120b']); true`);
 const routeRequestsBefore = await evaluate(`window.__settingsRequests.length`);
 await evaluate(`(() => { const el=document.querySelector('[data-setting="instant_text"]'); el.checked=false; el.dispatchEvent(new Event('change',{bubbles:true})); return true; })()`);
 for (let i=0; i<100; i++) {
@@ -276,7 +537,7 @@ for (let i=0; i<100; i++) {
 }
 const failed = await evaluate(`(() => { const v=document.querySelector('[data-view="settings"]'); const s=document.querySelector('[data-setting="ui_effects"]'); return {state:v.dataset.settingsState,disabled:s.disabled,visibility:getComputedStyle(s).visibility}; })()`);
 if (failed.state !== 'error' || !failed.disabled || failed.visibility !== 'hidden') throw new Error('bad error state: '+JSON.stringify(failed));
-console.log(JSON.stringify({delayed, loadingActions, micFailed, errorActions, ready, routeRefresh, race, failed}));
+console.log(JSON.stringify({delayed, loadingActions, micFailed, errorActions, ready, routeDisclosure, discoveryOrder, providerDiscoveryOrder, onboardingProviderOrder, supersededProvider, onboardingFinish, failClosedMatrix, routeRefresh, race, failed}));
 ws.close();
 """
         result = subprocess.run(
@@ -294,6 +555,12 @@ ws.close();
         assert evidence["errorActions"]["bad"] == []
         assert evidence["errorActions"]["retryUsable"] is True
         assert evidence["ready"]["value"] == "enhanced"
+        assert len(evidence["routeDisclosure"]["features"]) == 7
+        assert "route-refresh" not in evidence["discoveryOrder"]["beforeRelease"]
+        assert "route-refresh" not in evidence["providerDiscoveryOrder"]["beforeRelease"]
+        assert evidence["onboardingProviderOrder"]["order"] == [] or evidence["onboardingProviderOrder"]["order"] == ["activation", "route-refresh"]
+        assert len(evidence["failClosedMatrix"]) == 6
+        assert all(item["banner"] == "false" for item in evidence["failClosedMatrix"])
         assert "Hosted" in evidence["routeRefresh"]["effective"]
         assert evidence["race"]["labels"] == ["Newest microphone"]
         assert evidence["failed"]["state"] == "error"

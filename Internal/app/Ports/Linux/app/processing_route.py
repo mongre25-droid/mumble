@@ -6,9 +6,11 @@ the guard deliberately sits at the last egress seam so a caller cannot bypass a
 device-only, hosted-off, missing-key, or unsupported-provider decision.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 from uuid import uuid4
+
+import model_authority
 
 
 LOCAL = "local"
@@ -164,6 +166,38 @@ class RouteDecision:
         }
 
 
+def confirm_selected_model(
+    decision: RouteDecision, confirmed_models: Any
+) -> RouteDecision:
+    """Fail a hosted decision closed unless its exact model was confirmed.
+
+    Model discovery is owned by the host bridge.  This policy helper keeps the
+    resulting readiness decision in the same immutable route authority used by
+    runtime and Settings projections; renderers must not invent a second answer.
+    """
+    if decision.requested_route != HOSTED or decision.effective_route != HOSTED:
+        return decision
+    confirmed = frozenset(str(model).strip() for model in (confirmed_models or ()))
+    if decision.model in confirmed:
+        return decision
+    return replace(
+        decision,
+        effective_route=LOCAL,
+        reason="unconfirmed_model",
+        privacy_boundary="device_only",
+        ready=False,
+    )
+
+
+model_credential_identity = model_authority.model_credential_identity
+
+
+def _confirmed_models_for(settings: Any, decision: RouteDecision) -> tuple[str, ...]:
+    return model_authority.confirmed_models_for(
+        settings, decision.provider, decision.api_key
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _FrozenMapping:
     """A recursively immutable mapping used inside an invocation snapshot."""
@@ -251,7 +285,10 @@ def capture_text_provider_settings(
 ) -> dict[str, Any]:
     """Capture the exact provider contract used by one platform invocation."""
     selected = tuple(supported_providers or _PROVIDERS)
-    captured: dict[str, Any] = {"_text_processing_providers": selected}
+    captured: dict[str, Any] = {
+        "_text_processing_providers": selected,
+        "_confirmed_text_models": _get(settings, "_confirmed_text_models", {}),
+    }
     for provider in selected:
         provider_info = _PROVIDERS[provider]
         key_setting = provider_info["key_setting"]
@@ -300,13 +337,9 @@ def snapshot(
     supported = provider_info is not None
     if supported:
         api_key = str(_get(settings, provider_info["key_setting"], "") or "").strip()
+        selected_model = _get(settings, provider_info["model_setting"], "")
         model = str(
-            model_override
-            if model_override is not None
-            else (
-                _get(settings, provider_info["model_setting"], "")
-                or provider_info["default_model"]
-            )
+            model_override if model_override is not None else selected_model
         ).strip()
         endpoint_class = provider_info["endpoint_class"]
     else:
@@ -342,6 +375,8 @@ def snapshot(
         effective, reason, ready = LOCAL, "unsupported_provider", False
     elif not api_key:
         effective, reason, ready = LOCAL, "missing_key", False
+    elif not model:
+        effective, reason, ready = LOCAL, "missing_model", False
     else:
         effective, reason, ready = HOSTED, "ready", True
 
@@ -353,7 +388,7 @@ def snapshot(
             if effective == HOSTED else "device_only"
         )
     )
-    return RouteDecision(
+    decision = RouteDecision(
         invocation_id=uuid4().hex,
         feature=str(feature or "unknown"),
         lane=str(lane or "text"),
@@ -371,6 +406,11 @@ def snapshot(
         device_only=device_only,
         api_key=api_key,
     )
+    if not transcription_lane and not speech_lane and provider != "local":
+        decision = confirm_selected_model(
+            decision, _confirmed_models_for(settings, decision)
+        )
+    return decision
 
 
 def snapshot_inputs(
@@ -658,7 +698,7 @@ def require_transcription(
 
 
 def settings_state(
-    settings: Any, *, supported_providers: tuple[str, ...] | None = None
+    settings: Any, *, supported_providers: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """UI-safe saved/effective route facts from the same policy as actions."""
     plain = snapshot(

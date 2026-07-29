@@ -440,7 +440,8 @@ def render(snap):
       offline, gathering, label, hint, timer, dot, rim, label_color,
       colors[hex...] (mode ramp for building/done)."""
     s = SCALE
-    frame = snap.get("frame", 0)
+    reduced_motion = bool(snap.get("reduced_motion", False))
+    frame = 0 if reduced_motion else snap.get("frame", 0)
     # There is ONE island now (owner v6) — no Basic/Standard/Enhanced tiers. The
     # full premium look (gold bloom + travelling sheen + listening ripple) always
     # renders.
@@ -474,25 +475,26 @@ def render(snap):
     base_y = cy + 0.30 * lab_f.size
 
     # ---- travelling glass sheen (always — the one premium look, clipped) ----
-    span = (px1 - px0) + 120 * s
-    sx = px0 - 60 * s + ((frame * 3.0 * s) % span)
-    sheen_img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(sheen_img)
-    bandw = 18 * s
-    for k in range(-bandw, bandw, 2 * s):
-        a = int(20 * (1 - abs(k) / bandw))
-        xx = int(sx + k)
-        sd.line([(xx + 10 * s, py0), (xx - 10 * s, py1)],
-                fill=(255, 252, 240, a), width=2 * s)
-    sheen_img.putalpha(Image.composite(sheen_img.getchannel("A"),
-                                       Image.new("L", (W, H), 0), mask))
-    img.alpha_composite(sheen_img)
+    if not reduced_motion:
+        span = (px1 - px0) + 120 * s
+        sx = px0 - 60 * s + ((frame * 3.0 * s) % span)
+        sheen_img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(sheen_img)
+        bandw = 18 * s
+        for k in range(-bandw, bandw, 2 * s):
+            a = int(20 * (1 - abs(k) / bandw))
+            xx = int(sx + k)
+            sd.line([(xx + 10 * s, py0), (xx - 10 * s, py1)],
+                    fill=(255, 252, 240, a), width=2 * s)
+        sheen_img.putalpha(Image.composite(sheen_img.getchannel("A"),
+                                           Image.new("L", (W, H), 0), mask))
+        img.alpha_composite(sheen_img)
 
     # ---- gold-particle ABSORPTION (context gathering) — gold motes stream in
     # from around the pill's perimeter and are drawn INTO it, fading as they're
     # absorbed: "information is being gathered and fed into the system" (owner v6,
     # replacing the old dedicated context colour). Cheap: ~14 cos/sin dots/frame.
-    if gathering and state in ("building", "transcribing"):
+    if gathering and not reduced_motion and state in ("building", "transcribing"):
         _gold_absorb(d, geom, frame)
 
     # ---- PROMPT-MODE indicator (the Big Shift): when the sticky Prompt toggle is
@@ -552,15 +554,16 @@ def render(snap):
         # is punched on a private layer so it never erases the dot glow underneath.
         ring_w = max(1.0, s)
         R = int(rr + ring_w + 2)
-        ripple = Image.new("RGBA", (2 * R, 2 * R), (0, 0, 0, 0))
-        rd = ImageDraw.Draw(ripple)
-        a_ring = int(170 * (1 - rp))
-        rd.ellipse([R - rr - ring_w / 2, R - rr - ring_w / 2,
-                    R + rr + ring_w / 2, R + rr + ring_w / 2],
-                   fill=_rgba(dot_c, a_ring))
-        rd.ellipse([R - rr + ring_w / 2, R - rr + ring_w / 2,
-                    R + rr - ring_w / 2, R + rr - ring_w / 2], fill=(0, 0, 0, 0))
-        img.alpha_composite(ripple, (int(round(dotx - R)), int(round(cy - R))))
+        if not reduced_motion:
+            ripple = Image.new("RGBA", (2 * R, 2 * R), (0, 0, 0, 0))
+            rd = ImageDraw.Draw(ripple)
+            a_ring = int(170 * (1 - rp))
+            rd.ellipse([R - rr - ring_w / 2, R - rr - ring_w / 2,
+                        R + rr + ring_w / 2, R + rr + ring_w / 2],
+                       fill=_rgba(dot_c, a_ring))
+            rd.ellipse([R - rr + ring_w / 2, R - rr + ring_w / 2,
+                        R + rr - ring_w / 2, R + rr - ring_w / 2], fill=(0, 0, 0, 0))
+            img.alpha_composite(ripple, (int(round(dotx - R)), int(round(cy - R))))
         d.ellipse([dotx - dr, cy - dr, dotx + dr, cy + dr], fill=_rgba(dot_c))
     else:
         # keep the dot strongly its own colour even at the pulse trough (owner v6:
@@ -678,17 +681,18 @@ def render(snap):
 # Status and controls are separate native windows so the first can stay click-
 # through. Visually this is a quiet rail docked below the island: direct mode
 # chips, the configured language, then Deck.
-BAR_H = 28                # deliberately secondary to the 34px status island
+BAR_H = 40                # accessible 36-44px companion action surface
 BAR_PAD_X = 12            # inner left/right padding of the control rail
 BAR_MIN_W = 176           # enough room for the smallest useful control group
 BAR_WIN_W = WIN_W         # same window width as the island (for alignment)
-BAR_WIN_H = 42            # rail (28) + room for its restrained shadow
+BAR_WIN_H = 54            # rail (40) + room for its restrained shadow
 BAR_CORNER = BAR_H // 2
 BAR_CHIP_PAD = 8          # inner padding inside a mode/language chip
 BAR_CHIP_GAP = 3          # gap between adjacent mode chips
 BAR_SEP_W = 13            # separator zone before the Deck action
 BAR_GROUP_GAP = 7         # gap between related control groups
-BAR_CHIP_H = 20           # chip pill height (logical)
+BAR_CHIP_H = 30           # ordinary mode chip height (logical)
+BAR_STOP_CHIP_H = 36      # prominent labelled Stop action (Issue #23)
 
 
 def _bar_font():
@@ -720,11 +724,15 @@ def bar_layout(snap):
         pill_w = max(BAR_MIN_W, stop_w + 2 * BAR_PAD_X)
         px0 = (BAR_WIN_W - pill_w) / 2.0
         stop = (px0 + BAR_PAD_X, px0 + BAR_PAD_X + stop_w)
+        stop_bounds = (stop[0], BAR_WIN_H - BAR_H, stop[1], BAR_WIN_H)
         return {"pill": (px0, px0 + pill_w), "chips": [], "caret": None,
                 "sep_x": None, "deck": None, "correction": None,
                 "correction_dismiss": None, "foreign": None,
                 "control_review": None, "control_cancel": None,
-                "stop": stop, "stop_label": stop_label, "expanded": False}
+                "stop": stop, "stop_label": stop_label,
+                "stop_bounds": stop_bounds,
+                "stop_target_height": BAR_H, "processing_cancel": None,
+                "expanded": False}
 
     if control_review:
         review_w = w("Review plan") + 2 * BAR_CHIP_PAD
@@ -933,6 +941,7 @@ def render_bar(snap):
 
     if layout.get("stop"):
         sx0, sx1 = layout["stop"]
+        ch = BAR_STOP_CHIP_H * s / 2.0
         _chip(
             sx0, sx1, "#DF655D", True, layout["stop_label"],
             _rgba("#FFAAA4", 230)

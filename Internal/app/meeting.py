@@ -73,6 +73,11 @@ class MeetingRecorder:
         self._recording = False
         self._start_time = 0.0
         self._sample_count = 0
+        # Content-free, bounded input-level truth for the Meetings instrument.
+        # Only this smoothed scalar is kept; existing WAV persistence remains the
+        # sole owner of recorded audio.
+        self._audio_level = 0.0
+        self._effective_microphone = None
         self._audio_filename = None
         self._audio_full_path = None
         self._writer_queue = None
@@ -105,10 +110,12 @@ class MeetingRecorder:
             self._starting = True
 
         self._sample_count = 0
+        self._audio_level = 0.0
         self._writer_error = None
         self._capture_finalized = False
         self._last_meeting_id = None
         self._limit_reached = False
+        self._effective_microphone = None
         self._audio_filename, self._audio_full_path = _new_meeting_audio_path()
         self._writer_queue = queue.Queue(maxsize=1024)
         audio_path = self._audio_full_path
@@ -145,6 +152,12 @@ class MeetingRecorder:
                 try:
                     writer_queue.put_nowait(pcm.tobytes())
                     self._sample_count += accepted
+                    if accepted:
+                        rms = float(np.sqrt(np.mean(
+                            np.square(indata[:accepted], dtype=np.float64))))
+                        target = max(0.0, min(1.0, rms * 4.0))
+                        self._audio_level = (
+                            self._audio_level * 0.78 + target * 0.22)
                     if self._sample_count >= MEETING_MAX_SAMPLES:
                         self._mark_limit_reached()
                 except queue.Full:
@@ -162,11 +175,29 @@ class MeetingRecorder:
         try:
             # Construct the stream before starting any background resources. A
             # missing/unavailable microphone must not leave a blocked writer.
+            requested_microphone = self._settings.get("mic_device", None)
             stream = sd.InputStream(
                 samplerate=SAMPLE_RATE, channels=1, dtype="float32",
-                device=self._settings.get("mic_device", None),
+                device=requested_microphone,
                 callback=_cb,
             )
+            effective_index = getattr(stream, "device", requested_microphone)
+            if isinstance(effective_index, (tuple, list)):
+                effective_index = effective_index[0] if effective_index else requested_microphone
+            try:
+                device_info = sd.query_devices(effective_index, "input")
+                effective_name = str(
+                    (device_info or {}).get("name") or "System default"
+                )
+            except Exception:
+                effective_name = (
+                    "System default" if effective_index in (None, -1, "-1")
+                    else f"Device {effective_index}"
+                )
+            self._effective_microphone = {
+                "index": effective_index,
+                "name": effective_name,
+            }
             # Journal the private filename before capture begins. If the
             # controller is terminated before Stop, startup recovery can repair
             # the canonical WAV header and keep the captured prefix instead of
@@ -221,6 +252,7 @@ class MeetingRecorder:
             self._audio_filename = None
             self._audio_full_path = None
             self._active_meeting_id = None
+            self._effective_microphone = None
             raise
 
         # Timer thread for island updates
@@ -247,6 +279,7 @@ class MeetingRecorder:
             return None
         with self._lock:
             self._recording = False
+            self._audio_level = 0.0
 
         if self._stream is not None:
             try:
@@ -430,6 +463,7 @@ class MeetingRecorder:
         if self._stream is None or not self._recording:
             return False
         self._recording = False
+        self._audio_level = 0.0
         if self._island_cb:
             self._island_cb("paused", self._captured_seconds(), 0)
         return True
@@ -470,8 +504,14 @@ class MeetingRecorder:
                 "paused": state == "paused",
                 "state": state,
                 "captured_seconds": self._captured_seconds(),
+                "audio_level": max(
+                    0.0, min(1.0, float(getattr(self, "_audio_level", 0.0)))
+                ) if state == "recording" else 0.0,
                 "max_seconds": MEETING_MAX_SECONDS,
                 "meeting_id": self._active_meeting_id,
+                "microphone": dict(getattr(self, "_effective_microphone", None)) if (
+                    getattr(self, "_effective_microphone", None)
+                ) else None,
                 "message": self._writer_error,
             }
 
@@ -486,6 +526,7 @@ class MeetingRecorder:
             return
         self._limit_reached = True
         self._recording = False
+        self._audio_level = 0.0
         if self._island_cb:
             self._island_cb("limit_reached", MEETING_MAX_SECONDS, 0)
 
@@ -495,6 +536,7 @@ class MeetingRecorder:
         if first_failure:
             self._writer_error = str(message or "Meeting audio capture failed.")
         self._recording = False
+        self._audio_level = 0.0
         if first_failure and self._island_cb:
             self._island_cb("capture_error", self._captured_seconds(), 0)
 

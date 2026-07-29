@@ -76,6 +76,7 @@ RUNTIME_PATHS = (
     "meeting.py",
     "meeting_diarise.py",
     "meeting_store.py",
+    "model_authority.py",
     "model_free.py",
     "models/__init__.py",
     "models/backend.py",

@@ -2,29 +2,34 @@
   "version": 1,
   "command": "verify-production-ui.ps1 -Case visual -Capture",
   "renderer": {
-    "browserVersion": "150.0.7871.186",
+    "browserVersion": "150.0.7871.187",
     "platform": "win32-x64"
   },
   "sources": {
     "Development Files/Tooling/focus-stage/browser-zoom-extension/manifest.json": "b22c8dc668d3ee9bc0361cbde18ad7ee2f4e34cb2615ef623de18237a42f89c7",
     "Development Files/Tooling/focus-stage/browser-zoom-extension/service-worker.js": "d491d0dea04a54c58faec2703005416c438d8d47e641e8b8f704b7c5377673c0",
-    "Development Files/Tooling/focus-stage/verify-production-ui.cjs": "659add4da4dd171dee863406b5a99a7846f0041bbd4a1602f624eca822b1f3dd",
-    "Development Files/Tooling/focus-stage/verify-production-ui.ps1": "62fa518127d7db6d17e8f52ed77714a1d71aae05ba152a78e89a39433294b305",
+    "Development Files/Tooling/focus-stage/verify-production-ui.cjs": "38307872e9053fecd83ed41ed0498d943261e0a01c5c6c4dca27f19f3c1328de",
+    "Development Files/Tooling/focus-stage/verify-production-ui.ps1": "e91fda8e850991ec1a4e468f0a745886d54a26972214bfcfaac904f2b1caa71e",
     "Internal/app/webui/app.css": "a3f0ddcf6cb03b54793ac339e622dce6aff7a33d6ef03381da83857a9b39e7c3",
-    "Internal/app/webui/app.js": "ea0f534c97495e355f5148474b3ec54738c7f5e676356687b70fceeda4fff2d7",
+    "Internal/app/webui/app.js": "6b6bfc0804fcbe2ccabcac028795432fe639596826f435cc9029ac87b921cee1",
     "Internal/app/webui/enhanced.css": "d1ee641efc235bb0588dccfac3e934f6da0b029277d261affb7580f47659f0b4",
     "Internal/app/webui/focus-stage-contract.json": "d2b1b7038c921aed75fc067951ca2c55314a60ad52711aea217eb2d8a8b1d060",
     "Internal/app/webui/focus-stage.css": "300a325d07ee7e921992b8f590bfc4f06cf6ced40c06eb4d9f24bd8d928cf45b",
     "Internal/app/webui/focus-stage.js": "bf37e9f567e8c202b4e2edbc7c63ea927951196400a13b0a0bd02cbb47ca364b",
-    "Internal/app/webui/index.html": "016663cc581aa90a008ef09f493e853d842b7a635046d0b8735f9850249c4880",
+    "Internal/app/webui/index.html": "468bf76d89ed0937359da27bdb26154cce33e9dac6b1d89bb3b46a5e2c742f60",
     "Internal/app/webui/mumble.png": "4f9b794bdabfbbaea6cc0e14523ea850d64d4c0591c4cdf69f5426556c15a842",
-    "Internal/app/webui/remaster.css": "a0949798e52f315e60d2ba85ccd607575e073d1af5c3bb88837519e7c3816652",
+    "Internal/app/webui/remaster.css": "88130b26c65c9ba4f923b7e1e50975e98e0b1aa75f9d3e8443b75031d9eb5a4b",
     "Internal/app/webui/system-search-loader.js": "60242de128f01fe69d57d7b04ac6885d8c0aed082835120c3a10d942764b6e36"
   },
   "screenshots": {
-    "01-focus-stage-home-desktop.png": "373d26ee38d8338a85a44aefc1013d853f43bed9dc1df93ea46fb40bc2e873b6",
-    "02-focus-stage-navigation-narrow.png": "3f8fb6ab121c9185af02573f463eddff95b3f2e5fd67e1bd3ee0939ffd9e34ab",
+    "01-focus-stage-home-desktop.png": "c9293c8a9915ed1d3465f3eb9c7f97899e9f64498709ca52750e1042cf17aa67",
+    "02-focus-stage-navigation-narrow.png": "a51d922368b133d27d8c702c37fde88138d68b1daef7e209fef642d9aa769656",
     "03-shared-state-surfaces.png": "a5ca98c513cb14dc64741d1aeb9eb3401aea63fdec67ab87c0cbcda7336d5e83",
-    "04-forced-colours-focus.png": "ccd85f2fb44063876f4996ccf433b5fbfb163dfc6b0948a100818c0e4d05277a"
+    "04-forced-colours-focus.png": "2e66f7739c0c2a0445b22bb5e0cafe27fd3af77060d7d5bf238e986591c13fc2",
+    "05-deck-command-surface.png": "24ba940feb776bf2d867ae31d9afb0930670d3a6bfc98e56ccba50a5a50091d1",
+    "05-meetings-before.png": "b86b89a20a0bda9cc4d4e0c260f051fa06abaf46dd06c4cfe3e59fc5f46b78bb",
+    "06-deck-selection-narrow.png": "ca20d7b652bad448c55b8fd40ffb15ef24db3d97d6200f8d296551e62a945ce0",
+    "06-meetings-during.png": "16442a70efe94c6e73ec7a47b4e3af18c388698c94ed68b988c7e371f95c40ae",
+    "07-meetings-after.png": "84694d6ab3b0375405a1cf601a2d42c4fb14c0d911269a70c102c88fcf000cb1"
   }
 }

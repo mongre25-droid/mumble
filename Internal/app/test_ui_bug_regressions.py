@@ -306,12 +306,13 @@ def test_remastered_views_keep_the_centered_layout_contract():
     assert 'class="meeting-item-open"' in js
     assert "grid-template-columns: 48px clamp(84px, 18%, 124px) minmax(0, 1fr)" in css
 
-    # Deck, Meetings, Reader, and Settings now share one explicit surface
-    # hierarchy instead of carrying page-specific tint recipes.
-    assert html.count("mumble-surface--primary") >= 4
-    assert html.count("mumble-surface--workspace") >= 4
+    # Deck, Reader, and Settings retain the shared hierarchy; Meetings now owns
+    # one transforming surface rather than two unrelated primary surfaces.
+    assert html.count("mumble-surface--primary") >= 2
+    assert html.count("mumble-surface--workspace") >= 3
     assert 'class="deck-workspace mumble-surface mumble-surface--workspace"' in html
-    assert 'class="meeting-library-shell mumble-surface mumble-surface--workspace"' in html
+    assert 'class="meeting-instrument mumble-surface"' in html
+    assert 'class="meeting-library-shell meeting-phase"' in html
     assert "--mumble-panel-primary:" in css
     assert "--mumble-panel-workspace:" in css
     assert ".mumble-surface--primary" in css
@@ -424,7 +425,8 @@ def test_meetings_refresh_keeps_state_privacy_and_keyboard_truth_visible():
     assert "MEET.recording = false" not in stop
     assert 'state: "finalizing"' in stop
 
-    assert 'id="meeting-recording"' in html and 'aria-live="polite"' in html
+    assert 'id="meeting-recording"' in html
+    assert 'class="meeting-live-state" role="status" aria-live="polite"' in html
     assert 'id="meeting-transcript"' in html and 'role="region"' in html
     assert 'aria-label="Meeting transcript"' in html and 'tabindex="0"' in html
     assert 'id="meetings-error" role="alert"' in html

@@ -362,6 +362,8 @@ _SETTINGS_SYNC_EXCLUDE = frozenset({
     # Device-local sync bookkeeping must never be imported from another
     # device; doing so can make genuinely newer remote rows look stale.
     "sync_last_run",
+    # Exact-model confirmation belongs to this host and credential only.
+    "_confirmed_text_models",
 })
 
 

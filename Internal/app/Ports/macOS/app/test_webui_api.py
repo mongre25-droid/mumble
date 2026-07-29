@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """Smoke test for the web UI's Python bridge (webui_shell.Api).
 
-SAFE BY DESIGN: read-only against the live stores, plus a settings write that
-restores the original value, and a favourites toggle that toggles back. It
-never clears or deletes user data, never touches the network beyond what the
-caller opts into (no update check, no key test with a real key).
+SAFE BY DESIGN: every run owns throwaway storage and forces offline behavior
+before importing the application bridge. It never reads or mutates live stores.
 
 Run:  .venv\\Scripts\\python.exe test_webui_api.py   → prints WEBUI_API_OK
 """
 
+import atexit
+import os
 import sys
+import tempfile
+import threading
+
+_OWNED_TEST_DATA = tempfile.TemporaryDirectory(prefix="mumble_macos_webui_api_")
+atexit.register(_OWNED_TEST_DATA.cleanup)
+os.environ["MUMBLE_TEST_DATA_DIR"] = _OWNED_TEST_DATA.name
+os.environ["MUMBLE_OFFLINE_TESTS"] = "1"
 
 import webui_shell
 
@@ -34,6 +41,10 @@ def main():
                 "pro_mode", "first_run", "key_configured", "time_saved",
                 "today_words"):
         check(f"overview has {key}", key in o)
+    check("overview exposes effective transcription route",
+          isinstance(o.get("transcription_route"), dict)
+          and o.get("effective_transcription_mode")
+          == o["transcription_route"].get("effective"))
     check("overview words is int", isinstance(o["total_words"], int))
 
     # ---- hotkeys -----------------------------------------------------------
@@ -139,6 +150,39 @@ def main():
           (cap.get("ok") is True and isinstance(cap.get("selection"), str))
           or (cap.get("ok") is False and cap.get("selection") == ""
               and "mumble" in cap.get("message", "").lower()))
+
+    race_api = webui_shell.Api()
+    race_api.settings.update(pro_mode=True, local_only_mode=False, instant_text=False,
+                             llm_provider="cerebras", cerebras_api_key="csk-old",
+                             cerebras_model="old-model")
+    first_started = threading.Event(); release_first = threading.Event()
+    first_result = {}; original_fetch = webui_shell.ai.fetch_models
+    original_ctrl_send = webui_shell._ctrl_send; controller_reloads = []
+    def raced_fetch(_provider, key):
+        if key == "csk-old":
+            first_started.set(); release_first.wait(timeout=5); return ["old-model"]
+        return ["new-model"]
+    webui_shell.ai.fetch_models = raced_fetch
+    webui_shell._ctrl_send = lambda message, timeout=0.8: (controller_reloads.append(dict(message)) or {"ok": True})
+    worker = threading.Thread(target=lambda: first_result.update(race_api.list_models("cerebras")))
+    try:
+        worker.start(); first_started.wait(timeout=5)
+        race_api.settings.update(cerebras_api_key="csk-new", cerebras_model="new-model")
+        newest = race_api.list_models("cerebras")
+        release_first.set(); worker.join(timeout=5)
+    finally:
+        release_first.set(); worker.join(timeout=5); webui_shell.ai.fetch_models = original_fetch; webui_shell._ctrl_send = original_ctrl_send
+    runtime_route = webui_shell.processing_route.snapshot(type(race_api.settings)(), feature="prompt", lane="prompt")
+    check("older model discovery cannot overwrite newer credential truth",
+          newest.get("ok") is True and first_result.get("obsolete") is True
+          and runtime_route.effective_route == "hosted" and runtime_route.model == "new-model")
+    check("latest confirmation reloads the independent live controller",
+          controller_reloads == [
+              {"cmd": "reload", "key": "_confirmed_text_models"},
+              {"cmd": "reload", "key": "_confirmed_text_models"},
+              {"cmd": "reload", "key": "_confirmed_text_models"},
+              {"cmd": "reload", "key": "_confirmed_text_models"},
+          ])
 
     print()
     if FAILED:

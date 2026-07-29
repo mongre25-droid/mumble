@@ -21,6 +21,9 @@ class MemorySettings:
     def get(self, key, default=None):
         return self.values.get(key, default)
 
+    def authority_read(self):
+        return dict(self.values)
+
 
 def settings(**overrides):
     values = {
@@ -30,6 +33,17 @@ def settings(**overrides):
         "llm_provider": "cerebras",
         "cerebras_api_key": "secret",
         "cerebras_model": "gpt-oss-120b",
+        "_confirmed_text_models": {
+            "cerebras": {
+                "credential_identity": processing_route.model_credential_identity(
+                    "cerebras", "secret"
+                ),
+                "generation": 1,
+                "confirmed_generation": 1,
+                "state": "confirmed",
+                "models": ["gpt-oss-120b"],
+            }
+        },
         "user_name": "Original User",
         "prompt_prefs": {"tone": "warm", "detail": "concise"},
         "primary_language": "fr",
@@ -429,6 +443,33 @@ def test_deck_final_provider_seam_never_calls_hosted_when_forbidden(monkeypatch,
     )
 
     assert calls == []
+
+
+def test_armed_deck_mode_keeps_the_immutable_deck_route_at_the_final_provider(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        mumble.ai,
+        "cerebras_intent",
+        lambda *_args, **kwargs: calls.append(kwargs) or iter(["shaped result"]),
+    )
+    app = mumble.Mumble.__new__(mumble.Mumble)
+    app.settings = settings()
+    app.island = None
+    app._notify = lambda *_args: None
+    app._idle = lambda: None
+    app._collect_text = lambda chunks: "".join(chunks)
+    app._mark_llm_ok = lambda: None
+
+    app._run_deck_job_impl(
+        [{"source": "transcript", "text": "private material"}],
+        "Shape faithfully",
+        "Prompt",
+        "prompt",
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["route_decision"].feature == "deck"
+    assert calls[0]["route_decision"].lane == "deck_reason"
 
 
 def test_ready_meeting_reader_and_deck_use_the_frozen_provider_once(monkeypatch):

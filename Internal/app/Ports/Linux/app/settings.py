@@ -7,6 +7,7 @@ import shutil
 import threading
 
 import branding
+import model_authority
 from storage_lock import exclusive_file_lock
 
 DEFAULTS = {
@@ -206,6 +207,7 @@ DEFAULTS = {
     # namespaced, e.g. "openai/gpt-5.4-mini", "anthropic/claude-opus-4-8".
     "openrouter_api_key": "",
     "openrouter_model": "openai/gpt-5.4-mini",
+    "_confirmed_text_models": {},
     # Local LLM (Ollama, LM Studio, Llama.cpp)
     "local_api_key": "lm-studio",
     "local_model": "llama3",
@@ -600,6 +602,27 @@ class Settings:
         except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
             return {}
 
+    @staticmethod
+    def _read_json_state(path):
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            return ("ok", data) if isinstance(data, dict) else ("invalid", {})
+        except FileNotFoundError:
+            return "missing", {}
+        except (json.JSONDecodeError, OSError, ValueError):
+            return "invalid", {}
+
+    def _authority_storage_states(self):
+        return (
+            self._read_json_state(branding.SETTINGS_PATH),
+            self._read_json_state(branding.SETTINGS_PATH + ".bak"),
+        )
+
+    @staticmethod
+    def _authority_mapping_valid(mapping):
+        return model_authority.mapping_matches_defaults(mapping, DEFAULTS)
+
     def save(self):
         """Thread-safe save of current settings to disk."""
         with self._save_lock:
@@ -686,6 +709,89 @@ class Settings:
             self.data.update(kw)
             self._dirty.update(kw.keys())
             return self._do_save()
+
+    def atomic_mapping_update(self, key, mutator):
+        """Mutate one mapping from the latest disk state under the file lock."""
+        if not isinstance(key, str) or not key:
+            raise TypeError("mapping key must be a non-empty string")
+        if not callable(mutator):
+            raise TypeError("mapping mutator must be callable")
+        with self._save_lock:
+            branding.ensure_dirs()
+            with exclusive_file_lock(branding.SETTINGS_PATH) as acquired:
+                if not acquired:
+                    raise TimeoutError(
+                        f"could not lock settings for {key} update")
+                original_data = self.data
+                original_dirty = set(self._dirty)
+                try:
+                    disk = self._read_disk()
+                    merged = dict(self.data)
+                    if disk:
+                        merged.update(disk)
+                    for dirty_key in original_dirty - {key}:
+                        if dirty_key in original_data:
+                            merged[dirty_key] = original_data[dirty_key]
+                        else:
+                            merged.pop(dirty_key, None)
+                    raw = merged.get(key, DEFAULTS.get(key, {}))
+                    mapping = dict(raw) if isinstance(raw, dict) else {}
+                    replacement = mutator(mapping)
+                    if replacement is not None:
+                        if not isinstance(replacement, dict):
+                            raise TypeError(
+                                "mapping mutator must return a dict or None")
+                        mapping = dict(replacement)
+                    merged[key] = mapping
+                    self.data = merged
+                    if not self._write_atomic():
+                        raise OSError(f"atomic {key} settings write failed")
+                    self._dirty.difference_update(original_dirty)
+                    self._dirty.discard(key)
+                    return dict(mapping)
+                except Exception:
+                    self.data = original_data
+                    self._dirty = original_dirty
+                    raise
+
+    def authority_read(self):
+        """Strictly read authority state without repairing malformed files."""
+        with self._save_lock:
+            branding.ensure_dirs()
+            with exclusive_file_lock(branding.SETTINGS_PATH) as acquired:
+                if not acquired:
+                    raise TimeoutError("could not lock model authority for read")
+                primary, backup = self._authority_storage_states()
+                return model_authority.storage_snapshot(
+                    primary, backup, self.data, self._authority_mapping_valid
+                )
+
+    def authority_update(self, mutator):
+        """Atomically mutate the complete strict authority snapshot."""
+        if not callable(mutator):
+            raise TypeError("authority mutator must be callable")
+        with self._save_lock:
+            branding.ensure_dirs()
+            with exclusive_file_lock(branding.SETTINGS_PATH) as acquired:
+                if not acquired:
+                    raise TimeoutError("could not lock settings for provider activation")
+                original_data = self.data
+                original_dirty = set(self._dirty)
+                try:
+                    primary, backup = self._authority_storage_states()
+                    current, result = model_authority.storage_update(
+                        primary, backup, original_data, original_dirty,
+                        self._authority_mapping_valid, mutator,
+                    )
+                    self.data = current
+                    if not self._write_atomic():
+                        raise OSError("model authority could not be saved")
+                    self._dirty.clear()
+                    return result
+                except Exception:
+                    self.data = original_data
+                    self._dirty = original_dirty
+                    raise
 
     def atomic_vocabulary_update(self, mutator):
         """Mutate the latest vocabulary collections under the process lock."""

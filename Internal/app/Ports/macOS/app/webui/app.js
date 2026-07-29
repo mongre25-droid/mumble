@@ -1585,8 +1585,9 @@ function debounce(fn, ms) {
 }
 
 async function bootHome() {
-  const [o, hk, liveStatus] = await Promise.all([
-    call("get_overview"), call("get_hotkeys"), call("get_app_status")
+  const [o, hk, liveStatus, latestItems] = await Promise.all([
+    call("get_overview"), call("get_hotkeys"), call("get_app_status"),
+    call("get_transcripts", 1).catch(() => null),
   ]);
   // Hotkey labels are plain text, and every visible binding updates after a rebind.
   setText("#hk-record", hk.hotkey);
@@ -1605,11 +1606,17 @@ async function bootHome() {
       "Signed update checks are not configured yet";
   }
   if (!o.update_enabled) setText("#update-sub", "Signed update channel not configured");
-  const cloudStt = o.transcription_mode === "cloud";
+  const transcriptionRoute = o.transcription_route || {
+    requested: o.transcription_mode || "local",
+    effective: o.effective_transcription_mode || o.transcription_mode || "local",
+    reason: "selected",
+  };
+  const cloudStt = transcriptionRoute.effective === "cloud";
+  const savedCloudFallback = transcriptionRoute.requested === "cloud" && !cloudStt;
   const cloudProvider = o.cloud_transcription_provider || "your provider";
   const dictationLimit = $("#home-dictation-limit");
   if (dictationLimit) dictationLimit.textContent =
-    `Normal dictation records for up to ${o.dictation_max_display || "10:00"} at a time.`;
+    "This platform currently stops one recording after 10 minutes as a temporary safety guard. Finished text is kept in the Deck.";
   const hero = $("#home-hero-copy");
   if (hero) hero.innerHTML = cloudStt
     ? `Dictate into any app, shape rough thoughts into useful output, capture meetings, and listen to documents. Voice clips currently go to <span class="t-gold fw6">${esc(cloudProvider)}</span> for transcription.`
@@ -1623,7 +1630,12 @@ async function bootHome() {
     : `Use Smart Modes and presets in the <span class="t-gold fw6">Deck</span> to polish, summarise, and repurpose your words. AI shaping sends transcript text only; your audio stays on this device.`;
   setText("#home-audio-detail", cloudStt
     ? `Cloud transcription sends audio to ${cloudProvider}; AI shaping receives transcript text.`
-    : "Local transcription keeps audio on this device; AI shaping receives transcript text only.");
+    : savedCloudFallback
+      ? `Local transcription keeps audio on this device. Your ${cloudProvider} Cloud choice remains saved but is not effective (${String(transcriptionRoute.reason || "not ready").replaceAll("_", " ")}).`
+      : "Local transcription keeps audio on this device; AI shaping receives transcript text only.");
+  const latest = Array.isArray(latestItems) ? latestItems[0] : null;
+  setText("#home-latest-copy", latestItems === null ? "Your latest result could not be checked right now." : latest?.text || "No finished dictation yet.");
+  setText("#home-latest-meta", latest ? [latest.mode || "Dictation", latest.time || latest.stamp].filter(Boolean).join(" · ") : "Open the Deck to see saved text on this device.");
   // pro key status
   const pk = $("#pro-status"),
     pb = $("#pro-btn");
@@ -3562,6 +3574,18 @@ async function hydrateSettings() {
         if (el.dataset.type === "number") v = Number(v);
         // Never write an untouched masked key back over the real one.
         if (el.dataset.masked === "1" || (typeof v === "string" && v.indexOf("•") >= 0)) return;
+        if (key === "llm_provider") {
+          const activated = await activateProviderChoice(v, key, mutationId);
+          if (mutationId !== SETTINGS_MUTATION_VERSION[key]) return;
+          if (!activated || activated.ok !== true) {
+            el.value = previous == null ? "" : previous;
+            toast((activated && activated.message) || "The provider could not be checked", "err", 2600);
+            return;
+          }
+          confirmSaved(el, key, v, activated);
+          if (el.dataset.feedback) flash($(el.dataset.feedback), "Saved", "ok");
+          return;
+        }
         let r;
         try {
           r = await call("set_setting", key, v);
@@ -3583,7 +3607,6 @@ async function hydrateSettings() {
         setNested(SET, key, v);
         confirmSaved(el, key, v, r);
         if (el.dataset.feedback) flash($(el.dataset.feedback), "Saved", "ok");
-        if (key === "llm_provider") { reflectProvider(); updateSetupSummary(); }
         if (
           key === "transcription_mode" ||
           key === "cloud_transcription_provider"
@@ -3599,16 +3622,21 @@ async function hydrateSettings() {
         // dropdown fills with valid ids (the core "enter key, then pick a model" flow).
         if (key.endsWith("_api_key")) {
           const pr = key.slice(0, -8);
-          populateModels(pr, true);
+          const modelRefresh = populateModels(pr, true);
+          updateSetupSummary();
+          await modelRefresh;
+          if (mutationId !== SETTINGS_MUTATION_VERSION[key]) return;
           // One OpenRouter key, shared everywhere OpenRouter is used.
           if (key === "openrouter_api_key") syncOpenRouterKey(v);
         }
         if ([
           "transcription_mode", "cloud_transcription_provider",
-          "local_only_mode", "pro_mode", "llm_provider", "instant_text",
+          "local_only_mode", "pro_mode", "instant_text",
           "cerebras_api_key", "openrouter_api_key", "groq_api_key",
           "openai_api_key", "anthropic_api_key", "deepseek_api_key",
           "local_llm_enabled", "local_llm_model",
+          "cerebras_model", "openrouter_model", "groq_transcription_model",
+          "openai_transcription_model", "openrouter_transcription_model",
         ].includes(key)) await refreshRouteState();
       });
     }
@@ -4110,22 +4138,50 @@ const PROVIDER_DESC = {
    so the user PICKS a valid id; otherwise we fall back to the curated MODELS list.
    The saved value is always kept selectable so nothing is ever lost. */
 const MODELS_FETCHED = {};
-async function fillModelSelect(sel, provider, force) {
+const MODEL_DISCOVERY_VERSION = {};
+function invalidateHostedConfirmation(provider) {
+  const routes = SET._route_state || {};
+  const invalidate = (decision) => decision && decision.provider === provider && decision.requested_route === "hosted"
+    ? { ...decision, effective_route: "local", reason: "unconfirmed_model", ready: false }
+    : decision;
+  const action = routes.action_processing;
+  if (action && action.provider === provider) {
+    action.effective = "local"; action.reason = "unconfirmed_model"; action.sends_text = false;
+    action.decision = invalidate(action.decision);
+  }
+  if (routes.feature_routes) Object.keys(routes.feature_routes).forEach((key) => {
+    routes.feature_routes[key] = invalidate(routes.feature_routes[key]);
+  });
+}
+async function fillModelSelect(sel, provider, force, generation = null) {
   if (!sel) return false;
   provider = (provider || "").toLowerCase();
   const saved = nested(SET, provider + "_model") || "";
   let models = (MODELS[provider] || []).slice();
   let live = false;
   const hasKey = !!String(nested(SET, provider + "_api_key") || "").trim();
+  let discoveryId = MODEL_DISCOVERY_VERSION[provider] || 0;
+  if (force) {
+    discoveryId += 1;
+    MODEL_DISCOVERY_VERSION[provider] = discoveryId;
+    delete MODELS_FETCHED[provider];
+    invalidateHostedConfirmation(provider);
+  }
   if (HAS_PY() && hasKey && (force || !MODELS_FETCHED[provider])) {
+    if (!force) {
+      discoveryId += 1;
+      MODEL_DISCOVERY_VERSION[provider] = discoveryId;
+    }
     try {
-      const r = await call("list_models", provider);
+      const r = await call("list_models", provider, generation);
+      if (discoveryId !== MODEL_DISCOVERY_VERSION[provider]) return false;
       if (r && r.ok && Array.isArray(r.models) && r.models.length) {
         models = r.models;
         live = true;
-        MODELS_FETCHED[provider] = true;
+        MODELS_FETCHED[provider] = new Set(r.models.map((model) => String(model)));
       }
     } catch (_) {
+      if (discoveryId !== MODEL_DISCOVERY_VERSION[provider]) return false;
       /* keep the fallback list */
     }
   }
@@ -4139,11 +4195,12 @@ async function fillModelSelect(sel, provider, force) {
   return live;
 }
 /* Populate the MAIN AI Provider card's model select for a provider. */
-function populateModels(provider, force) {
+function populateModels(provider, force, generation = null) {
   return fillModelSelect(
     document.querySelector(`select[data-model-select="${provider}"]`),
     provider,
     force,
+    generation,
   );
 }
 
@@ -4184,7 +4241,7 @@ function fillSttSelect(provider) {
   sel.value = list.some(([v]) => v === saved) ? saved : list[0]?.[0] || "";
 }
 
-function reflectProvider() {
+async function reflectProvider(force = false, generation = null) {
   const p = SET.llm_provider || "cerebras";
   $$("[data-provider-field]").forEach(
     (f) => (f.hidden = f.dataset.providerField !== p),
@@ -4196,7 +4253,9 @@ function reflectProvider() {
   if (sel) sel.value = p;
   const desc = $("#provider-desc");
   if (desc) desc.textContent = PROVIDER_DESC[p] || "";
-  populateModels(p); // fill (and, if a key is saved, live-fetch) the model list
+  const live = await populateModels(p, force, generation);
+  if (live || force) await refreshRouteState();
+  else updateSetupSummary();
 }
 
 /* Advanced cloud-transcription section: show the provider/key/model fields only
@@ -4226,10 +4285,57 @@ function reflectCloudStt() {
    running and where, without expanding any Advanced/details elements. Called
    from reflectCloudStt (on settings load + transcription-mode change) and from
    the main settings change handler for AI provider / hardware / model changes. */
+const FEATURE_ROUTE_ROWS = [
+  ["Plain dictation", "plain_dictation"], ["Prompt", "prompt"],
+  ["Email", "email"], ["Reply", "reply"], ["Deck actions", "deck_actions"],
+  ["Meetings analysis", "meetings_analysis"], ["Reader actions", "reader_actions"],
+];
+function resolveHostedReadiness(route, decision = (route || {}).decision || {}) {
+  route = route || {};
+  return {
+    ready: decision.ready === true && decision.effective_route === "hosted" && route.effective === "cloud",
+    reason: route.reason || decision.reason || "selected",
+  };
+}
+function buildRouteFacts({ kind, route, decision, providerLabel, reasonText, localEngine }) {
+  const readiness = kind === "speech"
+    ? {ready:route.effective === "cloud" && Boolean(decision.model),reason:route.reason || decision.reason}
+    : resolveHostedReadiness(route, decision);
+  const hosted = readiness.ready;
+  const requested = route.requested || decision.requested_route || "local";
+  const saved = ["cloud", "hosted"].includes(requested)
+    ? `Hosted · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}` : "On this device";
+  return {
+    saved, effective: hosted ? `Hosted · ready (${providerLabel})` : "On this device",
+    reason: reasonText[readiness.reason] || String(readiness.reason || "safe local route").replaceAll("_", " "),
+    engine: hosted ? `${kind === "speech" ? "Recorded audio" : "Transcript text"} · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}` : `${kind === "speech" ? "Recorded audio" : "Transcript text"} · ${localEngine}`,
+    location: hosted ? `${providerLabel} hosted service` : "This device",
+    egress: hosted ? (kind === "speech" ? "The recorded audio clip" : "Transcript text and action context; never microphone audio") : `Nothing for ${kind === "speech" ? "speech to text" : "text shaping"}`,
+    speed: hosted ? "Depends on the connection and provider" : "Depends on this device and its local engine",
+    privacy: hosted ? `${kind === "speech" ? "Recorded audio" : "Transcript text and action context"} is shared with ${providerLabel}` : `${kind === "speech" ? "Recorded audio" : "Text shaping"} stays on this device`,
+    quality: hosted ? "Results depend on the selected provider and model" : "Results depend on the selected local engine and task",
+    cost: hosted ? "Your provider may charge for this action" : "No provider charge",
+  };
+}
+function writeRouteFacts(prefix, facts) { Object.entries(facts).forEach(([key, value]) => setText(`#${prefix}-fact-${key}`, value)); }
+function renderFeatureRouteLedger({ featureRoutes, names, reasonText }) {
+  const root = $("#feature-route-rows"); if (!root) return;
+  const labels = {saved:"Saved",effective:"Effective",reason:"Reason",engine:"Input and engine",location:"Location",egress:"What leaves this device",speed:"Speed",privacy:"Privacy",quality:"Quality boundary",cost:"Cost"};
+  root.innerHTML = FEATURE_ROUTE_ROWS.map(([label, key]) => {
+    const decision = featureRoutes[key] || {};
+    const facts = buildRouteFacts({kind:"text", route:{requested:decision.requested_route,effective:decision.effective_route === "hosted" ? "cloud" : "local",reason:decision.reason,provider:decision.provider,provider_supported:decision.provider_supported,has_key:decision.key_present}, decision, providerLabel:names[decision.provider] || decision.provider || "No provider", reasonText, localEngine:key === "plain_dictation" ? "local formatter" : "local text-shaping pipeline"});
+    return `<article class="feature-route-row" data-route-feature="${esc(label.toLowerCase().replace(/\s+/g,"-"))}"><h4>${esc(label)}</h4><dl>${Object.entries(facts).map(([name,value]) => `<div><dt>${esc(labels[name] || name)}</dt><dd data-route-value="${esc(name)}">${esc(value)}</dd></div>`).join("")}</dl></article>`;
+  }).join("");
+}
 function updateSetupSummary() {
   const route = SET._route_state || {};
   const transcription = route.transcription || {};
-  const action = route.action_processing || {};
+  const rawAction = route.action_processing || {};
+  const actionReadiness = resolveHostedReadiness(rawAction, rawAction.decision || {});
+  const action = actionReadiness.ready ? rawAction : {
+    ...rawAction, effective: "local", reason: actionReadiness.reason, sends_text: false,
+    decision: {...(rawAction.decision || {}), effective_route:"local", reason:actionReadiness.reason, ready:false},
+  };
   const provNames = { cerebras: "Cerebras", openai: "OpenAI", anthropic: "Claude",
                       openrouter: "OpenRouter", deepseek: "DeepSeek", groq: "Groq", local: "Local model" };
   // Transcription mode
@@ -4261,24 +4367,33 @@ function updateSetupSummary() {
   setText("#processing-route-copy", effectiveHosted
     ? `Transcript text may be sent to ${provider}; microphone audio never uses this route.`
     : "Transcript text stays on this Mac for shaping. The saved hosted choice remains visible below.");
-  setText("#route-fact-saved", SET.pro_mode ? `Hosted text processing · ${provider}${decision.model ? ` · ${decision.model}` : ""}` : "On-device text shaping");
-  setText("#route-fact-effective", effectiveHosted ? `Hosted · ready (${provider})` : `On this Mac · ${reason.replaceAll("_", " ")}`);
-  setText("#route-fact-engine", effectiveHosted ? `Transcript text · ${provider}${decision.model ? ` · ${decision.model}` : ""}` : "Transcript text · local shaping pipeline");
-  setText("#route-fact-location", effectiveHosted ? `${provider} hosted service` : "This Mac");
-  setText("#route-fact-egress", effectiveHosted ? "Transcript text and selected context; never microphone audio on this route" : "Nothing for text shaping");
-  setText("#route-fact-tradeoff", effectiveHosted ? "Network and provider affect speed and quality. Provider use may cost money." : "No hosted-provider charge. Speed and quality depend on this Mac and its local engine.");
   const routeStatus = $("#processing-route-status");
-  if (routeStatus) routeStatus.dataset.route = effectiveHosted ? "cloud" : (reason === "no_key" ? "warning" : "local");
+  if (routeStatus) {
+    routeStatus.dataset.route = effectiveHosted ? "cloud" : (reason === "no_key" ? "warning" : "local");
+    routeStatus.dataset.available = actionReadiness.ready ? "true" : "false";
+  }
+  const reasonText = {selected:"Your saved choice is ready.",local_only:"The device-only privacy setting overrides the saved choice.",pro_off:"Hosted text processing is off.",no_key:"The selected provider has no saved key.",no_model:"The selected provider has no saved transcription model.",unsupported_provider:"This build does not support the saved provider.",missing_model:"No model is selected.",unconfirmed_model:"The selected model has not been confirmed by the provider.",instant_text:"Instant plain dictation stays on this device."};
+  const txProvider = provNames[transcription.provider] || transcription.provider || "No provider";
+  writeRouteFacts("tx", buildRouteFacts({kind:"speech",route:transcription,decision:{requested_route:transcription.requested === "cloud" ? "hosted" : "local",effective_route:transcription.effective === "cloud" ? "hosted" : "local",reason:transcription.reason,provider:transcription.provider,provider_supported:transcription.provider_supported,key_present:transcription.has_key,model:transcription.model || SET[`${transcription.provider}_transcription_model`] || ""},providerLabel:txProvider,reasonText,localEngine:`faster-whisper${SET.model ? ` · ${SET.model}` : ""}`}));
+  setText("#transcription-route-title", transcription.effective === "cloud" ? `Hosted transcription · ${txProvider}` : "On-device transcription");
+  setText("#transcription-route-copy", transcription.effective === "cloud" ? `Recorded audio is sent to ${txProvider}.` : transcription.requested === "cloud" ? "The Cloud choice remains saved, but the effective route keeps audio on this device." : "Recorded audio stays on this device.");
+  writeRouteFacts("route", buildRouteFacts({kind:"text",route:action,decision,providerLabel:provider,reasonText,localEngine:"local text-shaping pipeline"}));
+  renderFeatureRouteLedger({featureRoutes:route.feature_routes || {},names:provNames,reasonText});
 }
 
+let ROUTE_REFRESH_VERSION = 0;
 async function refreshRouteState() {
+  const requestId = ++ROUTE_REFRESH_VERSION;
   try {
     const fresh = await call("get_settings");
+    if (requestId !== ROUTE_REFRESH_VERSION) return false;
     if (fresh && fresh._route_state) SET._route_state = fresh._route_state;
   } catch (_) {
+    if (requestId !== ROUTE_REFRESH_VERSION) return false;
     // Keep the last confirmed route; the save path already reports failures.
   }
   updateSetupSummary();
+  return true;
 }
 
 /* ONE OpenRouter key, shared everywhere OpenRouter is selected (main provider,
@@ -4608,8 +4723,16 @@ async function finishOnboarding() {
   SET.transcription_mode = txMode;
   // Save provider choice (key was already saved by obTestKey)
   const provider = $("#ob-provider")?.value || "cerebras";
-  await call("set_setting", "llm_provider", provider);
-  SET.llm_provider = provider;
+  const providerMutation = (SETTINGS_MUTATION_VERSION.onboarding_llm_provider || 0) + 1;
+  SETTINGS_MUTATION_VERSION.onboarding_llm_provider = providerMutation;
+  const providerResult = await activateProviderChoice(
+    provider, "onboarding_llm_provider", providerMutation
+  );
+  if (!providerResult || providerResult.ok !== true) {
+    toast((providerResult && providerResult.message) || "The provider could not be activated", "err", 3200);
+    return;
+  }
+  OB.provider = provider;
   // Persist the language choice; local model sizing is automatic.
   const lang = $("#ob-lang .active")?.dataset.lang || OB.lang || "en";
   const englishOnly = lang === "en";
@@ -6877,6 +7000,39 @@ async function initReader() {
   readerRefreshLibrary();
 }
 
+async function activateProviderChoice(provider, mutationKey, mutationId) {
+  const result = await call("activate_model_provider", provider);
+  if (mutationId !== SETTINGS_MUTATION_VERSION[mutationKey]) return {ok:false,obsolete:true};
+  if (!result || result.ok !== true) return result || {ok:false};
+  if (Array.isArray(result.models)) {
+    MODELS[provider] = result.models.slice();
+    MODELS_FETCHED[provider] = new Set(result.models);
+  }
+  SET.llm_provider = provider;
+  await reflectProvider(false);
+  await refreshRouteState();
+  return result;
+}
+
+function wireOnboardingProvider() {
+  const control = $("#ob-provider");
+  if (!control || control.dataset.routeWired === "1") return;
+  control.dataset.routeWired = "1";
+  control.addEventListener("change", async () => {
+    const v = control.value;
+    const previous = OB.provider || SET.llm_provider || "cerebras";
+    const mutationId = (SETTINGS_MUTATION_VERSION.onboarding_llm_provider || 0) + 1;
+    SETTINGS_MUTATION_VERSION.onboarding_llm_provider = mutationId;
+    const saved = await activateProviderChoice(v, "onboarding_llm_provider", mutationId);
+    if (mutationId !== SETTINGS_MUTATION_VERSION.onboarding_llm_provider) return;
+    if (!saved || saved.ok === false) { control.value = previous; return; }
+    OB.provider = v;
+    const openUrl = v === "openrouter" ? "https://openrouter.ai/keys" : "https://cloud.cerebras.ai/";
+    const getKeyBtn = $("#ob-get-key");
+    if (getKeyBtn) getKeyBtn.onclick = () => call("open_url", openUrl);
+  });
+}
+
 async function boot() {
   // Guard against a double boot: boot is wired to BOTH pywebviewready and
   // DOMContentLoaded(!HAS_PY), and on some WebView2 timings both fire — a second
@@ -7065,18 +7221,8 @@ async function boot() {
     call("set_setting", "user_name", v);
     SET.user_name = v;
   });
-  // Provider choice in onboarding: save the chosen LLM provider
-  $("#ob-provider")?.addEventListener("change", async () => {
-    const v = $("#ob-provider").value;
-    OB.provider = v;
-    await call("set_setting", "llm_provider", v);
-    SET.llm_provider = v;
-    await refreshRouteState();
-    // Update the get-key button URL
-    const openUrl = v === "openrouter" ? "https://openrouter.ai/keys" : "https://cloud.cerebras.ai/";
-    const getKeyBtn = $("#ob-get-key");
-    if (getKeyBtn) getKeyBtn.onclick = () => call("open_url", openUrl);
-  });
+  // Provider activation is invalidated and confirmed before onboarding saves it.
+  wireOnboardingProvider();
   $("#ob-mic-test")?.addEventListener("click", async () => {
     flash($("#ob-mic-fb"), "Listening 5s…", "busy");
     const r = await call("test_mic", +($("#ob-mic")?.value ?? -1));

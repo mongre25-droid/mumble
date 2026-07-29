@@ -208,6 +208,44 @@ class AppWindow:
         ui.dark_titlebar(self.win)
         self.win.withdraw()
 
+    def _activate_model_provider(self, provider, model="", key=None):
+        """Use the shared guarded authority from the in-process fallback UI."""
+        import ai
+        import model_authority
+        from settings import TEXT_PROCESSING_PROVIDERS
+
+        if provider not in TEXT_PROCESSING_PROVIDERS:
+            return False, "Unknown provider."
+        info = ai.PROVIDERS[provider]
+        pending = {}
+        if model:
+            pending[info["model_setting"]] = model.strip()
+        if key is not None:
+            pending[info["key_setting"]] = (key or "").strip()
+        if pending:
+            try:
+                self.settings.authority_update(lambda state: state.update(pending))
+            except Exception as error:
+                return False, f"Could not save the provider configuration. ({error})"
+        if key is not None and hasattr(self.ctrl, "pro_key_failed"):
+            self.ctrl.pro_key_failed = False
+
+        authority = model_authority.ModelDiscoveryAuthority(
+            settings=self.settings,
+            providers=ai.PROVIDERS,
+            fetch_models=ai.fetch_models,
+            controller_reload=lambda changed_key: {
+                "ok": bool(self.ctrl._apply_settings_change(changed_key))
+            },
+            supported_providers=TEXT_PROCESSING_PROVIDERS,
+        )
+        result = authority.activate_provider(provider)
+        if not result.get("ok"):
+            return False, result.get("message", "Provider activation unavailable.")
+        label = info["label"].split(" (")[0]
+        selected = self.settings.get(info["model_setting"], "")
+        return True, f"Using {label} — model '{selected}'."
+
     def _apply_geometry(self):
         # Height +5% of width (owner: more vertical room; 740 → 774, matching the
         # web window's taller default).
@@ -1693,7 +1731,7 @@ class AppWindow:
 
         def save_test_provider():
             pid = self._provider_labels.get(self.provider_var.get(), "cerebras")
-            ok, m = self.ctrl.set_llm_provider(
+            ok, m = self._activate_model_provider(
                 pid,
                 self.provider_model_var.get().strip(),
                 key=self.provider_key_var.get(),

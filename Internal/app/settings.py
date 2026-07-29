@@ -9,6 +9,7 @@ import threading
 import time
 
 import branding
+import model_authority
 
 
 SEARCH_HOTKEY_DEFAULT = "ctrl+alt+f"
@@ -309,6 +310,10 @@ DEFAULTS = {
     # namespaced, e.g. "openai/gpt-5.4-mini", "anthropic/claude-opus-4-8".
     "openrouter_api_key": "",
     "openrouter_model": "openai/gpt-5.4-mini",
+    # Internal runtime authority populated only after the provider confirms an
+    # exact model for the credential currently saved.  It contains a one-way
+    # credential identity, never secret key bytes.
+    "_confirmed_text_models": {},
     # Local LLM (Ollama, LM Studio, Llama.cpp)
     "local_api_key": "lm-studio",
     "local_model": "llama3",
@@ -1202,6 +1207,76 @@ class Settings:
                 self._dirty.difference_update(original_dirty)
                 self._dirty.discard(key)
                 return dict(mapping)
+            except Exception:
+                self.data = original_data
+                self._dirty = original_dirty
+                raise
+            finally:
+                _release_lock(fd)
+
+    @staticmethod
+    def _authority_json_state(path):
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            return ("ok", data) if isinstance(data, dict) else ("invalid", {})
+        except FileNotFoundError:
+            return "missing", {}
+        except (json.JSONDecodeError, OSError, ValueError):
+            return "invalid", {}
+
+    def _authority_storage_states(self):
+        return (
+            self._authority_json_state(branding.SETTINGS_PATH),
+            self._authority_json_state(branding.SETTINGS_PATH + ".bak"),
+        )
+
+    @staticmethod
+    def _authority_mapping_valid(mapping):
+        if not model_authority.mapping_matches_defaults(mapping, DEFAULTS):
+            return False
+        return all(
+            validate_setting_value(key, value, strict_enums=False)[0]
+            for key, value in mapping.items()
+        )
+
+    def authority_read(self):
+        """Read the complete model-authority snapshot without repair or defaults."""
+        with self._save_lock:
+            branding.ensure_dirs()
+            fd = _acquire_lock()
+            if fd is None:
+                raise TimeoutError("could not lock model authority for read")
+            try:
+                primary, backup = self._authority_storage_states()
+                return model_authority.storage_snapshot(
+                    primary, backup, self.data, self._authority_mapping_valid
+                )
+            finally:
+                _release_lock(fd)
+
+    def authority_update(self, mutator):
+        """Atomically mutate the complete strict model-authority snapshot."""
+        if not callable(mutator):
+            raise TypeError("authority mutator must be callable")
+        with self._save_lock:
+            branding.ensure_dirs()
+            fd = _acquire_lock()
+            if fd is None:
+                raise TimeoutError("could not lock model authority for update")
+            original_data = self.data
+            original_dirty = set(self._dirty)
+            try:
+                primary, backup = self._authority_storage_states()
+                current, result = model_authority.storage_update(
+                    primary, backup, original_data, original_dirty,
+                    self._authority_mapping_valid, mutator,
+                )
+                self.data = current
+                if not self._write_atomic():
+                    raise OSError("model authority could not be saved")
+                self._dirty.clear()
+                return result
             except Exception:
                 self.data = original_data
                 self._dirty = original_dirty

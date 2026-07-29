@@ -659,3 +659,8 @@ body {
 .processing-route-facts dt { color: var(--text-mute); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 .processing-route-facts dd { margin: 3px 0 0; color: var(--text); font-size: 11px; line-height: 1.45; }
 @media (max-width: 680px) { .processing-route-facts { grid-template-columns: 1fr; } }
+/* Issue #21: restrained continuation below the single voice-first action. */
+.home-latest-result { max-width: 720px; margin: 16px auto; padding: 18px; border: 1px solid var(--border-soft); border-radius: var(--r-lg); background: var(--surface); text-align: left; }
+.home-latest-result h2 { margin: 5px 0 8px; }
+.home-latest-result > span:not(.section-kicker) { display: block; margin: 4px 0 12px; color: var(--text-mute); font-size: 11px; }
+@media (max-width: 520px) { .home-latest-result { margin-inline: 4px; } }

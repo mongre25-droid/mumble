@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ai  # noqa: E402
 import branding  # noqa: E402
 import local_engine as _local_engine  # noqa: E402
+import model_authority  # noqa: E402
 import processing_route  # noqa: E402
 import presets as presets_mod  # noqa: E402
 import reader_store  # noqa: E402
@@ -319,22 +320,27 @@ class Api:
         return True
 
     # ---- model discovery: powers the Settings model DROPDOWN ------------------
-    def list_models(self, provider):
+    def _model_discovery_authority(self):
+        return model_authority.ModelDiscoveryAuthority(
+            self.settings, ai.PROVIDERS, ai.fetch_models,
+            lambda key: _ctrl_send({"cmd": "reload", "key": key}, timeout=0.8),
+        )
+
+    def begin_model_discovery(self, provider, provider_activation=False):
+        return self._model_discovery_authority().begin(
+            provider, bool(provider_activation)
+        )
+
+    def activate_model_provider(self, provider):
+        return self._model_discovery_authority().activate_provider(provider)
+
+    def list_models(self, provider, generation=None, request_id=None):
         """Fetch `provider`'s available model ids using the key already saved for
         it, so the Settings UI can offer a dropdown instead of free-text entry
         (owner v9). Returns {ok, models, message}; never raises into the bridge."""
-        provider = (provider or "").strip().lower()
-        prov = ai.PROVIDERS.get(provider)
-        key_setting = prov.get("key_setting") if prov else None
-        api_key = self.settings.get(key_setting, "") if key_setting else ""
-        try:
-            models = ai.fetch_models(provider, api_key)
-            if not models:
-                return {"ok": False, "models": [], "message": "No models returned."}
-            return {"ok": True, "models": models,
-                    "message": f"{len(models)} models"}
-        except Exception as e:
-            return {"ok": False, "models": [], "message": str(e)}
+        return self._model_discovery_authority().list_models(
+            provider, generation, request_id
+        )
 
     def get_openrouter_credits(self):
         """OpenRouter balance for the saved sk-or-… key (owner 2026-06-20 — surface
@@ -1183,6 +1189,7 @@ class Api:
             meeting_minutes = 0.0
         # Hardware info for the homepage hardware-awareness suggestion
         hw = branding.get_hardware_info()
+        routes = self._settings_route_state()
         return {
             "version": branding.VERSION,
             "tagline": branding.APP_TAGLINE,
@@ -1198,6 +1205,8 @@ class Api:
             "transcription_mode": self.settings.get("transcription_mode", "local"),
             "cloud_transcription_provider": self.settings.get(
                 "cloud_transcription_provider", "groq"),
+            "transcription_route": dict(routes["transcription"]),
+            "effective_transcription_mode": routes["transcription"]["effective"],
             "first_run": bool(self.settings.get("first_run", True)),
             # "Connected" must reflect the CURRENT provider's key — a saved
             # OpenAI key while you're on Cerebras is NOT configured (this was
@@ -1347,30 +1356,16 @@ class Api:
 
     def _settings_route_state(self):
         """Project requested and effective privacy routes from runtime inputs."""
-        requested_stt = self.settings.get("transcription_mode", "local") or "local"
-        stt_provider = (
-            self.settings.get("cloud_transcription_provider", "groq") or ""
-        ).strip().lower()
-        stt_keys = {
-            "groq": "groq_api_key",
-            "openai": "openai_api_key",
-            "openrouter": "openrouter_api_key",
-        }
-        stt_supported = stt_provider in stt_keys
-        stt_has_key = bool(stt_supported and (
-            self.settings.get(stt_keys[stt_provider], "") or ""
-        ).strip())
+        stt_decision = processing_route.snapshot(
+            self.settings, feature="dictation", lane="speech_to_text"
+        ).public_dict()
+        requested_stt = "cloud" if stt_decision["requested_route"] == "hosted" else "local"
+        stt_provider = stt_decision["provider"]
+        stt_supported = stt_decision["provider_supported"]
+        stt_has_key = stt_decision["key_present"]
+        stt_effective = "cloud" if stt_decision["effective_route"] == "hosted" else "local"
+        stt_reason = {"local_transcription": "selected", "device_only": "local_only", "hosted_processing_off": "pro_off", "missing_key": "no_key", "missing_model": "no_model", "ready": "selected"}.get(stt_decision["reason"], stt_decision["reason"])
         local_only = bool(self.settings.get("local_only_mode", False))
-        if local_only:
-            stt_effective, stt_reason = "local", "local_only"
-        elif requested_stt != "cloud":
-            stt_effective, stt_reason = "local", "selected"
-        elif not stt_supported:
-            stt_effective, stt_reason = "local", "unsupported_provider"
-        elif not stt_has_key:
-            stt_effective, stt_reason = "local", "no_key"
-        else:
-            stt_effective, stt_reason = "cloud", "selected"
 
         route_facts = processing_route.settings_state(self.settings)
         plain_decision = route_facts["plain_processing"]
@@ -1384,12 +1379,27 @@ class Api:
         processing_effective = (
             "cloud" if action_decision["effective_route"] == "hosted" else "local"
         )
+        feature_routes = {
+            key: processing_route.snapshot(
+                self.settings, feature=feature, lane=lane
+            ).public_dict()
+            for key, feature, lane in (
+                ("plain_dictation", "dictation", "text"),
+                ("prompt", "prompt", "prompt"),
+                ("email", "email", "email"),
+                ("reply", "reply", "reply"),
+                ("deck_actions", "deck", "deck_action"),
+                ("meetings_analysis", "meetings", "meeting_analysis"),
+                ("reader_actions", "reader", "reader_summary"),
+            )
+        }
         return {
             "transcription": {
                 "requested": requested_stt,
                 "provider": stt_provider,
                 "provider_supported": stt_supported,
                 "has_key": stt_has_key,
+                "model": stt_decision["model"],
                 "effective": stt_effective,
                 "reason": stt_reason,
                 "sends_audio": stt_effective == "cloud",
@@ -1417,6 +1427,7 @@ class Api:
                 "sends_text": processing_effective == "cloud",
                 "decision": action_decision,
             },
+            "feature_routes": feature_routes,
             "local_only": local_only,
         }
 

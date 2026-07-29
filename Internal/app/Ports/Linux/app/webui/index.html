@@ -62,7 +62,7 @@
                     <div class="hero-glow"></div>
                     <div class="hero-topline"></div>
                     <div
-                        class="relative"
+                        class="relative home-focus-stage__primary"
                         style="
                             padding: 30px 32px 22px;
                             display: flex;
@@ -320,18 +320,9 @@
                                     >Ctrl + Win</span
                                 >
                             </button>
-                            <button id="open-history-btn" class="btn" style="padding: 11px 20px">
-                                <span data-icon="history"></span>Open Deck
-                                <span
-                                    class="kbd dim"
-                                    style="margin-left: 2px"
-                                    id="hk-history-btn"
-                                    >Ctrl + Alt + D</span
-                                >
-                            </button>
                         </div>
                         <p class="help mt8" id="home-dictation-limit">
-                            Normal dictation records for up to 10 minutes at a time.
+                            This platform currently stops one recording after 10 minutes as a temporary safety guard. Finished text is kept in the Deck.
                         </p>
                     </div>
 
@@ -405,6 +396,14 @@
                     </div>
                 </div>
 
+                <section class="home-latest-result" aria-labelledby="home-latest-title" aria-live="polite">
+                    <span class="section-kicker"><span data-icon="history"></span>Continue</span>
+                    <h2 id="home-latest-title">Latest result</h2>
+                    <p id="home-latest-copy">Your latest finished dictation is available in the Deck.</p>
+                    <span id="home-latest-meta">Finished text stays on this device.</span>
+                    <button id="open-history-btn" class="btn btn-sm" type="button"><span data-icon="history"></span>Open Deck <span class="kbd dim" id="hk-history-btn">Ctrl + Alt + D</span></button>
+                </section>
+
                 <div class="home-workflow" aria-label="How Mumble works">
                     <div class="home-step">
                         <span class="home-step-no">01</span>
@@ -424,191 +423,6 @@
                         <span><b>Keep moving</b><small>Paste, reuse, search, read, or review.</small></span>
                     </div>
                 </div>
-
-                <!-- ===== Feature Showcase ===== -->
-                <div class="home-section-heading">
-                    <span class="section-kicker"><span data-icon="layers"></span>Everything in one place</span>
-                    <h2>More than dictation.</h2>
-                    <p>Move from first thought to finished work without breaking your flow.</p>
-                </div>
-
-                <!-- Row 1: Deck + Smart Modes -->
-                <div class="home-capabilities-grid">
-                <div class="grid g2 gap16">
-                    <div class="card pad lift">
-                        <div class="flex items-center gap8 mb10">
-                            <div class="icon-tile"><span data-icon="layers"></span></div>
-                            <div>
-                                <h3 class="fs13 fw6 t-primary">The Deck</h3>
-                                <span class="badge" style="margin-top:4px">Ctrl + Alt + D</span>
-                            </div>
-                        </div>
-                        <p class="t-mute fs12 lh16 mb10">
-                            Your local workspace — every transcript, clipboard item,
-                            and saved prompt in one searchable place. Tick items,
-                            pick a preset or Smart Mode, and run AI jobs over your
-                            selection. The Deck is where you shape, polish, and
-                            repurpose your words.
-                        </p>
-                        <div class="flex gap6 wrap">
-                            <span class="feature-chip"><span data-icon="copy"></span>Clipboard history</span>
-                            <span class="feature-chip"><span data-icon="star"></span>Favourites</span>
-                            <span class="feature-chip"><span data-icon="sparkle"></span>Presets &amp; jobs</span>
-                        </div>
-                    </div>
-                    <div class="card pad lift">
-                        <div class="flex items-center gap8 mb10">
-                            <div class="icon-tile"><span data-icon="wand"></span></div>
-                            <div>
-                                <h3 class="fs13 fw6 t-primary">Smart Modes</h3>
-                                <span class="badge" style="margin-top:4px">Pro Mode</span>
-                            </div>
-                        </div>
-                        <p class="t-mute fs12 lh16 mb10">
-                            Optional AI shapes for your words — arm them on the
-                            island or in the Deck. Each mode gives your dictation
-                            a different output form. Needs Pro Mode + an API key,
-                            or an on-device model.
-                        </p>
-                        <div class="mode-rows">
-                            <div class="mode-row"><span class="mode-pill" data-mode="prompt">Prompt</span><span class="t-mute fs11">Turns a rough ask into a polished AI prompt</span></div>
-                            <div class="mode-row"><span class="mode-pill" data-mode="email">Email</span><span class="t-mute fs11">Drafts a tidy email — greeting, body, sign-off</span></div>
-                            <div class="mode-row"><span class="mode-pill" data-mode="reply">Reply</span><span class="t-mute fs11">Writes a direct response from selected context</span></div>
-                            <div class="mode-row"><span class="mode-pill" data-mode="foreign">Foreign</span><span class="t-mute fs11">Keeps non-English terms accurate</span></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Row 2: Meetings + Reader -->
-                <div class="grid g2 gap16">
-                    <div class="card pad lift">
-                        <div class="flex items-center gap8 mb10">
-                            <div class="icon-tile"><span data-icon="mic"></span></div>
-                            <div>
-                                <h3 class="fs13 fw6 t-primary">Meetings</h3>
-                                <span class="badge" style="margin-top:4px">Local</span>
-                            </div>
-                        </div>
-                        <p class="t-mute fs12 lh16 mb10">
-                            Record conversations, import audio files, and get full
-                            transcripts in your selected Local or Cloud mode. With an AI key,
-                            Mumble can summarise meetings, extract action items,
-                            identify key decisions, and surface open questions.
-                        </p>
-                        <div class="flex gap6 wrap">
-                            <span class="feature-chip"><span data-icon="sparkle"></span>AI summarisation</span>
-                            <span class="feature-chip"><span data-icon="check"></span>Action items</span>
-                            <span class="feature-chip"><span data-icon="user"></span>Best-effort speaker labels</span>
-                        </div>
-                    </div>
-                    <div class="card pad lift">
-                        <div class="flex items-center gap8 mb10">
-                            <div class="icon-tile"><span data-icon="book"></span></div>
-                            <div>
-                                <h3 class="fs13 fw6 t-primary">Reader Mode</h3>
-                                <span class="badge" style="margin-top:4px">TTS</span>
-                            </div>
-                        </div>
-                        <p class="t-mute fs12 lh16 mb10">
-                            Have any document read aloud in a natural AI voice,
-                            with word-by-word highlighting. Supports PDF, DOCX,
-                            EPUB, HTML, Markdown and more. Your library remembers
-                            your place, bookmarks, and reading stats.
-                        </p>
-                        <div class="flex gap6 wrap">
-                            <span class="feature-chip"><span data-icon="volume"></span>AI voices</span>
-                            <span class="feature-chip"><span data-icon="pin"></span>Bookmarks</span>
-                            <span class="feature-chip"><span data-icon="eye"></span>Word tracking</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Row 3: Context Capture + Mumble Find -->
-                <div class="grid g2 gap16">
-                    <div class="card pad lift">
-                        <div class="flex items-center gap8 mb10">
-                            <div class="icon-tile"><span data-icon="comment"></span></div>
-                            <div>
-                                <h3 class="fs13 fw6 t-primary">Context Capture</h3>
-                                <span class="badge" style="margin-top:4px">Smart</span>
-                            </div>
-                        </div>
-                        <p class="t-mute fs12 lh16 mb10">
-                            Grab the whole conversation from any AI chat
-                            (ChatGPT, Claude, Gemini) — Select-All catches every
-                            message, even scrolled-out ones. Stored as context
-                            for your next Prompt dictation.
-                        </p>
-                        <div class="flex gap6 wrap">
-                            <span class="feature-chip"><span data-icon="layers"></span>ChatGPT / Claude / Gemini</span>
-                            <span class="feature-chip"><span data-icon="wand"></span>Auto-context</span>
-                        </div>
-                    </div>
-                    <div class="card pad lift">
-                        <div class="flex items-center gap8 mb10">
-                            <div class="icon-tile"><span data-icon="search"></span></div>
-                            <div>
-                                <h3 class="fs13 fw6 t-primary">Mumble Find</h3>
-                                <span class="badge" style="margin-top:4px">Ctrl + Alt + F</span>
-                            </div>
-                        </div>
-                        <p class="t-mute fs12 lh16 mb10">
-                            Press Ctrl+Alt+F to find installed apps, documents,
-                            downloads and folders without leaving the keyboard.
-                            Mumble Find stays local. Web Search is a separate explicit action.
-                        </p>
-                        <div class="flex gap6 wrap">
-                            <span class="feature-chip"><span data-icon="monitor"></span>Windows + Linux</span>
-                            <span class="feature-chip"><span data-icon="folder"></span>Apps, files, folders</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Row 4: Stats + Shortcuts -->
-                <div class="grid g2 gap16">
-                    <div class="card pad lift">
-                        <div class="flex items-center gap8 mb10">
-                            <div class="icon-tile"><span data-icon="chart"></span></div>
-                            <div>
-                                <h3 class="fs13 fw6 t-primary">Stats &amp; Streaks</h3>
-                                <span class="badge" style="margin-top:4px">Personal</span>
-                            </div>
-                        </div>
-                        <p class="t-mute fs12 lh16 mb10">
-                            Track every word you dictate and read. See daily
-                            charts, weekly rhythms, activity heatmaps, and your
-                            speaking pace. Smart Mode breakdowns show which modes
-                            you reach for most — all stored locally.
-                        </p>
-                        <div class="flex gap6 wrap">
-                            <span class="feature-chip"><span data-icon="bolt"></span>Activity heatmap</span>
-                            <span class="feature-chip"><span data-icon="clock"></span>Time-of-day chart</span>
-                            <span class="feature-chip"><span data-icon="fire"></span>Streaks</span>
-                        </div>
-                    </div>
-                    <div class="card pad lift">
-                        <div class="flex items-center gap8 mb10">
-                            <div class="icon-tile"><span data-icon="keyboard"></span></div>
-                            <div>
-                                <h3 class="fs13 fw6 t-primary">Global Shortcuts</h3>
-                                <span class="badge" style="margin-top:4px">Customisable</span>
-                            </div>
-                        </div>
-                        <p class="t-mute fs12 lh16 mb10">
-                            Everything is reachable from the keyboard. Every
-                            shortcut is rebindable in Settings — use a keyboard
-                            combo or a mouse button.
-                        </p>
-                        <div class="flex col" style="gap:8px">
-                            <div class="flex items-center justify-between"><span class="t-dim fs12">Dictate</span><span class="kbd" id="hk-record">Ctrl + Win</span></div>
-                            <div class="flex items-center justify-between"><span class="t-dim fs12">Paste latest</span><span class="kbd dim" id="hk-paste-latest">Ctrl + Alt + V</span></div>
-                            <div class="flex items-center justify-between"><span class="t-dim fs12">Open Deck</span><span class="kbd dim" id="hk-history">Ctrl + Alt + D</span></div>
-                            <div class="flex items-center justify-between"><span class="t-dim fs12">Mumble Find</span><span class="kbd dim" id="hk-search">Ctrl + Alt + F</span></div>
-                            <div class="flex items-center justify-between"><span class="t-dim fs12">Web Search</span><span class="kbd dim" id="hk-web-search">Ctrl + Alt + S</span></div>
-                        </div>
-                    </div>
-                </div>
-                </div><!-- /home-capabilities-grid -->
 
                 <!-- Pro Mode + Tips -->
                 <div
@@ -1548,9 +1362,9 @@
                 </div>
 
                 <nav class="settings-index" role="tablist" aria-label="Settings categories">
-                    <button type="button" role="tab" aria-selected="true" data-settings-tab="general">General</button>
-                    <button type="button" role="tab" aria-selected="false" data-settings-tab="voice">Voice &amp; language</button>
-                    <button type="button" role="tab" aria-selected="false" data-settings-tab="ai">AI &amp; presets</button>
+                    <button type="button" role="tab" aria-selected="true" data-settings-tab="general">Overview</button>
+                    <button type="button" role="tab" aria-selected="false" data-settings-tab="voice">Speech to text</button>
+                    <button type="button" role="tab" aria-selected="false" data-settings-tab="ai">Text shaping</button>
                     <button type="button" role="tab" aria-selected="false" data-settings-tab="data">Deck &amp; data</button>
                     <button type="button" role="tab" aria-selected="false" data-settings-tab="system">System</button>
                 </nav>
@@ -2107,11 +1921,20 @@
                     <dl class="processing-route-facts" id="processing-route-facts">
                         <div><dt>Saved choice</dt><dd id="route-fact-saved">Checking…</dd></div>
                         <div><dt>Effective route</dt><dd id="route-fact-effective">Checking…</dd></div>
+                        <div><dt>Why this route</dt><dd id="route-fact-reason">Checking…</dd></div>
                         <div><dt>Input and engine</dt><dd id="route-fact-engine">Transcript text · checking…</dd></div>
                         <div><dt>Location</dt><dd id="route-fact-location">Checking…</dd></div>
                         <div><dt>What leaves this device</dt><dd id="route-fact-egress">Checking…</dd></div>
-                        <div><dt>Speed, quality, and cost</dt><dd id="route-fact-tradeoff">Measured results depend on this computer, the network, model, and provider.</dd></div>
+                        <div><dt>Speed</dt><dd id="route-fact-speed">Checking…</dd></div>
+                        <div><dt>Privacy</dt><dd id="route-fact-privacy">Checking…</dd></div>
+                        <div><dt>Quality boundary</dt><dd id="route-fact-quality">Checking…</dd></div>
+                        <div><dt>Cost</dt><dd id="route-fact-cost">Checking…</dd></div>
                     </dl>
+                    <section class="card pad feature-route-ledger context-ledger" id="feature-route-ledger" aria-labelledby="feature-route-ledger-title">
+                        <h3 class="fs13 fw6" id="feature-route-ledger-title">Routes by feature</h3>
+                        <p class="help mt4">Every row shows the immutable route decision that feature must obey.</p>
+                        <div class="feature-route-rows" id="feature-route-rows" aria-live="polite"><p class="help">Checking feature routes…</p></div>
+                    </section>
                     <div class="card" style="padding: 12px; background: var(--surface-2); margin-bottom: 14px" id="pro-mode-explain">
                         <p class="t-mute fs12 lh16">
                             <b>Hosted text processing ON</b>: your transcribed <b>text</b> is sent to your AI provider for cleanup,
@@ -2299,6 +2122,17 @@
                         </div>
                         <h3 class="fs13 fw6">Transcription</h3>
                     </div>
+                    <div class="route-status" id="transcription-route-status" role="status" aria-live="polite">
+                        <span class="route-status-dot"></span><div><b id="transcription-route-title">Checking audio route…</b>
+                        <span id="transcription-route-copy">Mumble is resolving the effective transcription path.</span></div>
+                    </div>
+                    <dl class="processing-route-facts" id="transcription-route-facts">
+                        <div><dt>Saved choice</dt><dd id="tx-fact-saved">Checking…</dd></div><div><dt>Effective route</dt><dd id="tx-fact-effective">Checking…</dd></div>
+                        <div><dt>Why this route</dt><dd id="tx-fact-reason">Checking…</dd></div><div><dt>Input and engine</dt><dd id="tx-fact-engine">Recorded audio · checking…</dd></div>
+                        <div><dt>Location</dt><dd id="tx-fact-location">Checking…</dd></div><div><dt>What leaves this device</dt><dd id="tx-fact-egress">Checking…</dd></div>
+                        <div><dt>Speed</dt><dd id="tx-fact-speed">Checking…</dd></div><div><dt>Privacy</dt><dd id="tx-fact-privacy">Checking…</dd></div>
+                        <div><dt>Quality boundary</dt><dd id="tx-fact-quality">Checking…</dd></div><div><dt>Cost</dt><dd id="tx-fact-cost">Checking…</dd></div>
+                    </dl>
 
                     <!-- FIRST-CLASS: Transcription engine choice — visible,
                          no expanding required. Clear explanations for both
@@ -2661,8 +2495,8 @@
                                 data-setting="ui_effects"
                                 style="width: 150px"
                             >
-                                <option value="lite">Light effects</option>
-                                <option value="standard">Standard effects</option>
+                                <option value="lite">Light</option>
+                                <option value="standard">Standard</option>
                                 <option value="enhanced">Full effects</option>
                             </select>
                         </div>

@@ -298,6 +298,7 @@ print("[startup] input/audio libs ok", flush=True)
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 import ai
+import model_authority
 import processing_route
 import copy
 import autostart
@@ -2619,10 +2620,14 @@ class Mumble:
                     # settings.json back in and live-apply anything with runtime
                     # state — a rebind or model switch must never wait for a
                     # restart to take effect.
-                    threading.Thread(
-                        target=self._apply_settings_change,
-                        args=(req.get("key") or "",), daemon=True,
-                    ).start()
+                    changed_key = str(req.get("key") or "")
+                    resp = model_authority.controller_reload_response(
+                        self._apply_settings_change,
+                        changed_key,
+                        lambda action: threading.Thread(
+                            target=action, daemon=True
+                        ).start(),
+                    )
                 elif cmd == "web_search_request":
                     resp.update(self.request_web_search(req.get("text") or ""))
                 elif cmd == "web_search_confirm":
@@ -2758,7 +2763,7 @@ class Mumble:
             self.settings.load()
         except Exception as e:
             print("settings reload error:", e)
-            return
+            return False
         k = (key or "").split(".", 1)[0]
         try:
             if k == "hotkey":
@@ -2862,6 +2867,8 @@ class Mumble:
                       "model load")
         except Exception as e:
             print(f"live-apply of {key!r} failed:", e)
+            return False
+        return True
 
     def _send_webui(self, obj, timeout=0.6):
         """Send one authenticated command to the web-window listener."""

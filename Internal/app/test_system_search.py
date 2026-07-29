@@ -370,8 +370,8 @@ class SearchUiAndPortTests(unittest.TestCase):
         local_update = javascript.index("SET[key] = savedValue", failure_gate)
         self.assertLess(failure_gate, local_update)
         capture_start = javascript.index("async function captureBinding")
-        deck_start = javascript.index("// Deck search button")
-        capture_source = javascript[capture_start:deck_start]
+        capture_end = javascript.index("async function testKey", capture_start)
+        capture_source = javascript[capture_start:capture_end]
         self.assertIn("bindingCaptureActive", capture_source)
         self.assertIn("Your previous shortcut was kept", capture_source)
 
