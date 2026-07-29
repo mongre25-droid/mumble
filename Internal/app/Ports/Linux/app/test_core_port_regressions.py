@@ -49,6 +49,7 @@ def test_transcription_sanitizes_audio_and_string_hotwords(monkeypatch):
                 "transcription_mode": "cloud",
                 "cloud_transcription_provider": "groq",
                 "groq_api_key": "key",
+                "groq_transcription_model": "whisper-large-v3-turbo",
                 "vocabulary_terms": "Alice Smith",
             }.get(key, default)
 

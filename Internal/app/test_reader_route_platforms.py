@@ -25,22 +25,38 @@ import sys
 
 sys.path.insert(0, sys.argv[1])
 shell = importlib.import_module("webui_shell")
+route = importlib.import_module("processing_route")
 
 
 class Settings:
     def __init__(self, **overrides):
+        key = "test-secret"
+        model = "gpt-oss-120b"
         self.values = {
             "pro_mode": True,
             "local_only_mode": False,
             "instant_text": False,
             "llm_provider": "cerebras",
-            "cerebras_api_key": "test-secret",
-            "cerebras_model": "gpt-oss-120b",
+            "cerebras_api_key": key,
+            "cerebras_model": model,
+            "_confirmed_text_models": {
+                "cerebras": {
+                    "credential_identity": route.model_credential_identity(
+                        "cerebras", key),
+                    "generation": 1,
+                    "confirmed_generation": 1,
+                    "state": "confirmed",
+                    "models": [model],
+                }
+            },
         }
         self.values.update(overrides)
 
     def get(self, key, default=None):
         return self.values.get(key, default)
+
+    def authority_read(self):
+        return dict(self.values)
 
 
 def run(overrides, provider_failure=False):

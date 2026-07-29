@@ -47,9 +47,30 @@ class MemorySettings:
             "modes": {"email": {"signoff": "DISTINCTIVE_PRIVATE_SIGNOFF_14C"}},
         }
         self.values.update(overrides)
+        provider = self.values["llm_provider"]
+        if (
+            "_confirmed_text_models" not in overrides
+            and provider in ("cerebras", "openrouter")
+        ):
+            key = self.values.get(f"{provider}_api_key", "")
+            model = self.values.get(f"{provider}_model", "")
+            self.values["_confirmed_text_models"] = {
+                provider: {
+                    "credential_identity": processing_route.model_credential_identity(
+                        provider, key
+                    ),
+                    "generation": 1,
+                    "confirmed_generation": 1,
+                    "state": "confirmed",
+                    "models": [model],
+                }
+            }
 
     def get(self, key, default=None):
         return self.values.get(key, default)
+
+    def authority_read(self):
+        return dict(self.values)
 
 
 def _snapshot(settings=None, *, feature="prompt", lane="prompt"):
@@ -243,15 +264,31 @@ ai = importlib.import_module("ai")
 route = importlib.import_module("processing_route")
 
 class Settings:
-    def get(self, key, default=None):
-        return {
+    def __init__(self):
+        key = "FROZEN_MODULAR_TEXT_KEY_14F"
+        model = "FROZEN_MODULAR_TEXT_MODEL_14F"
+        self.values = {
             "pro_mode": True,
             "local_only_mode": False,
             "instant_text": False,
             "llm_provider": "cerebras",
-            "cerebras_api_key": "FROZEN_MODULAR_TEXT_KEY_14F",
-            "cerebras_model": "FROZEN_MODULAR_TEXT_MODEL_14F",
-        }.get(key, default)
+            "cerebras_api_key": key,
+            "cerebras_model": model,
+            "_confirmed_text_models": {
+                "cerebras": {
+                    "credential_identity": route.model_credential_identity(
+                        "cerebras", key),
+                    "generation": 1,
+                    "confirmed_generation": 1,
+                    "state": "confirmed",
+                    "models": [model],
+                }
+            },
+        }
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+    def authority_read(self):
+        return dict(self.values)
 
 decision = route.snapshot(Settings(), feature="prompt", lane="prompt")
 calls = []
@@ -324,21 +361,34 @@ import sys
 
 sys.path.insert(0, sys.argv[1])
 controller = importlib.import_module(sys.argv[2])
+route = importlib.import_module("processing_route")
 
 class Settings:
     def __init__(self, local_only=False):
+        key = "frozen-key"
+        model = "frozen-model"
         self.values = {
             "pro_mode": True, "local_only_mode": local_only, "instant_text": False,
-            "llm_provider": "cerebras", "cerebras_api_key": "frozen-key",
-            "cerebras_model": "frozen-model", "user_name": "Frozen User",
+            "llm_provider": "cerebras", "cerebras_api_key": key,
+            "cerebras_model": model, "user_name": "Frozen User",
             "prompt_prefs": {"tone": "frozen-tone", "nested": {"detail": "frozen-detail"}},
             "primary_language": "fr", "english_only": False,
             "foreign_languages": ["arabic"], "vocabulary": {"heard": "Frozen Term"},
             "vocabulary_terms": ["Frozen Term"], "modes": {"email": {"signoff": "Frozen Signoff"}},
             "format_enabled": True, "polish_aggressiveness": "Thorough",
+            "_confirmed_text_models": {
+                "cerebras": {
+                    "credential_identity": route.model_credential_identity(
+                        "cerebras", key),
+                    "generation": 1, "confirmed_generation": 1,
+                    "state": "confirmed", "models": [model],
+                }
+            },
         }
     def get(self, key, default=None):
         return self.values.get(key, default)
+    def authority_read(self):
+        return dict(self.values)
 
 def make_app(settings):
     app = controller.Mumble.__new__(controller.Mumble)
@@ -528,7 +578,7 @@ print(json.dumps({
 
 
 @pytest.mark.parametrize("provider", ("anthropic", "deepseek"))
-def test_linux_processing_route_captures_each_settings_ready_provider(provider):
+def test_linux_processing_route_keeps_internal_adapters_unselectable(provider):
     platform_app = PLATFORM_APP_DIRS[2]
     script = r'''
 import importlib
@@ -545,13 +595,14 @@ class StopProbe(BaseException):
 
 class Settings:
     def __init__(self, key):
+        model = "FROZEN_" + provider.upper() + "_MODEL_14E"
         self.values = {
             "pro_mode": True,
             "local_only_mode": False,
             "instant_text": False,
             "llm_provider": provider,
             provider + "_api_key": key,
-            provider + "_model": "FROZEN_" + provider.upper() + "_MODEL_14E",
+            provider + "_model": model,
             "english_only": True,
             "foreign_mode": False,
             "foreign_languages": [],
@@ -569,6 +620,8 @@ class Settings:
         }
     def get(self, key, default=None):
         return self.values.get(key, default)
+    def authority_read(self):
+        return dict(self.values)
 
 def run(key):
     settings = Settings(key)
@@ -621,8 +674,8 @@ print(json.dumps({"ready": run("FROZEN_" + provider.upper() + "_KEY_14E"), "miss
         "provider": provider,
         "key": f"FROZEN_{provider.upper()}_KEY_14E",
         "model": f"FROZEN_{provider.upper()}_MODEL_14E",
-        "ready": True,
-        "reason": "ready",
+        "ready": False,
+        "reason": "unconfirmed_model",
     }
     assert evidence["missing"] == {
         "provider": provider,
@@ -1320,14 +1373,16 @@ tts = importlib.import_module("ai.tts_providers")
 tx = importlib.import_module("transcription")
 
 class Settings:
-    def get(self, key, default=None):
-        return {
+    def __init__(self):
+        text_key = "FROZEN_TEXT_KEY_14F"
+        text_model = "FROZEN_TEXT_MODEL_14F"
+        self.values = {
             "pro_mode": True,
             "local_only_mode": False,
             "instant_text": False,
             "llm_provider": "cerebras",
-            "cerebras_api_key": "FROZEN_TEXT_KEY_14F",
-            "cerebras_model": "FROZEN_TEXT_MODEL_14F",
+            "cerebras_api_key": text_key,
+            "cerebras_model": text_model,
             "openrouter_api_key": "FROZEN_SHARED_KEY_14E",
             "openrouter_model": "openai/gpt-oss-120b",
             "reader_tts_provider": "openrouter",
@@ -1338,7 +1393,21 @@ class Settings:
             "groq_transcription_model": "FROZEN_STT_MODEL_14E",
             "language": "en",
             "vocabulary_terms": ["Frozen Term 14E"],
-        }.get(key, default)
+            "_confirmed_text_models": {
+                "cerebras": {
+                    "credential_identity": route.model_credential_identity(
+                        "cerebras", text_key),
+                    "generation": 1,
+                    "confirmed_generation": 1,
+                    "state": "confirmed",
+                    "models": [text_model],
+                }
+            },
+        }
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+    def authority_read(self):
+        return dict(self.values)
 
 settings = Settings()
 text_transport = []
@@ -1620,18 +1689,33 @@ route = importlib.import_module("processing_route")
 
 class Settings:
     def __init__(self, **overrides):
+        key = "FROZEN_MEETING_KEY_14G"
+        model = "FROZEN_MEETING_MODEL_14G"
         self.values = {
             "pro_mode": True,
             "local_only_mode": False,
             "instant_text": False,
             "llm_provider": "cerebras",
-            "cerebras_api_key": "FROZEN_MEETING_KEY_14G",
-            "cerebras_model": "FROZEN_MEETING_MODEL_14G",
+            "cerebras_api_key": key,
+            "cerebras_model": model,
+            "_confirmed_text_models": {
+                "cerebras": {
+                    "credential_identity": route.model_credential_identity(
+                        "cerebras", key),
+                    "generation": 1,
+                    "confirmed_generation": 1,
+                    "state": "confirmed",
+                    "models": [model],
+                }
+            },
         }
         self.values.update(overrides)
 
     def get(self, key, default=None):
         return self.values.get(key, default)
+
+    def authority_read(self):
+        return dict(self.values)
 
 transport = []
 

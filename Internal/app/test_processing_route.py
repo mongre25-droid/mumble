@@ -547,8 +547,8 @@ def test_settings_uses_truthful_stage_effect_and_route_disclosure_language():
 
     assert "1 · Speech to text" in html
     assert "2 · Text shaping" in html
-    assert '<option value="lite">Light effects</option>' in html
-    assert '<option value="standard">Standard effects</option>' in html
+    assert '<option value="lite">Light</option>' in html
+    assert '<option value="standard">Standard</option>' in html
     assert '<option value="enhanced">Full effects</option>' in html
     assert '<option value="lite">Basic</option>' not in html
     assert '<option value="enhanced">Enhanced</option>' not in html
@@ -558,7 +558,9 @@ def test_settings_uses_truthful_stage_effect_and_route_disclosure_language():
         "Input and engine",
         "Location",
         "What leaves this device",
-        "Speed, quality, and cost",
+        "Speed",
+        "Quality boundary",
+        "Cost",
     ):
         assert label in html
     assert "SETTINGS_HYDRATION_VERSION" in js

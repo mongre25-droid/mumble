@@ -423,7 +423,8 @@ def test_meetings_refresh_keeps_state_privacy_and_keyboard_truth_visible():
     assert 'what === "meeting_capture_error"' in refresh
     assert "meetingReconcileRecording" in refresh
     assert "MEET.recording = false" not in stop
-    assert 'state: "finalizing"' in stop
+    assert "MEET.stopping = true" in stop
+    assert 'state: MEET.paused ? "paused" : "recording"' in stop
 
     assert 'id="meeting-recording"' in html
     assert 'class="meeting-live-state" role="status" aria-live="polite"' in html
