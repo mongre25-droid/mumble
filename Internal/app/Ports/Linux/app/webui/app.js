@@ -55,6 +55,8 @@ const ICONS = {
     '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
   folder:
     '<path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  file:
+    '<path d="M6 2.5h8l4 4V21H6z"/><path d="M14 2.5v4h4"/><path d="M9 12h6M9 16h6"/>',
   external:
     '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
   sliders:
@@ -457,6 +459,7 @@ const MOCK = {
     },
     polish_aggressiveness: "Light",
     instant_text: true,
+    local_only_mode: false,
     pro_mode: true,
     llm_provider: "cerebras",
     cerebras_api_key: "",
@@ -468,7 +471,7 @@ const MOCK = {
     cloud_transcription_provider: "groq",
     groq_transcription_model: "whisper-large-v3-turbo",
     openai_transcription_model: "gpt-4o-mini-transcribe",
-    openrouter_transcription_model: "openai/gpt-4o-mini-transcribe",
+    openrouter_transcription_model: "groq/whisper-large-v3-turbo",
     local_url: "http://localhost:11434",
     local_model: "llama3",
     browser: "default",
@@ -485,6 +488,23 @@ const MOCK = {
     correction_learning_enabled: false,
     correction_learning_auto_detect: true,
     ui_effects: "enhanced",
+    _route_state: {
+      transcription: { requested: "local", provider: "groq", provider_supported: true, has_key: false, effective: "local", reason: "selected", sends_audio: false },
+      plain_processing: { effective: "local", reason: "instant_text", sends_text: false },
+      action_processing: { provider: "cerebras", provider_supported: true, has_key: false, effective: "local", reason: "no_key", sends_text: false },
+      feature_routes: Object.fromEntries([
+        ["plain_dictation", "dictation", "text"], ["prompt", "prompt", "prompt"],
+        ["email", "email", "email"], ["reply", "reply", "reply"],
+        ["deck_actions", "deck", "deck_action"], ["meetings_analysis", "meetings", "meeting_analysis"],
+        ["reader_actions", "reader", "reader_summary"],
+      ].map(([key, feature, lane]) => [key, {
+        feature, lane, requested_route: key === "plain_dictation" ? "local" : "hosted",
+        effective_route: "local", reason: key === "plain_dictation" ? "instant_text" : "missing_key",
+        provider: "cerebras", model: "gpt-oss-120b", ready: key === "plain_dictation",
+        provider_supported: true, key_present: false, pro_mode: true, device_only: false,
+      }])),
+      local_only: false,
+    },
   },
   mics: [
     { index: -1, name: "System default" },
@@ -651,6 +671,8 @@ async function call(name, ...args) {
       return MOCK.daily.slice(-(args[0] || 7));
     case "get_mode_stats":
       return MOCK.modes.slice();
+    case "get_stats_dashboard":
+      return buildMockStatsDashboard();
     case "get_presets":
       return MOCK.presets.slice();
     case "get_openrouter_credits":
@@ -1041,20 +1063,6 @@ async function call(name, ...args) {
     case "open_url":
       window.open(args[0], "_blank");
       return true;
-    case "request_web_search": {
-      const requestId = "preview-web-search";
-      setTimeout(() => window.pyWebSearchConsent && window.pyWebSearchConsent({
-        request_id: requestId,
-        provider: "Perplexity",
-        query: String(args[0] || ""),
-        privacy: "These selected words will be sent to Perplexity over the internet only after you choose Search online. Mumble Find stays private on this device.",
-      }), 0);
-      return { ok: true, request_id: requestId };
-    }
-    case "confirm_web_search":
-      return { ok: true, message: "Web Search opened (preview)." };
-    case "cancel_web_search":
-      return { ok: true };
     case "open_data_folder":
       return true;
     case "switch_to_lite":
@@ -1076,10 +1084,43 @@ async function call(name, ...args) {
           open_question_count: m.open_question_count || 0,
           processing_mode: m.processing_mode || "lightweight",
           starred: !!m.starred, preview: m.preview || "",
+          status: m.status || "ready",
+          error: m.error || null,
+          capture_warning: m.capture_warning || null,
+          audio_available: m.audio_available !== false,
           tags: m.tags || [],
         };
       });
       return ml;
+    }
+    case "meeting_search": {
+      var needle = String(args[0] || "").trim().toLocaleLowerCase();
+      var all = MOCK.meetings || [];
+      var found = all.filter(function (m) {
+        var values = [m.title, m.status]
+          .concat(m.tags || [])
+          .concat((m.speakers || []).flatMap(function (s) { return [s.label, s.name]; }))
+          .concat((m.segments || []).map(function (s) { return s.text; }));
+        return !needle || values.some(function (value) {
+          return String(value || "").toLocaleLowerCase().includes(needle);
+        });
+      }).map(function (m) {
+        return {
+          id: m.id, title: m.title, created: m.created,
+          duration_sec: m.duration_sec, duration_display: m.duration_display,
+          segment_count: m.segment_count, speaker_count: m.speaker_count,
+          speakers: m.speakers, has_summary: !!m.summary,
+          action_item_count: m.action_item_count || 0,
+          key_decision_count: m.key_decision_count || 0,
+          open_question_count: m.open_question_count || 0,
+          processing_mode: m.processing_mode || "lightweight",
+          starred: !!m.starred, preview: m.preview || "",
+          status: m.status || "ready", error: m.error || null,
+          capture_warning: m.capture_warning || null,
+          audio_available: m.audio_available !== false, tags: m.tags || [],
+        };
+      });
+      return { ok: true, items: found, total: all.length };
     }
     case "meeting_open": {
       var mo = (MOCK.meetings || []).find(function (x) { return x.id === args[0]; });
@@ -1225,6 +1266,23 @@ async function call(name, ...args) {
     }
     case "meeting_start_recording":
       return { ok: false, message: "Preview — recording runs in the full app" };
+    case "meeting_context":
+      return {
+        ok: true,
+        microphone: (MOCK.mics[0] && MOCK.mics[0].name) || "System default",
+        saved_location: "Private Mumble meeting library",
+        transcription: { ...(MOCK.settings._route_state || {}).transcription },
+        analysis: {
+          feature: "meetings", lane: "meeting_analysis",
+          requested_route: "hosted", effective_route: "blocked",
+          reason: "missing_key", provider: MOCK.settings.llm_provider || "cerebras",
+          ready: false, provider_supported: true, key_present: false,
+          pro_mode: !!MOCK.settings.pro_mode, device_only: !!MOCK.settings.local_only_mode,
+        },
+      };
+    case "meeting_recording_status":
+      return { ok: true, active: false, recording: false, paused: false,
+        state: "idle", captured_seconds: 0, max_seconds: 14400 };
     case "meeting_stop_recording":
       return { ok: false, message: "Preview — stop runs in the full app" };
     case "meeting_pause_recording":
@@ -1238,6 +1296,20 @@ async function call(name, ...args) {
       if (MOCK.meetings) { gms.meeting_count = MOCK.meetings.length; }
       return gms;
     }
+    case "request_web_search": {
+      const requestId = `preview-${Date.now()}`;
+      setTimeout(() => window.pyWebSearchConsent && window.pyWebSearchConsent({
+        request_id: requestId,
+        provider: (MOCK.settings.search_engine || "perplexity").replace(/^./, (c) => c.toUpperCase()),
+        query: String(args[0] || ""),
+        privacy: "These selected words will be sent over the internet only after you choose Search online. Mumble Find stays private on this device.",
+      }), 0);
+      return { ok: true, request_id: requestId };
+    }
+    case "confirm_web_search":
+      return { ok: true, message: "Web Search opened." };
+    case "cancel_web_search":
+      return { ok: true };
     default:
       return null;
   }
@@ -1288,6 +1360,58 @@ function toast(msg, kind = "info", ms = 2600) {
   }, ms);
 }
 
+function insertionNotice(result, confirmedMessage = "Inserted") {
+  const outcome = (result && result.outcome) || "saved_only";
+  if (outcome === "confirmed" && result && result.confirmed === true) {
+    return { message: confirmedMessage, kind: "ok" };
+  }
+  if (outcome === "sent_unconfirmed") {
+    return {
+      message: (result && result.message) || "Sent—check the field.",
+      kind: "info",
+    };
+  }
+  if (outcome === "pending") {
+    return {
+      message: (result && result.message) || "Still working. Mumble will not send this twice.",
+      kind: "info",
+    };
+  }
+  return {
+    message:
+      (result && result.message) ||
+      (outcome === "uncertain"
+        ? "Delivery uncertain — check the selected destination."
+        : "Not inserted — saved in Mumble."),
+    kind: outcome === "uncertain" ? "info" : "err",
+  };
+}
+
+function showInsertionResult(result, confirmedMessage, ms = 2200) {
+  const notice = insertionNotice(result, confirmedMessage);
+  toast(notice.message, notice.kind, ms);
+  if (result && result.cleanup_warning) {
+    toast(result.cleanup_warning, "info", 3000);
+  }
+  return result && result.outcome === "confirmed" && result.confirmed === true;
+}
+
+function acceptInsertionResult(result) {
+  const operationId = String((result && result.operation_id) || "");
+  if (!operationId) return true;
+  const seen = acceptInsertionResult.seen ||
+    (acceptInsertionResult.seen = new Set());
+  if (seen.has(operationId)) return false;
+  seen.add(operationId);
+  while (seen.size > 256) seen.delete(seen.values().next().value);
+  return true;
+}
+
+window.pyInsertionResult = function pyInsertionResult(result) {
+  if (!acceptInsertionResult(result)) return;
+  showInsertionResult(result, "Inserted Deck result", 2600);
+};
+
 async function copyTextReliable(text) {
   try {
     if (!navigator.clipboard || !navigator.clipboard.writeText)
@@ -1307,6 +1431,13 @@ async function copyTextReliable(text) {
 function activateDialog(overlay, onCancel) {
   const dialog = overlay.querySelector(".modal,.uc") || overlay.firstElementChild;
   const previous = document.activeElement;
+  const background = document.getElementById("app");
+  const backgroundWasInert = !!background?.inert;
+  const backgroundAriaHidden = background?.getAttribute("aria-hidden");
+  if (background) {
+    background.inert = true;
+    background.setAttribute("aria-hidden", "true");
+  }
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
   dialog.setAttribute("tabindex", "-1");
@@ -1331,6 +1462,11 @@ function activateDialog(overlay, onCancel) {
   (focusable()[0] || dialog).focus();
   return () => {
     overlay.removeEventListener("keydown", onKey);
+    if (background) {
+      background.inert = backgroundWasInert;
+      if (backgroundAriaHidden == null) background.removeAttribute("aria-hidden");
+      else background.setAttribute("aria-hidden", backgroundAriaHidden);
+    }
     if (previous && document.contains(previous)) previous.focus();
   };
 }
@@ -1392,7 +1528,7 @@ function confirmModal({
 let WEB_SEARCH_CONSENT_CLOSE = null;
 window.pyWebSearchConsent = function pyWebSearchConsent(payload) {
   if (!payload || !payload.request_id) return;
-  if (WEB_SEARCH_CONSENT_CLOSE) WEB_SEARCH_CONSENT_CLOSE(true);
+  if (WEB_SEARCH_CONSENT_CLOSE) WEB_SEARCH_CONSENT_CLOSE();
   const requestId = String(payload.request_id);
   const ov = document.createElement("div");
   ov.className = "overlay";
@@ -1436,7 +1572,6 @@ function openConvertMenu(text) {
   const modes = [
     ["prompt", "Prompt"],
     ["email", "Email"],
-    ["reply", "Reply"],
     ["foreign", "Foreign"],
   ];
   const ov = document.createElement("div");
@@ -1478,7 +1613,7 @@ async function runConvert(text, mode) {
   ]);
   if (r && r.ok && r.live)
     toast(
-      `Converting to ${label} — the result will paste at your cursor`,
+      `Converting to ${label}—the result will be saved, then Mumble will attempt the selected field`,
       "ok",
       3000,
     );
@@ -1492,14 +1627,12 @@ async function runConvert(text, mode) {
     );
 }
 
-/* Ctrl+H on a hovered History row (owner 2026-06-20): hovering acts as implicit
-   selection. If a Smart Mode or preset is armed in the History tools, run it on
-   the hovered item; otherwise open the Smart Mode menu so the user can pick one.
-   Restores the "hover, Ctrl+H, run a Smart Mode/preset on this item" affordance. */
+/* Ctrl+H on a focused or hovered Deck row: if a Smart Mode or preset is armed,
+   run it on that item; otherwise open the Smart Mode menu for the item. */
 function runHoverJob() {
   const h = HX.hover;
   if (!h || !h.text) {
-    toast("Hover over a Deck item first, then press Ctrl+H", "info", 2600);
+    toast("Focus or hover over a Deck item first, then press Ctrl+H", "info", 2600);
     return;
   }
   if (!HX.runPreset && !HX.runMode) {
@@ -1513,8 +1646,8 @@ function runHoverJob() {
   Promise.resolve(call("run_deck_job", HX.runPreset, HX.runMode, items))
     .then((r) => {
       if (r && r.ok && r.live)
-        toast("Working — the result will paste at your cursor", "ok", 3000);
-      else if (r && r.ok) toast("Done — result pasted", "ok");
+        toast("Working—the result will be saved, then Mumble will attempt the selected field", "info", 3000);
+      else if (r && r.ok) toast("Done — check the destination field", "info");
       else
         toast(
           (r && r.message) ||
@@ -1535,9 +1668,12 @@ function navTo(view) {
   if (CURRENT === "reader" && view !== "reader") readerStopForNav();
   CURRENT = view;
   $$("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== view));
-  $$(".nav-btn").forEach((b) =>
-    b.classList.toggle("active", b.dataset.nav === view),
-  );
+  $$(".nav-btn").forEach((b) => {
+    const current = b.dataset.nav === view;
+    b.classList.toggle("active", current);
+    if (current) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
   const sv = document.querySelector(`[data-view="${view}"]`);
   if (sv) sv.scrollTop = 0;
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -1571,6 +1707,15 @@ function syncDeckWindow() {
   } catch (e) {}
 }
 
+async function focusDeckForKeyboard() {
+  if (HAS_PY() && HX.pinned) await call("set_deck_palette", false);
+  const firstRow = $("#hist-list .deck-selectable-row[tabindex=\"0\"]") ||
+    $("#hist-list .deck-selectable-row");
+  const activeTab = $('[data-content-filter][aria-selected="true"]');
+  (firstRow || activeTab || $("#hist-filter"))?.focus();
+  toast("Keyboard ready · arrow through rows, Space or Enter selects", "info", 2600);
+}
+
 /* ============================================================================
    HOME (dynamic bits)
    ========================================================================== */
@@ -1582,11 +1727,14 @@ function syncDeckWindow() {
    transition, shadow, blur and glass-transparency — the "works everywhere" config. */
 let CHOSEN_FX = "enhanced"; // the user's selected tier (Settings → Visual effects)
 let SAVER = false; // Resource Saver Mode
+const FOCUS_STAGE_TIERS = Object.freeze({ lite: "light", standard: "standard", enhanced: "full" });
 function applyVisual() {
   const fx = SAVER ? "lite" : CHOSEN_FX; // saver always wins → lite
   document.body.classList.toggle("saver", SAVER);
   document.body.classList.toggle("lite", fx === "lite");
   document.body.classList.toggle("enhanced", fx === "enhanced");
+  const tier = FOCUS_STAGE_TIERS[fx];
+  if (tier && window.MumbleUIFoundation) window.MumbleUIFoundation.applyEffectsTier(tier);
 }
 function applyEffects(fx) {
   if (fx) CHOSEN_FX = fx;
@@ -1619,6 +1767,9 @@ async function bootHome() {
   setText("#hk-history-btn", hk.history_hotkey);
   setText("#hk-search", hk.search_hotkey);
   setText("#hk-web-search", hk.web_search_hotkey);
+  setText("#hk-search-card", hk.search_hotkey);
+  setText("#hk-search-help", hk.search_hotkey);
+  setText("#hk-search-onboarding", hk.search_hotkey);
   // live version everywhere it appears
   setText("#about-version", o.version);
   setText("#update-sub", "You're on v" + o.version);
@@ -1639,7 +1790,7 @@ async function bootHome() {
   const cloudProvider = o.cloud_transcription_provider || "your provider";
   const dictationLimit = $("#home-dictation-limit");
   if (dictationLimit) dictationLimit.textContent =
-    "This platform currently stops one recording after 10 minutes as a temporary safety guard. Finished text is kept in the Deck.";
+    "Mumble saves long dictation in bounded, recovery-safe segments and assembles one final transcript when you stop. A safety stop can still protect your recording if the device cannot keep up.";
   const hero = $("#home-hero-copy");
   if (hero) hero.innerHTML = cloudStt
     ? `Dictate into any app, shape rough thoughts into useful output, capture meetings, and listen to documents. Voice clips currently go to <span class="t-gold fw6">${esc(cloudProvider)}</span> for transcription.`
@@ -1656,9 +1807,20 @@ async function bootHome() {
     : savedCloudFallback
       ? `Local transcription keeps audio on this device. Your ${cloudProvider} Cloud choice remains saved but is not effective (${String(transcriptionRoute.reason || "not ready").replaceAll("_", " ")}).`
       : "Local transcription keeps audio on this device; AI shaping receives transcript text only.");
+  const latestCopy = $("#home-latest-copy");
+  const latestMeta = $("#home-latest-meta");
   const latest = Array.isArray(latestItems) ? latestItems[0] : null;
-  setText("#home-latest-copy", latestItems === null ? "Your latest result could not be checked right now." : latest?.text || "No finished dictation yet.");
-  setText("#home-latest-meta", latest ? [latest.mode || "Dictation", latest.time || latest.stamp].filter(Boolean).join(" · ") : "Open the Deck to see saved text on this device.");
+  if (latestCopy && latestMeta && latestItems === null) {
+    latestCopy.textContent = "Your latest result could not be checked right now.";
+    latestMeta.textContent = "Open the Deck to see saved text already on this device.";
+  } else if (latestCopy && latestMeta && latest && latest.text) {
+    latestCopy.textContent = latest.text;
+    latestMeta.textContent = [latest.mode || "Dictation", latest.time || latest.stamp]
+      .filter(Boolean).join(" · ") || "Most recent finished dictation";
+  } else if (latestCopy && latestMeta) {
+    latestCopy.textContent = "No finished dictation yet.";
+    latestMeta.textContent = "Start dictation above; completed text will appear here and in the Deck.";
+  }
   // pro key status
   const pk = $("#pro-status"),
     pb = $("#pro-btn");
@@ -1747,29 +1909,32 @@ function reflectStatus(st) {
     lab.textContent = rec ? "Stop and transcribe" : "Start dictation";
   chip.classList.toggle("is-recording", rec || st.state === "transcribing");
   chip.classList.toggle("is-error", st.state === "error");
+  const recordButton = $("#record-btn");
+  if (recordButton) {
+    if (rec) recordButton.dataset.control = "stop";
+    else delete recordButton.dataset.control;
+  }
   setText("#status-text", st.text || (rec ? "Listening…" : "Ready"));
-  const state = st.state || (rec ? "listening" : "idle");
-  const mode = MODE_LABELS[st.active_mode || st.mode || "text"] || "Text";
-  const titles = {
-    idle: "Ready to dictate",
-    listening: "Listening now",
-    recording: "Listening now",
-    transcribing: "Turning speech into text",
-    processing: "Polishing your text",
-    error: "Mumble needs attention",
-  };
-  const details = {
-    idle: `${mode} mode · press your shortcut to start`,
-    listening: `${mode} mode · press again to stop and transcribe`,
-    recording: `${mode} mode · press again to stop and transcribe`,
-    transcribing: "Your recording has stopped · transcribing now",
-    processing: `${mode} mode · applying text processing`,
-    error: st.text || "Check the status message above",
-  };
-  setText("#home-live-title", titles[state] || st.text || "Mumble is working");
-  setText("#home-live-detail", details[state] || `${mode} mode`);
-  const livePanel = $("#home-live-state");
-  if (livePanel) livePanel.dataset.state = state;
+  const stateKind = st.state === "error" ? "error" : (rec || st.state === "transcribing") ? "loading" : null;
+  const stateHost = $("#home-live-state");
+  if (stateHost && window.MumbleUIFoundation) {
+    const shouldHide = !stateKind;
+    if (stateHost.hidden !== shouldHide) stateHost.hidden = shouldHide;
+    let surface = stateHost.querySelector(".state-surface");
+    const stateOptions = stateKind ? {
+      title: stateKind === "error" ? "Dictation could not start" : "Dictation is active",
+      message: st.text || (rec ? "Mumble is listening. Stop to transcribe your words." : "Mumble is processing your words."),
+      content: "The live status above remains the authoritative recording state.",
+      action: st.recoveryAction && st.recoveryAction.label ? st.recoveryAction : null,
+    } : null;
+    if (stateKind && !surface) {
+      surface = window.MumbleUIFoundation.createStateSurface(stateKind, stateOptions);
+      surface.setAttribute("aria-atomic", "true");
+      stateHost.append(surface);
+    } else if (stateKind) {
+      window.MumbleUIFoundation.updateStateSurface(surface, stateKind, stateOptions);
+    }
+  }
 }
 
 /* light live polling: keeps the chip honest while you dictate via the hotkey.
@@ -1803,8 +1968,11 @@ let HX = {
   clipboard: [],
   prompts: [],
   favorites: [],
-  // Content-type filter dropdown: empty = "All types" (show everything).
+  // One visible content lane at a time; empty means the unified Deck timeline.
   activeFilters: new Set(),
+  // Starred is a state layered over content types, not another content source.
+  // This avoids rendering every favourite twice in the All timeline.
+  favoriteOnly: false,
   q: "",
   sort: "new",
   pre: false,
@@ -1823,14 +1991,63 @@ let HX = {
   // highlighted (owner 2026-06-23) — rendered as temporary items at the top of
   // the Deck, dismissible, never persisted. See addDeckSelection / drawHistory.
   injected: [],
+  // Exact rendered identities for ordered selection and action resolution.
+  itemByKey: new Map(),
+  visibleKeys: new Set(),
+  visibleItems: [],
+  // Store pushes received mid-selection are applied as soon as selection ends.
+  refreshPending: new Set(),
 };
-// selection key for an entry = its text (stable across re-renders, unique enough)
-function selKeyOf(text) {
-  return String(text || "");
+// Text is not an identity: identical words may exist in multiple stores. Source
+// + timestamp keep those rows independently selectable while remaining stable
+// across filtering and sorting.
+function selKeyOf(kind, stamp, text) {
+  return JSON.stringify([
+    String(kind || "item"),
+    String(stamp || ""),
+    String(text || ""),
+  ]);
 }
 
-/* ---- Filter chips (deck-filtering-overhaul, owner v7) ---- */
-/* ---- Content-type filter dropdown (replaced filterchips, owner v1.0) ---- */
+const DECK_TYPE_LABELS = {
+  "": "all Deck content",
+  transcripts: "transcripts",
+  clipboard: "clipboard",
+  prompts: "prompts",
+  emails: "emails",
+};
+
+function activeContentFilter() {
+  return HX.activeFilters.size === 1 ? [...HX.activeFilters][0] : "";
+}
+
+function syncContentFilterUI(counts) {
+  const active = activeContentFilter();
+  $$('[data-content-filter]').forEach((button) => {
+    const selected = button.dataset.contentFilter === active;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", selected ? "true" : "false");
+    button.tabIndex = selected ? 0 : -1;
+  });
+  Object.entries(counts || {}).forEach(([name, count]) => {
+    setText(`[data-content-count="${name}"]`, String(count || 0));
+  });
+  setText("#hist-starred-count", String((counts || {}).starred || 0));
+  const starred = $("#hist-starred-toggle");
+  if (starred) {
+    starred.classList.toggle("active", HX.favoriteOnly);
+    starred.classList.toggle("btn-gold", HX.favoriteOnly);
+    starred.classList.toggle("btn-ghost", !HX.favoriteOnly);
+    starred.setAttribute("aria-pressed", HX.favoriteOnly ? "true" : "false");
+  }
+  const search = $("#hist-filter");
+  if (search) {
+    const scope = DECK_TYPE_LABELS[active] || "Deck content";
+    const prefix = HX.favoriteOnly ? "starred " : "";
+    search.placeholder = `Search ${prefix}${scope}…`;
+    search.setAttribute("aria-label", `Search ${prefix}${scope}`);
+  }
+}
 
 function setContentFilter(name) {
   if (!name) {
@@ -1839,6 +2056,11 @@ function setContentFilter(name) {
     HX.activeFilters.clear();
     HX.activeFilters.add(name);
   }
+  drawHistory();
+}
+
+function setStarredFilter(on) {
+  HX.favoriteOnly = !!on;
   drawHistory();
 }
 
@@ -1870,73 +2092,111 @@ function wordCountOf(x) {
     x._words || x.words || (x.text || x.prompt || "").split(/\s+/).filter(Boolean).length
   );
 }
+function deckStampValue(item) {
+  const raw = String((item || {})._stamp || "").trim();
+  if (!raw) return 0;
+  const parsed = Date.parse(raw.includes("T") ? raw : raw.replace(" ", "T"));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 function sortItems(arr) {
-  // Sort unified items (owner v7): items have _stamp for date-based sorting.
-  // "old" reverses the incoming order (which is already newest-first from sources).
-  if (HX.sort === "old") return arr.slice().reverse();
+  // Source arrays are concatenated, so their local newest-first order does not
+  // produce a unified timeline. Sort globally and preserve a stable fallback
+  // for legacy records with time-only or missing stamps.
+  if (HX.sort === "new" || HX.sort === "old") {
+    const direction = HX.sort === "old" ? 1 : -1;
+    return arr.slice().sort((a, b) => {
+      const delta = deckStampValue(a) - deckStampValue(b);
+      return delta ? delta * direction : (a._order || 0) - (b._order || 0);
+    });
+  }
   // "words" (grouped by day) and "words_all" (flat, all-time) both rank by word
   // count; renderGrouped() decides whether to keep the date sections (owner v6).
   if (HX.sort === "words" || HX.sort === "words_all")
     return arr.slice().sort((a, b) => wordCountOf(b) - wordCountOf(a));
-  return arr;
+  return arr.slice();
 }
 
 async function renderHistory() {
   // ALWAYS re-read from disk on entry/refresh — the stale-page bug was users
   // dictating, opening History, and seeing yesterday. (Filter keystrokes go
   // through drawHistory directly, so typing never refetches.)
-  let presets;
-  [HX.transcripts, HX.clipboard, HX.prompts, HX.favorites, presets] =
-    await Promise.all([
+  const list = $("#hist-list");
+  if (list) list.setAttribute("aria-busy", "true");
+  try {
+    const [transcripts, clipboard, prompts, favorites, presets] = await Promise.all([
       call("get_transcripts", 200),
       call("get_clipboard", 200),
       call("get_prompts"),
       call("get_favorites"),
       call("get_presets"),
     ]);
-  HX.presets = presets || [];
-  HX._loaded = true;
-  drawHistTools(); // the absorbed-Deck Smart Mode + Presets sections
-  drawHistory();
+    HX.transcripts = Array.isArray(transcripts) ? transcripts : [];
+    HX.clipboard = Array.isArray(clipboard) ? clipboard : [];
+    HX.prompts = Array.isArray(prompts) ? prompts : [];
+    HX.favorites = Array.isArray(favorites) ? favorites : [];
+    HX.presets = Array.isArray(presets) ? presets : [];
+    HX._loaded = true;
+    drawHistTools(); // the absorbed-Deck Smart Mode + Presets sections
+    drawHistory();
+    return true;
+  } catch (error) {
+    console.error("Deck refresh failed:", error);
+    if (!HX._loaded && list) {
+      list.innerHTML = '<div class="deck-empty"><span class="deck-empty-icon" data-icon="refresh"></span><strong>Deck couldn’t load</strong><span>Your local items are still safe. Try reading them again.</span><button class="btn btn-sm btn-ghost" type="button" data-deck-retry>Try again</button></div>';
+      paintIcons(list);
+      $("[data-deck-retry]", list)?.addEventListener("click", renderHistory);
+    }
+    toast("Couldn't refresh the Deck", "err", 2400);
+    return false;
+  } finally {
+    if (list) list.setAttribute("aria-busy", "false");
+  }
 }
 
-/* The most recent transcript by timestamp (the canonical "latest"), fetched fresh
-   so it's correct regardless of the current sort/filter. */
-async function latestTranscript() {
-  const r = await call("get_transcripts", 50);
-  const arr = Array.isArray(r) ? r : [];
-  if (!arr.length) return null;
-  let best = arr[0];
-  for (const it of arr) {
-    const a = it.stamp || it.time || "",
-      b = best.stamp || best.time || "";
-    if (a > b) best = it;
-  }
-  return best;
+function updateLatestActions() {
+  const item = HX.latestActionItem;
+  const action = item && item._action;
+  const paste = $("#hist-paste-latest");
+  const copy = $("#hist-copy-latest");
+  if (!paste || !copy) return;
+  paste.hidden = !action;
+  copy.hidden = !action || !!action.imagePath || !action.text;
+  if (!action) return;
+  const scope = activeContentFilter();
+  const noun = action.label || "item";
+  const qualifier = scope === "clipboard" && item._isImage ? "current image" : `latest ${noun}`;
+  setText("#hist-paste-latest-label", `Paste ${qualifier}`);
+  setText("#hist-copy-latest-label", `Copy ${qualifier}`);
+  paste.title = `Paste the ${qualifier} into the app you came from`;
+  copy.title = `Copy the ${qualifier} to the clipboard`;
 }
 async function pasteLatest() {
-  const it = await latestTranscript();
-  if (!it) {
-    toast("No transcripts yet", "err", 1500);
+  const action = HX.latestActionItem && HX.latestActionItem._action;
+  if (!action) {
+    toast("No matching Deck item to paste", "info", 1600);
     return;
   }
-  const r = await call("deck_paste", it.text || "");
-  toast(
-    r && r.ok
-      ? "Pasted latest transcript"
-      : "Couldn’t paste — click a text field first",
-    r && r.ok ? "ok" : "err",
-    1600,
-  );
+  const r = action.imagePath
+    ? await call("deck_paste_image", action.imagePath)
+    : await call("deck_paste", action.text || "");
+  if (r && r.ok) {
+    showInsertionResult(r, `Inserted ${action.label || "Deck item"}`, 2000);
+    return;
+  }
+  if (!action.imagePath && action.text && await copyTextReliable(action.text)) {
+    toast("Paste couldn’t be confirmed — copied instead", "info", 2400);
+    return;
+  }
+  toast((r && r.message) || "Couldn’t paste — focus a destination and try again", "err", 2600);
 }
 async function copyLatest() {
-  const it = await latestTranscript();
-  if (!it) {
-    toast("No transcripts yet", "err", 1500);
+  const action = HX.latestActionItem && HX.latestActionItem._action;
+  if (!action || !action.text) {
+    toast("No matching text item to copy", "info", 1500);
     return;
   }
-  const ok = await copyTextReliable(it.text || "");
-  toast(ok ? "Copied latest transcript" : "Couldn't copy to the clipboard",
+  const ok = await copyTextReliable(action.text);
+  toast(ok ? `Copied ${action.label || "Deck item"}` : "Couldn't copy to the clipboard",
         ok ? "ok" : "err", 1500);
 }
 
@@ -1944,20 +2204,22 @@ async function copyLatest() {
    clipboard capture) the moment it lands — whatever page is open re-renders.
    No focus steal, no manual leave-and-return. */
 window.pyRefresh = function (what) {
-  if (what === "meeting_limit") {
+  if (what === "meeting_limit" || what === "meeting_capture_error") {
     const wasRecording = MEET.recording;
     clearInterval(MEET.recTimer);
-    MEET.recording = false;
-    MEET.paused = false;
-    MEET.pausedElapsed = 0;
+    MEET.stopping = false;
     MEET.autoStopping = false;
-    $("#meeting-recording")?.setAttribute("hidden", "");
-    setText("#meeting-record-label", "Record meeting");
-    setText("#meeting-pause-label", "Pause");
     if (wasRecording) {
-      toast("Four-hour limit reached · audio saved and transcription started", "info", 4500);
+      toast(what === "meeting_limit"
+        ? "Four-hour limit reached · audio saved and transcription started"
+        : "Recording stopped after an audio capture problem · the safe prefix was saved",
+      what === "meeting_limit" ? "info" : "err", 4800);
     }
-    if (CURRENT === "meetings") renderMeetings();
+    meetingReconcileRecording({ ok: true, active: false, state: "idle",
+      recording: false, paused: false, captured_seconds: 0,
+      max_seconds: MEET.maxSeconds }).then(function () {
+        if (CURRENT === "meetings") renderMeetings();
+    });
     return;
   }
   // The History hub live-updates the instant new data lands — but never clobber
@@ -1977,19 +2239,23 @@ window.pyRefresh = function (what) {
       if (what === "clipboard") {
         call("get_clipboard", 200).then(function (data) {
           if (CURRENT !== "history") return; // tab switched away — discard
-          HX.clipboard = data || [];
+          HX.clipboard = Array.isArray(data) ? data : [];
           drawHistory();
         }).catch(function () {});
       } else if (what === "prompts") {
         call("get_prompts").then(function (data) {
           if (CURRENT !== "history") return;
-          HX.prompts = data || [];
+          HX.prompts = Array.isArray(data) ? data : [];
           drawHistory();
         }).catch(function () {});
       } else {
         // "history" (new transcript), "favorites", or unknown → full refresh
         renderHistory();
       }
+    } else {
+      // Preserve the ordered selection while the user is acting on it, but do
+      // not lose the notification. Clearing the selection applies queued data.
+      HX.refreshPending.add(what || "history");
     }
   } else if (CURRENT === "stats") {
     renderStats();
@@ -2011,14 +2277,14 @@ window.pyRefresh = function (what) {
   // self-contained; their data refreshes on explicit re-entry via navTo().
 };
 function setSub(s) {
-  // Legacy stub — filter chips have replaced subtabs (owner v7).
-  // Map old subtab names to the corresponding filter chip toggle.
+  // Legacy entry point retained for older bridge messages.
   HX.activeFilters.clear();
+  HX.favoriteOnly = false;
   if (s === "transcripts") {
-    HX.activeFilters.add("transcripts").add("emails");
+    HX.activeFilters.add("transcripts");
   } else if (s === "favorites") {
-    HX.activeFilters.add("favorites");
-  } else {
+    HX.favoriteOnly = true;
+  } else if (s) {
     HX.activeFilters.add(s);
   }
   drawHistory();
@@ -2075,17 +2341,29 @@ function drawHistory() {
 
   // ---- Build unified item list from all sources, each tagged with a _type ----
   const unified = [];
+  const liveTexts = new Set();
+  let order = 0;
+  const pushItem = (item) => {
+    item._order = order++;
+    unified.push(item);
+  };
 
   // Transcript items: split into "transcripts" (non-email) and "emails" (mode==="email")
   (HX.transcripts || []).forEach((i, idx) => {
     const isEmail = (i.mode || "") === "email";
-    unified.push({
+    const displayText = HX.pre && i.raw ? i.raw : i.text;
+    const key = selKeyOf("transcript", i.stamp, i.text);
+    liveTexts.add(String(i.text || ""));
+    pushItem({
       _type: isEmail ? "emails" : "transcripts",
       _idx: idx,
       _src: "transcript",
-      _render: () => {
-        const showRaw = HX.pre && i.raw;
-        return rowHTML({
+      _fav: !!i.fav,
+      _key: key,
+      _payload: { kind: "TEXT", time: i.time, text: displayText || "" },
+      _action: { text: displayText || "", label: isEmail ? "email" : "transcript" },
+      _render: () =>
+        rowHTML({
           tag: MODE_LABELS[i.mode] || i.mode,
           color: MODE_COLORS[i.mode] || "var(--gold)",
           meta:
@@ -2096,7 +2374,7 @@ function drawHistory() {
                 ? " · raw transcript"
                 : " · no raw kept (same as output)"
               : ""),
-          text: showRaw ? i.raw : i.text,
+          text: displayText,
           fav: i.fav,
           idx,
           kind: "transcript",
@@ -2106,8 +2384,8 @@ function drawHistory() {
           quality: i.quality,
           via: i.via,
           stamp: i.stamp,
-        });
-      },
+          selKey: key,
+        }),
       _qtext: (i.text || "") + " " + (i.raw || ""),
       _stamp: i.stamp,
       _words: i.words || 0,
@@ -2117,13 +2395,24 @@ function drawHistory() {
   // Clipboard items
   (HX.clipboard || []).forEach((i, idx) => {
     const newest = idx === 0;
-    unified.push({
+    const isImage = i.type === "image";
+    const key = isImage
+      ? null
+      : selKeyOf("clipboard", i.stamp, i.text);
+    if (!isImage) liveTexts.add(String(i.text || ""));
+    pushItem({
       _type: "clipboard",
       _idx: idx,
       _src: "clipboard",
-      _isImage: i.type === "image",
+      _fav: !!i.fav,
+      _key: key,
+      _isImage: isImage,
+      _payload: isImage ? null : { kind: "CLIP", time: i.time, text: i.text || "" },
+      _action: isImage
+        ? { imagePath: i.path || "", label: "clipboard image" }
+        : { text: i.text || "", label: "clipboard item" },
       _render: () => {
-        if (i.type === "image") return imageRowHTML(i, idx, newest);
+        if (isImage) return imageRowHTML(i, idx, newest);
         return rowHTML({
           tag: "clip",
           color: "var(--mode-context)",
@@ -2136,6 +2425,7 @@ function drawHistory() {
           favtext: i.text,
           latest: newest,
           stamp: i.stamp,
+          selKey: key,
         });
       },
       _qtext: i.text || "",
@@ -2146,10 +2436,16 @@ function drawHistory() {
 
   // Prompt items
   (HX.prompts || []).forEach((i, idx) => {
-    unified.push({
+    const key = selKeyOf("prompt", i.time, i.prompt);
+    liveTexts.add(String(i.prompt || ""));
+    pushItem({
       _type: "prompts",
       _idx: idx,
       _src: "prompt",
+      _fav: !!i.fav,
+      _key: key,
+      _payload: { kind: "PROMPT", time: (i.time || "").slice(-5), text: i.prompt || "" },
+      _action: { text: i.prompt || "", label: "prompt" },
       _render: () =>
         rowHTML({
           tag: "Prompt",
@@ -2163,6 +2459,8 @@ function drawHistory() {
           src: "prompt",
           favtext: i.prompt,
           mode: "prompt",
+          stamp: i.time,
+          selKey: key,
         }),
       _qtext: (i.prompt || "") + " " + (i.request || ""),
       _stamp: i.time,
@@ -2170,8 +2468,10 @@ function drawHistory() {
     });
   });
 
-  // Favourite items
+  // Favourites are a state, not a parallel source. Only add a fallback copy
+  // when the starred original has already aged out of its capped source store.
   (HX.favorites || []).forEach((i, idx) => {
+    if (liveTexts.has(String(i.text || ""))) return;
     const fmode = i.mode || "";
     const isMode = fmode && MODE_LABELS[fmode];
     const label = isMode
@@ -2184,10 +2484,23 @@ function drawHistory() {
     const color = isMode
       ? MODE_COLORS[fmode] || "var(--gold)"
       : SRC_COLOR[i.source] || "var(--gold)";
-    unified.push({
-      _type: "favorites",
+    const type = i.source === "prompt"
+      ? "prompts"
+      : fmode === "email"
+        ? "emails"
+        : i.source === "clipboard"
+          ? "clipboard"
+          : "transcripts";
+    const payloadKind = type === "clipboard" ? "CLIP" : type === "prompts" ? "PROMPT" : "TEXT";
+    const key = selKeyOf("favorite", i.added || i.time, i.text);
+    pushItem({
+      _type: type,
       _idx: idx,
       _src: "favorite",
+      _fav: true,
+      _key: key,
+      _payload: { kind: payloadKind, time: i.time || "", text: i.text || "" },
+      _action: { text: i.text || "", label: "starred item" },
       _render: () =>
         rowHTML({
           tag: "\u2605 " + label,
@@ -2204,6 +2517,8 @@ function drawHistory() {
           mode: fmode,
           quality: i.quality,
           via: i.via,
+          stamp: i.added || i.time,
+          selKey: key,
         }),
       _qtext: i.text || "",
       _stamp: i.added,
@@ -2211,12 +2526,13 @@ function drawHistory() {
     });
   });
 
-  // ---- Filter by active filter chips (union semantics) ----
+  // ---- Filter by visible content lane + optional Starred state ----
   const activeTypes = HX.activeFilters.size > 0
     ? HX.activeFilters
-    : new Set(["transcripts", "clipboard", "prompts", "favorites", "emails"]);
+    : new Set(["transcripts", "clipboard", "prompts", "emails"]);
 
   let items = unified.filter((u) => activeTypes.has(u._type));
+  if (HX.favoriteOnly) items = items.filter((u) => u._fav);
 
   // Text search (case-insensitive, across all visible content types)
   if (q) {
@@ -2233,91 +2549,133 @@ function drawHistory() {
     (u) => u._stamp,
   );
 
-  // Clear button: only show if there are visible items from clearable sources
-  const hasClearable = items.some(
-    (u) => u._src === "transcript" || u._src === "clipboard" || u._src === "prompt",
-  );
-  cleanBtn.hidden = !hasClearable;
-
-  if (hasClearable) {
-    const counts = { transcripts: 0, clipboard: 0, prompts: 0 };
-    items.forEach((u) => {
-      if (u._src === "transcript") counts.transcripts++;
-      else if (u._src === "clipboard") counts.clipboard++;
-      else if (u._src === "prompt") counts.prompts++;
-    });
-    let best = "transcripts";
-    if (counts.clipboard > counts[best]) best = "clipboard";
-    if (counts.prompts > counts[best]) best = "prompts";
-    setText("#hist-clear-label", `Clear ${best}`);
-    cleanBtn.title = `Clear the visible ${best} entries`;
-    cleanBtn.onclick = () => clearList(best);
+  // Destructive clearing is available only where the visible lane maps exactly
+  // to a backend store. Never let All, Starred, Email, or a search result imply
+  // that only the currently visible subset will be removed.
+  const activeType = activeContentFilter();
+  const clearConfig = {
+    clipboard: ["clipboard", "Clear clipboard history"],
+    prompts: ["prompts", "Clear prompt history"],
+    // Transcript storage also contains Email-mode outputs, so say so plainly.
+    transcripts: ["transcripts", "Clear transcripts + emails"],
+  }[activeType];
+  cleanBtn.hidden = !clearConfig || HX.favoriteOnly;
+  if (clearConfig && !HX.favoriteOnly) {
+    setText("#hist-clear-label", clearConfig[1]);
+    cleanBtn.title = `Clear all ${clearConfig[0]} from local history`;
+    cleanBtn.onclick = () => clearList(clearConfig[0]);
   }
 
-  const EMPTY = {
-    transcripts: "Nothing here yet \u2014 press Ctrl+Super and dictate something.",
-    clipboard: "Nothing captured yet \u2014 copy any text or image and it appears here.",
-    prompts: "No prompts yet \u2014 switch Prompt on (the island or Settings) and dictate an idea.",
-    favorites: "No favourites yet \u2014 click the \u2605 on any item to pin it here.",
-    emails: "No email transcripts yet \u2014 dictate with Email mode selected.",
-  };
+  // Build the action map from every loaded item (not only the visible filter),
+  // so a selection remains valid while the user browses another content lane.
+  const itemMap = new Map();
+  unified.forEach((item) => {
+    if (item._key && item._payload) itemMap.set(item._key, item._payload);
+  });
+  const captured = (HX.injected || []).map((selection) => {
+    const key = selKeyOf("selection", selection.capturedAt || "captured", selection.text);
+    const payload = { kind: "CLIP", time: "", text: selection.text || "" };
+    itemMap.set(key, payload);
+    return {
+      selection,
+      _key: key,
+      _payload: payload,
+      _action: { text: selection.text || "", label: "captured selection" },
+      _stamp: selection.capturedAt || "",
+    };
+  });
+  HX.itemByKey = itemMap;
+  const selectionCountBeforePrune = HX.selected.length;
+  HX.selected = HX.selected.filter((key) => itemMap.has(key));
 
-  // Captured selections render above the main list
-  const inj = (HX.injected || []).filter(
-    (s) => !q || s.text.toLowerCase().includes(q),
-  );
+  // Captured selections are transient Clipboard material: show them only in All
+  // or Clipboard, include them in counts/actions, and never in Starred-only.
+  const showCaptured = !HX.favoriteOnly && (!activeType || activeType === "clipboard");
+  const inj = showCaptured
+    ? captured.filter((item) => !q || item.selection.text.toLowerCase().includes(q))
+    : [];
   const injGroup = inj.length
     ? `<div class="hist-group"><span class="hg-name">Captured selection</span><div class="hg-rule"></div><span class="hg-count">${inj.length} ${inj.length === 1 ? "item" : "items"}</span></div>` +
       inj
-        .map((s) =>
+        .map((item) =>
           rowHTML({
             tag: "Selection",
             color: "var(--mode-convert)",
             meta: "highlighted in another app",
-            text: s.text,
+            text: item.selection.text,
             fav: false,
             idx: 0,
             kind: "selection",
             src: "clipboard",
-            favtext: s.text,
+            favtext: item.selection.text,
+            selKey: item._key,
           }),
         )
         .join("")
     : "";
 
-  // Context-aware empty message
-  let emptyMsg = "Nothing here yet.";
-  if (!items.length) {
-    if (HX.activeFilters.size === 1) {
-      const onlyType = [...HX.activeFilters][0];
-      emptyMsg = EMPTY[onlyType] || emptyMsg;
-    } else if (HX.activeFilters.size === 0) {
-      const allEmpty =
-        (!HX.transcripts || !HX.transcripts.length) &&
-        (!HX.clipboard || !HX.clipboard.length) &&
-        (!HX.prompts || !HX.prompts.length) &&
-        (!HX.favorites || !HX.favorites.length);
-      if (allEmpty) {
-        emptyMsg = "Nothing here yet \u2014 press Ctrl+Super and dictate to get started.";
-      } else {
-        emptyMsg = "No items match your current search or filters.";
-      }
-    } else {
-      emptyMsg = "No items match your current search or filters.";
+  const totalVisible = items.length + inj.length;
+  const sourceCopy = {
+    "": ["Your Deck is ready", "Dictate, copy text or an image, or create a prompt and it will appear here."],
+    transcripts: ["No transcripts yet", "Press Ctrl + Win and dictate. Your finished text will be saved here."],
+    clipboard: ["Clipboard is ready", "Copy text or an image in any app and Mumble will keep it here locally."],
+    prompts: ["No prompts yet", "Use Prompt mode for a dictation and the finished prompt will appear here."],
+    emails: ["No email outputs yet", "Choose Email mode, then dictate the message you want to send."],
+  };
+  let emptyTitle;
+  let emptyBody;
+  let emptyAction = "";
+  if (q) {
+    emptyTitle = `No matches for \u201c${esc(HX.q.trim())}\u201d`;
+    emptyBody = "Try a different phrase or clear the Deck search.";
+    emptyAction = '<button class="btn btn-sm btn-ghost" type="button" data-empty-clear-search>Clear search</button>';
+  } else if (HX.favoriteOnly) {
+    emptyTitle = `No starred ${DECK_TYPE_LABELS[activeType] || "items"}`;
+    emptyBody = "Star an item in this content type and it will stay easy to find here.";
+  } else {
+    [emptyTitle, emptyBody] = sourceCopy[activeType] || sourceCopy[""];
+    if (activeType === "clipboard") {
+      emptyAction = '<button class="btn btn-sm btn-ghost" type="button" data-empty-capture><span data-icon="wand"></span>Capture highlighted text</button>';
     }
   }
+  const emptyHTML = `<div class="deck-empty"><span class="deck-empty-icon" data-icon="${activeType === "clipboard" ? "copy" : activeType === "prompts" ? "wand" : activeType === "emails" ? "envelope" : "layers"}"></span><strong>${emptyTitle}</strong><span>${emptyBody}</span>${emptyAction}</div>`;
 
   list.innerHTML =
     injGroup +
     (html ||
-      (injGroup ? "" : `<div class="empty">${emptyMsg}</div>`));
+      (injGroup ? "" : emptyHTML));
   paintIcons(list);
   wireRows(list);
   loadThumbs(list);
+  $("[data-empty-clear-search]", list)?.addEventListener("click", () => {
+    HX.q = "";
+    const search = $("#hist-filter");
+    if (search) search.value = "";
+    drawHistory();
+  });
+  $("[data-empty-capture]", list)?.addEventListener("click", captureSelection);
+
+  HX.visibleKeys = new Set([
+    ...items.filter((item) => item._key).map((item) => item._key),
+    ...inj.map((item) => item._key),
+  ]);
+  HX.visibleItems = [...inj, ...items];
+  HX.latestActionItem = HX.visibleItems
+    .filter((item) => item._action && (item._action.text || item._action.imagePath))
+    .slice()
+    .sort((a, b) => deckStampValue(b) - deckStampValue(a))[0] || null;
+
+  const counts = { all: unified.length + captured.length, transcripts: 0, clipboard: captured.length, prompts: 0, emails: 0 };
+  unified.forEach((item) => {
+    if (Object.prototype.hasOwnProperty.call(counts, item._type)) counts[item._type]++;
+  });
+  counts.starred = unified.filter((item) => activeTypes.has(item._type) && item._fav).length;
+  syncContentFilterUI(counts);
   setText(
     "#hist-count",
-    items.length + " item" + (items.length === 1 ? "" : "s"),
+    totalVisible + " item" + (totalVisible === 1 ? "" : "s"),
   );
+  updateLatestActions();
 
   // Post/Pre-AI toggle: visible only when transcripts or emails are active
   const hasTranscriptContent =
@@ -2332,6 +2690,10 @@ function drawHistory() {
 
   refreshSelectionUI(list);
   syncShimmer(list);
+  if (selectionCountBeforePrune && !HX.selected.length && HX.refreshPending.size) {
+    HX.refreshPending.clear();
+    queueMicrotask(() => renderHistory().catch(() => toast("Couldn't refresh the Deck", "err")));
+  }
 }
 
 /* clipboard image rows: fetch tiny base64 thumbnails from the backend
@@ -2379,6 +2741,7 @@ function rowHTML({
   mode,
   latest,
   stamp,
+  selKey,
 }) {
   // UX-Pilot row design: a glowing mode dot + the mode name in its colour
   // lead the meta line; actions reveal on hover; locally derived audio
@@ -2413,19 +2776,22 @@ function rowHTML({
     : "";
   // selection checkbox — numbered in the order you tick (owner v4 §6b); expand
   // affordance on the text so the FULL transcript can be read on demand (§D).
-  const sk = selKeyOf(text);
+  const sk = selKey || selKeyOf(kind, stamp, text);
   const ord = HX.selected.indexOf(sk);
   const checked = ord >= 0;
   const expanded = HX.expanded.has(sk);
   const longText = (text || "").length > 220;
-  const check = `<button class="hist-check ${checked ? "on" : ""}" data-selcheck="${esc(sk)}" title="${checked ? "Selected #" + (ord + 1) + " — click to deselect" : "Select for merge / run"}" aria-pressed="${checked}">${checked ? ord + 1 : ""}</button>`;
+  const checkLabel = checked
+    ? `Selected number ${ord + 1}. Uncheck to remove from bulk actions`
+    : "Select this item for bulk actions";
+  const check = `<label class="hist-check-wrap" data-selection-control title="${esc(checkLabel)}"><input class="hist-check" type="checkbox" data-selcheck="${esc(sk)}" aria-label="${esc(checkLabel)}"${checked ? " checked" : ""}><span class="hist-check-visual" aria-hidden="true">${checked ? ord + 1 : ""}</span></label>`;
   const expandBtn = longText
     ? `<button class="row-expand btn-icon btn-ghost" data-expand title="${expanded ? "Collapse" : "Read full"}" aria-label="Expand">${svg("expand")}</button>`
     : "";
   // ROW LAYOUT (owner 2026-06-23): the action cluster lives INSIDE the meta line
   // (right-aligned) — NOT in a right-hand column — so the transcript text below
   // runs the full width of the row. `.row-metatext` is the shrinkable part.
-  return `<div class="row${latest ? " is-latest" : ""}${checked ? " selrow" : ""}${expanded ? " expanded" : ""}" data-idx="${idx}" data-stamp="${esc(stamp || "")}" data-kind="${kind}" data-selkey="${esc(sk)}">
+  return `<article class="row deck-selectable-row${latest ? " is-latest" : ""}${checked ? " selrow" : ""}${expanded ? " expanded" : ""}" data-idx="${idx}" data-stamp="${esc(stamp || "")}" data-kind="${kind}" data-selkey="${esc(sk)}" data-record-text="${esc(favtext || text)}" data-row-label="${esc(tag)}" data-selectable="true" role="group" tabindex="-1" aria-label="${esc(tag)} Deck item. ${checked ? `Selected number ${ord + 1}` : "Not selected"}. Press Space or Enter to toggle selection.">
     ${check}
     <div class="row-main">
       <div class="row-meta">
@@ -2441,20 +2807,21 @@ function rowHTML({
           ${delBtn}
         </div>
       </div>
-      <div class="row-text${longText ? " expandable" : ""}" data-copy="${esc(text)}"${longText ? ' title="Click to expand / collapse"' : ""}>${esc(text || "")}</div>
-    </div></div>`;
+      <div class="row-text${longText ? " expandable" : ""}" data-copy="${esc(text)}">${esc(text || "")}</div>
+    </div></article>`;
 }
 function imageRowHTML(i, idx, latest) {
   const liveChip = latest
     ? `<span class="latest-chip" title="The most recent clipboard item — what Ctrl+V would paste right now">● Current</span>`
     : "";
-  return `<div class="row${latest ? " is-latest" : ""}" data-idx="${idx}" data-stamp="${esc(i.stamp || "")}" data-kind="clip">
-    <div class="thumb flex items-center justify-center t-mute" data-thumb-path="${esc(i.path || "")}">${svg("layers")}</div>
+  return `<article class="row clipboard-image-row${latest ? " is-latest" : ""}" data-idx="${idx}" data-stamp="${esc(i.stamp || "")}" data-kind="clip" data-image-path="${esc(i.path || "")}" data-image-hash="${esc(i.hash || "")}">
+    <div class="thumb hist-image-thumb flex items-center justify-center t-mute" data-thumb-path="${esc(i.path || "")}">${svg("layers")}</div>
     <div class="row-main"><div class="row-meta"><span class="tag" style="color:var(--mode-context);background:color-mix(in srgb,var(--mode-context) 16%,transparent)">image</span><span class="row-metatext">${esc(i.time)} · ${esc(i.size || "")}</span>${liveChip}
       <div class="row-actions">
+        <button class="btn btn-sm btn-gold deck-image-paste" data-pasteimage="${esc(i.path || "")}" title="Paste this image into the app you came from" aria-label="Paste image into previous app">${svg("type")}<span>Paste image</span></button>
         <button class="btn-icon btn-ghost" data-del title="Delete" aria-label="Delete">${svg("trash")}</button>
       </div></div>
-      <div class="row-text t-mute">Image copied to clipboard</div></div></div>`;
+      <div class="row-text t-mute">Clipboard image · paste it back into any compatible app</div></div></article>`;
 }
 // Re-fetch the ★ store from the backend (the single source of truth) so the
 // local cache can never drift out of step — the old index-based mutation is
@@ -2508,14 +2875,9 @@ function wireRows(root) {
           });
         else
           HX.favorites = HX.favorites.filter((f) => f.text !== b.dataset.fav);
-        // mirror onto any other visible row with the same text (no full redraw → no scroll jump)
-        $$("[data-star]", root).forEach((s) => {
-          if (s.dataset.fav === b.dataset.fav) {
-            s.classList.toggle("on", on);
-            s.setAttribute("aria-pressed", on ? "true" : "false");
-          }
-        });
-        if (HX.activeFilters.size === 0 || HX.activeFilters.has("favorites")) drawHistory();
+        // Starred is a live filter state. Rebuild so counts and a Starred-only
+        // lane immediately include/remove the changed item.
+        drawHistory();
         toast(
           on ? "Added to favourites" : "Removed from favourites",
           "ok",
@@ -2531,6 +2893,14 @@ function wireRows(root) {
           toast(ok ? "Copied" : "Couldn't copy", ok ? "ok" : "err", 1200));
       }),
   );
+  $$("[data-pasteimage]", root).forEach(
+    (b) =>
+      (b.onclick = async () => {
+        const r = await call("deck_paste_image", b.dataset.pasteimage || "");
+        if (r && r.ok) showInsertionResult(r, "Inserted clipboard image", 2000);
+        else toast((r && r.message) || "Couldn't paste the image", "err", 1800);
+      }),
+  );
   $$("[data-reader]", root).forEach(
     (b) =>
       (b.onclick = () => {
@@ -2541,15 +2911,29 @@ function wireRows(root) {
   $$("[data-convert]", root).forEach(
     (b) => (b.onclick = () => openConvertMenu(b.dataset.convert)),
   );
-  // Hover = implicit selection (owner 2026-06-20): track the row under the cursor
-  // so Ctrl+H can run the armed Smart Mode / preset on it (or open the Smart Mode
-  // menu if nothing is armed). Restores the "hover, Ctrl+H, run" affordance.
-  $$(".row", root).forEach((row) => {
+  // Every selectable card is one generous target. Native checkboxes preserve
+  // explicit semantics, while the row supports click, Space/Enter, and roving
+  // arrow-key focus. Interactive row actions keep their own behaviour.
+  const selectableRows = $$(".deck-selectable-row", root);
+  const makeRowActive = (row, focus) => {
+    selectableRows.forEach((candidate) => {
+      candidate.tabIndex = candidate === row ? 0 : -1;
+    });
+    if (focus) row.focus();
+  };
+  const toggleRowSelection = (row) => {
+    const sk = row.dataset.selkey || "";
+    if (!sk || !HX.itemByKey.has(sk)) return;
+    const i = HX.selected.indexOf(sk);
+    if (i >= 0) HX.selected.splice(i, 1);
+    else HX.selected.push(sk);
+    makeRowActive(row, false);
+    refreshSelectionUI(root);
+  };
+  selectableRows.forEach((row) => {
     row.addEventListener("mouseenter", () => {
-      HX.hover = {
-        text: row.dataset.selkey || "",
-        kind: row.dataset.kind || "",
-      };
+      const item = HX.itemByKey.get(row.dataset.selkey || "");
+      HX.hover = item ? { ...item, key: row.dataset.selkey || "" } : null;
       $$(".row.hover-target", root).forEach((r) =>
         r.classList.remove("hover-target"),
       );
@@ -2557,20 +2941,49 @@ function wireRows(root) {
     });
     row.addEventListener("mouseleave", () => {
       row.classList.remove("hover-target");
-      if (HX.hover && HX.hover.text === (row.dataset.selkey || ""))
+      if (HX.hover && HX.hover.key === (row.dataset.selkey || ""))
         HX.hover = null;
     });
+    row.addEventListener("focus", () => {
+      makeRowActive(row, false);
+      const item = HX.itemByKey.get(row.dataset.selkey || "");
+      HX.hover = item ? { ...item, key: row.dataset.selkey || "" } : null;
+    });
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, label, select, textarea")) return;
+      const selection = window.getSelection && window.getSelection();
+      if (selection && !selection.isCollapsed && row.contains(selection.anchorNode)) return;
+      toggleRowSelection(row);
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.target !== row) return;
+      if (event.key === " " || event.key === "Enter") {
+        event.preventDefault();
+        toggleRowSelection(row);
+        return;
+      }
+      const at = selectableRows.indexOf(row);
+      let next = null;
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") next = selectableRows[at + 1] || selectableRows[0];
+      if (event.key === "ArrowUp" || event.key === "ArrowLeft") next = selectableRows[at - 1] || selectableRows[selectableRows.length - 1];
+      if (event.key === "Home") next = selectableRows[0];
+      if (event.key === "End") next = selectableRows[selectableRows.length - 1];
+      if (next) {
+        event.preventDefault();
+        makeRowActive(next, true);
+      }
+    });
   });
-  // selection checkbox — toggle ordered multi-select (no full redraw → no scroll jump)
+  if (selectableRows.length) {
+    const active = selectableRows.find((row) => HX.selected.includes(row.dataset.selkey)) || selectableRows[0];
+    makeRowActive(active, false);
+  }
+  // Native checkbox change shares the same ordered selection state.
   $$("[data-selcheck]", root).forEach(
     (b) =>
-      (b.onclick = (e) => {
+      (b.onchange = (e) => {
         e.stopPropagation();
-        const sk = b.dataset.selcheck;
-        const i = HX.selected.indexOf(sk);
-        if (i >= 0) HX.selected.splice(i, 1);
-        else HX.selected.push(sk);
-        refreshSelectionUI(root);
+        toggleRowSelection(b.closest(".row"));
       }),
   );
   // expand / collapse a transcript to read it in full (owner v4 §D)
@@ -2583,9 +2996,6 @@ function wireRows(root) {
     if (eb)
       eb.title = row.classList.contains("expanded") ? "Collapse" : "Read full";
   };
-  $$(".row-text.expandable", root).forEach(
-    (t) => (t.onclick = () => toggleExpand(t.closest(".row"))),
-  );
   $$("[data-expand]", root).forEach(
     (b) =>
       (b.onclick = (e) => {
@@ -2598,12 +3008,11 @@ function wireRows(root) {
       (b.onclick = async () => {
         const row = b.closest(".row");
         const kind = row.dataset.kind;
-        // Delete by STABLE identity (stamp [+ text]), never array index. data-selkey
-        // holds the row's text (selKeyOf); image rows have none → text '' → matched
-        // by stamp. Index deletion sent a stale position when the list shifted under
-        // it (a prior delete, a refresh, or a controller insert) → wrong row removed.
+        // Delete by stable persisted identity (stamp + record text), never the
+        // selection key or a shifting array index.
         const stamp = row.dataset.stamp || "";
-        const text = row.dataset.selkey || "";
+        const text = row.dataset.recordText || "";
+        const imageHash = row.dataset.imageHash || "";
         b.disabled = true;
         let removed = false;
         if (kind === "selection") {
@@ -2622,15 +3031,16 @@ function wireRows(root) {
           );
           removed = true;
         } else if (kind === "clip") {
-          const result = await call("delete_clip", stamp, text);
+          const result = await call("delete_clip", stamp, text, imageHash);
           if (!result || result.ok !== true) {
             b.disabled = false;
             toast("Couldn't delete the clipboard item", "err");
             return;
           }
-          HX.clipboard = HX.clipboard.filter(
-            (i) => !((i.stamp || "") === stamp && (i.text || "") === text),
-          );
+          HX.clipboard = HX.clipboard.filter((i) => {
+            if (imageHash) return (i.hash || "") !== imageHash;
+            return !((i.stamp || "") === stamp && (i.text || "") === text);
+          });
           removed = true;
         } else if (kind === "favorite") {
           // remove by the favourite's unique TEXT KEY, never by array index, so one
@@ -2658,6 +3068,8 @@ function wireRows(root) {
         }
         b.disabled = false;
         if (!removed) return;
+        const removedKey = row.dataset.selkey || "";
+        if (removedKey) HX.selected = HX.selected.filter((key) => key !== removedKey);
         row.style.transition = "opacity .2s";
         row.style.opacity = "0";
         setTimeout(() => row.remove(), 200);
@@ -2708,22 +3120,58 @@ function refreshSelectionUI(root) {
   $$("[data-selcheck]", root).forEach((b) => {
     const ord = HX.selected.indexOf(b.dataset.selcheck);
     const on = ord >= 0;
-    b.classList.toggle("on", on);
-    b.textContent = on ? ord + 1 : "";
-    b.setAttribute("aria-pressed", on ? "true" : "false");
-    b.title = on
-      ? `Selected #${ord + 1} — click to deselect`
-      : "Select for merge / run";
+    b.checked = on;
+    const label = on
+      ? `Selected number ${ord + 1}. Uncheck to remove from bulk actions`
+      : "Select this item for bulk actions";
+    b.setAttribute("aria-label", label);
+    const wrap = b.closest("[data-selection-control]");
+    if (wrap) wrap.title = label;
+    const visual = wrap && $(".hist-check-visual", wrap);
+    if (visual) visual.textContent = on ? ord + 1 : "";
     const row = b.closest(".row");
-    if (row) row.classList.toggle("selrow", on);
+    if (row) {
+      row.classList.toggle("selrow", on);
+      row.setAttribute(
+        "aria-label",
+        `${row.dataset.rowLabel || "Deck"} item. ${on ? `Selected number ${ord + 1}` : "Not selected"}. Press Space or Enter to toggle selection.`,
+      );
+    }
   });
   updateHistActionbar();
 }
+const DECK_SELECTION_MENUS = [
+  ["#hist-mode-toggle", "#hist-mode-menu"],
+  ["#hist-preset-toggle", "#hist-preset-menu"],
+  ["#deck-selection-more-toggle", "#deck-selection-more"],
+];
+
 function updateHistActionbar() {
   const bar = $("#hist-actionbar");
   if (!bar) return;
   const n = HX.selected.length;
   bar.hidden = n === 0;
+  const browse = document.querySelector('[data-deck-state="browse"]');
+  if (browse) browse.hidden = n > 0;
+  const historyView = document.querySelector('[data-view="history"]');
+  if (historyView) historyView.classList.toggle("selection-active", n > 0);
+  if (n) {
+    const browseActions = $("#deck-toolbar-actions");
+    const browseMore = $("#deck-more-toggle");
+    const browseSecondary = $("#deck-secondary-actions");
+    browseActions?.classList.remove("more-open");
+    if (browseSecondary) browseSecondary.hidden = true;
+    browseMore?.setAttribute("aria-expanded", "false");
+    setText("#deck-more-label", "More");
+  }
+  if (!n) {
+    for (const [toggleSelector, menuSelector] of DECK_SELECTION_MENUS) {
+      const menu = $(menuSelector);
+      if (menu) menu.hidden = true;
+      const toggle = $(toggleSelector);
+      if (toggle) toggle.setAttribute("aria-expanded", "false");
+    }
+  }
   const single = n === 1;
   // ONE selected → a plain "Copy"/"Paste" (merging a single item is just copying
   // it), and that Copy becomes the gold hero the linked-copy connector lands on.
@@ -2733,6 +3181,15 @@ function updateHistActionbar() {
   setText(
     "#hist-sel-info",
     n + " selected" + (n > 1 ? " · merged in tick order" : ""),
+  );
+  const hiddenCount = HX.selected.filter((key) => !HX.visibleKeys.has(key)).length;
+  setText(
+    "#hist-action-hint",
+    hiddenCount
+      ? `${hiddenCount} selected ${hiddenCount === 1 ? "item is" : "items are"} outside this view`
+      : n > 1
+        ? "Actions follow the numbered selection order"
+        : "Click another row to build an ordered selection",
   );
   const mc = $("#hist-merge-copy"),
     run = $("#hist-run");
@@ -2744,13 +3201,24 @@ function updateHistActionbar() {
   const presetName = HX.runPreset
     ? (HX.presets.find((p) => p[0] === HX.runPreset) || [])[1] || ""
     : "";
-  const what = `${presetName}${presetName && HX.runMode ? " + " : ""}${HX.runMode || ""}`;
-  setText("#hist-run-label", what ? `Run · ${what}` : "Run on selection");
+  setText("#hist-mode-label", HX.runMode ? `Smart Mode · ${MODE_LABELS[HX.runMode] || HX.runMode}` : "Smart Mode");
+  setText("#hist-preset-label", presetName ? `Preset · ${presetName}` : "Preset");
+  setText("#hist-run-label", "Run shaping");
+  const webSearch = $("#hist-web-search");
+  if (webSearch) webSearch.hidden = !selectedItems().some((item) => (item.text || "").trim());
   syncLinkedCopy(single);
 }
 function clearHistSelection() {
+  const restoreBrowseFocus = !!document.activeElement?.closest?.("#hist-actionbar");
   HX.selected = [];
   refreshSelectionUI();
+  if (restoreBrowseFocus) {
+    requestAnimationFrame(() => $("#hist-filter")?.focus({ preventScroll: true }));
+  }
+  if (HX.refreshPending.size) {
+    HX.refreshPending.clear();
+    renderHistory().catch(() => toast("Couldn't refresh the Deck", "err"));
+  }
 }
 
 /* LINKED-COPY connector REMOVED (owner: the full-viewport gold line was brittle
@@ -2771,7 +3239,7 @@ function drawHistTools() {
   // List is no longer an independent Smart Mode (the AI polish bullets dictated
   // lists natively); Convert is a per-row router (the rotate button), not a mode
   // you arm over a selection. Both dropped from the armable roster.
-  const modes = ["prompt", "email", "reply", "foreign"];
+  const modes = ["prompt", "email", "foreign"];
   const mh = $("#hist-runmodes");
   if (mh) {
     mh.innerHTML = modes
@@ -2818,31 +3286,7 @@ function drawHistTools() {
 
 // the selected entries (in tick order) as {kind, time, text} for merge / run
 function selectedItems() {
-  const all = [
-    ...(HX.transcripts || []).map((x) => ({
-      kind: "TEXT",
-      time: x.time,
-      text: x.text,
-    })),
-    ...(HX.clipboard || [])
-      .filter((x) => x.type !== "image")
-      .map((x) => ({ kind: "CLIP", time: x.time, text: x.text })),
-    ...(HX.prompts || []).map((x) => ({
-      kind: "PROMPT",
-      time: (x.time || "").slice(-5),
-      text: x.prompt,
-    })),
-    ...(HX.favorites || []).map((x) => ({
-      kind: "TEXT",
-      time: x.time,
-      text: x.text,
-    })),
-  ];
-  const byText = new Map();
-  all.forEach((it) => {
-    if (it.text && !byText.has(it.text)) byText.set(it.text, it);
-  });
-  return HX.selected.map((sk) => byText.get(sk)).filter(Boolean);
+  return HX.selected.map((key) => HX.itemByKey.get(key)).filter(Boolean);
 }
 async function histMerge(paste) {
   const items = selectedItems();
@@ -2856,14 +3300,15 @@ async function histMerge(paste) {
     .join("\n\n");
   if (paste && HAS_PY()) {
     const r = await call("deck_paste", combined);
-    if (r && r.live) {
-      toast(
-        `Pasting ${items.length} merged entr${items.length === 1 ? "y" : "ies"} at your cursor…`,
-        "ok",
-        2000,
+    if (r && r.ok) {
+      showInsertionResult(
+        r,
+        `Inserted ${items.length} merged entr${items.length === 1 ? "y" : "ies"}`,
+        2200,
       );
       return;
     }
+    toast((r && r.message) || "Paste couldn't be confirmed — copied instead", "info", 2200);
   }
   if (!(await copyTextReliable(combined))) {
     toast("Merged, but couldn't copy to the clipboard", "err", 2200);
@@ -2891,8 +3336,8 @@ async function histRun() {
   try {
     const r = await call("run_deck_job", HX.runPreset, HX.runMode, items);
     if (r && r.ok && r.live)
-      toast("Working — the result will paste at your cursor", "ok", 3000);
-    else if (r && r.ok) toast("Done — result pasted", "ok");
+      toast("Working—the result will be saved, then Mumble will attempt the selected field", "info", 3000);
+    else if (r && r.ok) toast("Done — check the destination field", "info");
     else
       toast(
         (r && r.message) ||
@@ -2904,6 +3349,22 @@ async function histRun() {
     setTimeout(() => {
       _deckJobBusy = false;
     }, 1200);
+  }
+}
+
+async function deckWebSearch() {
+  const text = selectedItems()
+    .map((item) => item.text || "")
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+  if (!text) {
+    toast("Select a text item before searching the web.", "info", 2200);
+    return;
+  }
+  const prepared = await call("request_web_search", text).catch(() => null);
+  if (!prepared || !prepared.ok) {
+    toast((prepared && prepared.message) || "Web Search could not prepare.", "err", 3000);
   }
 }
 
@@ -2936,7 +3397,7 @@ function addDeckSelection(text) {
   const t = (text || "").trim();
   if (!t) return;
   HX.injected = (HX.injected || []).filter((s) => s.text !== t);
-  HX.injected.unshift({ text: t });
+  HX.injected.unshift({ text: t, capturedAt: new Date().toISOString() });
   if (HX.injected.length > 5) HX.injected.length = 5;
 }
 
@@ -3035,14 +3496,114 @@ async function captureSelection() {
    STATS
    ========================================================================== */
 let STATS_RANGE = 7;
-/* Growth indicator contract (§8): positive growth is ALWAYS visible and GREEN.
-   A real % needs a previous period — when the user is too new for one, show
-   the absolute gain in green instead of hiding the indicator. Never fabricate
-   a percentage. */
+let STATS_RENDER_EPOCH = 0;
+let STATS_SNAPSHOT = null;
+
+function buildMockStatsDashboard() {
+  const daily = (MOCK.daily || []).slice();
+  const active = daily.filter((d) => (d.words || 0) > 0);
+  const weekday = new Array(7).fill(0);
+  active.forEach((d) => {
+    const parsed = new Date((d.day || "") + "T00:00:00");
+    if (!isNaN(parsed.getTime())) weekday[(parsed.getDay() + 6) % 7] += d.words || 0;
+  });
+  const recent14 = daily.slice(-14);
+  const recent60 = daily.slice(-60);
+  const this7 = recent14.slice(-7).reduce((n, d) => n + (d.words || 0), 0);
+  const prev7 = recent14.slice(0, -7).reduce((n, d) => n + (d.words || 0), 0);
+  const monthThis = recent60.slice(-30).reduce((n, d) => n + (d.words || 0), 0);
+  const monthPrev = recent60.slice(0, -30).reduce((n, d) => n + (d.words || 0), 0);
+  const yesterday = recent60.length > 1 ? recent60[recent60.length - 2].words || 0 : 0;
+  const todHours = [0,0,0,0,0,120,380,620,1100,2400,3200,2800,1800,2400,3200,2800,1800,1500,900,600,300,120,50,0];
+  const todTotal = todHours.reduce((a, b) => a + b, 0);
+  const busiest = active.reduce((best, d) => !best || d.words > best.words ? d : best, null);
+  const summary = {
+    total_words: MOCK.overview.total_words,
+    total_transcripts: MOCK.overview.total_transcripts,
+    today_words: MOCK.overview.today_words,
+    typing_time_display: MOCK.overview.time_saved,
+    avg_wpm: 118,
+    best_wpm: 156,
+    spoken_minutes: 412.5,
+  };
+  const rs = MOCK.readerStats || {};
+  const readerSessions = rs.reader_sessions || 0;
+  const readerSeconds = rs.reader_total_seconds || 0;
+  const meetings = MOCK.meetings || [];
+  const savedSeconds = meetings.reduce((n, m) => n + Math.max(0, Number(m.duration_sec) || 0), 0);
+  return {
+    ok: true,
+    generated_at: Date.now() / 1000,
+    dictation: {
+      available: true,
+      health: "ok",
+      has_activity: true,
+      summary,
+      current_streak: MOCK.overview.current_streak,
+      best_streak: MOCK.overview.best_streak,
+      daily,
+      modes: (MOCK.modes || []).slice(),
+      insights: {
+        tod_hours: todHours,
+        tod_peak_hour: 14,
+        tod_peak_label: "2pm–3pm",
+        tod_peak_share: Math.round(100 * todHours[14] / todTotal),
+        active_days: active.length,
+        avg_per_active_day: active.length
+          ? Math.round(active.reduce((n, d) => n + d.words, 0) / active.length) : 0,
+        busiest_day: busiest ? busiest.day : null,
+        busiest_words: busiest ? busiest.words : 0,
+        weekday_words: weekday,
+        weekday_names: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        peak_weekday: weekday.some(Boolean)
+          ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][weekday.indexOf(Math.max(...weekday))]
+          : null,
+        this_week: this7,
+        prev_week: prev7,
+        trend_pct: prev7 > 0 ? Math.round((this7 - prev7) / prev7 * 100) : null,
+        yesterday_words: yesterday,
+        today_delta_pct: yesterday > 0
+          ? Math.round((summary.today_words - yesterday) / yesterday * 100) : null,
+        month_this: monthThis,
+        month_prev: monthPrev,
+        month_trend_pct: monthPrev > 0
+          ? Math.round((monthThis - monthPrev) / monthPrev * 100) : null,
+        avg_wpm: summary.avg_wpm,
+        best_wpm: summary.best_wpm,
+        spoken_minutes: summary.spoken_minutes,
+        today_words: summary.today_words,
+      },
+    },
+    reader: {
+      available: true,
+      health: "ok",
+      has_activity: readerSessions > 0,
+      scope: "tracked_playback",
+      total_reading_seconds: readerSeconds,
+      total_reading_display: formatTrackedDuration(readerSeconds),
+      words_read: rs.reader_words_read || 0,
+      total_sessions: readerSessions,
+      avg_session_sec: readerSessions ? readerSeconds / readerSessions : 0,
+      avg_session_display: formatTrackedDuration(readerSessions ? readerSeconds / readerSessions : 0),
+      current_streak: 0,
+      best_streak: 0,
+    },
+    meetings: {
+      available: true,
+      health: "ok",
+      has_activity: meetings.length > 0,
+      saved_count: meetings.length,
+      saved_duration_seconds: savedSeconds,
+      duration_complete: true,
+      latest_created: meetings.length ? Math.max(...meetings.map((m) => Number(m.created) || 0)) : null,
+      processing_count: meetings.filter((m) => ["pending", "processing"].includes(m.status)).length,
+      attention_count: meetings.filter((m) => ["failed", "interrupted"].includes(m.status)).length,
+    },
+  };
+}
+
 function growthChip(pct, absolute) {
   if (pct != null) {
-    // Exactly zero is "no change" — not growth. Showing it as a green ▲ up-arrow
-    // (the old `pct >= 0` lumped 0 in with positive) falsely reads as progress.
     if (pct === 0) return `<span class="delta flat">± 0%</span>`;
     const up = pct > 0;
     return `<span class="delta ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${Math.abs(pct)}%</span>`;
@@ -3052,27 +3613,55 @@ function growthChip(pct, absolute) {
   return "";
 }
 
-function readerEmptyTiles() {
-  // Four empty/placeholder tiles for the Reader stats section when no data exists yet
-  const tiles = [
-    ["book",  "var(--mode-email)", "Reading time", "—", "lifetime"],
-    ["type",  "var(--gold)",       "Words read",   "0", "lifetime"],
-    ["check", "var(--green)",      "Completed",    "0", "documents"],
-    ["fire",  "var(--amber)",      "Read streak",  "0d", "best 0 days"],
-  ];
-  return tiles
-    .map(([ic, col, lab, val, trend]) =>
-      `<div class="tile">
-        <div class="tile-head"><span class="tile-ic" style="color:${col};background:color-mix(in srgb, ${col} 12%, transparent)">${svg(ic)}</span><span class="tile-lab">${esc(lab)}</span></div>
-        <div class="num t-mute">${esc(val)}</div>
-        <div class="tile-trend"><span class="tile-sub">${esc(trend)}</span></div>
-      </div>`)
-    .join("");
+function formatTrackedDuration(value) {
+  const seconds = Math.max(0, Number(value) || 0);
+  if (seconds < 60) return Math.round(seconds) + "s";
+  if (seconds < 3600) return Math.round(seconds / 60) + "m";
+  return (seconds / 3600).toFixed(seconds >= 36000 ? 0 : 1) + "h";
 }
 
-// Obvious, confirmed "Reset stats" (wired once). The button lives in
-// Settings now, so this is callable from both the Settings and Stats render
-// paths — the dataset guard keeps it idempotent.
+function formatActivityDate(epoch) {
+  const date = new Date((Number(epoch) || 0) * 1000);
+  if (!epoch || isNaN(date.getTime())) return "—";
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(date);
+}
+
+function activityMetric(label, value, detail) {
+  return `<div class="activity-metric">
+    <span class="metric-label">${esc(label)}</span>
+    <strong title="${esc(value)}">${esc(value)}</strong>
+    <small>${esc(detail || "")}</small>
+  </div>`;
+}
+
+function setStatsStatus(message, isError) {
+  const el = $("#stats-refresh-status");
+  if (!el) return;
+  el.hidden = !message;
+  el.textContent = message || "";
+  el.classList.toggle("is-error", !!isError);
+}
+
+function setStatsPeriod(payload, fallback) {
+  const target = $("#stats-data-period");
+  if (!target) return;
+  const generatedAt = payload && Number(payload.generated_at);
+  const generated = generatedAt ? new Date(generatedAt * 1000) : null;
+  if (generated && !isNaN(generated.getTime())) {
+    target.textContent = `Snapshot through ${new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(generated)}. Where available, totals cover all tracked activity and dictation daily history covers the latest 98 days.`;
+  } else {
+    target.textContent = fallback || "The saved activity period is unavailable.";
+  }
+}
+
 function wireStatsReset() {
   const resetBtn = $("#stats-reset");
   if (!resetBtn || resetBtn.dataset.wired) return;
@@ -3081,282 +3670,334 @@ function wireStatsReset() {
     const yes = await confirmModal({
       icon: "trash",
       title: "Reset all statistics?",
-      body: "This permanently clears every dictation and reading statistic — totals, streaks, charts and history. This cannot be undone.",
-      confirmText: "Reset everything",
+      body: "This clears tracked dictation and Reader totals, streaks, and charts. Saved transcripts, Reader documents, and Meetings remain. This cannot be undone.",
+      confirmText: "Reset statistics",
     });
     if (!yes) return;
-    const r = await call("reset_stats", "all");
-    if (r && r.ok) { toast("Statistics reset", "ok"); renderStats(); }
-    else toast("Couldn't reset statistics", "err");
+    resetBtn.disabled = true;
+    STATS_RENDER_EPOCH++;
+    try {
+      const r = await call("reset_stats", "all");
+      if (r && r.ok) {
+        STATS_SNAPSHOT = null;
+        toast("Dictation and Reader statistics reset", "ok");
+        if (CURRENT === "stats") await renderStats();
+      } else {
+        toast((r && r.message) || "Couldn't reset statistics", "err");
+      }
+    } catch (e) {
+      toast("Couldn't reset statistics", "err");
+    } finally {
+      resetBtn.disabled = false;
+    }
   });
 }
 
 async function renderStats() {
   wireStatsReset();
-  const [o, ins] = await Promise.all([
-    call("get_overview"),
-    call("get_insights"),
-  ]);
-  // Six tiles + meeting metric, UX-Pilot presentation: a coloured icon chip + uppercase label
-  // above the value, with a trend line beneath. Every value real
-  // (stats.json): no invented metrics, no "confidence"/accuracy %.
-  var meetMinutes = o.meeting_minutes || o.total_meeting_minutes || 0;
-  var meetMinDisplay = meetMinutes >= 60 ? (meetMinutes / 60).toFixed(1) + " h" : meetMinutes + " min";
-  const tiles = [
-    [
-      "pen",
-      "var(--gold)",
-      "Total words",
-      fmtNum(o.total_words),
-      '<span class="tile-sub">lifetime</span>',
-    ],
-    [
-      "mic",
-      "var(--mode-email)",
-      "Dictations",
-      fmtNum(o.total_transcripts),
-      '<span class="tile-sub">lifetime</span>',
-    ],
-    [
-      "clock",
-      "var(--green)",
-      "Time saved",
-      o.time_saved || "—",
-      '<span class="tile-sub" title="Estimate: your total words ÷ 45 wpm (a typical typing speed). A rough guide, not a measurement.">≈ estimated vs typing <span style="opacity:.7">ⓘ</span></span>',
-    ],
-    [
-      "bolt",
-      "var(--gold)",
-      "Words today",
-      fmtNum(ins.today_words),
-      growthChip(ins.today_delta_pct, ins.today_words) +
-        '<span class="tile-sub"> vs yesterday</span>',
-    ],
-    [
-      "gauge",
-      "var(--mode-prompt)",
-      "Avg speed",
-      ins.avg_wpm ? ins.avg_wpm + " wpm" : "—",
-      '<span class="tile-sub">speaking pace</span>',
-    ],
-    [
-      "fire",
-      "var(--amber)",
-      "Streak",
-      (o.current_streak || 0) + "d",
-      `<span class="tile-sub">best ${o.best_streak || 0} days</span>`,
-    ],
-    [
-      "mic",
-      "var(--mode-context)",
-      "Meetings",
-      fmtNum(o.meeting_count || 0),
-      '<span class="tile-sub">' + meetMinDisplay + ' recorded</span>',
-    ],
+  const root = document.querySelector('[data-view="stats"]');
+  const epoch = ++STATS_RENDER_EPOCH;
+  if (root) root.setAttribute("aria-busy", "true");
+  setStatsStatus(
+    STATS_SNAPSHOT
+      ? "Refreshing statistics. The last loaded values remain on screen."
+      : "Loading saved activity...",
+    false,
+  );
+  setStatsPeriod(
+    STATS_SNAPSHOT,
+    STATS_SNAPSHOT
+      ? "Refreshing the last loaded snapshot."
+      : "Waiting for a complete saved snapshot.",
+  );
+  try {
+    const payload = await call("get_stats_dashboard");
+    if (epoch !== STATS_RENDER_EPOCH || CURRENT !== "stats") return;
+    if (!payload || payload.ok === false) throw new Error("Stats response unavailable");
+    STATS_SNAPSHOT = payload;
+    renderDictationStats(
+      payload.dictation || {},
+      payload.reader || {},
+      payload.meetings || {},
+    );
+    setStatsPeriod(payload);
+    renderReaderActivity(payload.reader || {});
+    renderMeetingActivity(payload.meetings || {});
+    const statParts = [payload.dictation, payload.reader];
+    const repaired = statParts.some((part) => part && part.health === "repaired");
+    const recovered = statParts.some((part) => part && part.health === "recovered");
+    const meetingRecovered = payload.meetings && payload.meetings.health === "recovered";
+    const unavailable = [
+      !payload.dictation || payload.dictation.available !== true ? "Dictation" : "",
+      !payload.reader || payload.reader.available !== true ? "Reader" : "",
+      !payload.meetings || payload.meetings.available !== true ? "Meetings" : "",
+    ].filter(Boolean);
+    const statusParts = [];
+    if (unavailable.length)
+      statusParts.push(`Partial snapshot: ${unavailable.join(" and ")} data is unavailable; available sections remain on screen without invented zeroes.`);
+    if (repaired)
+      statusParts.push("Some invalid statistics values were ignored; valid tracked activity is still shown.");
+    else if (recovered)
+      statusParts.push("Statistics were restored from the last good backup.");
+    if (meetingRecovered)
+      statusParts.push("Saved Meeting activity was restored from the last good backup.");
+    setStatsStatus(statusParts.join(" "), false);
+    syncShimmer();
+  } catch (e) {
+    if (epoch !== STATS_RENDER_EPOCH || CURRENT !== "stats") return;
+    setStatsStatus(
+      STATS_SNAPSHOT
+        ? "Couldn't refresh statistics. The last loaded values remain on screen."
+        : "Statistics couldn't be loaded. Your saved activity was not replaced.",
+      true,
+    );
+    if (!STATS_SNAPSHOT) {
+      setStatsPeriod(null, "The saved activity period could not be loaded.");
+      renderDictationStats(
+        { available: false },
+        { available: false },
+        { available: false },
+      );
+      renderReaderActivity({ available: false });
+      renderMeetingActivity({ available: false });
+    }
+  } finally {
+    if (epoch === STATS_RENDER_EPOCH && root) root.setAttribute("aria-busy", "false");
+  }
+}
+
+function renderDictationStats(data, reader, meetings) {
+  const available = data && data.available === true;
+  const readerAvailable = reader && reader.available === true;
+  const meetingsAvailable = meetings && meetings.available === true;
+  const summary = available ? data.summary || {} : {};
+  const ins = available ? data.insights || {} : {};
+  const unavailableSub = '<span class="tile-sub">unavailable</span>';
+  const tiles = available ? [
+    ["pen", "var(--gold)", "Output words", fmtNum(summary.total_words), '<span class="tile-sub">tracked total</span>'],
+    ["mic", "var(--mode-email)", "Dictations", fmtNum(summary.total_transcripts), '<span class="tile-sub">tracked total</span>'],
+    ["clock", "var(--green)", "Hours saved", Number(summary.typing_hours_saved || 0).toFixed(1) + "h",
+      '<span class="tile-sub" title="Estimate: tracked output words divided by 45 words per minute.">estimated · output words ÷ 45 wpm <span aria-hidden="true">ⓘ</span></span>'],
+    ["bolt", "var(--gold)", "Words today", fmtNum(ins.today_words),
+      growthChip(ins.today_delta_pct, ins.today_words) + '<span class="tile-sub"> vs yesterday</span>'],
+    ["gauge", "var(--mode-prompt)", "Recent pace", ins.avg_wpm ? ins.avg_wpm + " wpm" : "—",
+      '<span class="tile-sub">plain Text samples</span>'],
+    ["fire", "var(--amber)", "Streak", (data.current_streak || 0) + "d",
+      `<span class="tile-sub">best ${data.best_streak || 0} days</span>`],
+    ["book", "var(--mode-foreign)", "Reader time", readerAvailable
+      ? (reader.total_reading_display || formatTrackedDuration(reader.total_reading_seconds)) : "—",
+      readerAvailable ? '<span class="tile-sub">tracked playback</span>' : unavailableSub],
+    ["type", "var(--mode-foreign)", "Reader words", readerAvailable
+      ? fmtNum(reader.words_read) : "—",
+      readerAvailable ? `<span class="tile-sub">${fmtNum(reader.total_sessions)} sessions</span>` : unavailableSub],
+    ["comment", "var(--mode-email)", "Meetings", meetingsAvailable
+      ? fmtNum(meetings.saved_count) : "—",
+      meetingsAvailable ? '<span class="tile-sub">current saved library</span>' : unavailableSub],
+    ["volume", "var(--mode-email)", "Meeting time", meetingsAvailable
+      ? formatTrackedDuration(meetings.saved_duration_seconds) : "—",
+      meetingsAvailable
+        ? `<span class="tile-sub">${meetings.duration_complete ? "recorded + imported" : "known valid durations"}</span>`
+        : unavailableSub],
+  ] : [
+    ["pen", "var(--gold)", "Output words", "—", unavailableSub],
+    ["mic", "var(--mode-email)", "Dictations", "—", unavailableSub],
+    ["clock", "var(--green)", "Hours saved", "—", unavailableSub],
+    ["bolt", "var(--gold)", "Words today", "—", unavailableSub],
+    ["gauge", "var(--mode-prompt)", "Recent pace", "—", unavailableSub],
+    ["fire", "var(--amber)", "Streak", "—", unavailableSub],
+    ["book", "var(--mode-foreign)", "Reader time", readerAvailable
+      ? (reader.total_reading_display || formatTrackedDuration(reader.total_reading_seconds)) : "—",
+      readerAvailable ? '<span class="tile-sub">tracked playback</span>' : unavailableSub],
+    ["type", "var(--mode-foreign)", "Reader words", readerAvailable
+      ? fmtNum(reader.words_read) : "—",
+      readerAvailable ? `<span class="tile-sub">${fmtNum(reader.total_sessions)} sessions</span>` : unavailableSub],
+    ["comment", "var(--mode-email)", "Meetings", meetingsAvailable
+      ? fmtNum(meetings.saved_count) : "—",
+      meetingsAvailable ? '<span class="tile-sub">current saved library</span>' : unavailableSub],
+    ["volume", "var(--mode-email)", "Meeting time", meetingsAvailable
+      ? formatTrackedDuration(meetings.saved_duration_seconds) : "—",
+      meetingsAvailable
+        ? `<span class="tile-sub">${meetings.duration_complete ? "recorded + imported" : "known valid durations"}</span>`
+        : unavailableSub],
   ];
-  $("#stat-tiles").innerHTML = tiles
-    .map(
-      ([ic, col, lab, val, trend]) => `
+  $("#stat-tiles").innerHTML = tiles.map(([ic, col, lab, val, trend]) => `
     <div class="tile">
       <div class="tile-head"><span class="tile-ic" style="color:${col};background:color-mix(in srgb, ${col} 12%, transparent)">${svg(ic)}</span><span class="tile-lab">${esc(lab)}</span></div>
-      <div class="num">${esc(val)}</div>
+      <div class="num${available ? "" : " t-mute"}">${esc(val)}</div>
       <div class="tile-trend">${trend || ""}</div>
-    </div>`,
-    )
-    .join("");
-  // "When you dictate" — 24-hour buckets with peak hour callout.
-  const hours = ins.tod_hours || new Array(24).fill(0);
-  const hMax = Math.max(1, ...hours);
-  const hTotal = hours.reduce((a, b) => a + b, 0);
-  const peakHour = ins.tod_peak_hour != null ? ins.tod_peak_hour : (hTotal > 0 ? hours.indexOf(hMax) : -1);
-  const hLabels = ["12a","","","3a","","","6a","","","9a","","","12p","","","3p","","","6p","","","9p","",""];
-  const todChart = $("#tod-chart");
-  todChart.style.gap = "2px";
-  todChart.innerHTML = hours
-    .map((w, i) => {
-      const isPeak = i === peakHour;
-      const h = Math.max(4, Math.round((w / hMax) * 66));
-      const hourFmt = (i % 12 || 12) + (i < 12 ? "a" : "p");
-      return `<div class="tod-col" title="${hourFmt}: ${fmtNum(w)} words">
-      ${isPeak && w > 0 ? `<span class="tod-val">${fmtNum(w)}</span>` : `<span class="tod-val"></span>`}
-      <div class="tod-bar ${isPeak ? "peak" : ""}" style="height:${h}px"></div>
-      <span class="tod-name">${hLabels[i] || ""}</span></div>`;
-    })
-    .join("");
-  if (hTotal > 0 && ins.tod_peak_label) {
-    setText("#tod-peak", `peak ${ins.tod_peak_label}`);
-    setText(
-      "#tod-note",
-      `You dictate most around ${ins.tod_peak_label} — ${ins.tod_peak_share}% of your words.`,
-    );
-  } else {
-    setText("#tod-peak", "");
-    setText(
-      "#tod-note",
-      "Dictate through the day and your rhythm appears here.",
-    );
-  }
-  // This week — % when a previous week exists, green absolute gain when not
-  const t = ins.trend_pct;
+    </div>`).join("");
+  drawChart(data, STATS_RANGE, available);
+  drawModeBreakdown(available ? data.modes || [] : [], available);
+  renderStatsTrends(available ? ins : null);
+  drawHeatmap(available ? data.daily || [] : [], available);
+  drawTimeOfDay(available ? ins : null);
+}
+
+function renderStatsTrends(ins) {
   const tEl = $("#ins-trend");
+  const mEl = $("#ins-month");
+  if (!ins) {
+    tEl.textContent = "—";
+    mEl.textContent = "—";
+    tEl.style.color = mEl.style.color = "var(--text-dim)";
+    setText("#ins-trend-sub", "Statistics unavailable");
+    setText("#ins-month-sub", "Statistics unavailable");
+    setText("#ins-peakday", "all tracked");
+    $("#weekday-chart").innerHTML = '<div class="chart-empty">Statistics unavailable</div>';
+    setText("#weekday-summary", "Weekday activity is unavailable.");
+    return;
+  }
+  const t = ins.trend_pct;
   if (t == null) {
     if (ins.this_week > 0) {
-      tEl.textContent = "+" + fmtNum(ins.this_week);
-      tEl.style.color = "var(--green)";
-      setText(
-        "#ins-trend-sub",
-        "words this week — % trends unlock after your first full week",
-      );
+      tEl.textContent = fmtNum(ins.this_week);
+      tEl.style.color = "var(--gold)";
+      setText("#ins-trend-sub", "words in this rolling window — no earlier comparison yet");
     } else {
       tEl.textContent = "—";
       tEl.style.color = "var(--text-dim)";
-      setText("#ins-trend-sub", "dictate something to start your history");
+      setText("#ins-trend-sub", "No output words in this rolling window");
     }
   } else {
     tEl.textContent = (t > 0 ? "+" : "") + t + "%";
-    tEl.style.color = t >= 0 ? "var(--green)" : "var(--amber)";
+    tEl.style.color = t > 0 ? "var(--green)" : t < 0 ? "var(--amber)" : "var(--text-dim)";
     setText(
       "#ins-trend-sub",
       `${fmtNum(ins.this_week)} words vs ${fmtNum(ins.prev_week)} the week before`,
     );
   }
-  // This month — same contract on the 30-day window
-  const mEl = $("#ins-month");
   const mt = ins.month_trend_pct;
   if (mt == null) {
     if ((ins.month_this || 0) > 0) {
-      mEl.textContent = "+" + fmtNum(ins.month_this);
-      mEl.style.color = "var(--green)";
-      setText(
-        "#ins-month-sub",
-        "words these 30 days — comparison unlocks next month",
-      );
+      mEl.textContent = fmtNum(ins.month_this);
+      mEl.style.color = "var(--gold)";
+      setText("#ins-month-sub", "words in this rolling window — no earlier comparison yet");
     } else {
       mEl.textContent = "—";
       mEl.style.color = "var(--text-dim)";
-      setText("#ins-month-sub", "vs the previous 30 days");
+      setText("#ins-month-sub", "No output words in this rolling window");
     }
   } else {
     mEl.textContent = (mt > 0 ? "+" : "") + mt + "%";
-    mEl.style.color = mt >= 0 ? "var(--green)" : "var(--amber)";
+    mEl.style.color = mt > 0 ? "var(--green)" : mt < 0 ? "var(--amber)" : "var(--text-dim)";
     setText(
       "#ins-month-sub",
       `${fmtNum(ins.month_this)} words vs ${fmtNum(ins.month_prev)} the 30 days before`,
     );
   }
-  // Activity panel (right of the heatmap) — all real aggregates
-  setText(
-    "#act-busiest",
-    ins.busiest_day
-      ? `${ins.busiest_day} · ${fmtNum(ins.busiest_words || 0)}w`
-      : "—",
-  );
-  setText(
-    "#act-active",
-    fmtNum(ins.active_days) + (ins.active_days === 1 ? " day" : " days"),
-  );
-  setText("#act-avg", fmtNum(ins.avg_per_active_day) + " words");
-  const mins = ins.spoken_minutes || 0;
-  setText(
-    "#act-minutes",
-    mins >= 90 ? (mins / 60).toFixed(1) + " h" : Math.round(mins) + " min",
-  );
-  setText(
-    "#act-pace",
-    ins.avg_wpm
-      ? `${ins.avg_wpm} wpm · best ${Math.round(ins.best_wpm || ins.avg_wpm)}`
-      : "—",
-  );
-  // weekday rhythm
-  setText("#ins-peakday", ins.peak_weekday ? `peak: ${ins.peak_weekday}` : "");
-  const wmax = Math.max(1, ...ins.weekday_words);
-  $("#weekday-chart").innerHTML = ins.weekday_words
+  setText("#ins-peakday", ins.peak_weekday
+    ? `all tracked · peak: ${ins.peak_weekday}`
+    : "all tracked");
+  const weekdayWords = Array.isArray(ins.weekday_words) ? ins.weekday_words : new Array(7).fill(0);
+  const wmax = Math.max(0, ...weekdayWords);
+  $("#weekday-chart").innerHTML = weekdayWords
     .map((w, i) => {
-      const h = Math.max(3, Math.round((w / wmax) * 54));
+      const h = wmax > 0 && w > 0 ? Math.max(2, Math.round((w / wmax) * 54)) : 0;
       const peak = ins.weekday_names[i] === ins.peak_weekday;
-      return `<div class="wd-col" title="${esc(ins.weekday_names[i])}: ${fmtNum(w)} words">
+      return `<div class="wd-col" aria-hidden="true">
       <div class="wd-bar ${peak ? "peak" : ""}" style="height:${h}px"></div>
       <span class="wd-name">${esc(ins.weekday_names[i][0])}</span></div>`;
     })
     .join("");
-  await drawChart();
-  await drawHeatmap();
-  await drawModeBreakdown();
-
-  // ── Reader statistics (reader-redesign milestone) ──────────────────────
-  try {
-    const rs = await call("get_reader_stats");
-    if (rs && rs.total_sessions > 0) {
-      const readerTiles = [
-        ["book",  "var(--mode-email)", "Reading time", rs.total_reading_display || "—",
-         '<span class="tile-sub">lifetime</span>'],
-        ["type",  "var(--gold)",       "Words read",   fmtNum(rs.words_read || 0),
-         '<span class="tile-sub">lifetime</span>'],
-        ["check", "var(--green)",      "Completed",    fmtNum(rs.docs_completed || 0),
-         '<span class="tile-sub">documents</span>'],
-        ["fire",  "var(--amber)",      "Read streak",  (rs.current_streak || 0) + "d",
-         '<span class="tile-sub">best ' + (rs.best_streak || 0) + ' days</span>'],
-      ];
-      $("#reader-stat-tiles").innerHTML = readerTiles
-        .map(([ic, col, lab, val, trend]) =>
-          `<div class="tile">
-            <div class="tile-head"><span class="tile-ic" style="color:${col};background:color-mix(in srgb, ${col} 12%, transparent)">${svg(ic)}</span><span class="tile-lab">${esc(lab)}</span></div>
-            <div class="num">${esc(val)}</div>
-            <div class="tile-trend">${trend || ""}</div>
-          </div>`)
-        .join("");
-      // Reading streak detail
-      const streakLabel = (rs.current_streak || 0) > 0
-        ? `You've read ${rs.current_streak} day${rs.current_streak === 1 ? "" : "s"} in a row`
-        : "Start a reading streak — open a document and listen for a bit";
-      setText("#reader-streak-label", streakLabel);
-      setText("#reader-stats-help",
-        "Reading stats are tracked independently from dictation — your dictation numbers are never affected by listening sessions.");
-    } else {
-      // No reader data yet — show empty / encouragement state
-      $("#reader-stat-tiles").innerHTML = readerEmptyTiles();
-      setText("#reader-streak-label", "Open a document in the Reader and listen for a few minutes to see your stats here.");
-      setText("#reader-stats-help",
-        "Reading stats are tracked independently from dictation — your dictation numbers are never affected by listening sessions.");
-    }
-  } catch (e) {
-    // Reader stats unavailable (e.g. older stats.json without reader keys)
-    $("#reader-stat-tiles").innerHTML = readerEmptyTiles();
-    setText("#reader-streak-label", "Reading stats will appear after your first reading session.");
-    setText("#reader-stats-help",
-      "Reading stats are tracked independently from dictation — your dictation numbers are never affected by listening sessions.");
-  }
-
-  syncShimmer(); // phase-lock the Stats tiles/cards to the global shimmer cycle
+  const weekdaySummary = wmax > 0
+    ? `Tracked output by weekday. Peak weekday: ${ins.peak_weekday}. ${ins.weekday_names.map((name, i) => `${name} ${fmtNum(weekdayWords[i])} words`).join("; ")}.`
+    : "No tracked weekday activity yet.";
+  setText("#weekday-summary", weekdaySummary);
+  $("#weekday-chart").setAttribute("aria-label", weekdaySummary);
 }
 
-/* 13-week activity heatmap — every cell is a real day from stats.json.
-   CLEAN GRID contract (owner): fetch a little extra history and start the
-   render on a Monday, so every column is a full Mon–Sun week — no offset
-   ghost cells shifting the first rows sideways. Only the current, in-progress
-   week may be short, at the far right where a partial column reads naturally. */
-async function drawHeatmap() {
-  const days = await call("get_daily_stats", 98);
-  let start = 0;
-  try {
-    while (
-      start < days.length &&
-      new Date(days[start].day + "T00:00:00").getDay() !== 1
-    )
-      start++;
-  } catch (e) {
-    start = 0;
+function renderReaderActivity(reader) {
+  const metrics = $("#reader-stat-tiles");
+  const state = $("#reader-activity-state");
+  state.classList.remove("is-error");
+  if (!reader || reader.available !== true) {
+    metrics.innerHTML = "";
+    state.textContent = "Reader activity is unavailable because statistics could not be read. Your Reader library is untouched.";
+    state.classList.add("is-error");
+    setText("#reader-streak-label", "Unavailable");
+    setText("#reader-stats-help", "No zero values are shown when the activity store is unavailable.");
+    return;
   }
-  const aligned = days.slice(start);
-  const max = Math.max(1, ...aligned.map((d) => d.words || 0));
+  if (!reader.has_activity) {
+    metrics.innerHTML = "";
+    state.textContent = "No Reader listening has been tracked yet. Play a document for at least a second to begin.";
+    setText("#reader-streak-label", "No tracked playback yet");
+    setText("#reader-stats-help", "Reader playback is tracked separately from dictation output.");
+    return;
+  }
+  state.textContent = "";
+  metrics.innerHTML = [
+    activityMetric("Listening time", reader.total_reading_display || formatTrackedDuration(reader.total_reading_seconds), "tracked playback"),
+    activityMetric("Sessions", fmtNum(reader.total_sessions), "playback intervals"),
+    activityMetric("Words covered", fmtNum(reader.words_read), "net forward progress"),
+    activityMetric("Current streak", (reader.current_streak || 0) + "d", `best ${reader.best_streak || 0} days`),
+  ].join("");
+  setText("#reader-streak-label", `Best streak ${reader.best_streak || 0} days`);
+  setText("#reader-stats-help", "Sessions are playback intervals; pausing or changing voice can start a new interval.");
+}
+
+function renderMeetingActivity(meetings) {
+  const metrics = $("#meeting-stat-tiles");
+  const state = $("#meeting-activity-state");
+  state.classList.remove("is-error");
+  if (!meetings || meetings.available !== true) {
+    metrics.innerHTML = "";
+    state.textContent = "Saved Meeting activity is unavailable. Mumble did not replace your meeting records with zeroes.";
+    state.classList.add("is-error");
+    setText("#meeting-stats-help", "Open Meetings to inspect or recover the saved library.");
+    return;
+  }
+  if (!meetings.has_activity) {
+    metrics.innerHTML = "";
+    state.textContent = "No meetings are saved yet. Record a meeting or import audio to begin this activity view.";
+    setText("#meeting-stats-help", "This widget reflects the current saved library, not a lifetime counter.");
+    return;
+  }
+  state.textContent = "";
+  const attention = Number(meetings.attention_count) || 0;
+  const processing = Number(meetings.processing_count) || 0;
+  const statusValue = attention ? fmtNum(attention) : processing ? fmtNum(processing) : "None";
+  const statusDetail = attention ? "need attention" : processing ? "being processed" : "saved records flagged";
+  metrics.innerHTML = [
+    activityMetric("Saved meetings", fmtNum(meetings.saved_count), "current library"),
+    activityMetric("Saved audio", formatTrackedDuration(meetings.saved_duration_seconds), meetings.duration_complete ? "recorded + imported" : "known valid durations"),
+    activityMetric("Latest save", formatActivityDate(meetings.latest_created), "local library"),
+    activityMetric(attention ? "Needs attention" : processing ? "In progress" : "Needs attention", statusValue, statusDetail),
+  ].join("");
+  setText("#meeting-stats-help", meetings.duration_complete
+    ? "Counts include recorded and imported audio that is still saved."
+    : "Some saved duration data is unreadable; the time shown totals only valid records.");
+}
+
+function drawHeatmap(days, available) {
+  const heatmap = $("#heatmap");
+  if (!available) {
+    heatmap.innerHTML = "";
+    setText("#act-busiest", "—");
+    setText("#act-active", "—");
+    setText("#act-avg", "—");
+    setText("#act-words", "—");
+    setText("#heatmap-summary", "Dictation activity is unavailable.");
+    return;
+  }
+  const source = Array.isArray(days) ? days.slice() : [];
+  const last = source[source.length - 1];
+  let currentWeekday = 6;
+  if (last && last.day) {
+    const parsed = new Date(last.day + "T00:00:00");
+    if (!isNaN(parsed.getTime())) currentWeekday = (parsed.getDay() + 6) % 7;
+  }
+  const desired = 12 * 7 + currentWeekday + 1;
+  const aligned = source.slice(-desired);
+  const max = Math.max(0, ...aligned.map((d) => Number(d.words) || 0));
   const weeks = [];
   for (let i = 0; i < aligned.length; i += 7)
     weeks.push(aligned.slice(i, i + 7));
-  $("#heatmap").innerHTML = weeks
+  heatmap.innerHTML = weeks
     .map((w) => {
       let cells = w
         .map((d) => {
-          const r = (d.words || 0) / max;
+          const r = max > 0 ? (d.words || 0) / max : 0;
           const lvl = d.words
             ? r > 0.75
               ? 4
@@ -3369,39 +4010,43 @@ async function drawHeatmap() {
           return `<span class="hm-cell ${lvl ? "hm" + lvl : ""}" title="${esc(d.day)} — ${fmtNum(d.words)} words"></span>`;
         })
         .join("");
-      // CLEAN GRID: pad the final, in-progress week up to a full 7 cells so every
-      // column is the same height — no bottom-right hole (the reported "missing
-      // square"). Pads are UPCOMING days this week, rendered as faint placeholders
-      // (clearly "not yet", never mistaken for missing data).
       for (let k = w.length; k < 7; k++) {
         cells += `<span class="hm-cell hm-future" title="Upcoming"></span>`;
       }
       return `<div class="hm-col">${cells}</div>`;
     })
     .join("");
+  const active = aligned.filter((d) => (Number(d.words) || 0) > 0);
+  const total = active.reduce((n, d) => n + (Number(d.words) || 0), 0);
+  const busiest = active.reduce((best, d) => !best || d.words > best.words ? d : best, null);
+  setText("#act-busiest", busiest ? `${busiest.day} · ${fmtNum(busiest.words)}w` : "—");
+  setText("#act-active", `${fmtNum(active.length)} ${active.length === 1 ? "day" : "days"}`);
+  setText("#act-avg", active.length ? `${fmtNum(Math.round(total / active.length))} words` : "—");
+  setText("#act-words", `${fmtNum(total)} words`);
+  setText("#heatmap-summary", active.length
+    ? `Last 13 weeks: ${fmtNum(total)} output words across ${active.length} active days. Busiest day ${busiest.day}, ${fmtNum(busiest.words)} words.`
+    : "No dictation output in the last 13 weeks.");
 }
 
-async function drawChart() {
-  const days = await call("get_daily_stats", STATS_RANGE);
-  const max = Math.max(1, ...days.map((d) => d.words || 0));
+function drawChart(data, range, available) {
+  const days = available && Array.isArray(data.daily) ? data.daily.slice(-range) : [];
+  const max = Math.max(0, ...days.map((d) => Number(d.words) || 0));
   const today = days.length - 1;
-  // Y-axis: three real gridline values (max / half / 0) so the scale is
-  // readable at a glance — the chart used to have no vertical reference at all
   const axis = `<div class="chart-axis">
-      <span>${fmtNum(max)}</span><span>${fmtNum(Math.round(max / 2))}</span><span>0</span>
+      <span>${max ? fmtNum(max) : ""}</span><span>${max ? fmtNum(Math.round(max / 2)) : ""}</span><span>0</span>
     </div>`;
-  $("#stat-chart").innerHTML =
-    axis +
-    `<div class="chart-grid"><div></div><div></div><div></div></div>` +
-    days
+  const bars = days
       .map((d, i) => {
-        const h = Math.max(3, Math.round(((d.words || 0) / max) * 130));
-        return `<div class="bar ${i === today ? "today" : ""}" style="height:${h}px" data-tip="${esc(d.day)} · ${fmtNum(d.words)} words · ${fmtNum(d.transcripts)} dictations"></div>`;
+        const h = max > 0 && d.words ? Math.max(2, Math.round((d.words / max) * 130)) : 0;
+        return `<div class="bar ${i === today ? "today" : ""}" aria-hidden="true" style="height:${h}px" data-tip="${esc(d.day)} · ${fmtNum(d.words)} words · ${fmtNum(d.transcripts)} dictations"></div>`;
       })
       .join("");
-  // INSTANT hover values — native title tooltips take ~1s to appear; this
-  // tracks the pointer and shows the value with zero delay
   const chart = $("#stat-chart");
+  chart.innerHTML = axis + `<div class="chart-plot">
+    <div class="chart-grid"><div></div><div></div><div></div></div>
+    <div class="chart-bars" data-range="${range}" style="--bar-count:${Math.max(1, days.length)}">${bars}</div>
+    ${available ? (max ? "" : '<div class="chart-empty">No output words in this range</div>') : '<div class="chart-empty">Statistics unavailable</div>'}
+  </div>`;
   let tip = $("#chart-tip");
   if (!tip) {
     tip = document.createElement("div");
@@ -3426,34 +4071,49 @@ async function drawChart() {
       tip.hidden = true;
     };
   });
-  // axis labels: weekday letters at 7d, sparse dates beyond
+  let labels;
+  if (range === 7) {
+    labels = days.map((d) => {
+      try {
+        const weekday = new Date(d.day + "T00:00:00").getDay();
+        return ["M", "T", "W", "T", "F", "S", "S"][weekday === 0 ? 6 : weekday - 1];
+      } catch (e) {
+        return "";
+      }
+    });
+  } else {
+    const tickCount = Math.min(6, days.length);
+    labels = Array.from({ length: tickCount }, (_, i) => {
+      const index = tickCount > 1
+        ? Math.round((i * (days.length - 1)) / (tickCount - 1))
+        : 0;
+      return (days[index] && days[index].day || "").slice(5);
+    });
+  }
   $("#chart-labels").innerHTML =
-    '<span class="cl" style="flex:0 0 34px"></span>' +
-    days
-      .map((d, i) => {
-        let lab = "";
-        if (STATS_RANGE === 7) {
-          try {
-            lab = ["M", "T", "W", "T", "F", "S", "S"][
-              new Date(d.day + "T00:00:00").getDay() === 0
-                ? 6
-                : new Date(d.day + "T00:00:00").getDay() - 1
-            ];
-          } catch (e) {}
-        } else if (i % Math.ceil(days.length / 6) === 0)
-          lab = (d.day || "").slice(5);
-        return `<span class="cl">${esc(lab)}</span>`;
-      })
-      .join("");
-  setText("#chart-max", fmtNum(max) + " max");
+    '<span aria-hidden="true"></span><div class="chart-label-row" data-range="' + range + '" style="--bar-count:' + Math.max(1, labels.length) + '">' +
+    labels.map((label) => `<span class="cl">${esc(label)}</span>`).join("") +
+    "</div>";
+  setText("#chart-max", max ? fmtNum(max) + " daily max" : "");
+  const summary = !available
+    ? "Daily dictation data is unavailable."
+    : max
+      ? `${range}-day output chart. ${days.map((d) => `${d.day}: ${fmtNum(d.words)} words, ${fmtNum(d.transcripts)} dictations`).join("; ")}.`
+      : `No output words in the selected ${range}-day range.`;
+  setText("#chart-summary", summary);
+  chart.setAttribute("aria-label", summary);
+  $("#stat-table").innerHTML = available ? `<table>
+    <thead><tr><th scope="col">Date</th><th scope="col">Output words</th><th scope="col">Dictations</th></tr></thead>
+    <tbody>${days.map((d) => `<tr><td>${esc(d.day)}</td><td>${fmtNum(d.words)}</td><td>${fmtNum(d.transcripts)}</td></tr>`).join("")}</tbody>
+  </table>` : '<p class="pad">Daily values are unavailable.</p>';
 }
-async function drawModeBreakdown() {
-  // UX-Pilot presentation: glow dot + mode name, words + SHARE % on the
-  // right, bars animate in. Plain Text still gets its own scale (it dwarfs
-  // the Smart Modes), and the % is each mode's share of ALL dictations.
-  const modes = (await call("get_mode_stats")).filter(
-    (m) => m.mode !== "convert",
-  );
+
+function drawModeBreakdown(items, available) {
+  const modes = (items || []).filter((m) => m.mode !== "convert");
+  if (!available) {
+    $("#mode-breakdown").innerHTML = '<div class="empty">Mode data is unavailable.</div>';
+    return;
+  }
   const total = Math.max(
     1,
     modes.reduce((a, m) => a + (m.count || 0), 0),
@@ -3462,11 +4122,12 @@ async function drawModeBreakdown() {
     const c = MODE_COLORS[m.mode] || "var(--gold)";
     const w = Math.round(((m.count || 0) / max) * 100);
     const share = Math.round(((m.count || 0) / total) * 100);
-    return `<div class="modebar-row">
+    const label = MODE_LABELS[m.mode] || m.mode;
+    return `<div class="modebar-row" role="listitem" aria-label="${esc(label)}: ${fmtNum(m.count)} dictations, ${fmtNum(m.words)} output words, ${share} percent share">
       <span class="mode-dot" style="background:${c};box-shadow:0 0 5px color-mix(in srgb, ${c} 60%, transparent)"></span>
-      <span class="name" style="color:${c}">${esc(m.mode)}</span>
-      <div class="meter"><div class="fill grow" style="--bar-w:${w}%;background:${c};animation-delay:${di * 60}ms"></div></div>
-      <span class="val">${fmtNum(m.words)}w · <b class="t-dim">${share}%</b></span></div>`;
+      <span class="name" style="color:${c}">${esc(label)}</span>
+      <div class="meter" aria-hidden="true"><div class="fill grow" style="--bar-w:${w}%;background:${c};animation-delay:${di * 60}ms"></div></div>
+      <span class="val">${fmtNum(m.count)} · ${fmtNum(m.words)} words · <b class="t-dim">${share}%</b></span></div>`;
   };
   const text = modes.filter((m) => m.mode === "text");
   const smart = modes.filter((m) => m.mode !== "text");
@@ -3485,12 +4146,52 @@ async function drawModeBreakdown() {
   $("#mode-breakdown").innerHTML =
     html || '<div class="empty">Dictate something to see your mode mix.</div>';
 }
+
+function drawTimeOfDay(ins) {
+  const hours = ins && Array.isArray(ins.tod_hours) ? ins.tod_hours.slice(0, 24) : new Array(24).fill(0);
+  while (hours.length < 24) hours.push(0);
+  const max = Math.max(0, ...hours.map((value) => Number(value) || 0));
+  const total = hours.reduce((n, value) => n + (Number(value) || 0), 0);
+  const peakHour = ins && ins.tod_peak_hour != null ? ins.tod_peak_hour : total ? hours.indexOf(max) : -1;
+  const labels = ["12a","","","3a","","","6a","","","9a","","","12p","","","3p","","","6p","","","9p","",""];
+  const plots = hours.map((words, i) => {
+    const height = max > 0 && words > 0 ? Math.max(2, Math.round(words / max * 62)) : 0;
+    const peak = i === peakHour && words > 0;
+    const hour = (i % 12 || 12) + (i < 12 ? "am" : "pm");
+    return `<div class="tod-slot" title="${hour}: ${fmtNum(words)} output words">
+      <div class="tod-bar ${peak ? "peak" : ""} ${words ? "" : "is-zero"}" style="height:${height}px"></div>
+      ${peak ? `<span class="tod-val" style="bottom:${Math.min(72, height + 4)}px">${fmtNum(words)}</span>` : ""}
+    </div>`;
+  }).join("");
+  $("#tod-chart").innerHTML = `<div class="tod-plots">${plots}</div><div class="tod-axis">${labels.map((label) => `<span>${label}</span>`).join("")}</div>`;
+  const hourlySummary = hours
+    .map((words, i) => `${i % 12 || 12}${i < 12 ? "am" : "pm"}: ${fmtNum(words)} words`)
+    .join("; ");
+  if (!ins) {
+    setText("#tod-peak", "all tracked");
+    setText("#tod-note", "Time-of-day activity is unavailable.");
+    setText("#tod-summary", "Time-of-day activity is unavailable.");
+  } else if (total > 0 && ins.tod_peak_label) {
+    setText("#tod-peak", `all tracked · peak ${ins.tod_peak_label}`);
+    setText("#tod-note", `Peak output: ${ins.tod_peak_label}, ${ins.tod_peak_share}% of tracked output words. Bars use each dictation's start hour.`);
+    setText("#tod-summary", `Output words by dictation start hour. ${hourlySummary}.`);
+  } else {
+    setText("#tod-peak", "all tracked");
+    setText("#tod-note", "No start-hour pattern yet. Output words will appear here after dictation.");
+    setText("#tod-summary", "No tracked output words by dictation start hour yet.");
+  }
+}
+
 function setStatsRange(r) {
-  STATS_RANGE = r;
-  $$("#stat-range button").forEach((b) =>
-    b.classList.toggle("active", +b.dataset.r === r),
-  );
-  drawChart();
+  const next = [7, 30, 90].includes(Number(r)) ? Number(r) : 7;
+  STATS_RANGE = next;
+  $$("#stat-range button").forEach((b) => {
+    const selected = +b.dataset.r === next;
+    b.classList.toggle("active", selected);
+    b.setAttribute("aria-pressed", selected ? "true" : "false");
+  });
+  if (STATS_SNAPSHOT && STATS_SNAPSHOT.dictation)
+    drawChart(STATS_SNAPSHOT.dictation, next, STATS_SNAPSHOT.dictation.available === true);
 }
 
 /* ============================================================================
@@ -3507,14 +4208,21 @@ function wireKeyFields() {
     inp.dataset.keywired = "1";
     const field = inp.closest(".field") || inp.parentElement;
     if (field) field.classList.add("has-reveal");
-    inp.addEventListener("focus", () => {
-      if (inp.dataset.masked === "1") { inp.value = ""; inp.dataset.masked = ""; }
+    // Focusing a masked field must not erase it: keyboard users need to tab to
+    // the reveal button without destroying the visible identity preview. Clear
+    // only when an actual edit is about to occur.
+    inp.addEventListener("beforeinput", () => {
+      if (inp.dataset.masked === "1") {
+        inp.value = "";
+        inp.dataset.masked = "";
+      }
     });
     inp.addEventListener("input", () => { inp.dataset.masked = ""; });
     const eye = document.createElement("button");
     eye.type = "button";
     eye.className = "key-reveal";
     eye.title = "Show / hide the saved key";
+    eye.setAttribute("aria-label", "Show or hide the saved API key");
     eye.innerHTML = svg("eye");
     eye.addEventListener("click", async () => {
       if (inp.type === "password") {
@@ -3695,7 +4403,12 @@ async function hydrateSettings() {
         // dropdown fills with valid ids (the core "enter key, then pick a model" flow).
         if (key.endsWith("_api_key")) {
           const pr = key.slice(0, -8);
+          // Model confirmation is part of the saved-key transition.  Wait for it
+          // before route hydration refreshes the readiness summary, otherwise the
+          // screen can remain on a stale "unavailable" result until another action.
           const modelRefresh = populateModels(pr, true);
+          // fillModelSelect invalidates confirmation synchronously for a forced
+          // refresh.  Reflect that fail-closed state while network discovery runs.
           updateSetupSummary();
           await modelRefresh;
           if (mutationId !== SETTINGS_MUTATION_VERSION[key]) return;
@@ -3704,16 +4417,35 @@ async function hydrateSettings() {
         }
         if ([
           "transcription_mode", "cloud_transcription_provider",
-          "local_only_mode", "pro_mode", "instant_text",
+          "local_only_mode", "pro_mode", "llm_provider", "instant_text",
           "cerebras_api_key", "openrouter_api_key", "groq_api_key",
           "openai_api_key", "local_llm_enabled", "local_llm_model",
           "cerebras_model", "openrouter_model", "groq_transcription_model",
           "openai_transcription_model", "openrouter_transcription_model",
-        ].includes(key)) await refreshRouteState();
+        ].includes(key)) {
+          await refreshRouteState();
+        }
+        if (key === "local_llm_enabled" || key === "local_llm_model") {
+          await hydrateLocalLlm();
+        }
       });
     }
   });
   wireKeyFields();
+  $$('label.switch input[type="checkbox"]').forEach((input) => {
+    if (input.getAttribute("aria-label")) return;
+    const label = input.closest(".set-row")?.querySelector(".set-label")?.textContent?.trim();
+    if (label) input.setAttribute("aria-label", label);
+  });
+  $$('[data-view="settings"] input, [data-view="settings"] select, [data-view="settings"] textarea').forEach((control) => {
+    if (control.getAttribute("aria-label") || control.getAttribute("aria-labelledby") || control.labels?.length)
+      return;
+    const fieldLabel = control.closest(".field")?.querySelector(".label")?.textContent?.trim();
+    const rowLabel = control.closest(".set-row")?.querySelector(".set-label")?.textContent?.trim();
+    const cardLabel = control.closest(".card")?.querySelector("h3")?.textContent?.trim();
+    const name = fieldLabel || rowLabel || cardLabel;
+    if (name) control.setAttribute("aria-label", name);
+  });
   // mic list (populated separately from the generic binding)
   let mics;
   try {
@@ -3737,10 +4469,17 @@ async function hydrateSettings() {
     msel.value = SET.mic_device == null ? -1 : SET.mic_device;
     if (!msel.dataset.wired) {
       msel.dataset.wired = "1";
-      msel.addEventListener("change", () => {
+      msel.addEventListener("change", async () => {
+        const previous = SET.mic_device;
         const v = +msel.value;
-        call("set_setting", "mic_device", v < 0 ? null : v);
-        SET.mic_device = v < 0 ? null : v;
+        const next = v < 0 ? null : v;
+        const r = await call("set_setting", "mic_device", next);
+        if (!r || r.ok === false) {
+          msel.value = previous == null ? -1 : previous;
+          toast((r && r.message) || "Could not save the microphone.", "err");
+          return;
+        }
+        SET.mic_device = next;
       });
     }
   }
@@ -3760,6 +4499,12 @@ async function hydrateSettings() {
   reflectProvider();
   // advanced cloud-transcription section (mode + provider field visibility)
   reflectCloudStt();
+  updateSetupSummary();
+  const recovery = $("#settings-recovery-notice");
+  if (recovery && SET._recovery_notice) {
+    recovery.textContent = SET._recovery_notice;
+    recovery.hidden = false;
+  }
   // presets adder
   renderPresetAdder();
   // pretty hotkey labels
@@ -3844,10 +4589,9 @@ function confirmSaved(el, key, v, r) {
           : " — saved";
     toast(big(v) + tail, "ok", 2400);
   }
-  // the model list follows the language (owner spec: never expose irrelevant
-  // options) — English shows the fast .en models, anything else shows the
-  // multilingual ones, and an invalid combination auto-corrects
-  if (key === "language") syncModelOptions(true);
+  // Language scope filters the choices, but never rewrites a saved model merely
+  // because Settings was opened or a related selector changed.
+  if (key === "language" || key === "english_only") syncModelOptions(false);
   // Show/hide the "high-end CPU" warning the moment a Maximum Accuracy tier is
   // picked (or cleared).
   if (key === "model") updateMaxAccuracyWarn(v);
@@ -3863,11 +4607,13 @@ const MODEL_SETS = {
     ["base.en", "Balanced — Base"],
     ["small.en", "Accurate — Small"],
     ["medium.en", "Maximum Accuracy — Medium"],
+    ["distil-large-v3", "Automatic — Distil Large v3 (English)"],
   ],
   multi: [
     ["base", "Balanced — Base (multilingual)"],
     ["small", "Accurate — Small (multilingual)"],
     ["large-v3", "Maximum Accuracy — Large v3 (multilingual)"],
+    ["large-v3-turbo", "Automatic — Large v3 Turbo (multilingual)"],
   ],
 };
 // The "Maximum Accuracy" tiers are heavy (≈1.5 GB+) and slow on a weak CPU, so
@@ -3877,27 +4623,19 @@ function updateMaxAccuracyWarn(model) {
   const warn = document.getElementById("max-accuracy-warn");
   if (warn) warn.hidden = !MAX_ACCURACY_MODELS.includes(model);
 }
-function syncModelOptions(announce) {
+function syncModelOptions(_announce) {
   const sel = $('[data-setting="model"]');
   if (!sel) return;
-  const en = (SET.language || "en") === "en";
-  const set = en ? MODEL_SETS.en : MODEL_SETS.multi;
+  const en = SET.english_only !== false;
+  const set = (en ? MODEL_SETS.en : MODEL_SETS.multi).slice();
+  const saved = String(SET.model || "").trim();
+  if (saved && !set.some(([value]) => value === saved)) {
+    set.unshift([saved, saved + " (saved custom choice)"]);
+  }
   sel.innerHTML = set
     .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`)
     .join("");
-  let m = SET.model || (en ? "small.en" : "small");
-  if (!set.some(([v]) => v === m)) {
-    m = en ? m.replace(/\.en$/, "") + ".en" : m.replace(/\.en$/, "");
-    if (!set.some(([v]) => v === m)) m = en ? "small.en" : "small";
-    SET.model = m;
-    call("set_setting", "model", m);
-    if (announce)
-      toast(
-        "Model switched to “" + m + "” to match the language",
-        "info",
-        3200,
-      );
-  }
+  const m = saved || (en ? "small.en" : "small");
   sel.value = m;
   updateMaxAccuracyWarn(m);
 }
@@ -3926,7 +4664,7 @@ async function hydrateLocalLlm() {
       badge.textContent = "Off";
       badge.style.color = "var(--text-mute)";
     } else if (st.ready) {
-      badge.textContent = "Active";
+      badge.textContent = "Ready";
       badge.style.color = "var(--green)";
     } else {
       badge.textContent = "No model";
@@ -3959,14 +4697,31 @@ function hydrateForeignLangs() {
     (SET.foreign_languages || ["arabic"]).map((x) => String(x).toLowerCase()),
   );
   Array.from(wrap.querySelectorAll(".lang-chip")).forEach((b) => {
-    b.classList.toggle("on", sel.has(b.dataset.lang));
-    b.onclick = () => {
+    const active = sel.has(b.dataset.lang);
+    b.classList.toggle("on", active);
+    b.setAttribute("aria-pressed", active ? "true" : "false");
+    b.onclick = async () => {
+      const previous = Array.from(wrap.querySelectorAll(".lang-chip.on")).map(
+        (x) => x.dataset.lang,
+      );
       b.classList.toggle("on");
       const picked = Array.from(wrap.querySelectorAll(".lang-chip.on")).map(
         (x) => x.dataset.lang,
       );
+      const r = await call("set_setting", "foreign_languages", picked);
+      if (!r || r.ok === false) {
+        wrap.querySelectorAll(".lang-chip").forEach((chip) => {
+          const on = previous.includes(chip.dataset.lang);
+          chip.classList.toggle("on", on);
+          chip.setAttribute("aria-pressed", on ? "true" : "false");
+        });
+        toast((r && r.message) || "Could not save language priorities.", "err");
+        return;
+      }
       SET.foreign_languages = picked;
-      call("set_setting", "foreign_languages", picked);
+      wrap.querySelectorAll(".lang-chip").forEach((chip) =>
+        chip.setAttribute("aria-pressed", chip.classList.contains("on") ? "true" : "false"),
+      );
     };
   });
 }
@@ -4153,8 +4908,16 @@ function wireSyncToggles() {
     el.dataset.syncWired = "1";
     el.addEventListener("change", async function () {
       const key = "sync_" + el.dataset.syncToggle;
+      const previous = SET[key] !== false;
+      if (HAS_PY()) {
+        const r = await call("set_setting", key, el.checked);
+        if (!r || r.ok === false) {
+          el.checked = previous;
+          toast((r && r.message) || "Could not save the sync choice.", "err");
+          return;
+        }
+      }
       SET[key] = el.checked;
-      if (HAS_PY()) await call("set_setting", key, el.checked);
     });
   });
 }
@@ -4216,20 +4979,25 @@ function invalidateHostedConfirmation(provider) {
     : decision;
   const action = routes.action_processing;
   if (action && action.provider === provider) {
-    action.effective = "local"; action.reason = "unconfirmed_model"; action.sends_text = false;
+    action.effective = "local";
+    action.reason = "unconfirmed_model";
+    action.sends_text = false;
     action.decision = invalidate(action.decision);
   }
   if (routes.feature_routes) Object.keys(routes.feature_routes).forEach((key) => {
     routes.feature_routes[key] = invalidate(routes.feature_routes[key]);
   });
 }
-async function fillModelSelect(sel, provider, force, generation = null) {
+async function fillModelSelect(sel, provider, force) {
   if (!sel) return false;
   provider = (provider || "").toLowerCase();
   const saved = nested(SET, provider + "_model") || "";
   let models = (MODELS[provider] || []).slice();
   let live = false;
   const hasKey = !!String(nested(SET, provider + "_api_key") || "").trim();
+  // A forced discovery follows a changed credential.  Confirmation belongs to
+  // the credential that produced it, so invalidate the old catalogue even when
+  // the replacement is empty or no bridge request can be made.
   let discoveryId = MODEL_DISCOVERY_VERSION[provider] || 0;
   if (force) {
     discoveryId += 1;
@@ -4243,7 +5011,7 @@ async function fillModelSelect(sel, provider, force, generation = null) {
       MODEL_DISCOVERY_VERSION[provider] = discoveryId;
     }
     try {
-      const r = await call("list_models", provider, generation);
+      const r = await call("list_models", provider);
       if (discoveryId !== MODEL_DISCOVERY_VERSION[provider]) return false;
       if (r && r.ok && Array.isArray(r.models) && r.models.length) {
         if (provider === "openrouter") {
@@ -4264,24 +5032,21 @@ async function fillModelSelect(sel, provider, force, generation = null) {
       /* keep the fallback list */
     }
   }
-  // Preserve a custom/legacy Cerebras choice, but never reopen OpenRouter's
-  // uncurated catalogue through a stale saved id.
-  if (saved && provider !== "openrouter" && !models.includes(saved)) models.unshift(saved);
+  // Curated options guide new choices; the configured value stays visible until
+  // the user deliberately replaces it.
+  if (saved && !models.includes(saved)) models.unshift(saved);
   sel.innerHTML = models
     .map((m) => `<option value="${esc(m)}">${esc(MODEL_LABELS[m] || m)}</option>`)
     .join("");
-  // If the saved value is not in the curated/live list, prefer the first model
-  // so old/deprecated ids (e.g. deepseek-chat) never silently stay selected.
   sel.value = models.includes(saved) ? saved : models[0] || "";
   return live;
 }
 /* Populate the MAIN AI Provider card's model select for a provider. */
-function populateModels(provider, force, generation = null) {
+function populateModels(provider, force) {
   return fillModelSelect(
     document.querySelector(`select[data-model-select="${provider}"]`),
     provider,
     force,
-    generation,
   );
 }
 
@@ -4302,9 +5067,7 @@ const STT_MODELS = {
     ["whisper-1", "Whisper-1 — legacy"],
   ],
   openrouter: [
-    ["openai/gpt-4o-mini-transcribe", "4o-mini (recommended)"],
-    ["openai/gpt-4o-transcribe", "4o — most accurate"],
-    ["groq/whisper-large-v3-turbo", "Groq Turbo — fastest"],
+    ["groq/whisper-large-v3-turbo", "Groq Turbo — working default"],
   ],
 };
 /* Fill one STT model <select data-stt-select="provider">, keeping any saved
@@ -4322,21 +5085,94 @@ function fillSttSelect(provider) {
   sel.value = list.some(([v]) => v === saved) ? saved : list[0]?.[0] || "";
 }
 
-async function reflectProvider(force = false, generation = null) {
+async function reflectProvider(force = false) {
   const p = SET.llm_provider || "cerebras";
+  const supported = ["cerebras", "openrouter"].includes(p);
   $$("[data-provider-field]").forEach(
-    (f) => (f.hidden = f.dataset.providerField !== p),
+    (f) => (f.hidden = !supported || f.dataset.providerField !== p),
   );
   $$("[data-provider-only]").forEach((f) => {
     f.hidden = !f.dataset.providerOnly.split(",").includes(p);
   });
   const sel = $("#set-provider");
-  if (sel) sel.value = p;
+  if (sel) {
+    sel.querySelector('option[data-saved-unavailable="1"]')?.remove();
+    if (!supported) {
+      const option = document.createElement("option");
+      option.value = p;
+      option.dataset.savedUnavailable = "1";
+      option.textContent = `${p || "blank"} — saved, unavailable`;
+      sel.prepend(option);
+    }
+    sel.value = p;
+  }
   const desc = $("#provider-desc");
-  if (desc) desc.textContent = PROVIDER_DESC[p] || "";
-  const live = await populateModels(p, force, generation);
+  if (desc) desc.textContent = supported
+    ? PROVIDER_DESC[p] || ""
+    : "This saved provider is not supported by this build. It remains preserved but inactive until you choose a supported route.";
+  const live = supported ? await populateModels(p, force) : false;
   if (live || force) await refreshRouteState();
   else updateSetupSummary();
+}
+
+async function activateProviderChoice(provider, mutationKey, mutationId) {
+  const result = await call("activate_model_provider", provider);
+  if (mutationId !== SETTINGS_MUTATION_VERSION[mutationKey])
+    return {ok:false, obsolete:true};
+  if (!result || result.ok !== true) return result || {ok:false};
+  if (Array.isArray(result.models)) {
+    MODELS[provider] = result.models.slice();
+    MODELS_FETCHED[provider] = new Set(result.models);
+  }
+  SET.llm_provider = provider;
+  await reflectProvider(false);
+  await refreshRouteState();
+  return result;
+}
+
+function wireOnboardingProvider() {
+  const control = $("#ob-provider");
+  if (!control || control.dataset.routeWired === "1") return;
+  control.dataset.routeWired = "1";
+  control.addEventListener("change", async () => {
+    const previous = OB.provider || SET.llm_provider || "cerebras";
+    const v = control.value;
+    const mutationId = (SETTINGS_MUTATION_VERSION.onboarding_llm_provider || 0) + 1;
+    SETTINGS_MUTATION_VERSION.onboarding_llm_provider = mutationId;
+    const r = await activateProviderChoice(v, "onboarding_llm_provider", mutationId);
+    if (mutationId !== SETTINGS_MUTATION_VERSION.onboarding_llm_provider) return;
+    if (!r || r.ok === false) {
+      control.value = previous;
+      toast((r && r.message) || "Could not save the provider.", "err");
+      return;
+    }
+    OB.provider = v;
+    const openUrl = v === "openrouter" ? "https://openrouter.ai/keys" : "https://cloud.cerebras.ai/";
+    const getKeyBtn = $("#ob-get-key");
+    if (getKeyBtn) getKeyBtn.onclick = () => call("open_url", openUrl);
+  });
+}
+
+function resolveHostedReadiness(route, decision = (route || {}).decision || {}) {
+  route = route || {};
+  const provider = route.provider || decision.provider || "";
+  const model = String(decision.model || "").trim();
+  const reason = route.reason || decision.reason || "selected";
+  const ready = decision.ready === true && decision.effective_route === "hosted" && route.effective === "cloud";
+  return { ready, reason, provider, model };
+}
+
+function applyHostedReadiness(route, decision = (route || {}).decision || {}) {
+  const readiness = resolveHostedReadiness(route, decision);
+  const requested = route.requested || decision.requested_route ||
+    (route.effective === "cloud" || decision.effective_route === "hosted" ? "hosted" : "local");
+  if (readiness.ready || !["cloud", "hosted"].includes(requested))
+    return { route, decision, readiness };
+  return {
+    route: { ...route, effective: "local", reason: readiness.reason, sends_text: false },
+    decision: { ...decision, effective_route: "local", reason: readiness.reason, ready: false },
+    readiness,
+  };
 }
 
 /* Advanced cloud-transcription section: show the provider/key/model fields only
@@ -4348,13 +5184,24 @@ function reflectCloudStt() {
   const fields = $("#cloud-stt-fields");
   if (fields) fields.hidden = mode !== "cloud";
   const p = SET.cloud_transcription_provider || "groq";
+  const supported = ["groq", "openai", "openrouter"].includes(p);
   $$("[data-tx-field]").forEach(
-    (el) => (el.hidden = el.dataset.txField !== p),
+    (el) => (el.hidden = !supported || el.dataset.txField !== p),
   );
   // Fill the curated STT model dropdowns (saved value kept selectable).
   ["groq", "openai", "openrouter"].forEach(fillSttSelect);
   const provSel = $("#set-tx-provider");
-  if (provSel) provSel.value = p;
+  if (provSel) {
+    provSel.querySelector('option[data-saved-unavailable="1"]')?.remove();
+    if (!supported) {
+      const option = document.createElement("option");
+      option.value = p;
+      option.dataset.savedUnavailable = "1";
+      option.textContent = `${p || "blank"} — saved, unavailable`;
+      provSel.prepend(option);
+    }
+    provSel.value = p;
+  }
   // Show the right explanation text for the selected mode.
   const localDesc = $("#tx-mode-local-desc");
   const cloudDesc = $("#tx-mode-cloud-desc");
@@ -4368,79 +5215,235 @@ function reflectCloudStt() {
    running and where, without expanding any Advanced/details elements. Called
    from reflectCloudStt (on settings load + transcription-mode change) and from
    the main settings change handler for AI provider / hardware / model changes. */
-const FEATURE_ROUTE_ROWS = [
-  ["Plain dictation", "plain_dictation"], ["Prompt", "prompt"],
-  ["Email", "email"], ["Reply", "reply"], ["Deck actions", "deck_actions"],
-  ["Meetings analysis", "meetings_analysis"], ["Reader actions", "reader_actions"],
-];
-function resolveHostedReadiness(route, decision = (route || {}).decision || {}) {
-  route = route || {};
-  return {
-    ready: decision.ready === true && decision.effective_route === "hosted" && route.effective === "cloud",
-    reason: route.reason || decision.reason || "selected",
-  };
-}
 function buildRouteFacts({ kind, route, decision, providerLabel, reasonText, localEngine }) {
-  const readiness = kind === "speech"
-    ? {ready:route.effective === "cloud" && Boolean(decision.model),reason:route.reason || decision.reason}
-    : resolveHostedReadiness(route, decision);
-  const hosted = readiness.ready;
+  const effective = route.effective || (decision.effective_route === "hosted" ? "cloud" : "local");
+  const hosted = effective === "cloud";
+  const rawReason = route.reason || decision.reason || "";
+  const reason = { device_only: "local_only", hosted_processing_off: "pro_off", missing_key: "no_key", ready: "selected" }[rawReason] || rawReason;
   const requested = route.requested || decision.requested_route || "local";
-  const saved = ["cloud", "hosted"].includes(requested) ? `Hosted · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}` : "On this device";
-  return {saved,effective:hosted ? `Hosted · ready (${providerLabel})` : "On this device",reason:reasonText[readiness.reason] || String(readiness.reason || "safe local route").replaceAll("_", " "),engine:hosted ? `${kind === "speech" ? "Recorded audio" : "Transcript text"} · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}` : `${kind === "speech" ? "Recorded audio" : "Transcript text"} · ${localEngine}`,location:hosted ? `${providerLabel} hosted service` : "This device",egress:hosted ? (kind === "speech" ? "The recorded audio clip" : "Transcript text and action context; never microphone audio") : `Nothing for ${kind === "speech" ? "speech to text" : "text shaping"}`,speed:hosted ? "Depends on the connection and provider" : "Depends on this device and its local engine",privacy:hosted ? `${kind === "speech" ? "Recorded audio" : "Transcript text and action context"} is shared with ${providerLabel}` : `${kind === "speech" ? "Recorded audio" : "Text shaping"} stays on this device`,quality:hosted ? "Results depend on the selected provider and model" : "Results depend on the selected local engine and task",cost:hosted ? "Your provider may charge for this action" : "No provider charge"};
-}
-function writeRouteFacts(prefix, facts) { Object.entries(facts).forEach(([key, value]) => setText(`#${prefix}-fact-${key}`, value)); }
-function renderFeatureRouteLedger({ featureRoutes, names, reasonText }) {
-  const root = $("#feature-route-rows"); if (!root) return;
-  const labels={saved:"Saved",effective:"Effective",reason:"Reason",engine:"Input and engine",location:"Location",egress:"What leaves this device",speed:"Speed",privacy:"Privacy",quality:"Quality boundary",cost:"Cost"};
-  root.innerHTML = FEATURE_ROUTE_ROWS.map(([label, key]) => { const decision=featureRoutes[key]||{}; const facts=buildRouteFacts({kind:"text",route:{requested:decision.requested_route,effective:decision.effective_route === "hosted" ? "cloud" : "local",reason:decision.reason,provider:decision.provider,provider_supported:decision.provider_supported,has_key:decision.key_present},decision,providerLabel:names[decision.provider]||decision.provider||"No provider",reasonText,localEngine:key === "plain_dictation" ? "local formatter" : "local text-shaping pipeline"}); return `<article class="feature-route-row" data-route-feature="${esc(label.toLowerCase().replace(/\s+/g,"-"))}"><h4>${esc(label)}</h4><dl>${Object.entries(facts).map(([name,value])=>`<div><dt>${esc(labels[name]||name)}</dt><dd data-route-value="${esc(name)}">${esc(value)}</dd></div>`).join("")}</dl></article>`; }).join("");
-}
-function updateSetupSummary() {
-  const route = SET._route_state || {};
-  const transcription = route.transcription || {};
-  const rawAction = route.action_processing || {};
-  const actionReadiness = resolveHostedReadiness(rawAction, rawAction.decision || {});
-  const action = actionReadiness.ready ? rawAction : {
-    ...rawAction, effective: "local", reason: actionReadiness.reason, sends_text: false,
-    decision: {...(rawAction.decision || {}), effective_route:"local", reason:actionReadiness.reason, ready:false},
+  const localProvider = decision.provider === "local";
+  const saved = localProvider
+    ? reason === "unsupported_provider"
+      ? "On-device local model · saved, unavailable"
+      : `On-device local model${decision.model ? ` · ${decision.model}` : ""}`
+    : requested === "hosted" || requested === "cloud"
+      ? `Hosted · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}`
+      : "On this device";
+  if (kind === "speech") {
+    return {
+      saved,
+      effective: hosted ? `Online provider · ready (${providerLabel})` : "On this device",
+      reason: reasonText[reason] || "Mumble used the safest available speech route.",
+      engine: hosted ? `Recorded audio · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}` : `Recorded audio · ${localEngine}`,
+      location: hosted ? `${providerLabel} hosted service` : "This device",
+      egress: hosted ? "The recorded audio clip" : "Nothing for speech to text",
+      speed: hosted ? "Depends on your connection and provider; no universal speed promise" : "Depends on this device and selected speech model",
+      privacy: hosted ? `Recorded audio is shared with ${providerLabel}` : "Recorded audio stays on this device",
+      quality: hosted ? "Recognition depends on the selected provider and model" : "Recognition depends on the selected model, language, microphone, and device",
+      cost: hosted ? "Your provider may charge for transcription" : "No provider charge",
+    };
+  }
+  return {
+    saved,
+    effective: hosted ? `Hosted · ready (${providerLabel})` : "On this device",
+    reason: reasonText[reason] || "Mumble used the safest available text route.",
+    engine: hosted ? `Transcript text · ${providerLabel}${decision.model ? ` · ${decision.model}` : ""}` : `Transcript text · ${localEngine}`,
+    location: hosted ? `${providerLabel} hosted service` : "This device",
+    egress: hosted ? "Transcript text and action context; never microphone audio" : "Nothing for text shaping",
+    speed: hosted ? "Depends on your connection and provider; no universal speed promise" : "Depends on this device and the available local engine",
+    privacy: hosted ? `Transcript text and action context are shared with ${providerLabel}` : "Text shaping stays on this device",
+    quality: hosted ? "Results depend on the selected provider, model, and task" : "Results depend on the local formatter or ready on-device model",
+    cost: hosted ? "Your provider may charge for text processing" : "No provider charge",
   };
-  const provNames = { cerebras: "Cerebras", openrouter: "OpenRouter", openai: "OpenAI",
-                      groq: "Groq", local: "Local model" };
-  // Transcription mode
+}
+
+function writeRouteFacts(prefix, facts) {
+  Object.entries(facts).forEach(([key, value]) => setText(`#${prefix}-fact-${key}`, value));
+}
+
+function updateSetupSummary() {
+  const routes = SET._route_state || {};
+  const tx = routes.transcription || {};
+  const plain = routes.plain_processing || {};
+  const rawAction = routes.action_processing || {};
+  const actionPresentation = applyHostedReadiness(rawAction, rawAction.decision || {});
+  const action = actionPresentation.route;
+  const names = {
+    cerebras: "Cerebras", openrouter: "OpenRouter",
+    groq: "Groq", openai: "OpenAI",
+  };
+  const reasonText = {
+    selected: "Your saved choice is ready.",
+    instant_text: "Instant plain dictation keeps this feature on this device.",
+    local_provider: "You selected an on-device model.",
+    local_only: "Keep audio and text on this device overrides the saved hosted choice.",
+    pro_off: "Hosted text processing is switched off.",
+    no_key: "The selected provider does not have a saved key.",
+    no_model: "The selected provider does not have a saved transcription model.",
+    missing_model: "The selected provider does not have a saved model.",
+    unconfirmed_model: "The selected model has not been confirmed by the provider.",
+    unsupported_provider: "This build does not support the saved provider.",
+  };
+
+  let txTitle = "On-device transcription";
+  let txCopy = "Recorded audio stays on this device for speech-to-text.";
+  let txTone = "local";
+  if (tx.effective === "cloud") {
+    txTitle = `Hosted transcription · ${names[tx.provider] || tx.provider}`;
+    txCopy = `Recorded audio clips are sent to ${names[tx.provider] || tx.provider}. Text processing remains a separate route.`;
+    txTone = "cloud";
+  } else if (tx.reason === "local_only") {
+    txTitle = "On-device transcription · local-only override";
+    txCopy = "Your Cloud selection remains saved, but no audio is sent while the device-only override is on.";
+  } else if (tx.reason === "no_key") {
+    txTitle = "On-device transcription · Cloud not ready";
+    txCopy = `Cloud is selected, but no ${names[tx.provider] || tx.provider} key is saved. Audio stays on-device.`;
+    txTone = "warning";
+  } else if (tx.reason === "unsupported_provider") {
+    txTitle = "On-device transcription · provider unavailable";
+    txCopy = "The saved Cloud provider is preserved but unsupported, so no audio is sent.";
+    txTone = "warning";
+  }
   const sumTx = $("#sum-tx-mode");
   if (sumTx) {
-    const mode = transcription.effective || SET.transcription_mode || "local";
-    sumTx.textContent = mode === "cloud" ? "Cloud" : "Local (private)";
-    sumTx.className = "setup-value " + (mode === "cloud" ? "t-amber" : "t-green");
+    sumTx.textContent = txTitle;
+    sumTx.className = "setup-value " + (tx.effective === "cloud" ? "t-amber" : "t-green");
   }
-  // Saved provider and effective text-shaping route
+  const sumTxDetail = $("#sum-tx-detail");
+  if (sumTxDetail) sumTxDetail.textContent = txCopy;
+  const txStatus = $("#transcription-route-status");
+  if (txStatus) {
+    txStatus.dataset.route = txTone;
+    $("#transcription-route-title").textContent = txTitle;
+    $("#transcription-route-copy").textContent = txCopy;
+  }
+  const txProviderLabel = names[tx.provider] || tx.provider || "No provider";
+  writeRouteFacts("tx", buildRouteFacts({
+    kind: "speech", route: tx,
+    decision: {
+      requested_route: tx.requested === "cloud" ? "hosted" : "local",
+      effective_route: tx.effective === "cloud" ? "hosted" : "local",
+      reason: tx.reason,
+      model: tx.model || SET[`${tx.provider}_transcription_model`] || "",
+    },
+    providerLabel: txProviderLabel,
+    reasonText,
+    localEngine: `faster-whisper${SET.model ? ` · ${SET.model}` : ""}`,
+  }));
+
+  let processingTitle = "On-device text shaping";
+  let processingCopy = "Transcript text stays on-device for formatting and explicit actions.";
+  let processingTone = "local";
+  const localProvider = action.provider === "local" && action.reason === "local_provider";
+  if (localProvider) {
+    processingTitle = "On-device text shaping · local model";
+    processingCopy = "Transcript text is sent only to your selected local model service on this device. Microphone audio is never sent by this route.";
+  } else if (action.effective === "cloud") {
+    const label = names[action.provider] || action.provider;
+    processingTitle = plain.effective === "local"
+      ? `Split route · plain local, actions via ${label}`
+      : `Hosted text shaping · ${label}`;
+    processingCopy = plain.effective === "local"
+      ? "Instant plain dictation stays local. Prompt, Email, and preset actions may send transcript text; audio is never sent by this route."
+      : `Transcript text may be sent to ${label}; audio is never sent by this route.`;
+    processingTone = "cloud";
+  } else if (action.reason === "local_only") {
+    processingTitle = "On-device text shaping · device-only override";
+    processingCopy = "Your hosted provider and key remain saved, but no transcript text is sent while the override is on.";
+  } else if (action.reason === "pro_off") {
+    processingTitle = "On-device text shaping · hosted processing off";
+    processingCopy = "Transcript text stays local. The separate transcription route is unchanged.";
+  } else if (action.reason === "no_key") {
+    processingTitle = "On-device text shaping · no provider key";
+    processingCopy = "Hosted text processing is on, but no key is saved for the selected provider. Transcript text stays local.";
+    processingTone = "warning";
+  } else if (action.reason === "unsupported_provider") {
+    processingTitle = "On-device text shaping · provider unavailable";
+    processingCopy = "The saved provider is preserved but inactive. Choose a supported provider to enable hosted text processing.";
+    processingTone = "warning";
+  }
   const sumProv = $("#sum-provider");
   if (sumProv) {
-    const prov = action.provider || SET.llm_provider || "cerebras";
-    const effective = action.effective === "cloud" ? "Hosted" : "On this device";
-    sumProv.textContent = effective + " · " + (provNames[prov] || prov);
-    sumProv.className = "setup-value " + (action.effective === "cloud" ? "t-gold" : "t-mute");
+    sumProv.textContent = processingTitle;
+    sumProv.className = "setup-value " + (action.effective === "cloud" ? "t-gold" : "t-green");
   }
-  const decision = action.decision || {};
-  const provider = provNames[action.provider] || action.provider || "No provider";
-  const effectiveHosted = action.effective === "cloud";
-  const reason = action.reason || "checking";
-  setText("#processing-route-title", effectiveHosted ? `Hosted text shaping · ${provider}` : `On-device text shaping · ${reason.replaceAll("_", " ")}`);
-  setText("#processing-route-copy", effectiveHosted
-    ? `Transcript text may be sent to ${provider}; microphone audio never uses this route.`
-    : "Transcript text stays on this computer for shaping. The saved hosted choice remains visible below.");
-  const routeStatus = $("#processing-route-status");
-  if (routeStatus) {
-    routeStatus.dataset.route = effectiveHosted ? "cloud" : (reason === "no_key" ? "warning" : "local");
-    routeStatus.dataset.available = actionReadiness.ready ? "true" : "false";
+  const sumProvDetail = $("#sum-provider-detail");
+  if (sumProvDetail) sumProvDetail.textContent = processingCopy;
+  const processingStatus = $("#processing-route-status");
+  if (processingStatus) {
+    processingStatus.dataset.route = processingTone;
+    $("#processing-route-title").textContent = processingTitle;
+    $("#processing-route-copy").textContent = processingCopy;
   }
-  const reasonText={selected:"Your saved choice is ready.",local_only:"The device-only privacy setting overrides the saved choice.",pro_off:"Hosted text processing is off.",no_key:"The selected provider has no saved key.",no_model:"The selected provider has no saved transcription model.",unsupported_provider:"This build does not support the saved provider.",missing_model:"No model is selected.",unconfirmed_model:"The selected model has not been confirmed by the provider.",instant_text:"Instant plain dictation stays on this device."};
-  const txProvider=provNames[transcription.provider]||transcription.provider||"No provider";
-  writeRouteFacts("tx",buildRouteFacts({kind:"speech",route:transcription,decision:{requested_route:transcription.requested === "cloud" ? "hosted" : "local",effective_route:transcription.effective === "cloud" ? "hosted" : "local",reason:transcription.reason,provider:transcription.provider,provider_supported:transcription.provider_supported,key_present:transcription.has_key,model:transcription.model||SET[`${transcription.provider}_transcription_model`]||""},providerLabel:txProvider,reasonText,localEngine:`faster-whisper${SET.model ? ` · ${SET.model}` : ""}`}));
-  setText("#transcription-route-title",transcription.effective === "cloud" ? `Hosted transcription · ${txProvider}` : "On-device transcription");
-  setText("#transcription-route-copy",transcription.effective === "cloud" ? `Recorded audio is sent to ${txProvider}.` : transcription.requested === "cloud" ? "The Cloud choice remains saved, but the effective route keeps audio on this device." : "Recorded audio stays on this device.");
-  writeRouteFacts("route",buildRouteFacts({kind:"text",route:action,decision,providerLabel:provider,reasonText,localEngine:"local text-shaping pipeline"}));
-  renderFeatureRouteLedger({featureRoutes:route.feature_routes||{},names:provNames,reasonText});
+  const decision = actionPresentation.decision;
+  const providerLabel = names[action.provider] || action.provider || "No provider";
+  writeRouteFacts("route", buildRouteFacts({ kind: "text", route: action, decision, providerLabel, reasonText, localEngine: localProvider ? `local model${decision.model ? ` · ${decision.model}` : ""}` : "local text-shaping pipeline" }));
+  renderFeatureRouteLedger({ featureRoutes: routes.feature_routes || {}, names, reasonText });
+  const hostedSummary = $("#hosted-provider-summary");
+  if (hostedSummary) {
+    const name = names[action.provider] || action.provider || "unavailable";
+    hostedSummary.textContent = action.provider_supported === false
+      ? `${name} · unavailable`
+      : `${name} · ${action.has_key ? "key saved" : "no key"}`;
+  }
+  const hostedDetails = $("#hosted-provider-details");
+  if (hostedDetails && !hostedDetails.dataset.userToggled)
+    hostedDetails.open = ["no_key", "unsupported_provider"].includes(action.reason);
+  const hostedCapability = $("#hosted-capability-status");
+  if (hostedCapability) {
+    const available = actionPresentation.readiness.ready;
+    const blocker = action.reason === "local_only" ? "the device-only privacy policy is on"
+      : action.reason === "pro_off" ? "hosted text processing is off"
+      : action.reason === "unsupported_provider" ? "the saved provider is unsupported"
+      : action.reason === "no_key" ? "the selected provider has no saved key"
+      : action.reason === "missing_model" ? "no model is selected"
+      : action.reason === "unconfirmed_model" ? "the selected model has not been confirmed by the provider"
+      : "the hosted route is not ready";
+    hostedCapability.dataset.available = available ? "true" : "false";
+    hostedCapability.textContent = available
+      ? `Hosted text shaping available · ${providerLabel}${action.decision.model ? ` · ${action.decision.model}` : ""}`
+      : `Hosted text shaping unavailable · ${blocker}.`;
+  }
+}
+
+const FEATURE_ROUTE_ROWS = [
+  ["Plain dictation", "plain_dictation"],
+  ["Prompt", "prompt"],
+  ["Email", "email"],
+  ["Reply", "reply"],
+  ["Deck actions", "deck_actions"],
+  ["Meetings analysis", "meetings_analysis"],
+  ["Reader actions", "reader_actions"],
+];
+
+function renderFeatureRouteLedger({ featureRoutes, names, reasonText }) {
+  const root = $("#feature-route-rows");
+  if (!root) return;
+  root.innerHTML = FEATURE_ROUTE_ROWS.map(([label, key]) => {
+    const rawDecision = featureRoutes[key] || {};
+    const presentation = applyHostedReadiness({
+      requested: rawDecision.requested_route,
+      effective: rawDecision.effective_route === "hosted" ? "cloud" : "local",
+      reason: rawDecision.reason,
+      provider: rawDecision.provider,
+      provider_supported: rawDecision.provider_supported,
+      has_key: rawDecision.key_present,
+    }, rawDecision);
+    const decision = presentation.decision;
+    const provider = names[decision.provider] || decision.provider || "No provider";
+    const facts = buildRouteFacts({
+      kind: "text",
+      route: {},
+      decision,
+      providerLabel: provider,
+      reasonText,
+      localEngine: key === "plain_dictation" ? "local formatter" : "local text-shaping pipeline",
+    });
+    const details = Object.entries(facts).map(([key, value]) =>
+      `<div><dt>${esc(key === "egress" ? "What leaves this device" : key === "quality" ? "Quality boundary" : key === "engine" ? "Input and engine" : key[0].toUpperCase() + key.slice(1))}</dt><dd data-route-value="${key}">${esc(value)}</dd></div>`
+    ).join("");
+    return `<article class="feature-route-row" data-route-feature="${esc(label.toLowerCase().replace(/\s+/g, "-"))}"><h4>${esc(label)}</h4><dl>${details}</dl></article>`;
+  }).join("");
 }
 
 let ROUTE_REFRESH_VERSION = 0;
@@ -4452,7 +5455,7 @@ async function refreshRouteState() {
     if (fresh && fresh._route_state) SET._route_state = fresh._route_state;
   } catch (_) {
     if (requestId !== ROUTE_REFRESH_VERSION) return false;
-    // Keep the last confirmed route; the save path already reports failures.
+    // The save path already surfaced its error; retain the last known route.
   }
   updateSetupSummary();
   return true;
@@ -4474,36 +5477,61 @@ function syncOpenRouterKey(value) {
 }
 
 /* capture a key/mouse binding */
+let bindingCaptureActive = false;
 async function captureBinding(key, labelSel, fb) {
+  if (bindingCaptureActive) {
+    flash($(fb), "Finish the shortcut capture already in progress.", "err");
+    return;
+  }
+  bindingCaptureActive = true;
+  const captureButtons = $$('[data-capture]');
+  captureButtons.forEach((button) => { button.disabled = true; });
   flash($(fb), "Press a key or mouse button…", "busy");
-  const res = await call("capture_binding", 15);
-  if (res && res.spec) {
-    // Every remaining binding is a single-PRESS hotkey where a lone modifier
-    // (Ctrl / Win / Alt / Shift) would fire on every press — the 'Ctrl alone
-    // starts Mumble' bug. Reject it here with a clear message rather than saving
-    // a value the controller will just heal away. (The Big Shift removed the only
-    // HOLD binding, the mode key.)
-    {
-      const v = await call("validate_binding", res.spec, false);
-      if (v && v.ok === false) {
-        flash($(fb), v.message || "That key can't be used on its own.", "err");
+  try {
+    const res = await call("capture_binding", 15);
+    if (res && res.spec) {
+      // Every remaining binding is a single-PRESS hotkey where a lone modifier
+      // (Ctrl / Win / Alt / Shift) would fire on every press. Reject it before
+      // asking the controller to make the transactional swap.
+      {
+        const v = await call("validate_binding", res.spec, false);
+        if (v && v.ok === false) {
+          flash($(fb), v.message || "That key can't be used on its own.", "err");
+          return;
+        }
+      }
+      const r = await call("set_setting", key, res.spec);
+      if (!r || r.ok === false) {
+        flash(
+          $(fb),
+          (r && r.message) || "That shortcut could not be activated. Your previous shortcut was kept.",
+          "err",
+        );
         return;
       }
+      const savedValue = r.value || res.spec;
+      SET[key] = savedValue;
+      // Capture already returns the display spelling. Avoid a second bridge
+      // call after the controller has committed the change: if that cosmetic
+      // call failed, the UI could falsely claim the previous shortcut survived.
+      const label = res.pretty || savedValue;
+      const lab = $(labelSel);
+      if (lab) lab.textContent = label;
+      flash(
+        $(fb),
+        r.message || (r.applied ? "Saved & active now — " : "Saved — ") + label,
+        "ok",
+      );
+      bootHome(); // every Home/onboarding binding label updates at once
+    } else {
+      flash($(fb), "Nothing captured", "err");
     }
-    const r = await call("set_setting", key, res.spec);
-    SET[key] = res.spec;
-    const lab = $(labelSel);
-    if (lab) lab.textContent = res.pretty || res.spec;
-    // honest confirmation: did the running controller re-register it live?
-    flash(
-      $(fb),
-      r && r.applied
-        ? "Saved & active now — " + (res.pretty || res.spec)
-        : "Saved — " + (res.pretty || res.spec),
-      "ok",
-    );
-    bootHome(); // the Home widget + record button show the new binding at once
-  } else flash($(fb), "Nothing captured", "err");
+  } catch (error) {
+    flash($(fb), "Shortcut capture failed. Your previous shortcut was kept.", "err");
+  } finally {
+    bindingCaptureActive = false;
+    captureButtons.forEach((button) => { button.disabled = false; });
+  }
 }
 
 /* test API key */
@@ -4737,10 +5765,10 @@ async function renderPresetAdder() {
     .map(
       (c, i) => `
     <div class="flex gap8 items-start" data-prow="${i}">
-      <input class="input" style="flex:0 0 130px" placeholder="Custom ${i + 1} title" data-pf="title" value="${esc(c.title)}">
-      <input class="input" style="flex:0 0 180px" placeholder="One-line description" data-pf="description" value="${esc(c.description)}">
-      <input class="input flex-1" placeholder="Instruction sent to the AI" data-pf="instruction" value="${esc(c.instruction)}">
-      <button class="btn-icon btn-ghost t-mute" data-pclear title="Clear">${svg("x")}</button>
+      <input class="input" style="flex:0 0 130px" placeholder="Custom ${i + 1} title" aria-label="Custom ${i + 1} title" data-pf="title" value="${esc(c.title)}">
+      <input class="input" style="flex:0 0 180px" placeholder="One-line description" aria-label="Custom ${i + 1} description" data-pf="description" value="${esc(c.description)}">
+      <input class="input flex-1" placeholder="Instruction sent to the AI" aria-label="Custom ${i + 1} instruction" data-pf="instruction" value="${esc(c.instruction)}">
+      <button class="btn-icon btn-ghost t-mute" data-pclear title="Clear" aria-label="Clear Custom ${i + 1} preset">${svg("x")}</button>
     </div>`,
     )
     .join("");
@@ -4901,10 +5929,8 @@ async function obTestKey() {
   const prov = $("#ob-provider")?.value || OB.provider || "cerebras";
   flash($("#ob-key-fb"), "Testing…", "busy");
   // test_key SAVES the key first, then validates
-  const keySetting = prov + "_api_key";
-  await call("set_setting", keySetting, key);
   const r = await call("test_key", prov, key);
-  if (r.ok) {
+  if (r && r.ok) {
     OB.keyOk = true;
     OB.keyProv = prov;
     const recap = $("#ob-key-recap");
@@ -4913,22 +5939,12 @@ async function obTestKey() {
         '<span class="dot none" style="background:var(--green)"></span>' +
         (prov === "cerebras" ? "Cerebras" : "OpenRouter") + " connected";
   }
-  flash($("#ob-key-fb"), r.message, r.ok ? "ok" : "err");
-  await refreshRouteState();
+  flash($("#ob-key-fb"), (r && r.message) || "Could not save or test that key.", r && r.ok ? "ok" : "err");
 }
 async function finishOnboarding() {
   const fx = $("#ob-effects .active")?.dataset.fx || "enhanced";
-  // Save name
   const name = $("#ob-name")?.value?.trim() || "";
-  if (name) {
-    await call("set_setting", "user_name", name);
-    SET.user_name = name;
-  }
-  // Save transcription mode
   const txMode = $("#ob-tx-mode .active")?.dataset.tx || "local";
-  await call("set_setting", "transcription_mode", txMode);
-  SET.transcription_mode = txMode;
-  // Save provider choice (key was already saved by obTestKey)
   const provider = $("#ob-provider")?.value || "cerebras";
   const providerMutation = (SETTINGS_MUTATION_VERSION.onboarding_llm_provider || 0) + 1;
   SETTINGS_MUTATION_VERSION.onboarding_llm_provider = providerMutation;
@@ -4939,7 +5955,6 @@ async function finishOnboarding() {
     toast((providerResult && providerResult.message) || "The provider could not be activated", "err", 3200);
     return;
   }
-  OB.provider = provider;
   // Persist the language choice; local model sizing is automatic.
   const lang = $("#ob-lang .active")?.dataset.lang || OB.lang || "en";
   const englishOnly = lang === "en";
@@ -4951,16 +5966,24 @@ async function finishOnboarding() {
     primary = $("#ob-primary-lang")?.value || "es";
     if (primary === "other") primary = "";
   }
-  await call("set_setting", "english_only", englishOnly);
-  await call("set_setting", "primary_language", primary);
-  await call("finish_onboarding", {
+  const saved = await call("finish_onboarding", {
+    user_name: name,
+    transcription_mode: txMode,
+    primary_language: primary,
     autostart: !!$("#ob-autostart")?.checked,
     ui_effects: fx,
     english_only: englishOnly,
   });
-  await refreshRouteState();
+  if (!saved || saved.ok === false) {
+    toast((saved && saved.message) || "Could not save setup. Your existing settings were kept.", "err", 4600);
+    return;
+  }
+  SET.user_name = name;
+  SET.transcription_mode = txMode;
+  SET.english_only = englishOnly;
+  SET.primary_language = primary;
   // discoverability: real, icon-bearing shortcuts per the step-6 choices
-  call("apply_shortcuts", {
+  const shortcuts = await call("apply_shortcuts", {
     desktop: !!$("#ob-sc-desktop")?.checked,
     start_menu: !!$("#ob-sc-startmenu")?.checked,
     autostart: !!$("#ob-autostart")?.checked, // apply the run-at-login choice NOW, not only next launch
@@ -4968,7 +5991,10 @@ async function finishOnboarding() {
   applyEffects(fx);
   $("#onboarding").hidden = true;
   try { call("set_onboarding_mode", false); } catch (e) {}  // restore sticky Deck pin
-  toast("Welcome to Mumble — press Ctrl + Win to dictate", "ok", 3600);
+  if (shortcuts && shortcuts.ok === false)
+    toast("Setup saved, but one or more requested shortcuts could not be created.", "info", 4200);
+  else
+    toast("Welcome to Mumble — press Ctrl + Win to dictate", "ok", 3600);
   navTo("home");
 }
 
@@ -4994,8 +6020,8 @@ function wireGlobalKeys() {
           : document.documentElement.requestFullscreen()
         ).catch(() => {});
     }
-    // Ctrl+Alt+H opens HISTORY — in the browser preview only; in the live app the
-    // OS-global History hotkey routes through the controller → {"cmd":"history"} →
+    // Ctrl+Alt+D opens the Deck — in the browser preview only; in the live app the
+    // OS-global Deck hotkey routes through the controller → {"cmd":"history"} →
     // openHistory() (intercepting here too would double-fire). Ctrl+Alt+V is now a
     // pure paste-latest action handled entirely by the controller, so the preview
     // no longer maps it to anything.
@@ -5003,14 +6029,13 @@ function wireGlobalKeys() {
       !HAS_PY() &&
       e.ctrlKey &&
       e.altKey &&
-      (e.key === "h" || e.key === "H")
+      (e.key === "d" || e.key === "D")
     ) {
       e.preventDefault();
       openHistory(true);
     }
-    // Ctrl+H (no Alt), inside the History view, runs a Smart Mode / preset on the
-    // HOVERED item — hover acts as implicit selection (owner 2026-06-20). Distinct
-    // from the global Ctrl+Alt+H (open History).
+    // Ctrl+H (no Alt), inside the Deck, runs a Smart Mode / preset on the focused
+    // or hovered item. Distinct from the global Ctrl+Alt+D (open Deck).
     if (
       e.ctrlKey &&
       !e.altKey &&
@@ -5077,6 +6102,9 @@ const READER = {
   findQuery: "", // current in-document search
   findMatches: [], // [{wStart,wEnd}] word ranges
   findCursor: -1,
+  findOrigin: null, // focus + scroll position restored when Find closes
+  summaryInvoker: null, // control that receives focus when Summary closes
+  pendingSummaryFocus: null, // disabled Summary control awaiting focus restoration
   collectionsCache: null, // cached collection list
   historyCache: null, // cached reading history
   continueDoc: null, // continue-reading doc
@@ -5300,7 +6328,12 @@ function readerPaintFindMatches(scroll) {
   if (scroll && READER.findCursor >= 0) {
     var active = READER.findMatches[READER.findCursor];
     var target = pane.querySelector('.rw[data-wi="' + active.wStart + '"]');
-    if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (target) target.scrollIntoView({
+      block: "center",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
   }
 }
 
@@ -5338,6 +6371,44 @@ function readerFindClear() {
   var input = $("#reader-find-input");
   if (input) input.value = "";
   readerFindUpdate("");
+}
+
+function readerRememberFindOrigin(origin) {
+  if (READER.findOrigin) return;
+  const pane = $("#reader-pane");
+  if (pane) pane.scrollTo(0, pane.scrollTop);
+  READER.findOrigin = {
+    focus: origin && origin instanceof HTMLElement ? origin : pane,
+    scrollTop: pane ? pane.scrollTop : 0,
+  };
+}
+
+function readerOpenFind(origin) {
+  readerRememberFindOrigin(origin || document.activeElement);
+  const input = $("#reader-find-input");
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+function readerCloseFind() {
+  const origin = READER.findOrigin;
+  READER.findOrigin = null;
+  const pane = $("#reader-pane");
+  if (pane) pane.scrollTo({ top: pane.scrollTop, behavior: "auto" });
+  readerFindClear();
+  const target = origin && origin.focus && origin.focus.isConnected
+    ? origin.focus
+    : pane;
+  if (target) target.focus({ preventScroll: true });
+  if (pane && origin) {
+    const scrollBehavior = pane.style.scrollBehavior;
+    pane.style.scrollBehavior = "auto";
+    pane.scrollTo(0, origin.scrollTop);
+    void pane.offsetHeight;
+    pane.style.scrollBehavior = scrollBehavior;
+  }
 }
 
 function readerBuildChunks() {
@@ -5398,7 +6469,12 @@ function readerHighlight(wi) {
     const band = pane.clientHeight;
     const rel = elRect.top - paneRect.top;
     if (rel < band * 0.15 || rel > band * 0.78)
-      pane.scrollTo({ top: Math.max(0, top - band / 2), behavior: "smooth" });
+      pane.scrollTo({
+        top: Math.max(0, top - band / 2),
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
   }
   READER.idx = wi;
   readerUpdateProgress();
@@ -5921,10 +6997,10 @@ async function readerRenderAllTab(useCache) {
         if (d.format) {
           var fmtLabel = d.format.toUpperCase();
           if (fmtLabel === "MARKDOWN") fmtLabel = "MD";
-          fmtBadge = `<span class="format-badge" aria-label="Format: ${esc(fmtLabel)}">${esc(fmtLabel)}</span>`;
+          fmtBadge = `<span class="format-badge" aria-label="Format: ${fmtLabel}">${fmtLabel}</span>`;
         }
         return `
-    <div class="rl-item" role="listitem" data-open="${esc(d.id)}" tabindex="0" aria-label="${esc(d.title)} — ${esc(d.format ? d.format.toUpperCase() : 'TXT')} document">
+    <div class="rl-item" role="listitem" data-open="${esc(d.id)}" tabindex="0" aria-label="${esc(d.title)} — ${d.format ? d.format.toUpperCase() : 'TXT'} document">
       <button class="star ${d.starred ? "on" : ""} btn-icon btn-ghost" data-starid="${esc(d.id)}" data-starred="${d.starred ? "1" : "0"}" title="${d.starred ? "Starred — click to unstar" : "Star this document"}" aria-pressed="${d.starred ? "true" : "false"}" aria-label="${d.starred ? "Starred document" : "Star this document"}">${svg("star")}</button>
       <div class="rl-main">
         <div class="rl-title truncate">${esc(d.title)}${fmtBadge ? ' ' + fmtBadge : ""}</div>
@@ -6243,6 +7319,7 @@ async function readerOpenDoc(id) {
   READER.docFormat = doc.format || "txt";
   READER.docBlocks = doc.blocks || null;
   readerFindClear();
+  READER.findOrigin = null;
   // If the document has structured blocks (parsed document), render them
   // instead of building a plain-text pane. Table blocks render as HTML tables.
   if (doc.blocks && doc.blocks.length > 0) {
@@ -6343,6 +7420,9 @@ async function readerSummarize() {
   const panel = $("#reader-summary");
   const out = $("#reader-summary-text");
   const btn = $("#reader-summarize");
+  READER.summaryInvoker = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : btn;
   if (panel) panel.hidden = false;
   if (out) out.textContent = "Summarizing…";
   if (btn) btn.disabled = true;
@@ -6357,7 +7437,34 @@ async function readerSummarize() {
   } catch (e) {
     if (out) out.textContent = "Couldn't summarize this document.";
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      if (READER.pendingSummaryFocus === btn) {
+        READER.pendingSummaryFocus = null;
+        if (CURRENT === "reader" && document.activeElement === $("#reader-pane")) {
+          btn.focus({ preventScroll: true });
+          requestAnimationFrame(() => btn.focus({ preventScroll: true }));
+        }
+      }
+    }
+  }
+}
+
+function readerCloseSummary() {
+  const panel = $("#reader-summary");
+  if (panel) panel.hidden = true;
+  const target = READER.summaryInvoker && READER.summaryInvoker.isConnected
+    ? READER.summaryInvoker
+    : $("#reader-summarize");
+  READER.summaryInvoker = null;
+  if (target) {
+    if (target.disabled) {
+      READER.pendingSummaryFocus = target;
+      $("#reader-pane")?.focus({ preventScroll: true });
+    } else {
+      target.focus({ preventScroll: true });
+      requestAnimationFrame(() => target.focus({ preventScroll: true }));
+    }
   }
 }
 
@@ -6612,7 +7719,6 @@ async function readerSaveKey() {
   try {
     await call("set_setting", "openrouter_api_key", key);
     syncOpenRouterKey(key); // fill the Settings OpenRouter fields too (one shared key)
-    await refreshRouteState();
     if (inp) inp.value = "";
     if (msg) msg.textContent = "Connected — loading voices…";
     await initReader(); // re-check has_key → reveal the Reader + populate models
@@ -6628,10 +7734,14 @@ async function readerSaveKey() {
    Wired to the meeting_* Api bridge (meeting.py / meeting_store.py). The page was
    originally added externally and lost in a UI rollback; rebuilt here on baseline.
    ========================================================================== */
-const MEET = { recording: false, paused: false, recTimer: null, recStart: 0,
-  maxSeconds: 14400, autoStopping: false,
+const MEET = { recording: false, paused: false, stopping: false,
+  recTimer: null, statusTimer: null, recStart: 0, capturedSeconds: 0,
+  maxSeconds: 14400, autoStopping: false, statusKnown: false,
+  captureVersion: 0, statusRequestId: 0, finalizedGeneration: -1,
+  activeMicrophone: null,
   openId: null, openStarred: false, wired: false,
-  listAll: null, listQuery: "", openMeeting: null, transcriptQuery: "" };
+  listAll: null, listQuery: "", openMeeting: null, transcriptQuery: "",
+  settings: null, context: null, searchSeq: 0, returnFocusId: null };
 const _ell = "white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
 
 function meetingWire() {
@@ -6641,12 +7751,7 @@ function meetingWire() {
   $("#meeting-pause")?.addEventListener("click", meetingTogglePause);
   $("#meeting-stop")?.addEventListener("click", meetingStopRecord);
   $("#meeting-import")?.addEventListener("click", meetingImport);
-  $("#meeting-back")?.addEventListener("click", () => {
-    MEET.openId = null;
-    MEET.openMeeting = null;
-    MEET.transcriptQuery = "";
-    renderMeetings();
-  });
+  $("#meeting-back")?.addEventListener("click", closeMeeting);
   $("#meeting-play")?.addEventListener("click", meetingPlayAudio);
   $("#meeting-retry")?.addEventListener("click", meetingRetry);
   $("#meeting-summarize")?.addEventListener("click", meetingSummarize);
@@ -6655,14 +7760,11 @@ function meetingWire() {
   $("#meeting-questions")?.addEventListener("click", meetingExtractQuestions);
   $("#meeting-export")?.addEventListener("click", meetingExport);
   $("#meeting-deep-process")?.addEventListener("click", meetingDeepProcess);
-  $("#meeting-proc-mode")?.addEventListener("change", async (e) => {
-    await call("meeting_set_processing_mode", e.target.value);
-    toast("Processing mode set to " + e.target.value, "ok", 1500);
-  });
   $("#meetings-search")?.addEventListener("input", debounce((e) => {
     MEET.listQuery = e.target.value || "";
-    renderMeetings(true);
-  }, 100));
+    renderMeetings();
+  }, 180));
+  $("#meetings-retry")?.addEventListener("click", () => renderMeetings());
   $("#meeting-transcript-search")?.addEventListener("input", debounce((e) => {
     MEET.transcriptQuery = e.target.value || "";
     if (MEET.openMeeting) meetingRenderTranscript(MEET.openMeeting);
@@ -6674,7 +7776,27 @@ function meetingWire() {
     if (MEET.openMeeting) meetingRenderTranscript(MEET.openMeeting);
   });
   $("#meeting-title")?.addEventListener("change", async (e) => {
-    if (MEET.openId) await call("meeting_update_title", MEET.openId, e.target.value.trim());
+    if (!MEET.openId) return;
+    const previous = (MEET.openMeeting && MEET.openMeeting.title) || "";
+    const title = e.target.value.trim();
+    const r = await call("meeting_update_title", MEET.openId, title);
+    if (!r || !r.ok) {
+      e.target.value = previous;
+      toast((r && r.message) || "Couldn't update the meeting title", "err");
+      return;
+    }
+    if (MEET.openMeeting) MEET.openMeeting.title = title;
+  });
+  document.addEventListener("keydown", (e) => {
+    if (CURRENT !== "meetings") return;
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || "");
+    if (e.key === "Escape" && MEET.openId) {
+      e.preventDefault();
+      closeMeeting();
+    } else if (e.key === "/" && !typing && !MEET.openId) {
+      e.preventDefault();
+      $("#meetings-search")?.focus();
+    }
   });
   // Star / delete in detail view
   $("#meeting-star-detail")?.addEventListener("click", async () => {
@@ -6690,56 +7812,282 @@ function meetingWire() {
     const yes = await confirmModal({ icon: "trash", title: "Delete this meeting?", body: "The transcript and recording are permanently removed. This cannot be undone.", confirmText: "Delete" });
     if (!yes) return;
     const r = await call("meeting_delete", MEET.openId);
-    if (!r || !r.ok) { toast((r && r.message) || "Couldn't delete the meeting", "err"); return; }
+    if (!r || !r.ok) {
+      if (r && r.removed_metadata) {
+        MEET.openId = null;
+        MEET.openMeeting = null;
+        renderMeetings();
+      }
+      toast((r && r.message) || "Couldn't delete the meeting", "err", 4800);
+      return;
+    }
     MEET.openId = null;
     renderMeetings();
     toast("Meeting deleted", "ok", 1500);
   });
 }
 
-async function renderMeetings(useCache) {
+function meetingProviderLabel(value) {
+  const names = { groq: "Groq", openai: "OpenAI", openrouter: "OpenRouter",
+    cerebras: "Cerebras" };
+  return names[String(value || "").toLowerCase()] || String(value || "your provider");
+}
+
+function meetingTranscriptionTruth(route) {
+  const tx = route || {};
+  const provider = meetingProviderLabel(tx.provider);
+  if (tx.effective === "cloud") return {
+    tone: "cloud",
+    label: provider + " hosted transcription",
+    copy: "The private WAV stays here. After you stop, meeting audio is sent to " + provider + " for transcription.",
+  };
+  if (tx.reason === "local_only") return {
+    tone: "local", label: "On-device transcription · device-only override",
+    copy: "Your hosted choice remains saved, but meeting audio is not sent while device-only is on.",
+  };
+  if (tx.reason === "no_key") return {
+    tone: "warning", label: "On-device transcription · hosted route not ready",
+    copy: "No usable " + provider + " key is saved, so meeting audio stays on this device.",
+  };
+  if (tx.reason === "unsupported_provider") return {
+    tone: "warning", label: "On-device transcription · provider unavailable",
+    copy: "The saved hosted provider is unsupported, so meeting audio is not sent.",
+  };
+  return {
+    tone: "local", label: "On-device transcription",
+    copy: "The recording and transcript remain on this device. Nothing is sent for transcription.",
+  };
+}
+
+function meetingAnalysisTruth(route) {
+  const analysis = route || {};
+  const provider = meetingProviderLabel(analysis.provider);
+  if (analysis.ready && analysis.effective_route === "hosted")
+    return provider + " hosted analysis · transcript text only, when you choose";
+  if (analysis.ready && analysis.effective_route === "local")
+    return "On-device analysis · transcript text stays on this device";
+  const reasons = {
+    device_only: "Unavailable · device-only is on",
+    hosted_processing_off: "Unavailable · hosted processing is off",
+    missing_key: "Unavailable · provider key is missing",
+    unsupported_provider: "Unavailable · saved provider is unsupported",
+  };
+  return reasons[analysis.reason] || "Unavailable · no effective analysis route";
+}
+
+function meetingApplyContext(context) {
+  if (context && context.ok !== false) MEET.context = context;
+  const current = MEET.context || {};
+  const microphone = MEET.recording && MEET.activeMicrophone
+    ? MEET.activeMicrophone.name
+    : current.microphone;
+  setText("#meeting-context-microphone", microphone || "System default");
+  setText("#meeting-context-saved-location", current.saved_location || "Private Mumble meeting library");
+  const txTruth = meetingTranscriptionTruth(current.transcription);
+  setText("#meeting-context-transcription", txTruth.label);
+  setText("#meeting-context-analysis", meetingAnalysisTruth(current.analysis));
+}
+
+function meetingApplyPrivacy(settings, context) {
+  if (settings) MEET.settings = settings;
+  const s = MEET.settings || {};
+  const tx = (context && context.transcription) || (s._route_state || {}).transcription || {
+    effective: s.transcription_mode === "cloud" ? "cloud" : "local",
+    provider: s.cloud_transcription_provider,
+    reason: "selected",
+  };
+  const truth = meetingTranscriptionTruth(tx);
+  const route = $("#meeting-route-badge");
+  if (route) route.dataset.route = truth.tone;
+  setText("#meeting-route-label", truth.label);
+  setText("#meeting-route-copy", truth.copy);
+  meetingApplyContext(context || {
+    ok: true,
+    transcription: tx,
+    analysis: null,
+  });
+  const analysisTruth = $("#meeting-analysis-truth");
+  if (analysisTruth) analysisTruth.innerHTML = '<span data-icon="shield"></span>' +
+    esc(meetingAnalysisTruth((context || {}).analysis)) + '. The original recording is never sent for analysis.';
+}
+
+function meetingSetPhase(phase) {
+  const instrument = $("#meeting-instrument");
+  if (instrument && instrument.dataset.phase !== phase) instrument.dataset.phase = phase;
+  const during = phase === "during";
+  const before = $("#meeting-before"), after = $("#meeting-after");
+  if (before) before.hidden = during;
+  if (after) after.hidden = during;
+}
+
+function meetingScheduleStatusPoll(active) {
+  clearTimeout(MEET.statusTimer);
+  MEET.statusTimer = null;
+  if (!active || MEET.stopping) return;
+  const generation = MEET.captureVersion;
+  MEET.statusTimer = setTimeout(async () => {
+    MEET.statusTimer = null;
+    const requestId = ++MEET.statusRequestId;
+    try {
+      const status = await call("meeting_recording_status");
+      if (generation !== MEET.captureVersion || requestId !== MEET.statusRequestId || MEET.stopping)
+        return;
+      if (status && status.ok) meetingApplyCaptureStatus(status);
+    } catch (_) {
+      // Keep the local elapsed clock visible and retry the authoritative,
+      // content-free level/status snapshot after a transient bridge failure.
+    } finally {
+      if (generation === MEET.captureVersion && requestId === MEET.statusRequestId &&
+          !MEET.statusTimer && MEET.recording && !MEET.stopping)
+        meetingScheduleStatusPoll(true);
+    }
+  }, 500);
+}
+
+function meetingRestoreStopFocus(ownedFocus, reconciled) {
+  if (!ownedFocus) return;
+  const target = reconciled && reconciled.active
+    ? $("#meeting-stop")
+    : ($("#meeting-library-title") || $("#meeting-record"));
+  target?.focus({ preventScroll: true });
+}
+
+async function closeMeeting() {
+  const returnId = MEET.returnFocusId || MEET.openId;
+  MEET.openId = null;
+  MEET.openMeeting = null;
+  MEET.transcriptQuery = "";
+  await renderMeetings();
+  const target = Array.from(document.querySelectorAll(".meeting-item-open"))
+    .find((item) => String(item.dataset.id || "") === String(returnId || ""));
+  (target || $("#meeting-library-title"))?.focus();
+}
+
+function meetingApplyCaptureStatus(snapshot) {
+  if (!snapshot || !snapshot.ok) return;
+  MEET.statusKnown = true;
+  const state = String(snapshot.state || (snapshot.active ? "recording" : "idle"));
+  const active = !!snapshot.active;
+  MEET.recording = active;
+  if (active && snapshot.microphone && snapshot.microphone.name) {
+    MEET.activeMicrophone = {
+      index: snapshot.microphone.index,
+      name: String(snapshot.microphone.name),
+    };
+    meetingApplyContext(MEET.context);
+  } else if (!active) {
+    MEET.activeMicrophone = null;
+  }
+  MEET.paused = state === "paused";
+  MEET.capturedSeconds = Math.max(0, Number(snapshot.captured_seconds) || 0);
+  MEET.maxSeconds = Number(snapshot.max_seconds) || 14400;
+  MEET.recStart = Date.now() - MEET.capturedSeconds * 1000;
+  const level = Math.max(0, Math.min(1, Number(snapshot.audio_level) || 0));
+  const levelPercent = Math.round(level * 100);
+  const meter = $("#meeting-input-level"), levelFill = $("#meeting-level-fill");
+  if (meter) meter.setAttribute("aria-valuenow", String(levelPercent));
+  if (levelFill) levelFill.style.setProperty("--meeting-level", String(level));
+  setText("#meeting-level-label", "Input level " + levelPercent + "%");
+  const panel = $("#meeting-recording");
+  const focusWasInDuring = Boolean(panel && panel.contains(document.activeElement));
+  const focusedDuringControl = focusWasInDuring ? document.activeElement : null;
+  if (panel) {
+    panel.hidden = !active;
+    panel.dataset.state = MEET.stopping ? "stopping" : state;
+  }
+  const displayState = MEET.stopping ? "stopping" : state;
+  const labels = {
+    recording: ["Recording", "Listening through your selected microphone"],
+    paused: ["Paused", "Captured audio is safe · the microphone stream remains reserved"],
+    starting: ["Starting", "Opening your selected microphone…"],
+    stopping: ["Stopping safely", "Flushing the private recording before transcription starts…"],
+    finalizing: ["Needs to finish saving", snapshot.message || "The recording is safe; try saving it again."],
+  };
+  const copy = labels[displayState] || labels.recording;
+  const stateLabel = $("#meeting-rec-state"), stateCopy = $("#meeting-rec-state-copy");
+  if (stateLabel && stateLabel.textContent !== copy[0]) stateLabel.textContent = copy[0];
+  if (stateCopy && stateCopy.textContent !== copy[1]) stateCopy.textContent = copy[1];
+  setText("#meeting-record-label", active ? copy[0] : "Record meeting");
+  setText("#meeting-pause-label", MEET.paused ? "Resume" : "Pause");
+  setText("#meeting-stop-label", state === "finalizing" ? "Retry save" : (
+    MEET.stopping ? "Saving…" : "Stop & save"));
+  setText("#meeting-rec-timer", Math.floor(MEET.capturedSeconds / 60) + ":" +
+    String(Math.floor(MEET.capturedSeconds % 60)).padStart(2, "0"));
+  const record = $("#meeting-record"), imported = $("#meeting-import");
+  const pause = $("#meeting-pause"), stop = $("#meeting-stop");
+  if (record) record.disabled = active;
+  if (imported) imported.disabled = active || MEET.stopping;
+  if (pause) pause.disabled = MEET.stopping || !["recording", "paused"].includes(state);
+  if (stop) stop.disabled = MEET.stopping || !active;
+  meetingSetPhase(active ? "during" : ((MEET.listAll || []).length ? "after" : "before"));
+  if (active && focusedDuringControl && !focusedDuringControl.disabled)
+    focusedDuringControl.focus({ preventScroll: true });
+  else if (!active && focusWasInDuring)
+    ($("#meeting-library-title") || $("#meeting-record"))?.focus();
+  clearInterval(MEET.recTimer);
+  if (state === "recording" && !MEET.stopping) startMeetingTimer();
+  meetingScheduleStatusPoll(active);
+}
+
+async function renderMeetings() {
   meetingWire();
-  if (MEET.openId) return; // a meeting detail is open — leave it
-  var listResult, settings;
-  if (useCache && Array.isArray(MEET.listAll)) {
-    listResult = MEET.listAll;
-    settings = null;
+  if (MEET.openId) return;
+  const seq = ++MEET.searchSeq;
+  const captureVersion = MEET.captureVersion;
+  const query = String(MEET.listQuery || "").trim();
+  const safe = (name, ...args) => call(name, ...args).catch((error) => ({
+    ok: false, message: error && error.message ? error.message : "Mumble did not respond."
+  }));
+  const [listResult, settings, status, context] = await Promise.all([
+    safe(query ? "meeting_search" : "meeting_list", ...(query ? [query] : [])),
+    safe("get_settings"),
+    safe("meeting_recording_status"),
+    safe("meeting_context"),
+  ]);
+  if (seq !== MEET.searchSeq || MEET.openId) return;
+  if (settings && settings.ok !== false) meetingApplyPrivacy(settings, context && context.ok ? context : null);
+  else if (context && context.ok) meetingApplyContext(context);
+  if (status && status.ok && captureVersion === MEET.captureVersion)
+    meetingApplyCaptureStatus(status);
+  let list = [], total = 0, loadError = "";
+  if (Array.isArray(listResult)) {
+    list = listResult;
+    total = list.length;
+  } else if (listResult && listResult.ok && Array.isArray(listResult.items)) {
+    list = listResult.items;
+    total = Number(listResult.total);
+    if (!Number.isFinite(total)) total = list.length;
   } else {
-    [listResult, settings] = await Promise.all([
-      call("meeting_list"),
-      call("get_settings"),
-    ]);
+    loadError = (listResult && listResult.message) || "The meeting library could not be loaded.";
   }
-  const allMeetings = Array.isArray(listResult) ? listResult : [];
-  MEET.listAll = allMeetings;
-  const query = String(MEET.listQuery || "").trim().toLocaleLowerCase();
-  const list = query ? allMeetings.filter(function (m) {
-    return [m.title, m.preview, m.status, m.duration_display]
-      .some(function (value) {
-        return String(value || "").toLocaleLowerCase().includes(query);
-      });
-  }) : allMeetings;
-  const processing = settings && settings.meeting_processing_mode;
-  const processingSelect = $("#meeting-proc-mode");
-  if (processingSelect && processing) {
-    processingSelect.value = processing === "deep" ? "deep" : "lightweight";
-  }
+  MEET.listAll = list;
+  if (!MEET.recording) meetingSetPhase(total ? "after" : "before");
   const wrap = $("#meetings-list");
   const empty = $("#meetings-empty");
   const filter = $("#meetings-filter");
+  const error = $("#meetings-error");
   if (filter) filter.hidden = false;
-  setText("#meetings-search-count", query
-    ? list.length + " of " + allMeetings.length
-    : allMeetings.length + " total");
+  if (error) error.hidden = !loadError;
+  setText("#meetings-error-copy", loadError);
+  setText("#meetings-search-count", loadError ? "" : (query
+    ? list.length + " of " + total
+    : total + " total"));
+  setText("#meetings-total", total);
   if ($("#meeting-detail")) $("#meeting-detail").hidden = true;
-  if (!allMeetings.length) {
+  if (loadError) {
+    if (empty) empty.hidden = true;
+    if (wrap) wrap.innerHTML = "";
+    return;
+  }
+  if (!total) {
     if (empty) empty.hidden = false;
     if (wrap) wrap.innerHTML = "";
     return;
   }
   if (empty) empty.hidden = true;
   if (!list.length) {
-    if (wrap) wrap.innerHTML = '<div class="card pad text-center"><p class="help">No meetings match that search.</p></div>';
+    if (wrap) wrap.innerHTML = '<div class="meeting-no-results"><span data-icon="search"></span><strong>No meeting contains “' + esc(query) + '”</strong><p>Search checks titles, speakers, and every saved transcript segment on this device.</p></div>';
+    paintIcons(wrap);
     return;
   }
   const meetingsById = new Map(list.map((m) => [String(m.id), m]));
@@ -6750,17 +8098,28 @@ async function renderMeetings(useCache) {
       modeBadge = '<span class="meeting-badge deep">deep</span>';
     }
     var status = String(m.status || "ready");
-    var statusBadge = status === "processing"
-      ? '<span class="meeting-badge">transcribing</span>'
+    var statusBadge = status === "recording"
+      ? '<span class="meeting-badge recording">recording</span>'
+      : status === "processing"
+      ? '<span class="meeting-badge processing">transcribing</span>'
       : status === "interrupted"
-        ? '<span class="meeting-badge">retry needed</span>'
+        ? '<span class="meeting-badge attention">needs attention</span>'
         : status === "failed"
-          ? '<span class="meeting-badge">failed</span>' : "";
+          ? '<span class="meeting-badge failed">' + (m.audio_available ? "failed" : "recording missing") + '</span>' : "";
     var captureBadge = m.capture_warning
       ? '<span class="meeting-badge">ended early</span>' : "";
-    var summarisedBadge = m.has_summary ? ' · <span class="t-gold fs11">summarised</span>' : "";
+    var summarisedBadge = m.has_summary ? ' · <span class="t-gold fs11">summary ready</span>' : "";
+    var statusPreview = status === "recording"
+      ? "Capture in progress · private audio is being written"
+      : status === "processing"
+        ? "Recording saved · transcription is in progress"
+        : status === "interrupted"
+          ? "Recording saved · transcription needs your attention"
+          : status === "failed"
+            ? (m.audio_available ? "The recording could not be processed" : "The original recording is unavailable")
+            : (!m.segment_count ? "No transcript was produced" : "");
     return `
-    <div class="card lift meeting-item" data-id="${esc(m.id)}" role="listitem">
+    <div class="card lift meeting-item" data-id="${esc(m.id)}" data-status="${esc(status)}" role="listitem">
       <button type="button" class="meeting-item-open" data-id="${esc(m.id)}" aria-label="Open ${esc(m.title)}">
           <span class="meeting-item-title-row">
             ${m.starred ? '<span class="t-gold" style="width:13px;height:13px;display:inline-flex;flex:none">'+svg("star")+'</span>' : ''}
@@ -6770,17 +8129,19 @@ async function renderMeetings(useCache) {
             ${captureBadge}
           </span>
           <span class="meeting-item-meta">${esc(m.duration_display)} · ${m.speaker_count} speaker${m.speaker_count===1?"":"s"} · ${m.segment_count} segments${summarisedBadge}</span>
-          ${status === "processing" ? `<span class="meeting-item-preview">Audio saved · transcription in progress…</span>` :
-            m.preview ? `<span class="meeting-item-preview">${esc(m.preview)}</span>` : ""}
+          <span class="meeting-item-preview">${esc(statusPreview || m.preview || "Open to review this meeting")}</span>
       </button>
         <div class="meeting-item-actions">
-          <button class="btn btn-icon meeting-star${m.starred ? " on" : ""}" data-id="${esc(m.id)}" data-starred="${m.starred ? "1" : "0"}" aria-label="${m.starred ? "Unstar" : "Star"} ${esc(m.title)}">${svg("star")}</button>
-          <button class="btn btn-icon meeting-del" data-id="${esc(m.id)}" aria-label="Delete ${esc(m.title)}">${svg("trash")}</button>
+          <button type="button" class="btn btn-icon meeting-star${m.starred ? " on" : ""}" data-id="${esc(m.id)}" data-starred="${m.starred ? "1" : "0"}" aria-label="${m.starred ? "Unstar" : "Star"} ${esc(m.title)}">${svg("star")}</button>
+          <button type="button" class="btn btn-icon meeting-del" data-id="${esc(m.id)}" aria-label="Delete ${esc(m.title)}">${svg("trash")}</button>
         </div>
     </div>`;
   }).join("");
   wrap.querySelectorAll(".meeting-item-open").forEach((el) =>
-    el.addEventListener("click", () => openMeeting(el.dataset.id)),
+    el.addEventListener("click", () => {
+      MEET.returnFocusId = el.dataset.id;
+      openMeeting(el.dataset.id);
+    }),
   );
   wrap.querySelectorAll(".meeting-star").forEach((b) => b.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -6801,7 +8162,11 @@ async function renderMeetings(useCache) {
     const yes = await confirmModal({ icon: "trash", title: "Delete " + title + "?", body: "The transcript and recording are permanently removed. This cannot be undone.", confirmText: "Delete" });
     if (!yes) return;
     const r = await call("meeting_delete", mid);
-    if (!r || !r.ok) { toast((r && r.message) || "Couldn't delete the meeting", "err"); return; }
+    if (!r || !r.ok) {
+      if (r && r.removed_metadata) renderMeetings();
+      toast((r && r.message) || "Couldn't delete the meeting", "err", 4800);
+      return;
+    }
     renderMeetings();
   }));
   paintIcons(wrap);
@@ -6854,10 +8219,14 @@ function meetingRenderTranscript(m) {
       ? '<p class="help text-center">No transcript segments match that search.</p>'
       : m.status === "processing"
         ? '<p class="help text-center">Audio is safely saved. Transcription is still running…</p>'
+        : m.status === "recording"
+          ? '<p class="help text-center">This meeting is still being recorded. Stop and save it before reviewing the transcript.</p>'
         : m.status === "interrupted"
-          ? '<p class="help text-center">Transcription was interrupted and will retry on the next launch. ' + esc(m.error || "") + "</p>"
+          ? '<p class="help text-center">The recording is safe, but transcription was interrupted. Choose Retry transcription when you are ready. ' + esc(m.error || "") + "</p>"
           : m.status === "failed"
-            ? '<p class="help text-center">Transcription failed. The saved recording is still available. ' + esc(m.error || "") + "</p>"
+            ? '<p class="help text-center">' + (m.audio_available
+              ? "Transcription could not be completed. "
+              : "The original recording is missing, so transcription cannot be retried. ") + esc(m.error || "") + "</p>"
             : '<p class="help text-center">No transcript for this meeting.</p>';
   }
   tx.innerHTML = captureWarning + transcriptBody;
@@ -6885,17 +8254,47 @@ async function openMeeting(id) {
   setText("#meeting-meta-duration", (m.duration_display || "0:00"));
   setText("#meeting-meta-speakers", (m.speaker_count || 0) + " speaker" + ((m.speaker_count || 0) === 1 ? "" : "s"));
   setText("#meeting-meta-segments", (m.segment_count || 0) + " segments");
-  var meetingReady = (m.status || "ready") === "ready";
+  setText("#meeting-meta-route", m.transcription_mode === "cloud"
+    ? meetingProviderLabel(m.transcription_provider) + " Cloud transcription"
+    : m.transcription_mode === "local" ? "Local transcription" : "");
+  var meetingReady = (m.status || "ready") === "ready" && (m.segment_count || 0) > 0;
+  var audioAvailable = m.audio_available !== false;
+  var canPlay = audioAvailable && m.status !== "recording";
   var retry = $("#meeting-retry");
-  if (retry) retry.hidden = !["interrupted", "failed"].includes(m.status);
+  if (retry) retry.hidden = !(m.status === "interrupted" && audioAvailable);
+  var play = $("#meeting-play");
+  if (play) {
+    play.disabled = !canPlay;
+    play.title = canPlay ? "Open the private recording" : (m.status === "recording"
+      ? "Stop and save before playing the recording"
+      : "The original recording is unavailable");
+  }
   ["#meeting-summarize", "#meeting-actions", "#meeting-decisions",
    "#meeting-questions", "#meeting-deep-process", "#meeting-export"].forEach(function (sel) {
     var control = $(sel);
     if (control) {
       control.disabled = !meetingReady;
-      control.title = meetingReady ? "" : "Available when transcription is complete";
+      control.title = meetingReady ? "" : ((m.status || "ready") === "ready"
+        ? "No transcript is available for this action"
+        : "Available when transcription is complete");
     }
   });
+  var detailStatus = $("#meeting-detail-status");
+  var statusMessages = {
+    recording: ["Recording in progress", "This capture is still active. Use the recording panel to stop and save it."],
+    processing: ["Transcription in progress", "The private recording is safe. This view will update when transcription finishes."],
+    interrupted: ["Transcription needs attention", "The recording is safe. Retry when your selected transcription route is available."],
+    failed: [audioAvailable ? "Recording needs attention" : "Original recording unavailable",
+      m.error || "The source audio could not be found."],
+  };
+  var statusMessage = statusMessages[m.status];
+  if (detailStatus) {
+    detailStatus.hidden = !statusMessage && !m.capture_warning;
+    detailStatus.dataset.status = m.status || "ready";
+    detailStatus.innerHTML = statusMessage
+      ? '<span data-icon="alert"></span><div><strong>' + esc(statusMessage[0]) + '</strong><p>' + esc(statusMessage[1]) + '</p></div>'
+      : '<span data-icon="alert"></span><div><strong>Recording ended early</strong><p>' + esc(m.capture_warning || "") + '</p></div>';
+  }
   // Star button state
   var sd = $("#meeting-star-detail");
   if (sd) sd.classList.toggle("on", !!m.starred);
@@ -6959,7 +8358,7 @@ async function openMeeting(id) {
         return '<div class="meeting-speaker-block"><div class="meeting-speaker-row">' +
           '<span class="speaker-color-dot" style="background:' + esc(s.color || "var(--gold)") + '"></span>' +
           '<span class="speaker-label">' + esc(s.label) + '</span>' +
-          '<input class="input selectable speaker-name-input" data-speaker="' + esc(s.label) +
+          '<input class="input selectable speaker-name-input" aria-label="Name ' + esc(s.label) + '" data-speaker="' + esc(s.label) +
           '" value="' + esc(s.name || "") + '" placeholder="Name this speaker…" /></div>' +
           pills + '</div>';
       }).join("");
@@ -6967,7 +8366,12 @@ async function openMeeting(id) {
         inp.addEventListener("change", async function () {
           var label = inp.dataset.speaker;
           var name = inp.value.trim();
-          await call("meeting_rename_speaker", MEET.openId, label, name);
+          var r = await call("meeting_rename_speaker", MEET.openId, label, name);
+          if (!r || !r.ok) {
+            toast((r && r.message) || "Couldn't update that speaker", "err");
+            openMeeting(MEET.openId);
+            return;
+          }
           // Refresh transcript labels
           openMeeting(MEET.openId);
           toast(name ? "Speaker renamed to " + name : "Speaker name cleared", "ok", 1500);
@@ -6976,7 +8380,11 @@ async function openMeeting(id) {
       spList.querySelectorAll(".suggestion-pill").forEach(function (pill) {
         pill.addEventListener("click", async function () {
           var label = pill.dataset.speaker, name = pill.dataset.name;
-          await call("meeting_rename_speaker", MEET.openId, label, name);
+          var r = await call("meeting_rename_speaker", MEET.openId, label, name);
+          if (!r || !r.ok) {
+            toast((r && r.message) || "Couldn't update that speaker", "err");
+            return;
+          }
           openMeeting(MEET.openId);
           toast("Speaker named " + name, "ok", 1500);
         });
@@ -6988,26 +8396,49 @@ async function openMeeting(id) {
   meetingRenderTranscript(m);
   paintIcons($("#meeting-detail"));
   var v = document.querySelector('[data-view="meetings"]'); if (v) v.scrollTop = 0;
+  if (openingNewMeeting) requestAnimationFrame(() => {
+    const title = $("#meeting-title");
+    if (!title) return;
+    title.focus();
+    try { title.setSelectionRange(0, 0); } catch (e) {}
+  });
 }
 
 async function meetingToggleRecord() {
-  if (MEET.recording) return meetingStopRecord();
+  if (MEET.recording || MEET.stopping) return;
   if (!HAS_PY()) { toast("Recording runs in the app (the tray controller owns the mic)", "info"); return; }
-  const r = await call("meeting_start_recording");
-  if (r && r.ok === false) { toast(r.message || "Couldn't start recording", "err"); return; }
-  MEET.maxSeconds = Number(r && r.max_seconds) || 14400;
-  MEET.autoStopping = false;
-  MEET.recording = true; MEET.paused = false; MEET.recStart = Date.now();
-  $("#meeting-recording").hidden = false;
-  $("#meeting-record-label").textContent = "Recording…";
-  $("#meeting-pause-label").textContent = "Pause";
-  startMeetingTimer();
+  MEET.captureVersion += 1;
+  const button = $("#meeting-record");
+  if (button) button.disabled = true;
+  setText("#meeting-record-label", "Opening microphone…");
+  try {
+    const r = await call("meeting_start_recording");
+    if (!r || r.ok === false) {
+      await meetingReconcileRecording({ ok: true, active: false, state: "idle",
+        recording: false, paused: false, captured_seconds: 0,
+        max_seconds: MEET.maxSeconds });
+      toast((r && r.message) || "Couldn't start recording", "err");
+      return;
+    }
+    MEET.autoStopping = false;
+    meetingApplyCaptureStatus({ ...r, ok: true, active: true,
+      recording: true, paused: false, state: "recording",
+      captured_seconds: Number(r.captured_seconds) || 0 });
+    toast("Meeting recording started", "ok", 1400);
+  } catch (e) {
+    await meetingReconcileRecording({ ok: true, active: true, state: "finalizing",
+      recording: false, paused: false, captured_seconds: MEET.capturedSeconds,
+      max_seconds: MEET.maxSeconds,
+      message: "Mumble could not confirm whether capture started." });
+    toast("Mumble didn't confirm the microphone state. The controls now show the live controller state.", "err", 3800);
+  }
 }
 
 function startMeetingTimer() {
   clearInterval(MEET.recTimer);
   MEET.recTimer = setInterval(function () {
     var s = Math.floor((Date.now() - MEET.recStart) / 1000);
+    MEET.capturedSeconds = s;
     var el = $("#meeting-rec-timer");
     if (el) el.textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
     if (s >= MEET.maxSeconds && !MEET.autoStopping) {
@@ -7019,57 +8450,134 @@ function startMeetingTimer() {
 }
 
 async function meetingTogglePause() {
-  if (!MEET.recording) return;
-  if (MEET.paused) {
-    // Resume
-    const r = await call("meeting_resume_recording");
-    if (!r || !r.ok) { toast((r && r.message) || "Couldn't resume recording", "err", 3000); return; }
-    MEET.paused = false;
-    MEET.recStart = Date.now() - (MEET.pausedElapsed || 0);
-    $("#meeting-pause-label").textContent = "Pause";
-    $("#meeting-record-label").textContent = "Recording…";
-    startMeetingTimer();
-    toast("Resumed recording", "ok", 1200);
-  } else {
-    // Pause
-    var s = Math.floor((Date.now() - MEET.recStart) / 1000);
-    MEET.pausedElapsed = s * 1000;
-    clearInterval(MEET.recTimer);
-    const r = await call("meeting_pause_recording");
-    if (!r || !r.ok) { startMeetingTimer(); toast((r && r.message) || "Couldn't pause recording", "err", 3000); return; }
-    MEET.paused = true;
-    $("#meeting-pause-label").textContent = "Resume";
-    $("#meeting-record-label").textContent = "Paused";
-    toast("Recording paused", "info", 1200);
+  if (!MEET.recording || MEET.stopping) return;
+  const wasPaused = MEET.paused;
+  $("#meeting-pause").disabled = true;
+  try {
+    const r = await call(wasPaused ? "meeting_resume_recording" : "meeting_pause_recording");
+    if (!r || !r.ok) {
+      await meetingReconcileRecording({
+        ok: true, active: true, state: wasPaused ? "paused" : "recording",
+        recording: !wasPaused, paused: wasPaused,
+        captured_seconds: MEET.capturedSeconds, max_seconds: MEET.maxSeconds,
+      });
+      toast((r && r.message) || (wasPaused ? "Couldn't resume recording" : "Couldn't pause recording"), "err", 3000);
+      return;
+    }
+    await meetingReconcileRecording({
+      ok: true, active: true, state: wasPaused ? "recording" : "paused",
+      recording: wasPaused, paused: !wasPaused,
+      captured_seconds: MEET.capturedSeconds, max_seconds: MEET.maxSeconds,
+    });
+    toast(wasPaused ? "Recording resumed" : "Recording paused",
+      wasPaused ? "ok" : "info", 1400);
+  } catch (e) {
+    await meetingReconcileRecording({
+      ok: true, active: true, state: wasPaused ? "paused" : "recording",
+      recording: !wasPaused, paused: wasPaused,
+      captured_seconds: MEET.capturedSeconds, max_seconds: MEET.maxSeconds,
+    });
+    toast("The controls were reconciled with the live recorder.", "err", 2800);
   }
 }
 
-async function meetingStopRecord() {
-  if (!MEET.recording) return;
-  clearInterval(MEET.recTimer);
-  MEET.recording = false;
-  MEET.paused = false;
-  MEET.pausedElapsed = 0;
-  MEET.autoStopping = false;
-  $("#meeting-record-label").textContent = "Record meeting";
-  $("#meeting-pause-label").textContent = "Pause";
-  $("#meeting-recording").hidden = true;
-  toast("Saving audio and starting transcription…", "busy", 2200);
-  var r = await call("meeting_stop_recording", "");
-  if (r && r.ok === false) { toast(r.message || "Couldn't save the meeting", "err"); return; }
-  if (r && r.meeting_id) {
-    toast(r.processing ? "Meeting saved · transcription is running" : "Meeting saved", r.processing ? "info" : "ok", 3200);
-    renderMeetings();
+async function meetingReconcileFailedStop(stopGeneration, stopOwnedFocus, message, toastMessage) {
+  const reconciled = await meetingReconcileRecording({ ok: true, active: true, state: "finalizing",
+    recording: false, paused: false, captured_seconds: MEET.capturedSeconds,
+    max_seconds: MEET.maxSeconds, message });
+  if (reconciled && reconciled.active === false) {
+    await meetingCompleteStopped(stopGeneration, stopOwnedFocus, {
+      processing: true, reconciled: true,
+    });
+    return;
   }
-  else { toast("Meeting saved (preview — refresh to see it)", "ok", 3000); renderMeetings(); }
+  meetingRestoreStopFocus(stopOwnedFocus, reconciled);
+  toast(toastMessage, "err", 4200);
+}
+
+async function meetingStopRecord() {
+  if (!MEET.recording || MEET.stopping) return;
+  const stopOwnedFocus = Boolean($("#meeting-recording")?.contains(document.activeElement));
+  clearInterval(MEET.recTimer);
+  clearTimeout(MEET.statusTimer);
+  MEET.statusTimer = null;
+  MEET.captureVersion += 1;
+  MEET.statusRequestId += 1;
+  const stopGeneration = MEET.captureVersion;
+  MEET.stopping = true;
+  meetingApplyCaptureStatus({ ok: true, active: true,
+    state: MEET.paused ? "paused" : "recording",
+    paused: MEET.paused, recording: !MEET.paused,
+    captured_seconds: MEET.capturedSeconds, max_seconds: MEET.maxSeconds });
+  toast("Saving audio and starting transcription…", "busy", 2200);
+  try {
+    var r = await call("meeting_stop_recording", "");
+    MEET.stopping = false;
+    if (!r || r.ok === false) {
+      const message = (r && r.message) || "Mumble could not confirm the save.";
+      await meetingReconcileFailedStop(stopGeneration, stopOwnedFocus, message,
+        (r && r.message) || "Couldn't save the meeting. The live recorder state is shown above.");
+      return;
+    }
+    await meetingCompleteStopped(stopGeneration, stopOwnedFocus, r);
+  } catch (e) {
+    MEET.stopping = false;
+    await meetingReconcileFailedStop(stopGeneration, stopOwnedFocus,
+      "Mumble could not confirm the save.",
+      "Mumble didn't confirm the save. The controls now show the live recorder state.");
+  }
+}
+
+async function meetingCompleteStopped(generation, stopOwnedFocus, result) {
+  if (MEET.finalizedGeneration === generation) return;
+  MEET.finalizedGeneration = generation;
+  MEET.autoStopping = false;
+  if (MEET.recording) {
+    meetingApplyCaptureStatus({ ok: true, active: false, state: "idle",
+      recording: false, paused: false, captured_seconds: 0,
+      max_seconds: MEET.maxSeconds });
+  }
+  const reconciled = !!(result && result.reconciled);
+  const processing = !!(result && result.processing);
+  toast(reconciled ? "Meeting saved · completion confirmed from the live recorder" : (
+    processing ? "Meeting saved · transcription is running" : "Meeting saved"),
+  processing || reconciled ? "info" : "ok", 3200);
+  await renderMeetings();
+  if (stopOwnedFocus) $("#meeting-library-title")?.focus();
+}
+
+async function meetingReconcileRecording(fallback) {
+  const generation = MEET.captureVersion;
+  const requestId = ++MEET.statusRequestId;
+  try {
+    const status = await call("meeting_recording_status");
+    if (generation !== MEET.captureVersion || requestId !== MEET.statusRequestId)
+      return null;
+    if (status && status.ok) {
+      meetingApplyCaptureStatus(status);
+      return status;
+    }
+  } catch (e) {}
+  if (generation !== MEET.captureVersion || requestId !== MEET.statusRequestId)
+    return null;
+  if (fallback) meetingApplyCaptureStatus(fallback);
+  return fallback || null;
 }
 
 async function meetingImport() {
   if (!HAS_PY()) { toast("Importing runs in the app", "info"); return; }
-  var r = await call("meeting_import_audio", "");
-  if (r && r.ok) { toast("Audio import started", "ok"); renderMeetings(); }
-  else if (r && r.cancelled) return;
-  else toast((r && r.message) || "Choose an audio file in the app to import", "info", 3000);
+  const button = $("#meeting-import");
+  if (button) button.disabled = true;
+  try {
+    var r = await call("meeting_import_audio", "");
+    if (r && r.ok) { toast("Audio saved · transcription started", "ok"); renderMeetings(); }
+    else if (r && r.cancelled) return;
+    else toast((r && r.message) || "Choose an audio file in the app to import", "info", 3000);
+  } catch (e) {
+    toast("Import could not reach the app. Your meeting library was not changed.", "err", 3600);
+  } finally {
+    if (button && !MEET.recording) button.disabled = false;
+  }
 }
 
 async function meetingSummarize() {
@@ -7156,7 +8664,27 @@ async function meetingExport() {
   }
 }
 
+function readerArrangeLibraryFirstControls() {
+  const voiceCard = $("#reader-voice-settings");
+  const library = $("#reader-library");
+  const primary = $("#reader-voice-primary");
+  const technical = $("#reader-voice-technical .reader-voice-technical-fields");
+  if (!voiceCard || !library || !primary || !technical || voiceCard.dataset.arranged)
+    return;
+  voiceCard.dataset.arranged = "1";
+  library.insertAdjacentElement("afterend", voiceCard);
+  ["#reader-voice", "#reader-speed"].forEach(selector => {
+    const field = $(selector)?.closest(".field");
+    if (field) primary.append(field);
+  });
+  ["#reader-provider", "#reader-model"].forEach(selector => {
+    const field = $(selector)?.closest(".field");
+    if (field) technical.append(field);
+  });
+}
+
 async function initReader() {
+  readerArrangeLibraryFirstControls();
   const info = (await call("reader_tts_models")) || {};
   READER.hasKey = !!info.has_key;
   // Capture the model catalogue + default ONCE. initReader runs on every Reader
@@ -7260,26 +8788,27 @@ async function initReader() {
   $("#reader-find-input")?.addEventListener("input", debounce((e) => {
     readerFindUpdate(e.target.value);
   }, 90));
+  $("#reader-find-input")?.addEventListener("focus", (e) => {
+    readerRememberFindOrigin(e.relatedTarget);
+  });
   $("#reader-find-input")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
       readerFindMove(e.shiftKey ? -1 : 1);
     } else if (e.key === "Escape") {
       e.preventDefault();
-      readerFindClear();
-      $("#reader-pane")?.focus();
+      readerCloseFind();
     }
   });
   $("#reader-find-prev")?.addEventListener("click", () => readerFindMove(-1));
   $("#reader-find-next")?.addEventListener("click", () => readerFindMove(1));
-  $("#reader-find-clear")?.addEventListener("click", readerFindClear);
+  $("#reader-find-clear")?.addEventListener("click", readerCloseFind);
   document.addEventListener("keydown", (e) => {
     var readerView = document.querySelector('[data-view="reader"]');
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" &&
         readerView && !readerView.hidden && READER.playerOpen) {
       e.preventDefault();
-      $("#reader-find-input")?.focus();
-      $("#reader-find-input")?.select();
+      readerOpenFind(document.activeElement);
     }
   });
   $("#reader-lib-search")?.addEventListener(
@@ -7326,10 +8855,7 @@ async function initReader() {
   $("#reader-summary-read")?.addEventListener("click", () => {
     if (READER.lastSummary) sendToReader(READER.lastSummary);
   });
-  $("#reader-summary-close")?.addEventListener("click", () => {
-    const p = $("#reader-summary");
-    if (p) p.hidden = true;
-  });
+  $("#reader-summary-close")?.addEventListener("click", readerCloseSummary);
   $("#reader-file")?.addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
@@ -7394,46 +8920,12 @@ async function initReader() {
   readerRefreshLibrary();
 }
 
-async function activateProviderChoice(provider, mutationKey, mutationId) {
-  const result = await call("activate_model_provider", provider);
-  if (mutationId !== SETTINGS_MUTATION_VERSION[mutationKey]) return {ok:false,obsolete:true};
-  if (!result || result.ok !== true) return result || {ok:false};
-  if (Array.isArray(result.models)) {
-    MODELS[provider] = result.models.slice();
-    MODELS_FETCHED[provider] = new Set(result.models);
-  }
-  SET.llm_provider = provider;
-  await reflectProvider(false);
-  await refreshRouteState();
-  return result;
-}
-
-function wireOnboardingProvider() {
-  const control = $("#ob-provider");
-  if (!control || control.dataset.routeWired === "1") return;
-  control.dataset.routeWired = "1";
-  control.addEventListener("change", async () => {
-    const v = control.value;
-    const previous = OB.provider || SET.llm_provider || "cerebras";
-    const mutationId = (SETTINGS_MUTATION_VERSION.onboarding_llm_provider || 0) + 1;
-    SETTINGS_MUTATION_VERSION.onboarding_llm_provider = mutationId;
-    const saved = await activateProviderChoice(v, "onboarding_llm_provider", mutationId);
-    if (mutationId !== SETTINGS_MUTATION_VERSION.onboarding_llm_provider) return;
-    if (!saved || saved.ok === false) { control.value = previous; return; }
-    OB.provider = v;
-    const openUrl = v === "openrouter" ? "https://openrouter.ai/keys" : "https://cloud.cerebras.ai/";
-    const getKeyBtn = $("#ob-get-key");
-    if (getKeyBtn) getKeyBtn.onclick = () => call("open_url", openUrl);
-  });
-}
-
 async function boot() {
   // Guard against a double boot: boot is wired to BOTH pywebviewready and
   // DOMContentLoaded(!HAS_PY), and on some WebView2 timings both fire — a second
   // run would re-add document listeners and stack timer chains.
   if (window.__mumbleBooted) return;
   window.__mumbleBooted = true;
-  window.__mumbleBootBackend = HAS_PY() ? "python" : "mock";
   paintIcons();
   wireGlobalKeys();
   applyResponsiveScale();
@@ -7481,6 +8973,9 @@ async function boot() {
   };
   document.addEventListener("visibilitychange", setAmbient);
   window.addEventListener("blur", setAmbient);
+  window.addEventListener("blur", () => {
+    if (CURRENT === "history" && HX.pinned) syncDeckWindow();
+  });
   window.addEventListener("focus", setAmbient);
   // visual experience (standard / lite) from settings
   try {
@@ -7488,10 +8983,53 @@ async function boot() {
     applyEffects(st.ui_effects);
     applySaver(st.resource_saver);
   } catch (e) {}
-  // Content-type filter dropdown (replaced filterchips, owner v1.0)
-  $("#hist-content-filter")?.addEventListener("change", (e) => {
-    setContentFilter(e.target.value);
+  // First-class content lanes use tab semantics and roving keyboard focus.
+  const deckTabs = $$("[data-content-filter]");
+  deckTabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => setContentFilter(tab.dataset.contentFilter || ""));
+    tab.addEventListener("keydown", (event) => {
+      let next = null;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") next = deckTabs[(index + 1) % deckTabs.length];
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = deckTabs[(index - 1 + deckTabs.length) % deckTabs.length];
+      if (event.key === "Home") next = deckTabs[0];
+      if (event.key === "End") next = deckTabs[deckTabs.length - 1];
+      if (next) {
+        event.preventDefault();
+        next.focus();
+        setContentFilter(next.dataset.contentFilter || "");
+      }
+    });
   });
+  const deckMore = $("#deck-more-toggle");
+  const deckActions = $("#deck-toolbar-actions");
+  deckMore?.addEventListener("click", () => {
+    const open = !deckActions?.classList.contains("more-open");
+    deckActions?.classList.toggle("more-open", open);
+    if (deckActions) {
+      const secondary = $("#deck-secondary-actions", deckActions);
+      if (secondary) secondary.hidden = !open;
+    }
+    deckMore.setAttribute("aria-expanded", String(open));
+    setText("#deck-more-label", open ? "Fewer" : "More");
+  });
+  const toggleSelectionMenu = (toggleId, menuId) => {
+    const toggle = $(toggleId);
+    const menu = $(menuId);
+    toggle?.addEventListener("click", () => {
+      const opening = !!menu?.hidden;
+      for (const [otherToggleId, otherMenuId] of DECK_SELECTION_MENUS) {
+        const otherToggle = $(otherToggleId);
+        const otherMenu = $(otherMenuId);
+        if (otherMenu) otherMenu.hidden = true;
+        otherToggle?.setAttribute("aria-expanded", "false");
+      }
+      if (menu) menu.hidden = !opening;
+      toggle.setAttribute("aria-expanded", String(opening));
+    });
+  };
+  DECK_SELECTION_MENUS.forEach(([toggleId, menuId]) =>
+    toggleSelectionMenu(toggleId, menuId));
+  $("#hist-starred-toggle")?.addEventListener("click", () => setStarredFilter(!HX.favoriteOnly));
   $("#hist-filter").addEventListener(
     "input",
     debounce((e) => {
@@ -7528,35 +9066,25 @@ async function boot() {
     drawHistory();
   });
   $("#hist-refresh")?.addEventListener("click", async () => {
-    await renderHistory();
-    toast("Deck refreshed", "ok", 1200);
+    if (await renderHistory()) toast("Deck refreshed", "ok", 1200);
   });
   // Paste / copy the most recent transcript — manual fallbacks for the paste-latest
   // hotkey (owner v9), so you never need to remember the bind.
   $("#hist-paste-latest")?.addEventListener("click", pasteLatest);
   $("#hist-copy-latest")?.addEventListener("click", copyLatest);
-  // History hub — the absorbed Deck. Smart Mode + Presets are now ONE always-open
-  // merged widget (v0.9), so there are no collapsible headers to wire here; the
-  // merge/run action bar, clear-selection and pin-on-top controls follow.
+  // History hub — the absorbed Deck. Smart Mode, Preset, and uncommon selection
+  // actions now live in separate on-demand menus within the selection state.
   $("#hist-merge-copy")?.addEventListener("click", () => histMerge(false));
   $("#hist-merge-paste")?.addEventListener("click", () => histMerge(true));
   $("#hist-run")?.addEventListener("click", histRun);
   $("#hist-clear-sel")?.addEventListener("click", clearHistSelection);
   $("#hist-pin")?.addEventListener("click", () => setHistPinned(!HX.pinned));
+  $("#hist-keyboard")?.addEventListener("click", focusDeckForKeyboard);
   $("#hist-capture")?.addEventListener("click", captureSelection);
   $("#hist-capture-chat")?.addEventListener("click", captureConversation);
-  // Deck search button: search selected text in the browser
-  $("#hist-search")?.addEventListener("click", async () => {
-    const sel = HX.selected.length > 0 ? HX.selected[0].text : "";
-    if (sel && sel.trim()) {
-      const prepared = await call("request_web_search", sel.trim()).catch(() => null);
-      if (!prepared || !prepared.ok) {
-        toast((prepared && prepared.message) || "Web Search could not prepare.", "err", 3000);
-      }
-    } else {
-      window.openSystemSearch && window.openSystemSearch();
-    }
-  });
+  // Web Search remains a distinct, consent-gated selection action. The browse
+  // state already has one local Deck filter, so it does not duplicate Search.
+  $("#hist-web-search")?.addEventListener("click", deckWebSearch);
   // stats range
   $$("#stat-range button").forEach(
     (b) => (b.onclick = () => setStatsRange(+b.dataset.r)),
@@ -7564,9 +9092,17 @@ async function boot() {
   // settings special controls
   wireSettingsControls();
   $$('[data-settings-jump]').forEach((button) => {
-    button.addEventListener("click", () =>
-      showSettingsCategory(button.dataset.settingsJump, true),
-    );
+    button.addEventListener("click", () => {
+      if (CURRENT !== "settings") navTo("settings");
+      showSettingsCategory(button.dataset.settingsJump, false);
+      requestAnimationFrame(() => {
+        const target = document.getElementById(button.dataset.settingsTarget || "");
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+      });
+    });
   });
   // onboarding controls
   $("#ob-next").onclick = obNext;
@@ -7615,13 +9151,18 @@ async function boot() {
       }),
   );
   // Name input: save on blur so it persists even if they skip ahead
-  $("#ob-name")?.addEventListener("change", () => {
+  $("#ob-name")?.addEventListener("change", async () => {
     const v = $("#ob-name").value.trim();
+    const previous = SET.user_name || "";
     OB.userName = v;
-    call("set_setting", "user_name", v);
+    const r = await call("set_setting", "user_name", v);
+    if (!r || r.ok === false) {
+      $("#ob-name").value = previous;
+      toast((r && r.message) || "Could not save your name.", "err");
+      return;
+    }
     SET.user_name = v;
   });
-  // Provider activation is invalidated and confirmed before onboarding saves it.
   wireOnboardingProvider();
   $("#ob-mic-test")?.addEventListener("click", async () => {
     flash($("#ob-mic-fb"), "Listening 5s…", "busy");
@@ -7635,9 +9176,17 @@ async function boot() {
       s.innerHTML = mics
         .map((m) => `<option value="${m.index}">${esc(m.name)}</option>`)
         .join("");
-      s.addEventListener("change", () => {
+      s.addEventListener("change", async () => {
+        const previous = SET.mic_device;
         const v = +s.value;
-        call("set_setting", "mic_device", v < 0 ? null : v);
+        const next = v < 0 ? null : v;
+        const r = await call("set_setting", "mic_device", next);
+        if (!r || r.ok === false) {
+          s.value = previous == null ? -1 : previous;
+          toast((r && r.message) || "Could not save the microphone.", "err");
+          return;
+        }
+        SET.mic_device = next;
       });
     }
   });
@@ -7681,6 +9230,25 @@ async function boot() {
 
 let SETTINGS_CATEGORY = "general";
 
+function arrangeSettingsDom() {
+  const root = document.querySelector('[data-view="settings"]');
+  if (!root || root.dataset.arranged) return;
+  root.dataset.arranged = "1";
+  const behaviour = $("#processing-behaviour-label");
+  const actions = $("#processing-actions-label");
+  const provider = $("#card-ai");
+  if (behaviour && actions) root.insertBefore(actions, behaviour);
+  if (behaviour && provider) root.insertBefore(provider, behaviour);
+
+  const vocabulary = $("#settings-vocabulary");
+  const transcriptionLabel = $("#transcription-label");
+  const transcription = $("#settings-transcription");
+  const microphone = $("#settings-microphone");
+  if (vocabulary && transcriptionLabel) root.insertBefore(transcriptionLabel, vocabulary);
+  if (vocabulary && microphone) root.insertBefore(microphone, vocabulary);
+  if (vocabulary && transcription) root.insertBefore(transcription, vocabulary);
+}
+
 function showSettingsCategory(category, focusTab) {
   const tabs = $$("[data-settings-tab]");
   if (!tabs.some((tab) => tab.dataset.settingsTab === category))
@@ -7689,18 +9257,22 @@ function showSettingsCategory(category, focusTab) {
 
   tabs.forEach((tab) => {
     const selected = tab.dataset.settingsTab === category;
-    tab.setAttribute("aria-selected", selected ? "true" : "false");
+    tab.setAttribute("aria-pressed", selected ? "true" : "false");
     tab.tabIndex = selected ? 0 : -1;
     if (selected && focusTab) tab.focus();
   });
 
   $$('[data-view="settings"] [data-settings-category]').forEach((panel) => {
     const categories = (panel.dataset.settingsCategory || "").split(/\s+/);
-    panel.hidden = !categories.includes(category);
+    const inCategory = categories.includes(category);
+    panel.hidden = !inCategory || (
+      panel.id === "settings-recovery-notice" && !SET._recovery_notice
+    );
   });
 }
 
 function wireSettingsCategoryNav() {
+  arrangeSettingsDom();
   const tabs = $$("[data-settings-tab]");
   tabs.forEach((tab, index) => {
     tab.addEventListener("click", () => showSettingsCategory(tab.dataset.settingsTab));
@@ -7722,6 +9294,15 @@ function wireSettingsCategoryNav() {
 
 function wireSettingsControls() {
   wireSettingsCategoryNav();
+  const hostedDetails = $("#hosted-provider-details");
+  const hostedSummary = hostedDetails?.querySelector("summary");
+  const markHostedChoice = () => {
+    if (hostedDetails) hostedDetails.dataset.userToggled = "1";
+  };
+  hostedSummary?.addEventListener("pointerdown", markHostedChoice);
+  hostedSummary?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") markHostedChoice();
+  });
   // model dropdowns are filled per-provider by reflectProvider() → populateModels()
   // binding captures
   $$("[data-capture]").forEach(
@@ -7772,7 +9353,9 @@ function wireSettingsControls() {
     if (btn) btn.disabled = true;
     try {
       const r = await call("test_transcription", prov, 3);
-      flash($("#set-tx-fb"), r.message, r.ok ? "ok" : "err");
+      flash($("#set-tx-fb"), (r && r.message) || "Transcription test failed.", r && r.ok ? "ok" : "err");
+    } catch (e) {
+      flash($("#set-tx-fb"), "Transcription test failed: " + (e.message || e), "err");
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -7837,7 +9420,7 @@ function wireSettingsControls() {
     "🎙️ Mumble — Speak. It types.",
     "",
     "I dictate instead of typing now. Mumble turns your voice into clean,",
-    "polished text anywhere on Linux — press one hotkey, talk, and it",
+    "polished text anywhere on Windows — press one hotkey, talk, and it",
     "pastes at your cursor. Local transcription keeps audio on-device;",
     "optional Cloud transcription sends clips to your provider. AI polish shapes emails, lists",
     "and prompts using your own free API key.",
@@ -7856,16 +9439,7 @@ function wireSettingsControls() {
   // provider dropdown change handled via generic binding + reflectProvider
 }
 
-// WebKitGTK commonly fires DOMContentLoaded before pywebview exposes its
-// bridge. Mock mode must therefore be explicit or the live app can boot fake
-// data and ignore the later bridge event because of the one-shot guard.
-const MOCK_PREVIEW =
-  new URLSearchParams(window.location.search).get("mock") === "1";
 window.addEventListener("pywebviewready", boot);
 window.addEventListener("DOMContentLoaded", () => {
-  if (HAS_PY()) {
-    boot();
-  } else if (MOCK_PREVIEW) {
-    boot();
-  }
+  if (!HAS_PY()) boot();
 });

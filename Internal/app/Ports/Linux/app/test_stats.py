@@ -59,15 +59,17 @@ check("after 2 sessions: reader_docs_completed == 1",
 
 
 # ============================================================ negative / zero
-print("\n== record_reader_session — zero / negative args clamp safely ==")
+print("\n== record_reader_session — zero playback is not activity ==")
 
 before_words = s.data["reader_words_read"]
 before_sessions = s.data["reader_sessions"]
-s.record_reader_session(words_read=-5, duration_sec=0.0, doc_completed=False)
-check("negative words_read clamps to 0 (no subtraction)",
+result = s.record_reader_session(
+    words_read=-5, duration_sec=0.0, doc_completed=False)
+check("zero-duration Reader record is rejected", result is False)
+check("negative words_read cannot subtract from the total",
       s.data["reader_words_read"] == before_words)
-check("zero-duration session still increments session count",
-      s.data["reader_sessions"] == before_sessions + 1)
+check("zero-duration record does not create a session or streak",
+      s.data["reader_sessions"] == before_sessions)
 
 
 # ============================================================ reader_summary
@@ -89,9 +91,8 @@ check("words_read matches data store",
 check("total_sessions matches data store",
       summary["total_sessions"] == s.data["reader_sessions"])
 
-# 3 sessions total (2 + 1 zero), total sec ~180
 check("avg_session_sec is total / sessions",
-      abs(summary["total_reading_seconds"] - 180.0) < 0.01)
+      abs(summary["avg_session_sec"] - 90.0) < 0.01)
 
 
 # ============================================================ reader_summary (empty store)

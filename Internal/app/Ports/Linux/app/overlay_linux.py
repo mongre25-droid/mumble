@@ -244,11 +244,15 @@ class _NoopIsland:
             "foreign_on": False,
             "show_foreign": False,
             "expanded": False,
+            "stop_enabled": False,
+            "stop_label": "Stop",
+            "reduced_motion": False,
         }
         self.armed_color = None
         self.on_mode = None
         self.on_deck = None
         self.on_foreign = None
+        self.on_stop = None
         if not _NoopIsland._warned:
             _NoopIsland._warned = True
             why = _GTK_IMPORT_ERR if not _HAVE_GTK else "island_render missing"
@@ -256,7 +260,9 @@ class _NoopIsland:
                   f"no-op island ({why})")
 
     # All setters just record state (harmless) and never touch any GUI.
-    def set_state(self, s): self.state = s
+    def set_state(self, s):
+        self.state = s
+        self.bar_state["stop_enabled"] = s in ("listening", "search")
     def set_level(self, lvl): self.level = lvl
     def set_armed(self, on):
         self.armed = bool(on)
@@ -278,8 +284,10 @@ class _NoopIsland:
     def close_picker(self): pass
     def set_style(self, style=None): pass
     def close_deck(self): pass
-    def set_widget_callbacks(self, on_mode=None, on_deck=None, on_foreign=None):
+    def set_widget_callbacks(self, on_mode=None, on_deck=None, on_foreign=None,
+                             on_stop=None, **_unused):
         self.on_mode, self.on_deck, self.on_foreign = on_mode, on_deck, on_foreign
+        self.on_stop = on_stop
     def set_bar_state(self, modes=None, active="\x00", foreign_on=None,
                       show_foreign=None):
         if modes is not None: self.bar_state["modes"] = list(modes)
@@ -294,6 +302,8 @@ class _NoopIsland:
         if callable(self.on_deck): self.on_deck()
     def _widget_foreign(self):
         if callable(self.on_foreign): self.on_foreign()
+    def _widget_stop(self):
+        if callable(self.on_stop): self.on_stop()
     def _widget_expand(self):
         self.bar_state["expanded"] = not self.bar_state.get("expanded", False)
 
@@ -345,8 +355,12 @@ class _GtkIsland:
             "foreign_on": False,
             "show_foreign": False,
             "expanded": False,
+            "stop_enabled": False,
+            "stop_label": "Stop",
+            "reduced_motion": False,
         }
         self.armed_color = MODE_COLORS.get("prompt", C.gold)
+        self.on_stop = None
 
         self.done_color = C.gold
         self.done_colors = [C.gold]
@@ -502,11 +516,16 @@ class _GtkIsland:
         # Layout coordinates are relative to the full bar canvas, whereas the
         # input region starts at the visible pill's left edge.
         x = event_x - (ox - layout["pill"][0])
+        stop = layout.get("stop")
+        if stop and stop[0] <= x <= stop[1]:
+            self._widget_stop()
+            return True
         for key, x0, x1 in layout.get("chips", []):
             if x0 <= x <= x1:
                 # A collapsed chip is the selector opener even when it displays
                 # the active mode. Selecting happens only from the expanded row.
-                if not layout.get("expanded") or key is None:
+                if (layout.get("caret") is not None
+                        and (not layout.get("expanded") or key is None)):
                     self._widget_expand()
                 else:
                     self._widget_mode(key)
@@ -628,6 +647,7 @@ class _GtkIsland:
     def set_state(self, s):
         """Thread-safe setter for the island's visual state."""
         self.state = s
+        self.bar_state["stop_enabled"] = s in ("listening", "search")
 
     def set_level(self, lvl):
         """Thread-safe setter for the current audio volume level (0.0 to 1.0)."""
@@ -695,11 +715,13 @@ class _GtkIsland:
         self.state = "hint"
 
     # ---- THE BIG SHIFT: companion control-bar callbacks ----
-    def set_widget_callbacks(self, on_mode=None, on_deck=None, on_foreign=None):
+    def set_widget_callbacks(self, on_mode=None, on_deck=None, on_foreign=None,
+                             on_stop=None, **_unused):
         """Wire mode selection, Deck opening, and Foreign toggling."""
         self.on_mode = on_mode
         self.on_deck = on_deck
         self.on_foreign = on_foreign
+        self.on_stop = on_stop
 
     def set_bar_state(self, modes=None, active="\x00", foreign_on=None,
                       show_foreign=None):
@@ -729,6 +751,10 @@ class _GtkIsland:
     def _widget_foreign(self):
         if callable(self.on_foreign):
             self.on_foreign()
+
+    def _widget_stop(self):
+        if callable(self.on_stop):
+            self.on_stop()
 
     def _widget_expand(self):
         self.bar_state["expanded"] = not self.bar_state.get("expanded", False)
@@ -863,6 +889,8 @@ class _GtkIsland:
             "offline": offline, "gathering": gathering, "fade": fade,
             "label": label, "hint": hint, "timer": timer,
             "dot": dot, "rim": rim, "label_color": label_color, "colors": colors,
+            "reduced_motion": bool(
+                getattr(self, "bar_state", {}).get("reduced_motion", False)),
         }
 
     # ===================================================================

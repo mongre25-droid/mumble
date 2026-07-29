@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Controller wiring tests — meeting commands, mutex gates, background
+"""Controller wiring tests — meeting commands, concurrent dictation, background
 processing, island callbacks, and stats integration.
 
 Covers: VAL-MEETING-014, VAL-MEETING-015, VAL-MEETING-016, VAL-MEETING-017,
@@ -39,6 +39,7 @@ except Exception:
 
 import mumble_linux as mumble  # noqa: E402
 import meeting  # noqa: E402
+import recording_limits  # noqa: E402
 
 _fails = []
 
@@ -65,9 +66,9 @@ def _minimal_mumble():
     m.paused = False
     m.meeting_recording = False
     m.meeting_recorder = None
+    m._meeting_lock = threading.Lock()
     m.island = None  # no Tk root, so no island
     m.lock = threading.Lock()
-    m._meeting_lock = threading.Lock()
     return m
 
 
@@ -242,41 +243,38 @@ check("empty path rejected", resp.get("ok") is False)
 
 
 # =============================================== VAL-MEETING-014
-print("\n== Gate: dictation vetoed while meeting recording (VAL-MEETING-014) ==")
+print("\n== Concurrency: dictation remains available during meeting capture (VAL-MEETING-014) ==")
 m = _minimal_mumble()
 m.meeting_recording = True
 m.paused = False
-# We can't call start_recording directly (needs mic/stream) but we can
-# verify that the gate check exists in the source code.
+# Hardware behavior is covered by test_recording_gate; pin the controller gate
+# here so a future source change cannot silently restore mutual exclusion.
 src = inspect.getsource(mumble.Mumble.start_recording)
-check("start_recording checks meeting_recording",
-      "meeting_recording" in src)
-
-# Simulate the gate in isolation with a manual flag check
-meeting_rec = True
-paused = False
-# This mirrors the gate logic
-gate_passes = not paused  # skipped if paused
-gate_passes = gate_passes and not meeting_rec  # veto if meeting recording
-check("gate vetoes when meeting_recording True", gate_passes is False)
+code_only = "\n".join(
+    line for line in src.splitlines() if not line.lstrip().startswith("#")
+)
+check("start_recording has no meeting-recording veto",
+      "meeting_recording" not in code_only)
 
 
 # =============================================== VAL-MEETING-015
-print("\n== Gate: meeting start vetoed while dictation active (VAL-MEETING-015) ==")
+print("\n== Concurrency: meeting can start while dictation is active (VAL-MEETING-015) ==")
 m = _minimal_mumble()
 m.meeting_recorder = _RecordingMeetingRecorder()
 m.recording = True  # dictation active
 m._processing = False
 
 resp = m._meeting_start()
-check("meeting start vetoed while dictation active", resp.get("ok") is False)
-check("veto message mentions dictation", "dictation" in resp.get("message", "").lower() or
-      "active" in resp.get("message", "").lower())
+check("meeting starts while dictation is recording", resp.get("ok") is True)
+check("meeting recorder started alongside dictation",
+      m.meeting_recorder.start_called is True)
 
+m = _minimal_mumble()
+m.meeting_recorder = _RecordingMeetingRecorder()
 m.recording = False
 m._processing = True  # processing pipeline
 resp = m._meeting_start()
-check("meeting start vetoed while processing", resp.get("ok") is False)
+check("meeting starts while a dictation is processing", resp.get("ok") is True)
 
 
 # =============================================== VAL-MEETING-016
@@ -290,28 +288,6 @@ check("second start vetoed", resp.get("ok") is False)
 check("veto message mentions already recording",
       "already" in resp.get("message", "").lower() or
       "recording" in resp.get("message", "").lower())
-
-# The localhost command server dispatches each connection on its own thread.
-# Two near-simultaneous starts must reserve the mic atomically.
-class _SlowStartRecorder(_RecordingMeetingRecorder):
-    def start(self):
-        time.sleep(0.08)
-        super().start()
-
-
-m = _minimal_mumble()
-m.meeting_recorder = _SlowStartRecorder()
-start_results = []
-threads = [threading.Thread(target=lambda: start_results.append(m._meeting_start()))
-           for _ in range(2)]
-for thread in threads:
-    thread.start()
-for thread in threads:
-    thread.join(timeout=1.0)
-check("concurrent meeting starts produce one success",
-      sum(1 for result in start_results if result.get("ok")) == 1)
-check("concurrent meeting starts open one recorder",
-      m.meeting_recorder.start_called is True and m.meeting_recording is True)
 
 
 # =============================================== VAL-MEETING-017
@@ -329,31 +305,34 @@ check("gate passes after meeting stop (meeting_recording False)",
 
 
 # =============================================== VAL-CROSS-016
-print("\n== Cross-area: Meeting/dictation mutual exclusivity (VAL-CROSS-016) ==")
-# We already tested both directions above; verify the mutual exclusion
-# is enforced bidirectionally
+print("\n== Cross-area: Meeting/dictation coexistence (VAL-CROSS-016) ==")
+# Both capture modes have independent streams and lifecycle flags.
 
-# Direction 1: meeting blocks dictation
+# Direction 1: a meeting flag no longer blocks dictation
 m1 = _minimal_mumble()
 m1.meeting_recording = True
-check("dictation gate: meeting_recording True -> veto",
-      m1.meeting_recording is True)  # flag indicates gate would block
+src = inspect.getsource(mumble.Mumble.start_recording)
+code_only = "\n".join(
+    line for line in src.splitlines() if not line.lstrip().startswith("#")
+)
+check("dictation gate ignores meeting_recording",
+      "meeting_recording" not in code_only)
 
-# Direction 2: dictation blocks meeting
+# Direction 2: active dictation no longer blocks meeting capture
 m2 = _minimal_mumble()
 m2.meeting_recorder = _RecordingMeetingRecorder()
 m2.recording = True
 resp = m2._meeting_start()
-check("meeting gate: dictation recording True -> veto",
-      resp.get("ok") is False)
+check("meeting starts with dictation recording",
+      resp.get("ok") is True)
 
-# Direction 3: processing blocks meeting
+# Direction 3: dictation processing no longer blocks meeting capture
 m3 = _minimal_mumble()
 m3.meeting_recorder = _RecordingMeetingRecorder()
 m3._processing = True
 resp = m3._meeting_start()
-check("meeting gate: dictation processing True -> veto",
-      resp.get("ok") is False)
+check("meeting starts with dictation processing",
+      resp.get("ok") is True)
 
 
 # =============================================== VAL-MEETING-168
@@ -528,6 +507,35 @@ check("capture error refreshes meeting UI",
       any(item.get("what") == "meeting_capture_error"
           for item in capture_m._capture_refreshes))
 
+# Routine meeting timer events must not overwrite foreground dictation state.
+class _Island:
+    def set_state(self, *_args):
+        pass
+
+    def hint(self, *_args):
+        pass
+
+
+overlay_m = _minimal_mumble()
+overlay_m.island = _Island()
+overlay_m.recording = True
+overlay_m._meeting_island_cb("recording", 65, 0)
+check("meeting timer does not overwrite active dictation island",
+      overlay_m._tk_queue.empty())
+
+overlay_m.recording = False
+overlay_m.meeting_recording = True
+overlay_m.meeting_recorder = _RecordingMeetingRecorder()
+overlay_m.meeting_recorder._recording = True
+check("meeting island is restored after dictation finishes",
+      overlay_m._restore_meeting_island() is True)
+restored = []
+while not overlay_m._tk_queue.empty():
+    _func, args, _kwargs = overlay_m._tk_queue.get_nowait()
+    restored.append(args)
+check("restored meeting island includes the live timer",
+      any(args and args[0] == "Meeting \u00b7 0:00" for args in restored))
+
 
 # =============================================== recorder-ready guard
 print("\n== Guard: recorder not ready ==")
@@ -544,6 +552,41 @@ check("start without recorder message",
 resp = m._meeting_stop()
 check("stop without recorder returns ok False",
       resp.get("ok") is False)
+
+
+# =============================================== authoritative capture status
+print("\n== Authoritative recording status ==")
+status_m = _minimal_mumble()
+status_rec = _RecordingMeetingRecorder()
+status_rec._recording = False
+status_m.meeting_recorder = status_rec
+status_m.meeting_recording = True
+paused_status = status_m._meeting_status()
+check("legacy recorder status reports active capture",
+      paused_status.get("active") is True)
+check("legacy recorder status reports paused capture",
+      paused_status.get("state") == "paused" and
+      paused_status.get("paused") is True)
+
+class _SnapshotRecorder(_RecordingMeetingRecorder):
+    def capture_status(self):
+        return {"active": True, "recording": True, "paused": False,
+                "state": "recording", "captured_seconds": 42,
+                "meeting_id": "journal123"}
+
+status_m.meeting_recorder = _SnapshotRecorder()
+live_status = status_m._meeting_status()
+check("controller forwards recorder-captured duration",
+      live_status.get("captured_seconds") == 42)
+check("controller forwards durable capture journal id",
+      live_status.get("meeting_id") == "journal123")
+check("controller status always includes four-hour maximum",
+      live_status.get("max_seconds") == recording_limits.MEETING_MAX_SECONDS)
+with open(os.path.join(os.path.dirname(__file__), "mumble_linux.py"),
+          "r", encoding="utf-8") as f:
+    controller_source = f.read()
+check("command server routes meeting_record_status",
+      'cmd == "meeting_record_status"' in controller_source)
 
 
 # =============================================== SUMMARY

@@ -4,14 +4,16 @@
 Stats live in their OWN file (stats.json), completely separate from transcripts
 (history.json) and the clipboard (clipboard.json). Clearing transcripts or the
 clipboard must never reset stats — so nothing here reads those stores. Totals
-accumulate forever; per-day and per-mode buckets power the charts and streak.
+accumulate until an explicit Stats reset; per-day/per-mode buckets power charts.
 """
 
+import copy
+import hashlib
 import json
 import math
 import os
+import shutil
 import threading
-from copy import deepcopy
 from datetime import date, datetime, timedelta
 
 from storage_lock import exclusive_file_lock
@@ -25,48 +27,128 @@ def _today_str():
     return date.today().strftime("%Y-%m-%d")
 
 
+def _fresh_data():
+    return {
+        "total_words": 0,
+        "total_transcripts": 0,
+        "spoken_seconds": 0.0,
+        "best_wpm": 0.0,
+        "wpm_words": 0.0,
+        "wpm_seconds": 0.0,
+        "wpm_ema": 0.0,
+        "days": {},
+        "modes": {},
+        "hours": [0] * 24,
+        "reader_total_seconds": 0.0,
+        "reader_pages_read": 0.0,
+        "reader_docs_completed": 0,
+        "reader_words_read": 0,
+        "reader_sessions": 0,
+        "reader_days": {},
+        "feature_usage": {},
+    }
+
+
+def _finite_nonnegative(value, *, integer=False):
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(number) or number < 0:
+        return None
+    return int(number) if integer else number
+
+
+def _iso_day(value):
+    try:
+        return date.fromisoformat(str(value)).isoformat()
+    except (TypeError, ValueError):
+        return None
+
+
 class Stats:
     def __init__(self, path):
         self.path = path
         self._lock = threading.RLock()
         self.is_new = True  # True until a file is loaded — lets the app seed it once
-        self.data = {
-            "total_words": 0,
-            "total_transcripts": 0,
-            "spoken_seconds": 0.0,  # text-mode speaking time
-            "best_wpm": 0.0,
-            "wpm_words": 0.0,  # sane text-mode words (lifetime, kept for fallback)
-            "wpm_seconds": 0.0,  # sane text-mode seconds (lifetime, kept for fallback)
-            "wpm_ema": 0.0,  # RESPONSIVE recent-pace WPM (exponential moving average)
-            "days": {},  # "YYYY-MM-DD" -> [words, count]
-            "modes": {},  # mode -> [count, words]
-            "hours": [0] * 24,  # hour-of-day -> words (the "When you dictate" insight)
-            # Reader-specific stats (reader-redesign milestone):
-            "reader_total_seconds": 0.0,  # total reading (listening) time
-            "reader_pages_read": 0.0,
-            "reader_docs_completed": 0,
-            "reader_words_read": 0,
-            "reader_sessions": 0,
-            "reader_days": {},  # "YYYY-MM-DD" -> seconds read (for reading streaks)
-            # Coarse feature-adoption counters (drive the usage-aware island tips —
-            # see tips.py). Aggregate counts only, never content: e.g. how many times
-            # the Deck was opened or a web search fired, so a tip about a feature
-            # RETIRES once the user actually adopts it. No PII, ever.
-            "feature_usage": {},  # feature_id -> int count
-        }
+        self.load_health = "missing"
+        self.load_error = ""
+        self.data = _fresh_data()
         self._load()
 
     # ---------------------------------------------------------------- persistence
+    @staticmethod
+    def _read(path):
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("stats root is not an object")
+        return data
+
+    def _preserve_corrupt_primary(self):
+        if not os.path.exists(self.path):
+            return
+        try:
+            digest = hashlib.sha256()
+            with open(self.path, "rb") as source:
+                for chunk in iter(lambda: source.read(64 * 1024), b""):
+                    digest.update(chunk)
+            # Content-addressing preserves every distinct damaged generation
+            # once, without creating another full copy on every failed mutation.
+            target = f"{self.path}.corrupt-{digest.hexdigest()[:12]}"
+            if os.path.exists(target):
+                return
+            shutil.copy2(self.path, target)
+        except OSError as e:
+            print(f"stats corrupt-copy error ({type(e).__name__}): {e}")
+
     def _load(self):
         try:
-            with open(self.path, "r", encoding="utf-8") as f:
-                d = json.load(f)
-            if isinstance(d, dict):
-                self.data.update(d)
+            loaded = self._read(self.path)
+            self.load_health = "ok"
+        except FileNotFoundError:
+            try:
+                loaded = self._read(self.path + ".bak")
+            except FileNotFoundError:
+                self.load_health = "missing"
+                return
+            except (json.JSONDecodeError, OSError, ValueError) as e:
+                self.load_health = "corrupt"
+                self.load_error = str(e)
                 self.is_new = False
-                self._coerce_types()
-        except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
-            pass
+                return
+            try:
+                shutil.copy2(self.path + ".bak", self.path)
+            except OSError as e:
+                print(f"stats restore error ({type(e).__name__}): {e}")
+            self.load_health = "recovered"
+        except (json.JSONDecodeError, OSError, ValueError) as primary_error:
+            try:
+                loaded = self._read(self.path + ".bak")
+            except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
+                self._preserve_corrupt_primary()
+                self.load_health = "corrupt"
+                self.load_error = str(primary_error)
+                # A corrupt file is not a fresh install. This prevents startup
+                # migration from silently overwriting the only recoverable bytes.
+                self.is_new = False
+                return
+            self._preserve_corrupt_primary()
+            try:
+                shutil.copy2(self.path + ".bak", self.path)
+            except OSError as e:
+                print(f"stats restore error ({type(e).__name__}): {e}")
+            self.load_health = "recovered"
+        self.data.update(loaded)
+        self.is_new = False
+        before_coercion = copy.deepcopy(self.data)
+        self._coerce_types()
+        if self.data != before_coercion:
+            self._preserve_corrupt_primary()
+            self.load_health = "repaired"
+            self.load_error = "Invalid statistics values were ignored."
 
     def _coerce_types(self):
         """A corrupt / hand-edited stats.json can set a structural key to the wrong
@@ -94,6 +176,8 @@ class Stats:
             clean = {}
             for name, bucket in d[key].items():
                 if isinstance(bucket, (list, tuple)) and len(bucket) >= 2:
+                    if key == "days" and _iso_day(name) is None:
+                        continue
                     clean[str(name)] = [
                         max(0, int(_finite(bucket[0]))),
                         max(0, int(_finite(bucket[1]))),
@@ -127,29 +211,62 @@ class Stats:
             d[key] = max(0.0, _finite(d.get(key)))
 
     def _save(self):
+        tmp = self.path + ".tmp"
+        backup_tmp = self.path + ".bak.tmp"
         try:
-            os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True)
-            tmp = self.path + ".tmp"
+            parent = os.path.dirname(self.path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
             with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, ensure_ascii=False, indent=2)
+                json.dump(
+                    self.data, f, ensure_ascii=False, indent=2, allow_nan=False)
                 f.flush()
                 os.fsync(f.fileno())
+            if (os.path.exists(self.path)
+                    and self.load_health not in ("corrupt", "repaired")):
+                shutil.copy2(self.path, backup_tmp)
+                os.replace(backup_tmp, self.path + ".bak")
             os.replace(tmp, self.path)
-            return True
-        except OSError as e:
-            print(f"stats save error ({type(e).__name__}): {e}")
             try:
-                os.remove(self.path + ".tmp")
-            except OSError:
+                import branding
+                branding.protect_private_path(self.path)
+            except Exception:
                 pass
+            self.load_health = "ok"
+            self.load_error = ""
+            return True
+        except (OSError, TypeError, ValueError) as e:
+            print(f"stats save error ({type(e).__name__}): {e}")
+            for leftover in (tmp, backup_tmp):
+                try:
+                    os.remove(leftover)
+                except OSError:
+                    pass
             return False
 
     def _refresh_for_mutation(self):
         """Adopt the latest complete disk snapshot while holding its file lock."""
         latest = Stats(self.path)
+        if latest.load_health == "corrupt":
+            self.load_health = latest.load_health
+            self.load_error = latest.load_error
+            self.is_new = False
+            return False
         if not latest.is_new:
             self.data = latest.data
             self.is_new = False
+            self.load_health = latest.load_health
+            self.load_error = latest.load_error
+        return True
+
+    def _rollback_snapshot(self):
+        return (
+            copy.deepcopy(self.data), self.is_new,
+            self.load_health, self.load_error,
+        )
+
+    def _restore_snapshot(self, snapshot):
+        self.data, self.is_new, self.load_health, self.load_error = snapshot
 
     # ---------------------------------------------------------------- recording
     def _apply(self, words, dur, mode, day, hour=None):
@@ -167,10 +284,7 @@ class Stats:
             hrs = d.setdefault("hours", [0] * 24)
             if not isinstance(hrs, list) or len(hrs) != 24:
                 hrs = d["hours"] = (list(hrs) + [0] * 24)[:24]
-            try:
-                hrs[int(hour) % 24] += words
-            except (TypeError, ValueError):
-                pass
+            hrs[hour] += words
         # WPM only from real Text-mode speech (other modes are AI-expanded, so their
         # word count says nothing about speaking speed). Cap at a human ceiling.
         if mode == "text" and dur > 0.4:
@@ -191,35 +305,57 @@ class Stats:
 
     def record(self, words, duration, mode, day=None, hour=None):
         """Record one finished transcript. Call this once per dictation."""
+        clean_words = _finite_nonnegative(words or 0, integer=True)
+        clean_duration = _finite_nonnegative(duration or 0.0)
+        clean_day = _today_str() if day is None else _iso_day(day)
         if hour is None:
             hour = datetime.now().hour
+        clean_hour = _finite_nonnegative(hour, integer=True)
+        if (clean_words is None or clean_duration is None or clean_day is None
+                or clean_day > _today_str()
+                or clean_hour is None or clean_hour > 23):
+            return False
         with self._lock:
             with exclusive_file_lock(self.path) as acquired:
                 if not acquired:
                     return False
-                self._refresh_for_mutation()
-                previous = deepcopy(self.data)
+                if not self._refresh_for_mutation():
+                    return False
+                snapshot = self._rollback_snapshot()
                 self._apply(
-                    max(0, int(words or 0)), max(0.0, float(duration or 0.0)),
-                    mode or "text", day or _today_str(), hour)
+                    clean_words, clean_duration, str(mode or "text"),
+                    clean_day, clean_hour)
                 self.is_new = False
                 if self._save():
                     return True
-                self.data = previous
+                self._restore_snapshot(snapshot)
                 return False
 
     def reset(self, scope="all"):
         """Permanently clear statistics (owner 2026-06-29 — ITEM 13). scope:
-          "all"       — every stat (dictation + reader) back to a fresh store
+          "all"       — dictation + Reader activity back to a fresh store
           "dictation" — only the dictation totals / days / modes / hours / wpm
           "reader"    — only the Reader listening stats
         Writes immediately so the cleared state survives a restart. The store
-        keeps recording normally afterwards; this only zeroes the history."""
+        keeps recording normally afterwards. Coarse feature-adoption counters
+        are deliberately preserved because they are product-tip state, not user
+        activity statistics."""
+        if scope not in ("all", "dictation", "reader"):
+            return False
         with self._lock, exclusive_file_lock(self.path) as acquired:
             if not acquired:
                 return False
-            self._refresh_for_mutation()
-            previous = deepcopy(self.data)
+            refreshed = self._refresh_for_mutation()
+            if not refreshed and not (scope == "all" and self.load_health == "corrupt"):
+                return False
+            snapshot = self._rollback_snapshot()
+            if self.load_health == "corrupt":
+                # A deliberate full reset is the only safe mutation when neither
+                # primary nor backup can be read: there is no trustworthy subset
+                # to preserve. The corrupt primary was copied aside by _load().
+                feature_usage = {}
+                self.data = _fresh_data()
+                self.data["feature_usage"] = feature_usage
             d = self.data
             if scope in ("all", "dictation"):
                 d["total_words"] = 0
@@ -239,12 +375,10 @@ class Stats:
                 d["reader_words_read"] = 0
                 d["reader_sessions"] = 0
                 d["reader_days"] = {}
-            if scope == "all":
-                d["feature_usage"] = {}
             self.is_new = False
             if self._save():
                 return True
-            self.data = previous
+            self._restore_snapshot(snapshot)
             return False
 
     # ── Feature-adoption counters (drive the usage-aware island tips) ──────
@@ -260,13 +394,17 @@ class Stats:
                 with exclusive_file_lock(self.path) as acquired:
                     if not acquired:
                         return False
-                    self._refresh_for_mutation()
-                    previous = deepcopy(self.data)
+                    if not self._refresh_for_mutation():
+                        return False
+                    amount = _finite_nonnegative(n, integer=True)
+                    if amount is None:
+                        return False
+                    snapshot = self._rollback_snapshot()
                     fu = self.data.setdefault("feature_usage", {})
-                    fu[name] = int(fu.get(name, 0) or 0) + int(n)
+                    fu[name] = int(fu.get(name, 0) or 0) + amount
                     if self._save():
                         return True
-                    self.data = previous
+                    self._restore_snapshot(snapshot)
                     return False
         except Exception:
             return False
@@ -284,15 +422,23 @@ class Stats:
         advanced during this session (end_pos - start_pos). `duration_sec` is
         the wall-clock listening time. `doc_completed` is True when the user
         reached the end of a document."""
-        words = max(0, int(words_read or 0))
-        dur = max(0.0, float(duration_sec or 0.0))
+        words = _finite_nonnegative(words_read or 0, integer=True)
+        dur = _finite_nonnegative(duration_sec or 0.0)
+        ds = _today_str() if day is None else _iso_day(day)
+        # A Reader session is actual playback time. Reject zero/non-finite calls
+        # at the persistence boundary so they cannot create false sessions/streaks
+        # even if a future UI caller forgets the existing sub-second guard.
+        if (words is None or dur is None or dur <= 0 or ds is None
+                or ds > _today_str()):
+            return False
         pages = words / _WORDS_PER_PAGE
         with self._lock:
             with exclusive_file_lock(self.path) as acquired:
                 if not acquired:
                     return False
-                self._refresh_for_mutation()
-                previous = deepcopy(self.data)
+                if not self._refresh_for_mutation():
+                    return False
+                snapshot = self._rollback_snapshot()
                 d = self.data
                 d["reader_total_seconds"] += dur
                 d["reader_pages_read"] += pages
@@ -300,13 +446,12 @@ class Stats:
                 d["reader_sessions"] += 1
                 if doc_completed:
                     d["reader_docs_completed"] += 1
-                ds = day or _today_str()
                 rd = d.setdefault("reader_days", {})
                 rd[ds] = rd.get(ds, 0.0) + dur
                 self.is_new = False
                 if self._save():
                     return True
-                self.data = previous
+                self._restore_snapshot(snapshot)
                 return False
 
     def reader_summary(self):
@@ -342,11 +487,17 @@ class Stats:
     def reader_streak(self):
         """(current_reading_streak_days, best_reading_streak_days) — a day with
         ≥1 reading session counts."""
+        today = date.today()
         with self._lock:
-            active = set((self.data.get("reader_days") or {}).keys())
+            active = {
+                stamp
+                for stamp, seconds in (self.data.get("reader_days") or {}).items()
+                if (_iso_day(stamp) is not None
+                    and date.fromisoformat(stamp) <= today
+                    and _finite_nonnegative(seconds) not in (None, 0))
+            }
         if not active:
             return 0, 0
-        today = date.today()
         current, d = 0, today
         if today.strftime("%Y-%m-%d") not in active:
             d = today - timedelta(days=1)
@@ -376,24 +527,26 @@ class Stats:
         history_cumulative.json totals, used as a floor for the grand totals because
         the history list is capped (so it may undercount lifetime words)."""
         with self._lock, exclusive_file_lock(self.path) as acquired:
-            if not acquired:
+            if not acquired or not self._refresh_for_mutation():
                 return False
-            self._refresh_for_mutation()
-            if not self.is_new:
-                return True
-            previous = deepcopy(self.data)
+            snapshot = self._rollback_snapshot()
             for e in items:
                 stamp = str(e.get("stamp", ""))
-                day = stamp[:10] if len(stamp) >= 10 else _today_str()
+                day = (_iso_day(stamp[:10]) if len(stamp) >= 10 else None)
+                day = day or _today_str()
                 hour = None
                 if len(stamp) >= 13:  # "YYYY-MM-DD HH:..."
                     try:
                         hour = int(stamp[11:13])
                     except ValueError:
                         hour = None
+                if hour is not None and not 0 <= hour <= 23:
+                    hour = None
+                words = _finite_nonnegative(e.get("words", 0) or 0, integer=True)
+                duration = _finite_nonnegative(e.get("duration", 0.0) or 0.0)
                 self._apply(
-                    max(0, int(e.get("words", 0) or 0)),
-                    max(0.0, float(e.get("duration", 0.0) or 0.0)),
+                    words or 0,
+                    duration or 0.0,
                     e.get("mode", "text") or "text",
                     day,
                     hour,
@@ -412,8 +565,7 @@ class Stats:
             self.is_new = False
             if self._save():
                 return True
-            self.data = previous
-            self.is_new = True
+            self._restore_snapshot(snapshot)
             return False
 
     # ---------------------------------------------------------------- queries
@@ -523,11 +675,19 @@ class Stats:
 
     def streak(self):
         """(current_streak_days, best_streak_days) — a day with ≥1 transcript counts."""
+        today = date.today()
         with self._lock:
-            active = set(self.data["days"].keys())
+            active = {
+                stamp
+                for stamp, bucket in self.data["days"].items()
+                if (_iso_day(stamp) is not None
+                    and date.fromisoformat(stamp) <= today
+                    and isinstance(bucket, (list, tuple))
+                    and len(bucket) >= 2
+                    and _finite_nonnegative(bucket[1]) not in (None, 0))
+            }
         if not active:
             return 0, 0
-        today = date.today()
         current, d = 0, today
         if today.strftime("%Y-%m-%d") not in active:
             d = today - timedelta(days=1)
@@ -550,3 +710,31 @@ class Stats:
                 best = max(best, run)
                 run = 1
         return current, max(best, run)
+
+    def dashboard_snapshot(self, days=98):
+        """One internally consistent Stats read for the Web dashboard.
+
+        The Web UI used to assemble one page from several bridge calls. A write
+        between those calls could combine old totals with new charts. Holding the
+        re-entrant lock across this snapshot makes every dictation and Reader
+        value describe the same stored generation.
+        """
+        requested = _finite_nonnegative(days, integer=True)
+        requested = max(1, min(366, requested or 98))
+        with self._lock:
+            reader = self.reader_summary()
+            reader_current, reader_best = self.reader_streak()
+            reader["current_streak"] = reader_current
+            reader["best_streak"] = reader_best
+            current, best = self.streak()
+            return {
+                "health": self.load_health,
+                "summary": self.summary(),
+                "current_streak": current,
+                "best_streak": best,
+                "daily": self.daily_stats(requested),
+                "modes": self.mode_stats(),
+                "time_of_day": self.time_of_day(),
+                "reader": reader,
+                "all_days": copy.deepcopy(self.data.get("days") or {}),
+            }

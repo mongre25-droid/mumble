@@ -200,6 +200,24 @@ class LinuxRuntimeRegressions(unittest.TestCase):
         self.assertTrue(any("ownership" in body.lower()
                             for _title, body in notices))
 
+    def test_wayland_image_copy_never_falls_through_to_xclip(self):
+        app = linux.Mumble.__new__(linux.Mumble)
+        app.clipboard = None
+        app._notify = mock.Mock()
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "clip.png")
+            Image.new("RGB", (2, 2), "red").save(path)
+
+            def which(name):
+                return "/usr/bin/xclip" if name == "xclip" else None
+
+            with mock.patch.object(linux.bindings, "_session_type",
+                                   return_value="wayland"), \
+                    mock.patch("shutil.which", side_effect=which), \
+                    mock.patch("subprocess.Popen") as popen:
+                self.assertFalse(app.copy_image(path))
+            popen.assert_not_called()
+
     def test_normal_restart_waits_for_old_lock_owner_before_exec(self):
         app = linux.Mumble.__new__(linux.Mumble)
         app._notify = mock.Mock()

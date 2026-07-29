@@ -26,6 +26,7 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -185,6 +186,18 @@ class Api:
                     "active_mode": r.get("active_mode")}
         return {"live": False, "state": "idle", "text": "Ready",
                 "recording": False, "active_mode": None}
+
+    def linux_capabilities(self):
+        """Truthful controller-owned Linux desktop capability snapshot."""
+        response = _ctrl_send({"cmd": "linux_capabilities"}, timeout=1.0)
+        if response and response.get("ok"):
+            return response
+        try:
+            import linux_desktop
+            return linux_desktop.capability_snapshot()
+        except Exception as exc:
+            return {"ok": False, "evidence": "source-probe-only",
+                    "physical_parity": False, "message": str(exc)[:200]}
     # ---- Mumble Find (Linux experimental) -------------------------------
     def _get_system_search(self):
         engine = getattr(self, "_system_search", None)
@@ -206,13 +219,22 @@ class Api:
             return {"ok": False, "supported": True,
                     "message": "The local search index could not start."}
 
-    def system_search_query(self, query="", category="all", limit=40):
+    def system_search_query(self, query="", category="all", limit=12,
+                            generation=None, deadline_ms=1500):
         try:
-            return self._get_system_search().search(query, category, limit)
+            return self._get_system_search().search(
+                query, category, limit, generation, deadline_ms)
         except Exception as exc:
             print("system-search query failed:", exc)
             return {"ok": False, "results": [],
                     "message": "The local search index could not be read."}
+
+    def system_search_cancel(self, generation):
+        try:
+            return self._get_system_search().cancel(generation)
+        except Exception as exc:
+            print("system-search cancellation failed:", exc)
+            return False
 
     def system_search_refresh(self):
         try:
@@ -228,6 +250,39 @@ class Api:
         except Exception as exc:
             print("system-search action failed:", exc)
             return {"ok": False, "message": "That item could not be opened."}
+
+    def system_search_drag(self, result_id):
+        try:
+            return self._get_system_search().execute(result_id, "drag")
+        except Exception as exc:
+            print("system-search drag failed:", exc)
+            return {"ok": False, "status": "unsupported",
+                    "message": "Drag is unavailable; use Open or Reveal.",
+                    "alternatives": ["open", "reveal"]}
+
+    def system_search_icons(self, result_ids, generation=None,
+                            icon_version=None):
+        try:
+            return self._get_system_search().icons(
+                result_ids, generation, icon_version)
+        except Exception as exc:
+            print("system-search icon load failed:", exc)
+            return {"ok": True, "icons": {}}
+
+    def system_search_show(self):
+        callback = getattr(self, "_show_system_search", None)
+        return (callback() if callback else
+                {"ok": False, "state": "unavailable"})
+
+    def system_search_hide(self):
+        callback = getattr(self, "_hide_system_search", None)
+        return (callback() if callback else
+                {"ok": False, "state": "unavailable"})
+
+    def system_search_toggle(self, operation_id=None):
+        callback = getattr(self, "_toggle_system_search", None)
+        return (callback(operation_id) if callback else
+                {"ok": False, "state": "unavailable"})
 
     def system_search_assets(self):
         try:
@@ -396,7 +451,9 @@ class Api:
         saved_voice = (self.settings.get("reader_voice", "") or "").strip()
 
         # Build a set of valid (provider, model, voice) ids from the catalogue.
-        valid_voice_ids = {v["id"] for v in voices if v.get("id")}
+        valid_voice_ids = {
+            v["id"] for v in voices
+            if v.get("model") == saved_model and v.get("id")}
         valid_model_ids = {v["model"] for v in voices if v.get("model")}
 
         # Self-heal: if the saved model/voice don't exist in ANY provider's
@@ -404,11 +461,13 @@ class Api:
         if saved_model not in valid_model_ids:
             p = ai.get_tts_provider(saved_provider)
             saved_model = p.default_model
-            saved_voice = p.default_voice
+            saved_voice = ai.OPENROUTER_TTS_DEFAULT_VOICES.get(
+                saved_model, p.default_voice)
         elif saved_voice and saved_voice not in valid_voice_ids:
             # Voice may have changed provider — use provider default.
             p = ai.get_tts_provider(saved_provider)
-            saved_voice = p.default_voice
+            saved_voice = ai.OPENROUTER_TTS_DEFAULT_VOICES.get(
+                saved_model, p.default_voice)
 
         # Build models list: unique model ids with their label.
         seen_models = set()
@@ -937,6 +996,39 @@ class Api:
             print("meeting_list failed:", e)
             return []
 
+    def meeting_search(self, query):
+        """Search titles and full transcripts only in the local meeting store."""
+        try:
+            import meeting_store
+            items = meeting_store.search_meetings(query)
+            if meeting_store.store_health() == "corrupt":
+                return {"ok": False, "items": [],
+                        "message": "Meeting metadata could not be read safely."}
+            return {"ok": True, "items": items,
+                    "total": len(meeting_store.list_meetings())}
+        except Exception as e:
+            print("meeting_search failed:", e)
+            return {"ok": False, "items": [],
+                    "message": "Search could not read the local meeting library."}
+
+    def meeting_context(self):
+        """Bounded credential-free Meetings context ledger."""
+        routes = self._settings_route_state()
+        selected = self.settings.get("mic_device", None)
+        microphone = next((
+            str(item.get("name") or "System default")
+            for item in self.list_microphones()
+            if item.get("index") == selected
+            or str(item.get("index")) == str(selected)
+        ), "System default")
+        analysis = processing_route.snapshot_inputs(
+            self.settings, feature="meetings", lane="meeting_analysis",
+            context="", context_policy="meeting_transcript").route.public_dict()
+        return {"ok": True, "microphone": microphone,
+                "saved_location": "Private Mumble meeting library",
+                "transcription": dict(routes["transcription"]),
+                "analysis": analysis}
+
     def meeting_open(self, meeting_id):
         """Full meeting data with segments + speakers."""
         try:
@@ -992,7 +1084,8 @@ class Api:
                     "message": ("Could not generate summary. An API key may "
                                 "be needed in Settings.")}
         except Exception as e:
-            return {"ok": False, "message": str(e)}
+            return {"ok": False, "message": (
+                f"{e} Check the API key and model in Settings.")}
 
     def meeting_extract_actions(self, meeting_id):
         """Extract action items via LLM. Returns {ok, items, message}."""
@@ -1123,6 +1216,13 @@ class Api:
         return {"ok": False, "message": (
             r or {}).get("message", "Controller unavailable.")}
 
+    def meeting_recording_status(self):
+        r = _ctrl_send({"cmd": "meeting_record_status"}, timeout=5.0)
+        if r and r.get("ok"):
+            return r
+        return {"ok": False, "active": False, "state": "unknown",
+                "message": (r or {}).get("message", "Controller unavailable.")}
+
     def meeting_retry(self, meeting_id):
         """Retry a durable interrupted/failed transcription in the controller."""
         r = _ctrl_send(
@@ -1167,7 +1267,8 @@ class Api:
                     "message": "Deep processing failed. "
                                "Check LLM key in Settings."}
         except Exception as e:
-            return {"ok": False, "message": str(e)}
+            return {"ok": False, "message": (
+                f"{e} Check the API key and model in Settings.")}
 
     # ======================================================================
     #  READ
@@ -1699,6 +1800,54 @@ class Api:
             "spoken_minutes": round(s.get("spoken_minutes", 0.0), 1),
             "today_words": s.get("today_words", 0),
         }
+
+    def get_stats_dashboard(self):
+        """One availability-aware snapshot for Stats, Reader, and Meetings."""
+        try:
+            store = self._stats()
+            if store.load_health == "corrupt":
+                dictation = {"available": False, "health": "corrupt",
+                              "has_activity": None}
+                reader = {"available": False, "health": "corrupt",
+                          "has_activity": None}
+            else:
+                snapshot = store.dashboard_snapshot(98)
+                summary = snapshot.get("summary") or {}
+                dictation = {
+                    "available": True,
+                    "health": snapshot.get("health", "ok"),
+                    "has_activity": bool(summary.get("total_transcripts", 0)),
+                    "summary": summary,
+                    "current_streak": snapshot.get("current_streak", 0),
+                    "best_streak": snapshot.get("best_streak", 0),
+                    "daily": [{"day": day, "words": words,
+                               "transcripts": count}
+                              for day, words, count in snapshot.get("daily", [])],
+                    "modes": [{"mode": mode, "count": count, "words": words}
+                              for mode, count, words in snapshot.get("modes", [])],
+                }
+                reader_summary = snapshot.get("reader") or {}
+                reader = {"available": True,
+                          "health": snapshot.get("health", "ok"),
+                          "has_activity": bool(reader_summary.get(
+                              "total_sessions", 0)),
+                          "scope": "tracked_playback", **reader_summary}
+        except Exception as exc:
+            print("get_stats_dashboard stats failed:", exc)
+            dictation = {"available": False, "health": "error",
+                          "has_activity": None}
+            reader = {"available": False, "health": "error",
+                      "has_activity": None}
+        try:
+            import meeting_store
+            meetings = meeting_store.activity_summary()
+        except Exception as exc:
+            print("get_stats_dashboard meetings failed:", exc)
+            meetings = {"available": False, "health": "error",
+                        "has_activity": None}
+        return {"ok": True, "generated_at": time.time(),
+                "dictation": dictation, "reader": reader,
+                "meetings": meetings}
 
     def get_clip_thumb(self, path):
         """Tiny base64 PNG for a clipboard image row (the webview can't read
@@ -2870,7 +3019,7 @@ def _apply_mumble_icon(title):
         print("icon apply failed:", e)
 
 
-def _serve_webui_commands(srv, H, ensure_main, title):
+def _serve_webui_commands(srv, H, ensure_main, ensure_search, title):
     """Handle controller→webui commands on the lock socket.
       'show' → front the main app window; 'history'/'deck' → main window History
           tab (in-app browsing); 'refresh' → silently re-render the open page.
@@ -2932,7 +3081,9 @@ def _serve_webui_commands(srv, H, ensure_main, title):
                             )
                         except Exception as exc:
                             print("Web Search consent eval failed:", exc)
-                elif cmd in ("history", "deck", "show", "system_search"):
+                elif cmd == "system_search":
+                    ensure_search(req.get("operation_id"))
+                elif cmd in ("history", "deck", "show"):
                     win = ensure_main()   # lazily create main if needed
                     if win is not None and cmd in ("history", "deck"):
                         # A selection the controller grabbed (text highlighted
@@ -2945,11 +3096,6 @@ def _serve_webui_commands(srv, H, ensure_main, title):
                             win.evaluate_js(f"openHistory(true, {sel})")
                         except Exception as e:
                             print("openHistory eval failed:", e)
-                    elif win is not None and cmd == "system_search":
-                        try:
-                            win.evaluate_js("window.openSystemSearch && window.openSystemSearch()")
-                        except Exception as exc:
-                            print("openSystemSearch eval failed:", exc)
             except Exception as e:
                 # A bad/partial message must NOT kill the listener — skip it and
                 # keep serving (the old `except: return` stopped ALL later commands).
@@ -3042,13 +3188,15 @@ def main():
     # The single main app window is created on demand; a shared holder keeps every
     # closure pointing at the current window (and whether it is minimized, so the
     # refresh router skips a window that's off-screen).
-    H = {"main": None, "main_min": False, "cmd_started": False}
+    H = {"main": None, "search": None, "main_min": False,
+         "cmd_started": False}
 
     def _start_cmd_server():
         if H["cmd_started"]:
             return
         H["cmd_started"] = True
-        _serve_webui_commands(lock, H, _ensure_main_front, title)
+        _serve_webui_commands(
+            lock, H, _ensure_main_front, _toggle_search, title)
 
     def _make_main(hidden):
         if H["main"] is not None:
@@ -3063,6 +3211,9 @@ def main():
             resizable=True, min_size=(640, 480), hidden=hidden,
             background_color="#0A0A0B")
         a._window = w
+        a._show_system_search = _ensure_search_front
+        a._hide_system_search = _hide_search
+        a._toggle_system_search = _toggle_search
         H["main"] = w
         H["api"] = a   # closures read the live pin state via H["api"].settings
         # Reflect creation visibility so the refresh router doesn't treat a window
@@ -3142,6 +3293,92 @@ def main():
         except Exception:
             pass
         return w
+
+    def _make_search(hidden=True):
+        existing = H.get("search")
+        if existing is not None:
+            return existing
+        api = Api()
+        search_title = "Mumble Find"
+        window = webview.create_window(
+            search_title, html, js_api=api, width=720, height=560,
+            resizable=True, min_size=(520, 360), hidden=hidden,
+            background_color="#0A0A0B")
+        api._window = window
+        api._show_system_search = _ensure_search_front
+        api._hide_system_search = _hide_search
+        api._toggle_system_search = _toggle_search
+        H["search"] = window
+
+        def _loaded(*_args):
+            _apply_mumble_icon(search_title)
+            try:
+                window.evaluate_js(
+                    "window.openSystemSearch && window.openSystemSearch()")
+            except Exception as exc:
+                print("Mumble Find initial display failed:", exc)
+            if not hidden:
+                _ensure_search_front()
+
+        def _closing(*_args):
+            try:
+                window.hide()
+                return False
+            except Exception:
+                return True
+
+        try:
+            window.events.loaded += _loaded
+            window.events.closing += _closing
+        except Exception:
+            pass
+        return window
+
+    def _ensure_search_front(*_args):
+        window = _make_search(hidden=False)
+        try:
+            window.show()
+            window.restore()
+            window.evaluate_js(
+                "window.openSystemSearch && window.openSystemSearch()")
+        except Exception as exc:
+            return {"ok": False, "state": "unknown",
+                    "message": str(exc)[:160]}
+        H["search_visible"] = True
+        return {"ok": True, "state": "visible"}
+
+    def _hide_search(*_args):
+        window = H.get("search")
+        if window is None:
+            H["search_visible"] = False
+            return {"ok": True, "state": "hidden"}
+        try:
+            window.hide()
+            H["search_visible"] = False
+            return {"ok": True, "state": "hidden"}
+        except Exception as exc:
+            return {"ok": False, "state": "unknown",
+                    "message": str(exc)[:160]}
+
+    def _toggle_search(_operation_id=None):
+        operation_id = str(_operation_id or "")
+        outcomes = H.setdefault("search_operations", {})
+        if operation_id and operation_id in outcomes:
+            return dict(outcomes[operation_id])
+        window = H.get("search")
+        if window is None:
+            result = _ensure_search_front()
+        else:
+            # pywebview does not expose a portable visibility property. Keep an
+            # explicit process-owned state so duplicate shortcut delivery cannot
+            # apply a second toggle.
+            visible = bool(H.get("search_visible", False))
+            result = _hide_search() if visible else _ensure_search_front()
+        if operation_id:
+            outcomes[operation_id] = dict(result)
+            while len(outcomes) > 128:
+                outcomes.pop(next(iter(outcomes)))
+        return result
 
     def _ensure_main_front(*_a):
         mw = _make_main(hidden=False)

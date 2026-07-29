@@ -62,13 +62,13 @@ def test_prompt_history_never_keeps_or_injects_live_context(tmp_path):
     assert json.loads((tmp_path / "prompts.json").read_text("utf-8")) == []
 
 
-def test_selected_deep_mode_runs_after_durable_transcription(monkeypatch):
+def test_selected_mode_keeps_authoritative_route_after_durable_transcription(
+        monkeypatch):
     record = {
         "id": "m1", "status": "processing", "audio_path": "meeting.wav",
         "processing_mode": "deep", "duration_sec": 1,
     }
     updates = []
-    deep_calls = []
     monkeypatch.setattr(meeting.meeting_store, "get_meeting", lambda _mid: record)
     monkeypatch.setattr(
         meeting.meeting_store, "update_meeting",
@@ -79,43 +79,23 @@ def test_selected_deep_mode_runs_after_durable_transcription(monkeypatch):
         meeting, "_process_wav_path",
         lambda *_args, **_kwargs: ([{"text": "hello"}], [{"label": "Speaker 1"}]),
     )
-    monkeypatch.setattr(
-        meeting, "process_meeting_deep",
-        lambda mid, settings: deep_calls.append((mid, settings)) or {"summary": "ok"},
-    )
     recorder = meeting.MeetingRecorder.__new__(meeting.MeetingRecorder)
-    recorder._settings = object()
+    recorder._settings = {}
     recorder._transcribe = lambda *_args, **_kwargs: ""
     recorder._island_cb = None
     assert recorder._process_pending_once("m1") == "m1"
-    assert deep_calls and deep_calls[0][0] == "m1"
     assert any(fields.get("status") == "ready" for _mid, fields in updates)
+    assert any(fields.get("transcription_mode") == "local" and
+               fields.get("transcription_provider") == "local"
+               for _mid, fields in updates)
 
 
-def test_deep_analysis_is_cross_process_claimed_single_flight(
-        tmp_path, monkeypatch):
-    entered = threading.Event()
-    release = threading.Event()
-
-    def slow_analysis(_meeting_id, _settings):
-        entered.set()
-        assert release.wait(2)
-        return {"summary": "done"}
-
-    monkeypatch.setattr(branding, "DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(meeting, "_process_meeting_deep_locked", slow_analysis)
-    result = []
-    worker = threading.Thread(
-        target=lambda: result.append(meeting.process_meeting_deep("m1", object())))
-    worker.start()
-    assert entered.wait(1)
-    assert meeting.process_meeting_deep(
-        "m1", object()) is meeting.DEEP_IN_PROGRESS
-    assert meeting.extract_action_items(
-        "m1", object()) is meeting.ANALYSIS_IN_PROGRESS
-    release.set()
-    worker.join(2)
-    assert result == [{"summary": "done"}]
+def test_deep_analysis_has_no_unscoped_alternate_provider_path():
+    source = Path(meeting.__file__).read_text(encoding="utf-8")
+    assert "def _analysis_context(" in source
+    assert "processing_route.snapshot_inputs(" in source
+    assert "processing_route.call_provider(" in source
+    assert "_process_meeting_deep_locked" not in source
 
 
 def test_pywebview_host_waits_for_bridge_instead_of_mock_boot():
@@ -125,10 +105,9 @@ def test_pywebview_host_waits_for_bridge_instead_of_mock_boot():
     shell = open(
         os.path.join(here, "webui_shell.py"), encoding="utf-8").read()
     assert '"webui", "index.html"' in shell
-    assert "else if (MOCK_PREVIEW)" in source
-    assert 'get("mock") === "1"' in source
     assert 'window.addEventListener("pywebviewready"' in source
-    assert 'window.__mumbleBootBackend = HAS_PY() ? "python" : "mock"' in source
+    assert "if (!HAS_PY()) boot();" in source
+    assert "MOCK_PREVIEW" not in source
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"),

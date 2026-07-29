@@ -29,8 +29,8 @@ from datetime import datetime, timezone
 import branding
 
 PATH = os.path.join(branding.DATA_DIR, "reader_library.json")
-MAX_QUERY_LIMIT = 1000  # response guard only; storage itself is never evicted
 MAX_DOCUMENT_CHARS = 600_000
+MAX_QUERY_LIMIT = 1000  # response guard only; storage itself is never evicted
 SPEECH_TEXT_VERSION = 1
 
 # Mutations are load→modify→save; pywebview dispatches each JS→Python bridge
@@ -141,7 +141,18 @@ def _load():
         try:
             return _read_library(PATH)
         except FileNotFoundError:
-            return []
+            backup = PATH + ".bak"
+            try:
+                rows = _read_library(backup)
+                shutil.copy2(backup, PATH)
+                branding.protect_private_path(PATH)
+                print("reader library restored after interrupted save")
+                return rows
+            except FileNotFoundError:
+                return []
+            except Exception as backup_error:
+                print("reader library backup load error:", backup_error)
+                return []
         except Exception as e:
             print("reader library load error:", e)
             backup = PATH + ".bak"
@@ -294,10 +305,7 @@ def save_doc(title, text, blocks=None, fmt=None, source_path=None):
     text = (text or "").strip()
     if not text or len(text) > MAX_DOCUMENT_CHARS:
         return None
-    title = ((title or "").strip() or _auto_title(text))[:300]
-    fmt = str(fmt or "").strip().lower()[:32]
-    if source_path is not None:
-        source_path = str(source_path)[:4096]
+    title = (title or "").strip() or _auto_title(text)
     did = _doc_id(text)
     legacy_did = _legacy_doc_id(text)
     now = time.time()
@@ -598,7 +606,7 @@ def list_collection_docs(collection_name, n=50):
 
 def delete_collection(collection_name):
     """Delete a collection (remove the label from every doc). Returns the
-    number of docs affected, or None when persistence fails."""
+    number of docs affected."""
     collection_name = (collection_name or "").strip()
     if not collection_name:
         return 0
@@ -618,7 +626,7 @@ def delete_collection(collection_name):
                 affected += 1
         rows_ok = _save(rows) if affected else True
         names_ok = _save_collection_names(names) if had_name else True
-        return affected if rows_ok and names_ok else None
+        return affected if rows_ok and names_ok else 0
 
 
 # ── Reading history ────────────────────────────────────────────────────────

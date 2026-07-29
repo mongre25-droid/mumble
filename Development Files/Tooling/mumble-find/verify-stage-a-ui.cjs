@@ -102,7 +102,8 @@ async function verifyLinuxLoadedDestinations(browser) {
   await page.waitForSelector("#system-search-script", { state: "attached" });
   await page.waitForFunction(() => typeof window.pyWebSearchConsent === "function");
   const homeCommands = await page.locator("#hk-record, #hk-paste-latest, #hk-history, #hk-search, #hk-web-search")
-    .evaluateAll(nodes => nodes.map(node => node.previousElementSibling?.textContent?.trim()));
+    .evaluateAll(nodes => nodes.map(node =>
+      node.previousElementSibling?.querySelector("b")?.textContent?.trim()));
   assert.deepEqual(
     homeCommands,
     ["Dictate", "Paste latest", "Open Deck", "Mumble Find", "Web Search"],
@@ -118,10 +119,10 @@ async function verifyLinuxLoadedDestinations(browser) {
   await consent.waitFor();
   assert.match(await consent.innerText(), /Mumble Find stays private on this device/);
   await consent.getByRole("button", { name: "Keep private" }).click();
-  await page.waitForFunction(() => Boolean(document.querySelector('[data-view="system-search"]')));
+  await page.waitForFunction(() => Boolean(document.querySelector("#ss-overlay")));
   await page.evaluate(() => window.openSystemSearch());
   assert.equal(
-    await page.locator('[data-view="system-search"]').evaluate(node => !node.hidden),
+    await page.locator("#ss-overlay").evaluate(node => !node.hidden),
     true,
     "the separate Mumble Find command must still open its internal view",
   );

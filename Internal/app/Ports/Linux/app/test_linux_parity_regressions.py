@@ -84,7 +84,7 @@ def test_gtk_bar_hit_testing_uses_full_canvas_coordinates():
     assert selected == ["email"]
 
 
-def test_collapsed_active_mode_chip_expands_before_selecting():
+def test_always_visible_active_mode_chip_selects_directly():
     island = object.__new__(overlay_linux._GtkIsland)
     island.bar_state = {
         "modes": [("prompt", "Prompt"), ("email", "Email")],
@@ -108,8 +108,8 @@ def test_collapsed_active_mode_chip_expands_before_selecting():
         "y": island_render.BAR_WIN_H - island_render.BAR_H / 2,
     })()
     assert island._on_button_press(None, event) is True
-    assert island.bar_state["expanded"] is True
-    assert selected == []
+    assert island.bar_state["expanded"] is False
+    assert selected == ["prompt"]
 
 
 def test_plain_dictation_paints_mode_bar_and_recentres_on_resize():
