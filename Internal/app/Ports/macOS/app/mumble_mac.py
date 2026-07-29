@@ -3057,25 +3057,6 @@ class Mumble:
     def _ai_key(self):
         return self._ai_cfg()["key"]
 
-    def set_llm_provider(self, provider, model="", key=None, local_url=None):
-        """Switch the AI engine (Settings → AI Provider). Saves the provider,
-        model, key, and local URL, then returns (ok, message)."""
-        if provider not in ("cerebras", "openrouter"):
-            return False, "Unknown provider."
-        self.settings.set("llm_provider", provider)
-        info = ai.PROVIDERS[provider]
-        if model:
-            self.settings.set(info["model_setting"], model)
-        if key is not None:
-            self.settings.set(info["key_setting"], (key or "").strip())
-            self.pro_key_failed = False
-        if local_url is not None and provider == "local":
-            self.settings.set("local_url", (local_url or "").strip()
-                              or "http://localhost:11434")
-        cfg = self._ai_cfg()
-        label = info["label"].split(" (")[0]
-        return True, f"Using {label} — model '{cfg['model']}'."
-
     def test_provider(self):
         """Live connection test for the active provider. Returns (ok, message)."""
         cfg = self._ai_cfg()
