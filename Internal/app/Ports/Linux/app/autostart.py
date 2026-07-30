@@ -18,6 +18,7 @@ import shlex
 import shutil
 import sys
 import tempfile
+from dataclasses import dataclass
 
 import branding
 
@@ -43,6 +44,22 @@ _MUMBLE_MAIN = os.path.join(branding.INSTALL_DIR, "mumble_linux.py")
 _VENV_PYTHON = os.path.join(branding.INSTALL_DIR, ".venv", "bin", "python")
 _INSTALL_LAUNCHER = os.path.abspath(os.path.join(
     branding.INSTALL_DIR, os.pardir, "mumble"))
+
+_AUTHORITY_SINGLETON_KEYS = frozenset({
+    "type", "name", "exec", "tryexec", "hidden", "onlyshowin",
+    "notshowin", "x-gnome-autostart-enabled", "x-mumble-voicetotext",
+    "comment",
+})
+
+
+@dataclass(frozen=True)
+class _DesktopEntrySnapshot:
+    """One bounded immutable reading of startup-authority fields."""
+
+    path: str
+    fields: tuple
+    duplicate_authority_keys: frozenset
+    file_identity: tuple
 
 
 def _desktop_quote(value):
@@ -89,53 +106,114 @@ def _build_desktop_entry():
     )
 
 
-def _desktop_fields(path):
-    """Read one bounded Desktop Entry group into a normalized field mapping."""
+def _stat_identity(stat):
+    return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+
+
+def _file_identity(path):
+    return _stat_identity(os.stat(path))
+
+
+def _desktop_snapshot(path):
+    """Parse one bounded immutable Desktop Entry snapshot exactly once."""
     if not os.path.isfile(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            content = handle.read(65537)
-        if len(content) > 65536:
+        identity_before = _file_identity(path)
+        with open(path, "rb") as handle:
+            opened_identity = _stat_identity(os.fstat(handle.fileno()))
+            raw_content = handle.read(65537)
+            opened_identity_after = _stat_identity(os.fstat(handle.fileno()))
+        identity_after = _file_identity(path)
+        if (len(raw_content) > 65536
+                or identity_before != opened_identity
+                or opened_identity != opened_identity_after
+                or opened_identity_after != identity_after):
             return None
+        content = raw_content.decode("utf-8")
         fields = {}
+        duplicate_authority_keys = set()
         in_desktop_group = False
+        desktop_group_seen = False
         for raw in content.splitlines():
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
             if line.startswith("[") and line.endswith("]"):
                 in_desktop_group = line.casefold() == "[desktop entry]"
+                if in_desktop_group:
+                    if desktop_group_seen:
+                        duplicate_authority_keys.add("[desktop entry]")
+                    desktop_group_seen = True
                 continue
             if in_desktop_group and "=" in line:
                 key, value = line.split("=", 1)
-                fields[key.strip().casefold()] = value.strip()
-        return fields
+                key = key.strip().casefold()
+                if key in fields and key in _AUTHORITY_SINGLETON_KEYS:
+                    duplicate_authority_keys.add(key)
+                fields[key] = value.strip()
+        return _DesktopEntrySnapshot(
+            path=str(path),
+            fields=tuple(fields.items()),
+            duplicate_authority_keys=frozenset(duplicate_authority_keys),
+            file_identity=identity_after,
+        )
     except (OSError, UnicodeError):
         return None
 
 
-def _desktop_valid(path):
-    """Return whether *path* is an enabled, minimally valid autostart entry."""
-    fields = _desktop_fields(path)
-    if fields is None:
+def _snapshot_field(snapshot, key, default=""):
+    for field_key, value in snapshot.fields:
+        if field_key == key:
+            return value
+    return default
+
+
+def _snapshot_unchanged(snapshot):
+    try:
+        return _file_identity(snapshot.path) == snapshot.file_identity
+    except OSError:
+        return False
+
+
+def _desktop_snapshot_valid(snapshot):
+    if snapshot is None or snapshot.duplicate_authority_keys:
         return False
     return (
-        fields.get("type", "").casefold() == "application"
-        and bool(fields.get("exec", ""))
-        and fields.get("hidden", "false").casefold() != "true"
-        and fields.get("x-gnome-autostart-enabled", "true").casefold()
+        _snapshot_field(snapshot, "type").casefold() == "application"
+        and bool(_snapshot_field(snapshot, "exec"))
+        and _snapshot_field(snapshot, "hidden", "false").casefold() != "true"
+        and _snapshot_field(
+            snapshot, "x-gnome-autostart-enabled", "true").casefold()
         != "false"
+        and _try_exec_available(snapshot)
     )
 
 
-def _desktop_exec(path):
-    """Return the desktop entry's parsed Exec command, or no command."""
-    fields = _desktop_fields(path)
-    if fields is None:
+def _try_exec_available(snapshot):
+    value = _snapshot_field(snapshot, "tryexec")
+    if not value:
+        return True
+    if any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        return False
+    if os.path.isabs(value):
+        return os.path.isfile(value) and os.access(value, os.X_OK)
+    return shutil.which(value) is not None
+
+
+def _desktop_valid(path):
+    """Return whether *path* is one stable, unambiguous enabled entry."""
+    snapshot = _desktop_snapshot(path)
+    return (_desktop_snapshot_valid(snapshot)
+            and _snapshot_unchanged(snapshot))
+
+
+def _desktop_exec_from_snapshot(snapshot):
+    """Return Exec from the exact snapshot already used for validation."""
+    if not _desktop_snapshot_valid(snapshot):
         return None
     try:
-        argv = shlex.split(fields.get("exec", ""), posix=True)
+        argv = shlex.split(_snapshot_field(snapshot, "exec"), posix=True)
         if not argv or any("%" in value.replace("%%", "")
                            for value in argv):
             return None
@@ -144,12 +222,32 @@ def _desktop_exec(path):
         return None
 
 
-def _enabled_entry_path():
-    if _desktop_valid(DESKTOP_PATH):
-        return DESKTOP_PATH
-    if _legacy_entry_owned() and _desktop_valid(LEGACY_DESKTOP_PATH):
-        return LEGACY_DESKTOP_PATH
-    return None
+def _desktop_exec(path):
+    """Return Exec from one stable, unambiguous desktop-entry read."""
+    snapshot = _desktop_snapshot(path)
+    if snapshot is None or not _snapshot_unchanged(snapshot):
+        return None
+    return _desktop_exec_from_snapshot(snapshot)
+
+
+def _legacy_snapshot_owned(snapshot):
+    if snapshot is None or snapshot.duplicate_authority_keys:
+        return False
+    return (
+        _snapshot_field(snapshot, "x-mumble-voicetotext").casefold() == "true"
+        or _snapshot_field(snapshot, "comment").casefold()
+        == "private, on-device voice-to-text"
+    )
+
+
+def _startup_entry_snapshot():
+    """Return the one entry snapshot that controls startup readiness."""
+    if os.path.lexists(DESKTOP_PATH):
+        return _desktop_snapshot(DESKTOP_PATH), True
+    legacy = _desktop_snapshot(LEGACY_DESKTOP_PATH)
+    if _legacy_snapshot_owned(legacy):
+        return legacy, True
+    return None, False
 
 
 def _exec_matches_current_route(argv):
@@ -177,23 +275,17 @@ def _exec_matches_current_route(argv):
 def _legacy_entry_owned(path=None):
     """Identify our pre-migration entry without touching Mumble VoIP's file."""
     path = path or LEGACY_DESKTOP_PATH
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            content = handle.read(65537)
-        if len(content) > 65536:
-            return False
-        lines = {line.strip().casefold() for line in content.splitlines()}
-        return ("x-mumble-voicetotext=true" in lines
-                or "comment=private, on-device voice-to-text" in lines)
-    except (OSError, UnicodeError):
-        return False
+    snapshot = _desktop_snapshot(path)
+    return (_legacy_snapshot_owned(snapshot)
+            and _snapshot_unchanged(snapshot))
 
 
 # --- run at login (XDG autostart) -----------------------------------------
 def is_enabled():
     """True when the .desktop file exists and is valid."""
-    return (_desktop_valid(DESKTOP_PATH)
-            or (_legacy_entry_owned() and _desktop_valid(LEGACY_DESKTOP_PATH)))
+    snapshot, present = _startup_entry_snapshot()
+    return bool(present and _desktop_snapshot_valid(snapshot)
+                and _snapshot_unchanged(snapshot))
 
 
 def probe_route():
@@ -210,16 +302,20 @@ def probe_route():
             return (
                 "degraded",
                 "No installed Mumble launch route is available for autostart.")
-        enabled_entry = _enabled_entry_path()
-        if enabled_entry:
-            argv = _desktop_exec(enabled_entry)
-            if _exec_matches_current_route(argv):
+        snapshot, entry_present = _startup_entry_snapshot()
+        if entry_present:
+            argv = _desktop_exec_from_snapshot(snapshot)
+            if (_desktop_snapshot_valid(snapshot)
+                    and _exec_matches_current_route(argv)
+                    and _snapshot_unchanged(snapshot)):
                 return (
                     "ready",
                     "The enabled XDG entry uses the current Mumble launch route.")
             return (
                 "degraded",
-                "The enabled XDG entry has a missing, stale, or mismatched Exec target.")
+                "The enabled XDG entry's Exec authority is missing, stale, "
+                "malformed, ambiguous, mismatched, or changed while it was "
+                "checked.")
         destination = AUTOSTART_DIR
         while not os.path.exists(destination):
             parent = os.path.dirname(destination)

@@ -1,12 +1,14 @@
 """Regression proofs for the rejected Issue #27 Linux parity candidate."""
 
 from types import SimpleNamespace
+import os
 import sys
 import threading
 import time
 from unittest import mock
 
 import numpy as np
+import pytest
 
 import autostart
 import linux_desktop
@@ -273,3 +275,199 @@ def test_enabled_obsolete_exec_is_not_rescued_by_a_current_launcher(tmp_path):
 
     assert ready_status == "ready"
     assert "current mumble launch route" in ready_message.casefold()
+
+
+def _probe_current_autostart_entry(tmp_path, content):
+    current_launcher = tmp_path / "current" / "mumble"
+    current_launcher.parent.mkdir(exist_ok=True)
+    current_launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    current_launcher.chmod(0o755)
+    current_main = tmp_path / "current" / "app" / "mumble_linux.py"
+    current_main.parent.mkdir()
+    current_main.write_text("# current Mumble\n", encoding="utf-8")
+    other_launcher = tmp_path / "other" / "mumble"
+    other_launcher.parent.mkdir()
+    other_launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    other_launcher.chmod(0o755)
+    desktop = tmp_path / "autostart" / autostart.DESKTOP_NAME
+    desktop.parent.mkdir()
+    desktop.write_text(content.format(
+        launcher=current_launcher, other=other_launcher), encoding="utf-8")
+
+    with mock.patch.object(autostart, "DESKTOP_PATH", str(desktop)), \
+         mock.patch.object(autostart, "LEGACY_DESKTOP_PATH", str(
+             tmp_path / "autostart" / "mumble.desktop")), \
+         mock.patch.object(autostart, "_MUMBLE_MAIN", str(current_main)), \
+         mock.patch.object(autostart, "_INSTALL_LAUNCHER", str(current_launcher)), \
+         mock.patch.object(autostart, "_VENV_PYTHON", str(
+             tmp_path / "missing-python")):
+        return autostart.probe_route()
+
+
+@pytest.mark.parametrize("first_exec", [
+    '"{launcher}"',
+    "/removed/old/mumble",
+])
+def test_duplicate_exec_entries_fail_closed(tmp_path, first_exec):
+    status, _message = _probe_current_autostart_entry(
+        tmp_path,
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Mumble\n"
+        f"Exec={first_exec}\n"
+        'Exec="{launcher}"\n'
+        "X-GNOME-Autostart-enabled=true\n",
+    )
+
+    assert status in {"degraded", "unknown"}
+
+
+@pytest.mark.parametrize("entry", [
+    "[Desktop Entry]\nType=Application\nName=Mumble\n",
+    "[Desktop Entry]\nType=Application\nExec=\"unterminated\n",
+    '[Desktop Entry]\nType=Application\nExec="{other}"\n',
+    "[Desktop Entry]\nType=Application\nExec=/removed/old/mumble\n",
+    '[Desktop Entry]\nType=Application\nExec="{launcher}"\n'
+    "TryExec=/removed/old/mumble\n",
+    '[Desktop Entry]\nType=Application\nExec="{launcher}"\nHidden=true\n',
+])
+def test_invalid_startup_authority_remains_non_ready(tmp_path, entry):
+    status, _message = _probe_current_autostart_entry(tmp_path, entry)
+
+    assert status in {"degraded", "unknown"}
+
+
+@pytest.mark.parametrize("duplicate_line", [
+    "Type=Application",
+    "Hidden=false",
+    "X-GNOME-Autostart-enabled=true",
+    "X-Mumble-VoiceToText=true",
+])
+def test_duplicate_authority_singleton_entries_fail_closed(
+        tmp_path, duplicate_line):
+    status, _message = _probe_current_autostart_entry(
+        tmp_path,
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Mumble\n"
+        'Exec="{launcher}"\n'
+        "Hidden=false\n"
+        "X-GNOME-Autostart-enabled=true\n"
+        "X-Mumble-VoiceToText=true\n"
+        f"{duplicate_line}\n",
+    )
+
+    assert status in {"degraded", "unknown"}
+
+
+def test_probe_route_cannot_combine_two_desktop_entry_reads(tmp_path):
+    current_launcher = tmp_path / "current" / "mumble"
+    current_launcher.parent.mkdir()
+    current_launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    current_launcher.chmod(0o755)
+    current_main = tmp_path / "current" / "app" / "mumble_linux.py"
+    current_main.parent.mkdir()
+    current_main.write_text("# current Mumble\n", encoding="utf-8")
+    desktop = tmp_path / "autostart" / autostart.DESKTOP_NAME
+    desktop.parent.mkdir()
+    stale = (
+        "[Desktop Entry]\nType=Application\nName=Mumble\n"
+        "Exec=/removed/old/mumble\nX-GNOME-Autostart-enabled=true\n")
+    current = stale.replace(
+        "/removed/old/mumble", f'"{current_launcher}"')
+    desktop.write_text(stale, encoding="utf-8")
+    desktop_reads = []
+    real_open = open
+
+    def changing_open(path, *args, **kwargs):
+        if os.fspath(path) == str(desktop):
+            desktop_reads.append(str(path))
+            if len(desktop_reads) == 2:
+                desktop.write_text(current, encoding="utf-8")
+        return real_open(path, *args, **kwargs)
+
+    with mock.patch.object(autostart, "DESKTOP_PATH", str(desktop)), \
+         mock.patch.object(autostart, "LEGACY_DESKTOP_PATH", str(
+             tmp_path / "autostart" / "mumble.desktop")), \
+         mock.patch.object(autostart, "_MUMBLE_MAIN", str(current_main)), \
+         mock.patch.object(autostart, "_INSTALL_LAUNCHER", str(current_launcher)), \
+         mock.patch.object(autostart, "_VENV_PYTHON", str(
+             tmp_path / "missing-python")), \
+         mock.patch.object(autostart, "open", changing_open, create=True):
+        status, _message = autostart.probe_route()
+
+    assert status in {"degraded", "unknown"}
+    assert desktop_reads == [str(desktop)]
+
+
+def test_probe_route_rejects_content_from_a_replacement_file(tmp_path):
+    current_launcher = tmp_path / "current" / "mumble"
+    current_launcher.parent.mkdir()
+    current_launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    current_launcher.chmod(0o755)
+    current_main = tmp_path / "current" / "app" / "mumble_linux.py"
+    current_main.parent.mkdir()
+    current_main.write_text("# current Mumble\n", encoding="utf-8")
+    desktop = tmp_path / "autostart" / autostart.DESKTOP_NAME
+    desktop.parent.mkdir()
+    desktop.write_text(
+        "[Desktop Entry]\nType=Application\nExec=/removed/old/mumble\n",
+        encoding="utf-8")
+    replacement = tmp_path / "replacement.desktop"
+    replacement.write_text(
+        "[Desktop Entry]\nType=Application\n"
+        f'Exec="{current_launcher}"\n', encoding="utf-8")
+    real_open = open
+
+    def substituted_open(path, *args, **kwargs):
+        if os.fspath(path) == str(desktop):
+            return real_open(replacement, *args, **kwargs)
+        return real_open(path, *args, **kwargs)
+
+    with mock.patch.object(autostart, "DESKTOP_PATH", str(desktop)), \
+         mock.patch.object(autostart, "LEGACY_DESKTOP_PATH", str(
+             tmp_path / "autostart" / "mumble.desktop")), \
+         mock.patch.object(autostart, "_MUMBLE_MAIN", str(current_main)), \
+         mock.patch.object(autostart, "_INSTALL_LAUNCHER", str(current_launcher)), \
+         mock.patch.object(autostart, "_VENV_PYTHON", str(
+             tmp_path / "missing-python")), \
+         mock.patch.object(autostart, "open", substituted_open, create=True):
+        status, _message = autostart.probe_route()
+
+    assert status in {"degraded", "unknown"}
+
+
+def test_probe_route_rejects_entry_changed_after_snapshot(tmp_path):
+    current_launcher = tmp_path / "current" / "mumble"
+    current_launcher.parent.mkdir()
+    current_launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    current_launcher.chmod(0o755)
+    current_main = tmp_path / "current" / "app" / "mumble_linux.py"
+    current_main.parent.mkdir()
+    current_main.write_text("# current Mumble\n", encoding="utf-8")
+    desktop = tmp_path / "autostart" / autostart.DESKTOP_NAME
+    desktop.parent.mkdir()
+    desktop.write_text(
+        "[Desktop Entry]\nType=Application\n"
+        f'Exec="{current_launcher}"\n', encoding="utf-8")
+
+    def mutate_after_match(_argv):
+        desktop.write_text(
+            "[Desktop Entry]\nType=Application\n"
+            "Exec=/removed/old/mumble\n# changed-underfoot\n",
+            encoding="utf-8",
+        )
+        return True
+
+    with mock.patch.object(autostart, "DESKTOP_PATH", str(desktop)), \
+         mock.patch.object(autostart, "LEGACY_DESKTOP_PATH", str(
+             tmp_path / "autostart" / "mumble.desktop")), \
+         mock.patch.object(autostart, "_MUMBLE_MAIN", str(current_main)), \
+         mock.patch.object(autostart, "_INSTALL_LAUNCHER", str(current_launcher)), \
+         mock.patch.object(autostart, "_VENV_PYTHON", str(
+             tmp_path / "missing-python")), \
+         mock.patch.object(
+             autostart, "_exec_matches_current_route", mutate_after_match):
+        status, _message = autostart.probe_route()
+
+    assert status in {"degraded", "unknown"}
