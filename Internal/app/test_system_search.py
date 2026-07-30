@@ -199,13 +199,19 @@ class SystemSearchTests(unittest.TestCase):
             self.assertTrue(opened["ok"])
             popen.assert_called_once()
 
-    def test_mac_and_unknown_platforms_are_not_supported(self):
+    def test_mac_is_supported_and_unknown_platforms_are_not(self):
         with tempfile.TemporaryDirectory() as tmp:
-            engine = SystemSearchEngine(
+            mac = SystemSearchEngine(
                 settings={}, data_dir=tmp, platform="darwin", start_background=False
             )
-            self.assertFalse(engine.status()["supported"])
-            self.assertFalse(engine.search("notes")["ok"])
+            self.assertTrue(mac.status()["supported"])
+            mac.close()
+            unknown = SystemSearchEngine(
+                settings={}, data_dir=tmp, platform="plan9", start_background=False
+            )
+            self.assertFalse(unknown.status()["supported"])
+            self.assertFalse(unknown.search("notes")["ok"])
+            unknown.close()
 
     def test_configured_web_provider_is_not_used_by_local_results(self):
         opened = []
@@ -375,15 +381,15 @@ class SearchUiAndPortTests(unittest.TestCase):
         self.assertIn("bindingCaptureActive", capture_source)
         self.assertIn("Your previous shortcut was kept", capture_source)
 
-    def test_linux_has_search_and_macos_intentionally_does_not(self):
+    def test_linux_and_macos_ship_the_shared_search_surface(self):
         linux = self.app_root / "Ports" / "Linux" / "app"
         mac = self.app_root / "Ports" / "macOS" / "app"
         linux_html = (linux / "webui" / "index.html").read_text(encoding="utf-8")
         mac_html = (mac / "webui" / "index.html").read_text(encoding="utf-8")
         self.assertIn('src="system-search-loader.js"', linux_html)
-        self.assertNotIn("system-search-loader.js", mac_html)
+        self.assertIn('src="system-search-loader.js"', mac_html)
         self.assertTrue((linux / "experimental" / "system_search" / "engine.py").is_file())
-        self.assertFalse((mac / "experimental" / "system_search" / "engine.py").exists())
+        self.assertTrue((mac / "experimental" / "system_search" / "engine.py").is_file())
 
 
 if __name__ == "__main__":

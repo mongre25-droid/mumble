@@ -1,13 +1,16 @@
 # MacMumble — testing guide
 
-At **Windows v0.9 parity** (engine + bug fixes) plus a hardened macOS input,
-installer, permission, updater, and LaunchAgent layer. The platform suite and a
-fake-Quartz event suite pass on Windows CI, but **TCC, audio devices, launchd,
-and AppKit behaviour still need verification on a real Mac**.
+The Issue #26 candidate aligns the maintained macOS source with the accepted
+shared Mumble contracts while keeping native macOS input, permissions, index,
+drag, focus, window, menu-bar, audio-device, installer, updater, and LaunchAgent
+seams. Windows-hosted tests can verify source contracts and injected native
+doubles, but **TCC, audio devices, launchd, AppKit, packaging, signing, and
+notarisation still need a real Mac or macOS CI**.
 
 ## What's in this build
-- **Engine = Windows v0.9**: `ai/formatting/history/stats/prompt_constitution/
-  favorites` are byte-identical to Windows (carry the v0.9 bug fixes + stats EMA).
+- **Shared contracts:** curated dictation, insertion, Mumble Find, Meetings,
+  History, Stats, Reader, and Web UI behaviour is generated from the accepted
+  shared source. Native copy remains deterministic and macOS-specific.
 - **macOS input fix (critical):** the old `keyboard` backend refuses Darwin hooks
   unless the whole app is root, and the old `mouse` package does not support
   Darwin. Both are replaced by one non-root `pynput`/Quartz listener. It supports
@@ -15,9 +18,17 @@ and AppKit behaviour still need verification on a real Mac**.
   paste. Layout-aware ASCII characters win on non-US layouts; Option-produced
   glyphs (for example Option+D → `∂`) fall back to the physical virtual key.
   `test_bindings.py` exercises the Darwin event hub with fake pynput events.
-- **First-run permissions:** Accessibility is prompted before listeners are
-  constructed. If access is initially denied, Mumble polls off the UI thread and
-  registers hotkeys as soon as the user grants it—no restart required.
+- **Permission authority:** Microphone, Accessibility, and Input Monitoring are
+  reported separately as ready, denied, revoked, or unknown. Denial keeps the
+  protected action off; a later grant is detected without treating an unavailable
+  probe as proof of denial.
+- **Durable dictation and insertion:** live audio is written to bounded local
+  PCM16 segments. Restart recovery saves one History record and never repeats an
+  uncertain insertion. Pasteboard formats are restored only while Mumble still
+  owns the same change count, and Quartz submission is never called confirmation.
+- **Mumble Find and Web Search:** Ctrl+Option+F opens bounded local Spotlight
+  results using opaque result identities. Ctrl+Option+S remains a separate,
+  consent-gated online action; Mumble Find cannot invoke it.
 - **Installer/runtime hardening:** Python 3.12–3.13, Tk, PyObjC and pynput are
   preflighted; the app bundle declares its microphone purpose; stale PID/port
   state cannot kill an unrelated process; and reinstall preserves an explicitly
@@ -37,6 +48,7 @@ and AppKit behaviour still need verification on a real Mac**.
 | Record / dictate | **Ctrl+Option+D** | Ctrl+Win |
 | Quick paste | **Ctrl+Option+V** | Ctrl+Alt+V |
 | Open History | **Ctrl+Option+H** | Ctrl+Alt+H |
+| Mumble Find | **Ctrl+Option+F** | Ctrl+Alt+F |
 | Web search | **Ctrl+Option+S** | Ctrl+Alt+S |
 | Prompt mode | **Prompt toggle in the island** | Prompt toggle |
 
@@ -74,7 +86,8 @@ faster-than-realtime on recent hardware (2018+). Older Intel Macs should use
    account, leave the app open while granting Accessibility and confirm hotkeys
    become ready without restarting.
 2. **Hotkeys fire** — tap **Ctrl+Option+D** → island shows "Listening". Then
-   Ctrl+Option+V / +H / +S, then toggle **Prompt** in the island.
+   Ctrl+Option+V / +H / +F / +S, then toggle **Prompt** in the island. Confirm
+   +F stays local and +S presents the provider-named consent step.
 3. **Record → transcribe → paste** into a text field.
 4. **Workflows** — use the sticky Prompt toggle for prompt shaping and Deck for
    Email, List, Search, Reply, and the other explicit actions.
@@ -92,13 +105,20 @@ faster-than-realtime on recent hardware (2018+). Older Intel Macs should use
    least one non-US layout, then X1/X2 mouse bindings and binding capture. The
    Windows-hosted fake event suite proves state logic, not the real Quartz/TCC
    delivery path.
-2. **`_focused_editable()`** returns `True` (no AX permission) — only affects the
-   "Pasted"/"Saved" label.
+2. **Insertion truth:** verify editable, read-only, protected, changed-target,
+   newer-clipboard, and change-count cases in Notes, Mail, browsers, and chat.
+   An unconfirmed Quartz submission must remain labelled unknown/saved.
 3. **Window foreground on Ctrl+Option+H** relies on pywebview show/restore; if a
    minimized window only bounces the Dock icon, add an osascript activate.
 4. **`boot()` double-run guard** vs WKWebView event order.
 5. **Island click-through** — the Tk overlay may not be click-through on macOS
    (needs pyobjc `ignoresMouseEvents`).
+6. **Spotlight and drag:** verify bounded cancellation, open, reveal, and a drag
+   that begins from a live visible result row. The Windows-host source double is
+   not physical AppKit evidence.
+7. **Architecture/package:** build and launch separate Apple Silicon and supported
+   Intel artifacts before considering a universal package. Source recognition of
+   `arm64` and `x86_64` is not an Intel build receipt.
 
 ## Remaining Mac release gaps
 - **No real-Mac CI lane:** Quartz/TCC, microphone capture, launchd and WKWebView

@@ -65,7 +65,7 @@ def test_mac_settings_migration_removes_retired_keys_and_repairs_shortcuts():
             assert store.get("quick_paste_hotkey") == "ctrl+option+v"
             assert store.get("history_hotkey") == "ctrl+option+h"
             assert store.get("web_search_hotkey") == "ctrl+option+s"
-            assert store.get("search_hotkey") is None
+            assert store.get("search_hotkey") == "ctrl+option+f"
             for retired in settings.REMOVED_SETTINGS:
                 assert retired not in store.data
         finally:
@@ -152,8 +152,6 @@ def test_ui_and_bridge_do_not_resurrect_removed_product_concepts():
     assert "def save_vocabulary" in shell
     assert '"save_vocabulary"' in app_js
     assert '"mode_key"' not in shell
-    assert "mode_button_enabled" not in shell
-    assert "mode_button_enabled" not in app_js
     assert "_build_mode_button_card" not in paths[3].read_text(encoding="utf-8")
 
     index = paths[2].read_text(encoding="utf-8")
