@@ -535,5 +535,13 @@
   <li><span class="badge b-gated">candidate boundary</span> This remains local source evidence only. CI, physical GNOME/KDE/X11/device testing, distribution/sandbox testing, package/install/signing, merge/push, deployment, release/rollback, issue closure, and owner acceptance remain open.</li>
 </ul>
 
+<h2 data-evidence-boundary="issue-27-linux-parity-seventh-correction"><span class="sec">60</span>30 July 2026 &mdash; whitespace and control desktop components rejected</h2>
+<ul>
+  <li><span class="badge b-exist">Entry 59 candidate record corrected</span> Sixth candidate <code>2bfcd42898ee8a565be06722943c229f80089f3d</code>, Entry 59, and the full earlier lineage remain unchanged. Independent review established that whitespace-only components, components containing whitespace, and ASCII control/delete components could still let visibility-controlled entries report <em>ready</em>. This direct-child seventh correction records and closes that narrow source finding without rewriting history.</li>
+  <li><span class="badge b-done">current-desktop component authority</span> Whenever <code>OnlyShowIn</code> or <code>NotShowIn</code> controls readiness, every colon-separated <code>XDG_CURRENT_DESKTOP</code> component must now be non-empty and contain neither whitespace nor ASCII control/delete characters. Valid desktop names, ordered matching, exact case sensitivity, supported escaped visibility lists, optional trailing semicolons, valid non-overlapping dual keys, and entries without visibility keys retain their prior behaviour.</li>
+  <li><span class="badge b-done">red first and focused green</span> Twenty-six malformed visibility cases plus one no-visibility control produced 21 failures and 6 passes before the source correction. Afterward, all 45 directly affected visibility cases passed, followed by all 67 cases in the complete Issue #27 correction file and the directly affected launcher/quoting case. Touched Python syntax/static, Core HTML, whitespace, final diff, and lineage checks are recorded separately at sign-off; no broad suite was run.</li>
+  <li><span class="badge b-gated">candidate boundary</span> This remains local candidate source evidence only. Fresh independent acceptance, full Level B, CI, physical GNOME/KDE/X11/device testing, distribution/sandbox testing, package/install/signing, merge/push, deployment, release/rollback, issue closure, and owner acceptance remain open.</li>
+</ul>
+
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
 </div></body></html>

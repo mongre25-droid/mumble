@@ -245,7 +245,12 @@ def _desktop_visible_in_current_environment(snapshot):
     if not current_value:
         return False
     current = tuple(current_value.split(":"))
-    if any(not item for item in current):
+    if any(
+        not item
+        or any(character.isspace() or ord(character) < 32
+               or ord(character) == 127 for character in item)
+        for item in current
+    ):
         return False
     for desktop in current:
         if desktop in only_desktops:

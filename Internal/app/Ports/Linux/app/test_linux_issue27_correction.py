@@ -566,3 +566,51 @@ def test_visibility_authority_rejects_absent_or_empty_desktop_components(
     )
 
     assert status in {"degraded", "unknown"}
+
+
+@pytest.mark.parametrize("visibility", [
+    "OnlyShowIn=GNOME;\n",
+    "NotShowIn=XFCE;\n",
+])
+@pytest.mark.parametrize("current_desktop", [
+    " ",
+    "\t",
+    "\n",
+    "\x01",
+    "\x7f",
+    "GNOME: ",
+    "GNOME: :KDE",
+    "GNOME:\t",
+    "GNOME:\n",
+    "GNOME:\x01",
+    "GNOME:\x7f",
+    "GNOME:KDE ",
+    "GNOME:K DE",
+])
+def test_visibility_authority_rejects_whitespace_or_control_components(
+        tmp_path, monkeypatch, visibility, current_desktop):
+    monkeypatch.setenv("XDG_CURRENT_DESKTOP", current_desktop)
+    status, _message = _probe_current_autostart_entry(
+        tmp_path,
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Mumble\n"
+        'Exec="{launcher}"\n'
+        f"{visibility}",
+    )
+
+    assert status in {"degraded", "unknown"}
+
+
+def test_current_desktop_authority_is_not_required_without_visibility_keys(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME:\t")
+    status, _message = _probe_current_autostart_entry(
+        tmp_path,
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Mumble\n"
+        'Exec="{launcher}"\n',
+    )
+
+    assert status == "ready"
