@@ -4,6 +4,7 @@
 import os
 import threading
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 
@@ -444,7 +445,7 @@ def test_word_aligned_transcription_keeps_timestamps_enabled():
     assert app.model.kwargs["word_timestamps"] is True
 
 
-def test_cloud_empty_result_falls_back_to_local():
+def test_cloud_silent_result_does_not_fall_back_to_local():
     app = _controller()
     app.settings.values.update(
         pro_mode=True,
@@ -455,8 +456,10 @@ def test_cloud_empty_result_falls_back_to_local():
     )
     app._cloud_transcription_on = lambda _route: True
     app._cloud_transcribe = lambda _audio, _snapshot: "  "
-    app._local_transcribe = lambda _audio, want_words=False: "local result"
-    assert app._transcribe(np.zeros(10, dtype=np.float32)) == "local result"
+    app._local_transcribe = mock.Mock(
+        side_effect=AssertionError("valid silent cloud result fell back locally"))
+    assert app._transcribe(np.zeros(10, dtype=np.float32)) == "  "
+    app._local_transcribe.assert_not_called()
 
 
 def test_local_only_blocks_cloud_transcription_at_the_egress_boundary():
@@ -999,7 +1002,7 @@ if __name__ == "__main__":
                test_find_hotkey_toggles_during_every_dictation_state_without_rebinding_target,
                test_search_open_failure_surfaces_an_island_hint,
                test_word_aligned_transcription_keeps_timestamps_enabled,
-               test_cloud_empty_result_falls_back_to_local,
+               test_cloud_silent_result_does_not_fall_back_to_local,
                test_failed_stream_start_closes_partial_microphone_handle,
                test_stop_recording_closes_stream_after_device_stop_error,
                test_stop_reuses_idle_worker_without_three_second_join,

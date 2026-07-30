@@ -440,7 +440,8 @@ def render(snap):
       offline, gathering, label, hint, timer, dot, rim, label_color,
       colors[hex...] (mode ramp for building/done)."""
     s = SCALE
-    frame = snap.get("frame", 0)
+    reduced_motion = bool(snap.get("reduced_motion", False))
+    frame = 0 if reduced_motion else snap.get("frame", 0)
     # There is ONE island now (owner v6) — no Basic/Standard/Enhanced tiers. The
     # full premium look (gold bloom + travelling sheen + listening ripple) always
     # renders.
@@ -474,25 +475,26 @@ def render(snap):
     base_y = cy + 0.30 * lab_f.size
 
     # ---- travelling glass sheen (always — the one premium look, clipped) ----
-    span = (px1 - px0) + 120 * s
-    sx = px0 - 60 * s + ((frame * 3.0 * s) % span)
-    sheen_img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(sheen_img)
-    bandw = 18 * s
-    for k in range(-bandw, bandw, 2 * s):
-        a = int(20 * (1 - abs(k) / bandw))
-        xx = int(sx + k)
-        sd.line([(xx + 10 * s, py0), (xx - 10 * s, py1)],
-                fill=(255, 252, 240, a), width=2 * s)
-    sheen_img.putalpha(Image.composite(sheen_img.getchannel("A"),
-                                       Image.new("L", (W, H), 0), mask))
-    img.alpha_composite(sheen_img)
+    if not reduced_motion:
+        span = (px1 - px0) + 120 * s
+        sx = px0 - 60 * s + ((frame * 3.0 * s) % span)
+        sheen_img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(sheen_img)
+        bandw = 18 * s
+        for k in range(-bandw, bandw, 2 * s):
+            a = int(20 * (1 - abs(k) / bandw))
+            xx = int(sx + k)
+            sd.line([(xx + 10 * s, py0), (xx - 10 * s, py1)],
+                    fill=(255, 252, 240, a), width=2 * s)
+        sheen_img.putalpha(Image.composite(sheen_img.getchannel("A"),
+                                           Image.new("L", (W, H), 0), mask))
+        img.alpha_composite(sheen_img)
 
     # ---- gold-particle ABSORPTION (context gathering) — gold motes stream in
     # from around the pill's perimeter and are drawn INTO it, fading as they're
     # absorbed: "information is being gathered and fed into the system" (owner v6,
     # replacing the old dedicated context colour). Cheap: ~14 cos/sin dots/frame.
-    if gathering and state in ("building", "transcribing"):
+    if gathering and not reduced_motion and state in ("building", "transcribing"):
         _gold_absorb(d, geom, frame)
 
     # ---- PROMPT-MODE indicator (the Big Shift): when the sticky Prompt toggle is
@@ -552,15 +554,16 @@ def render(snap):
         # is punched on a private layer so it never erases the dot glow underneath.
         ring_w = max(1.0, s)
         R = int(rr + ring_w + 2)
-        ripple = Image.new("RGBA", (2 * R, 2 * R), (0, 0, 0, 0))
-        rd = ImageDraw.Draw(ripple)
-        a_ring = int(170 * (1 - rp))
-        rd.ellipse([R - rr - ring_w / 2, R - rr - ring_w / 2,
-                    R + rr + ring_w / 2, R + rr + ring_w / 2],
-                   fill=_rgba(dot_c, a_ring))
-        rd.ellipse([R - rr + ring_w / 2, R - rr + ring_w / 2,
-                    R + rr - ring_w / 2, R + rr - ring_w / 2], fill=(0, 0, 0, 0))
-        img.alpha_composite(ripple, (int(round(dotx - R)), int(round(cy - R))))
+        if not reduced_motion:
+            ripple = Image.new("RGBA", (2 * R, 2 * R), (0, 0, 0, 0))
+            rd = ImageDraw.Draw(ripple)
+            a_ring = int(170 * (1 - rp))
+            rd.ellipse([R - rr - ring_w / 2, R - rr - ring_w / 2,
+                        R + rr + ring_w / 2, R + rr + ring_w / 2],
+                       fill=_rgba(dot_c, a_ring))
+            rd.ellipse([R - rr + ring_w / 2, R - rr + ring_w / 2,
+                        R + rr - ring_w / 2, R + rr - ring_w / 2], fill=(0, 0, 0, 0))
+            img.alpha_composite(ripple, (int(round(dotx - R)), int(round(cy - R))))
         d.ellipse([dotx - dr, cy - dr, dotx + dr, cy + dr], fill=_rgba(dot_c))
     else:
         # keep the dot strongly its own colour even at the pulse trough (owner v6:
@@ -674,86 +677,107 @@ def render(snap):
     return img
 
 
-# ---- companion bar — the island's cohesive MODE DECK (owner 2026-06-29) ------
-# ITEM 3 + ITEM 4. The old bar was a plain [✦ Prompt | ▤ Deck] strip that read as
-# a SEPARATE interface bolted above the rich island. It is now the island's mode
-# deck: a row of selectable MODE CHIPS (Prompt / Email / Reply / Rewrite — each lit
-# in its own contractual colour when active), the Deck action, and an optional
-# Foreign toggle (shown only when the user opts in). The ACTIVE mode's colour rings
-# the bar AND is fed to the island below, so the two surfaces read as ONE product
-# in one accent colour. It still shares the island's glass language (gradient body,
-# gold bloom, drop shadow, lit-from-above rim, travelling sheen) and sits flush on
-# the island pill's top edge (GAP=0), forming one continuous control surface.
-BAR_H = PILL_H            # same height as the island pill
-BAR_PAD_X = 14            # inner left/right padding of the bar pill
-BAR_MIN_W = 168           # minimum bar pill width
+# ---- companion rail ---------------------------------------------------------
+# Status and controls are separate native windows so the first can stay click-
+# through. Visually this is a quiet rail docked below the island: direct mode
+# chips, the configured language, then Deck.
+BAR_H = 40                # accessible 36-44px companion action surface
+BAR_PAD_X = 12            # inner left/right padding of the control rail
+BAR_MIN_W = 176           # enough room for the smallest useful control group
 BAR_WIN_W = WIN_W         # same window width as the island (for alignment)
-BAR_WIN_H = 46            # pill (34) + glow / shadow at top (12)
+BAR_WIN_H = 54            # rail (40) + room for its restrained shadow
 BAR_CORNER = BAR_H // 2
-BAR_CHIP_PAD = 9          # inner padding inside a mode/foreign chip
-BAR_CHIP_GAP = 4          # gap between adjacent mode chips
-BAR_SEP_W = 15            # separator zone before the Deck action
-BAR_GROUP_GAP = 9         # gap before the Foreign toggle
-BAR_CHIP_H = 19           # chip pill height (logical)
+BAR_CHIP_PAD = 8          # inner padding inside a mode/language chip
+BAR_CHIP_GAP = 3          # gap between adjacent mode chips
+BAR_SEP_W = 13            # separator zone before the Deck action
+BAR_GROUP_GAP = 7         # gap between related control groups
+BAR_CHIP_H = 30           # ordinary mode chip height (logical)
+BAR_STOP_CHIP_H = 36      # prominent labelled Stop action (Issue #23)
 
 
 def _bar_font():
-    return _font("bold", 11 * SCALE)
-
-
-CARET_GLYPH_COLLAPSED = "▾"   # ▾  tap to EXPAND the mode list
-CARET_GLYPH_EXPANDED = "▴"    # ▴  tap to COLLAPSE back to one chip
-BAR_CARET_GAP = 3                  # gap before the caret
+    return _font("semibold", 10 * SCALE)
 
 
 def bar_layout(snap):
-    """Compute the bar pill geometry + every interactive zone's LOGICAL x-range, so
-    render_bar (drawing) and overlay._WidgetBar (hit-testing) stay in lock-step and
-    a click always lands on the chip you see. Returns a dict:
-        {'pill': (x0, x1),
-         'chips': [(mode_key, x0, x1), ...],   # mode_key None = the collapsed
-         'caret': (x0, x1) | None,             #          "Modes" placeholder chip
-         'sep_x': float,
-         'deck': (x0, x1),
-         'foreign': (x0, x1) | None,
-         'expanded': bool}
-    Refinement pass §1 — the mode list is now a COMPACT, expandable selector: by
-    default the bar shows only the active mode (or a neutral "Modes" chip) plus a
-    caret, so it occupies only the space it needs. Tapping the chip/caret expands
-    the full mode row; picking a mode collapses it again.
+    """Return drawing and hit-test geometry for the companion control rail.
 
-    `snap` carries: modes [(key,label)...], active (key|None), show_foreign (bool),
-    expanded (bool)."""
+    The floating surface has only two direct processing lanes, so both stay
+    visible. This removes the previous one-item dropdown/chevron state and makes
+    the rail's width and click behaviour predictable. ``caret`` and ``expanded``
+    remain in the result only for compatibility with older callers.
+    """
     s = SCALE
     bf = _bar_font()
     modes = snap.get("modes") or [("prompt", "Prompt")]
     show_foreign = bool(snap.get("show_foreign"))
-    expanded = bool(snap.get("expanded"))
-    active = snap.get("active")
-    labels = dict(modes)
+    correction_available = bool(snap.get("correction_available"))
+    control_review = bool(snap.get("control_review_available"))
+    stop_enabled = bool(snap.get("stop_enabled"))
 
     def w(txt):
         return _text_w(_MEASURE, txt, bf) / s   # logical text width
 
-    deck_w = w("Deck") + 16          # a touch of room for the leading glyph
-    foreign_w = (w("Foreign") + 2 * BAR_CHIP_PAD) if show_foreign else 0.0
-    caret_w = 12.0                   # the expand/collapse chevron (drawn primitive)
+    if stop_enabled:
+        stop_label = str(snap.get("stop_label") or "Stop")[:64]
+        stop_w = w(stop_label) + 2 * BAR_CHIP_PAD + 10
+        pill_w = max(BAR_MIN_W, stop_w + 2 * BAR_PAD_X)
+        px0 = (BAR_WIN_W - pill_w) / 2.0
+        stop = (px0 + BAR_PAD_X, px0 + BAR_PAD_X + stop_w)
+        stop_bounds = (stop[0], BAR_WIN_H - BAR_H, stop[1], BAR_WIN_H)
+        return {"pill": (px0, px0 + pill_w), "chips": [], "caret": None,
+                "sep_x": None, "deck": None, "correction": None,
+                "correction_dismiss": None, "foreign": None,
+                "control_review": None, "control_cancel": None,
+                "stop": stop, "stop_label": stop_label,
+                "stop_bounds": stop_bounds,
+                "stop_target_height": BAR_H, "processing_cancel": None,
+                "expanded": False}
 
-    if expanded:
-        chip_ws = [(k, lbl, w(lbl) + 2 * BAR_CHIP_PAD) for k, lbl in modes]
-    else:
-        # Collapsed: ONE chip — the active mode, or a neutral "Modes" opener.
-        if active and active in labels:
-            chip_ws = [(active, labels[active],
-                        w(labels[active]) + 2 * BAR_CHIP_PAD)]
-        else:
-            chip_ws = [(None, "Modes", w("Modes") + 2 * BAR_CHIP_PAD)]
+    if control_review:
+        review_w = w("Review plan") + 2 * BAR_CHIP_PAD
+        cancel_w = w("Cancel") + 2 * BAR_CHIP_PAD
+        inner = review_w + BAR_GROUP_GAP + cancel_w
+        pill_w = min(max(BAR_MIN_W, inner + 2 * BAR_PAD_X), BAR_WIN_W - 8)
+        px0 = (BAR_WIN_W - pill_w) / 2.0
+        cursor = px0 + BAR_PAD_X
+        review = (cursor, cursor + review_w)
+        cursor += review_w + BAR_GROUP_GAP
+        cancel = (cursor, cursor + cancel_w)
+        return {"pill": (px0, px0 + pill_w), "chips": [], "caret": None,
+                "sep_x": None, "deck": None, "correction": None,
+                "correction_dismiss": None, "foreign": None,
+                "control_review": review,
+                "control_cancel": cancel, "expanded": False}
+
+    # A detected correction is a focused decision, not another permanent mode.
+    # Remove unrelated dictation controls while it is pending and offer one clear
+    # review path plus an explicit dismissal.
+    if correction_available:
+        review_w = w("Review") + 2 * BAR_CHIP_PAD
+        dismiss_w = w("Dismiss") + 2 * BAR_CHIP_PAD
+        inner = review_w + BAR_GROUP_GAP + dismiss_w
+        pill_w = min(max(BAR_MIN_W, inner + 2 * BAR_PAD_X), BAR_WIN_W - 8)
+        px0 = (BAR_WIN_W - pill_w) / 2.0
+        cursor = px0 + BAR_PAD_X
+        review = (cursor, cursor + review_w)
+        cursor += review_w + BAR_GROUP_GAP
+        dismiss = (cursor, cursor + dismiss_w)
+        return {"pill": (px0, px0 + pill_w), "chips": [], "caret": None,
+                "sep_x": None, "deck": None, "correction": review,
+                "correction_dismiss": dismiss, "foreign": None,
+                "control_review": None, "control_cancel": None,
+                "expanded": False}
+
+    deck_w = w("Deck") + 16
+    language_label = str(snap.get("foreign_label") or "Language")[:18]
+    foreign_w = (w(language_label) + 2 * BAR_CHIP_PAD + 9) if show_foreign else 0.0
+    chip_ws = [(k, lbl, w(lbl) + 2 * BAR_CHIP_PAD) for k, lbl in modes]
 
     inner = sum(cw for _, _, cw in chip_ws) + BAR_CHIP_GAP * max(0, len(chip_ws) - 1)
-    inner += BAR_CARET_GAP + caret_w
-    inner += BAR_SEP_W + deck_w
     if show_foreign:
         inner += BAR_GROUP_GAP + foreign_w
+    inner += BAR_SEP_W + deck_w
     pill_w = max(BAR_MIN_W, inner + 2 * BAR_PAD_X)
     pill_w = min(pill_w, BAR_WIN_W - 8)
     px0 = (BAR_WIN_W - pill_w) / 2.0
@@ -765,38 +789,50 @@ def bar_layout(snap):
         cursor += cw + BAR_CHIP_GAP
     if chip_ws:
         cursor -= BAR_CHIP_GAP
-    cursor += BAR_CARET_GAP
-    caret = (cursor, cursor + caret_w)
-    cursor += caret_w
-    sep_x = cursor + BAR_SEP_W / 2.0
-    cursor += BAR_SEP_W
-    deck = (cursor, cursor + deck_w)
-    cursor += deck_w
     foreign = None
     if show_foreign:
         cursor += BAR_GROUP_GAP
         foreign = (cursor, cursor + foreign_w)
-    return {"pill": (px0, px0 + pill_w), "chips": chips, "caret": caret,
-            "sep_x": sep_x, "deck": deck, "foreign": foreign, "expanded": expanded}
+        cursor += foreign_w
+    sep_x = cursor + BAR_SEP_W / 2.0
+    cursor += BAR_SEP_W
+    deck = (cursor, cursor + deck_w)
+    return {"pill": (px0, px0 + pill_w), "chips": chips, "caret": None,
+            "sep_x": sep_x, "deck": deck, "correction": None,
+            "correction_dismiss": None, "foreign": foreign,
+            "control_review": None, "control_cancel": None,
+            "expanded": False}
+
+
+def _finish_bar(img, snap):
+    """Downsample and apply the island's entrance/exit opacity to the whole bar."""
+    if SCALE != 1:
+        img = _resize_premult(img, BAR_WIN_W, BAR_WIN_H)
+    fade = max(0.0, min(1.0, float(snap.get("fade", 1.0))))
+    if fade < 0.999:
+        img.putalpha(img.getchannel("A").point(lambda value: int(value * fade)))
+    return img
 
 
 def render_bar(snap):
     """Render the companion mode-deck as a glass pill matching the island's design
-    language. The bar sits at the BOTTOM of its canvas so its bottom edge touches
-    the island pill's top edge with zero gap.
+    language. The rail sits at the bottom of its transparent canvas; overlay.py
+    docks the visible rail just below the status island.
 
     snapshot keys:
       modes [(key,label)...]  — the processing modes to offer (default Prompt only)
       active (key | None)     — the currently-selected mode (None = plain dictation)
-      foreign_on (bool)       — Foreign toggle state
-      show_foreign (bool)     — whether the Foreign toggle is shown at all
-      frame (int)             — animation tick (sheen / breathing ring)
+      foreign_on (bool)       — language-assist toggle state
+      show_foreign (bool)     — whether the language toggle is shown at all
+      foreign_label (str)     — configured language name/count
+      correction_available    — show a short-lived, explicit correction review
+      frame (int)             — accepted for snapshot compatibility
     Returns an RGBA Image (BAR_WIN_W × BAR_WIN_H logical, SCALE× AA)."""
     s = SCALE
-    frame = snap.get("frame", 0)
     active = snap.get("active")
     foreign_on = bool(snap.get("foreign_on"))
     show_foreign = bool(snap.get("show_foreign"))
+    correction_available = bool(snap.get("correction_available"))
     mode_labels = dict(snap.get("modes") or [("prompt", "Prompt")])
 
     layout = bar_layout(snap)
@@ -814,19 +850,19 @@ def render_bar(snap):
 
     img = Image.new("RGBA", (W_c, H_c), (0, 0, 0, 0))
 
-    # ---- soft drop shadow (top + sides; bottom clipped) ----
+    # ---- restrained shadow: this rail should not compete with status ----
     sh = Image.new("RGBA", (W_c, H_c), (0, 0, 0, 0))
     ImageDraw.Draw(sh).rounded_rectangle(
-        [px0, py0 - 2 * s, px1, py1], radius=rad, fill=(0, 0, 0, 150))
-    sh = sh.filter(ImageFilter.GaussianBlur(4 * s))
+        [px0, py0 - 1 * s, px1, py1], radius=rad, fill=(0, 0, 0, 105))
+    sh = sh.filter(ImageFilter.GaussianBlur(3 * s))
     img.alpha_composite(sh)
 
     # ---- soft gold bloom behind the pill ----
     bloom = Image.new("RGBA", (W_c, H_c), (0, 0, 0, 0))
     ImageDraw.Draw(bloom).rounded_rectangle(
         [px0 - 2 * s, py0 - 2 * s, px1 + 2 * s, py1 + 2 * s], radius=rad,
-        fill=_rgba(_blend(_RIM, C.gold, 0.6), 42))
-    bloom = bloom.filter(ImageFilter.GaussianBlur(7 * s))
+        fill=_rgba(_blend(_RIM, C.gold, 0.45), 18))
+    bloom = bloom.filter(ImageFilter.GaussianBlur(5 * s))
     img.alpha_composite(bloom)
 
     # ---- glass body (vertical gradient, gold-tinted top) ----
@@ -839,7 +875,7 @@ def render_bar(snap):
     tint = ((1.0 - ys) ** 2 * 0.06)[:, None]
     rows = np.clip(cells * (1 - tint) + gold[None, :] * tint, 0, 255).astype("uint8")
     arr = np.concatenate([rows[:, None, :],
-                          np.full((ph, 1, 1), 240, "uint8")], axis=2)
+                          np.full((ph, 1, 1), 236, "uint8")], axis=2)
     grad = Image.fromarray(arr, "RGBA").resize((W_c, ph))
     mask = Image.new("L", (W_c, H_c), 0)
     ImageDraw.Draw(mask).rounded_rectangle([px0, py0, px1, py1],
@@ -866,24 +902,9 @@ def render_bar(snap):
     rim_arr[:, :, 3] = np.clip(cov * (65.0 * afac)[:, None], 0, 255).astype(np.uint8)
     img.alpha_composite(Image.fromarray(rim_arr, "RGBA"))
 
-    # ---- travelling glass sheen (clipped to pill mask) ----
-    span = (px1 - px0) + 120 * s
-    sx = px0 - 60 * s + ((frame * 3.0 * s) % span)
-    sheen_img = Image.new("RGBA", (W_c, H_c), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(sheen_img)
-    bandw = 14 * s
-    for k in range(-bandw, bandw, 2 * s):
-        a = int(16 * (1 - abs(k) / bandw))
-        xx = int(sx + k)
-        sd.line([(xx + 8 * s, py0), (xx - 8 * s, py1)],
-                fill=(255, 252, 240, a), width=2 * s)
-    sheen_img.putalpha(Image.composite(sheen_img.getchannel("A"),
-                                       Image.new("L", (W_c, H_c), 0), mask))
-    img.alpha_composite(sheen_img)
-
     d = ImageDraw.Draw(img)
 
-    def _chip(x0, x1, color, on, label, dim_fg):
+    def _chip(x0, x1, color, on, label, dim_fg, icon=None):
         """One selectable chip: filled+ringed in `color` when on, quiet text else.
         Label centred in the chip; returns nothing."""
         cx0, cx1 = x0 * s, x1 * s
@@ -899,35 +920,53 @@ def render_bar(snap):
         else:
             fg = dim_fg
         lw = _text_w(_MEASURE, label, bf)
-        ImageDraw.Draw(img).text(((cx0 + cx1) / 2 - lw / 2, base_y), label,
-                                 font=bf, fill=fg, anchor="ls")
+        icon_w = 9 * s if icon else 0
+        tx = (cx0 + cx1) / 2 - (lw + icon_w) / 2 + icon_w
+        if icon == "status":
+            gx = tx - 5.5 * s
+            gr = 2.2 * s
+            if on:
+                d.ellipse([gx - gr, cy - gr, gx + gr, cy + gr], fill=fg)
+            else:
+                d.ellipse([gx - gr, cy - gr, gx + gr, cy + gr],
+                          outline=fg, width=max(1, s))
+        ImageDraw.Draw(img).text((tx, base_y), label, font=bf, fill=fg, anchor="ls")
 
-    # ---- mode chips (collapsed: one chip / "Modes" opener; expanded: full row) --
+    if layout.get("control_review"):
+        rx0, rx1 = layout["control_review"]
+        cx0, cx1 = layout["control_cancel"]
+        _chip(rx0, rx1, C.gold, True, "Review plan", _rgba(_TEXT_DIM, 205))
+        _chip(cx0, cx1, "#DF655D", False, "Cancel", _rgba("#FFAAA4", 230))
+        return _finish_bar(img, snap)
+
+    if layout.get("stop"):
+        sx0, sx1 = layout["stop"]
+        ch = BAR_STOP_CHIP_H * s / 2.0
+        _chip(
+            sx0, sx1, "#DF655D", True, layout["stop_label"],
+            _rgba("#FFAAA4", 230)
+        )
+        return _finish_bar(img, snap)
+
+    if correction_available and layout.get("correction"):
+        rx0, rx1 = layout["correction"]
+        dx0, dx1 = layout["correction_dismiss"]
+        _chip(rx0, rx1, C.gold, True, "Review", _rgba(_TEXT_DIM, 205))
+        _chip(dx0, dx1, "#8C8171", False, "Dismiss", _rgba(_TEXT_MUTE, 220))
+        return _finish_bar(img, snap)
+
+    # ---- direct mode chips: no hidden dropdown state ----
     for key, lx0, lx1 in layout["chips"]:
-        if key is None:
-            # The collapsed neutral opener (no mode armed yet) — quiet gold text.
-            _chip(lx0, lx1, C.gold, False, "Modes", _rgba(_TEXT_DIM, 205))
-        else:
-            mc = MODE_COLORS.get(key, C.gold)
-            _chip(lx0, lx1, mc, key == active, mode_labels.get(key, key.title()),
-                  _rgba(_TEXT_DIM, 205))
+        mc = MODE_COLORS.get(key, C.gold)
+        _chip(lx0, lx1, mc, key == active, mode_labels.get(key, key.title()),
+              _rgba(_TEXT_DIM, 205))
 
-    # ---- expand / collapse chevron (drawn with primitives — always crisp) ----
-    cz = layout.get("caret")
-    if cz:
-        ccx = (cz[0] + cz[1]) / 2.0 * s
-        cw2 = 3.2 * s
-        col = _rgba(_TEXT_MUTE, 235)
-        if layout.get("expanded"):           # ▴ collapse
-            d.line([(ccx - cw2, cy + 1.6 * s), (ccx, cy - 1.6 * s)],
-                   fill=col, width=max(1, s), joint="curve")
-            d.line([(ccx, cy - 1.6 * s), (ccx + cw2, cy + 1.6 * s)],
-                   fill=col, width=max(1, s), joint="curve")
-        else:                                # ▾ expand
-            d.line([(ccx - cw2, cy - 1.6 * s), (ccx, cy + 1.6 * s)],
-                   fill=col, width=max(1, s), joint="curve")
-            d.line([(ccx, cy + 1.6 * s), (ccx + cw2, cy - 1.6 * s)],
-                   fill=col, width=max(1, s), joint="curve")
+    # ---- optional Foreign toggle, grouped with dictation modes ----
+    if show_foreign and layout["foreign"]:
+        fx0, fx1 = layout["foreign"]
+        language_label = str(snap.get("foreign_label") or "Language")[:18]
+        _chip(fx0, fx1, MODE_COLORS.get("foreign", C.gold), foreign_on,
+              language_label, _rgba(_TEXT_MUTE, 215), icon="status")
 
     # ---- separator before the Deck action ----
     sep_x = layout["sep_x"] * s
@@ -947,28 +986,7 @@ def render_bar(snap):
         d.line([(gx, gy), (gx + 6 * s, gy)], fill=_rgba(C.gold, 220), width=max(1, s))
     d.text((dcx - dlw / 2, base_y), deck_label, font=bf, fill=_rgba(C.gold), anchor="ls")
 
-    # ---- optional Foreign toggle (its own sand accent; independent of mode) ----
-    if show_foreign and layout["foreign"]:
-        fx0, fx1 = layout["foreign"]
-        _chip(fx0, fx1, MODE_COLORS.get("foreign", C.gold), foreign_on, "Foreign",
-              _rgba(_TEXT_MUTE, 200))
-
-    # ---- active-mode ring around the WHOLE bar (echoes the island's accent) ----
-    acc = MODE_COLORS.get(active) if active else None
-    if acc is not None:
-        ap = 0.55 + 0.45 * (math.sin(frame * 0.18) + 1) / 2
-        glow = Image.new("RGBA", (W_c, H_c), (0, 0, 0, 0))
-        ImageDraw.Draw(glow).rounded_rectangle(
-            [px0 - 2 * s, py0 - 2 * s, px1 + 2 * s, py1 + 2 * s], radius=rad,
-            outline=_rgba(acc, int(115 * ap)), width=3 * s)
-        glow = glow.filter(ImageFilter.GaussianBlur(2 * s))
-        img.alpha_composite(glow)
-        d.rounded_rectangle([px0, py0, px1 - 1, py1 - 1], radius=rad,
-                            outline=_rgba(acc, int(195 * ap)), width=max(1, 2 * s))
-
-    if s != 1:
-        img = _resize_premult(img, BAR_WIN_W, BAR_WIN_H)   # premultiplied: no hairline
-    return img
+    return _finish_bar(img, snap)
 
 
 def _gradient_text(img, text, font, x, base_y, c1, c2, frame):
@@ -1067,7 +1085,9 @@ def _demo():
         ("bar_prompt", dict(modes=MODES, active="prompt", show_foreign=False)),
         ("bar_email", dict(modes=MODES, active="email", show_foreign=False)),
         ("bar_foreign", dict(modes=MODES, active="email",
-                             show_foreign=True, foreign_on=True)),
+                             show_foreign=True, foreign_on=True,
+                             foreign_label="Arabic")),
+        ("bar_correction", dict(correction_available=True)),
     ]
     bar_sheet = Image.new("RGB", (BAR_WIN_W, BAR_WIN_H * len(bar_cases)), (18, 18, 22))
     for i, (label, snap) in enumerate(bar_cases):
@@ -1078,6 +1098,19 @@ def _demo():
         tile.convert("RGB").save(os.path.join(out, label + ".png"))
         bar_sheet.paste(tile.convert("RGB"), (0, i * BAR_WIN_H))
     bar_sheet.save(os.path.join(out, "_bar_sheet.png"))
+
+    # Actual docked composition: status first, quieter controls underneath.
+    stack = Image.new("RGBA", (WIN_W, 92), (22, 22, 26, 255))
+    stack.alpha_composite(render(dict(
+        state="listening", label="Listening", timer="0:04", level=0.72,
+        dot=C.gold, rim=rim(C.gold), label_color=C.gold, frame=7,
+    )))
+    rail_y = int((WIN_H + PILL_H) / 2 + 5 - (BAR_WIN_H - BAR_H))
+    stack.alpha_composite(render_bar(dict(
+        modes=MODES, active=None, show_foreign=True, foreign_on=False,
+        foreign_label="Arabic", frame=7,
+    )), (0, rail_y))
+    stack.convert("RGB").save(os.path.join(out, "_stack_preview.png"))
 
     # Gathering motion: a few frames of the gold-particle absorption so the
     # motes-streaming-inward effect can be eyeballed across time.

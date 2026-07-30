@@ -95,19 +95,19 @@ INSTALL=()
 case "$PKG" in
   apt)
     REQ=(python3-venv python3-pip python3-dev build-essential python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 libportaudio2 xdg-utils)
-    OPT=(gir1.2-ayatanaappindicator3-0.1 xclip wl-clipboard xdotool ydotool wtype libnotify-bin gstreamer1.0-plugins-good gstreamer1.0-libav desktop-file-utils)
+    OPT=(gir1.2-ayatanaappindicator3-0.1 xdg-desktop-portal xdg-desktop-portal-gtk tracker3 baloo-kf5 plocate pipewire-pulse pulseaudio-utils xclip wl-clipboard xdotool ydotool wtype libnotify-bin gstreamer1.0-plugins-good gstreamer1.0-libav desktop-file-utils)
     INSTALL=(apt-get install -y) ;;
   dnf)
     REQ=(python3-pip python3-devel gcc gcc-c++ python3-gobject gtk3 webkit2gtk4.1 portaudio xdg-utils)
-    OPT=(libayatana-appindicator-gtk3 xclip wl-clipboard xdotool ydotool wtype libnotify gstreamer1-plugins-good gstreamer1-libav desktop-file-utils)
+    OPT=(libayatana-appindicator-gtk3 xdg-desktop-portal xdg-desktop-portal-gtk tracker-miners baloo plocate pipewire-pulseaudio pulseaudio-utils xclip wl-clipboard xdotool ydotool wtype libnotify gstreamer1-plugins-good gstreamer1-libav desktop-file-utils)
     INSTALL=(dnf install -y) ;;
   pacman)
     REQ=(python-pip base-devel python-gobject gtk3 webkit2gtk-4.1 portaudio xdg-utils)
-    OPT=(libayatana-appindicator xclip wl-clipboard xdotool ydotool wtype libnotify gst-plugins-good gst-libav desktop-file-utils)
+    OPT=(libayatana-appindicator xdg-desktop-portal xdg-desktop-portal-gtk tracker3 baloo plocate pipewire-pulse libpulse xclip wl-clipboard xdotool ydotool wtype libnotify gst-plugins-good gst-libav desktop-file-utils)
     INSTALL=(pacman -S --needed --noconfirm) ;;
   zypper)
     REQ=(python3-pip python3-devel gcc gcc-c++ python3-gobject python3-gobject-cairo typelib-1_0-Gtk-3_0 typelib-1_0-WebKit2-4_1 libwebkit2gtk-4_1-0 libportaudio2 xdg-utils)
-    OPT=(typelib-1_0-AyatanaAppIndicator3-0_1 xclip wl-clipboard xdotool ydotool wtype libnotify-tools gstreamer-plugins-good gstreamer-plugins-libav desktop-file-utils)
+    OPT=(typelib-1_0-AyatanaAppIndicator3-0_1 xdg-desktop-portal xdg-desktop-portal-gtk tracker baloo5 plocate pipewire-pulseaudio-utils pulseaudio-utils xclip wl-clipboard xdotool ydotool wtype libnotify-tools gstreamer-plugins-good gstreamer-plugins-libav desktop-file-utils)
     INSTALL=(zypper install -y) ;;
   *)
     PKG="" ;;
@@ -118,7 +118,9 @@ if [ -z "$PKG" ]; then
   say  "    Python venv + pip + a C compiler + python3 headers"
   say  "    PyGObject (gi) + GTK3 + WebKitGTK 4.1 typelibs"
   say  "    PortAudio runtime; GStreamer plugins-good + libav (Reader mp3 audio);"
-  say  "    xdg-utils; and: xclip wl-clipboard xdotool ydotool wtype libnotify"
+  say  "    xdg-utils + xdg-desktop-portal; a desktop index (Tracker/LocalSearch"
+  say  "    or Baloo) or plocate; PipeWire/PulseAudio tools; and native X11/"
+  say  "    Wayland clipboard/input helpers."
 else
   say "Detected ${BLD}$PKG${RST}. Mumble needs these system packages:"
   say "  ${BLD}required${RST}: ${REQ[*]}"

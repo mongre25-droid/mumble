@@ -108,19 +108,9 @@ try:
 except Exception:
     pass
 
-# On a WAYLAND session, force GTK (the island, the tray, and — via inherited env —
-# the web-UI host) onto XWayland. Native-Wayland GTK can't position an overlay,
-# keep it above, or skip the taskbar (all client-controlled on Wayland), and some
-# WebKitGTK/Mesa combos render the webview black under Wayland. XWayland gives the
-# real island + a reliable window. This MUST be set before `import gi`. It does
-# NOT affect global INPUT: bindings picks evdev by the real session type (evdev
-# reads /dev/input directly), so push-to-talk still works where pynput-over-
-# XWayland could not. Respect an explicit user override (setdefault).
-#
-# C-010: Before forcing GDK_BACKEND=x11, check that X11/XWayland is available on
-# this system. On a pure Wayland system with no XWayland, forcing x11 would crash
-# GTK. If X11 is missing, we log a warning and continue — the island may not render
-# but dictation + hotkeys still work.
+# Probe XWayland only for diagnostics. Native Wayland must remain native: an
+# installed or live XWayland display is not authority to redirect Mumble's GTK
+# host or to claim focus, positioning, clipboard, or insertion parity.
 def _usable_x11_display(display=None):
     """Return whether an actual X11/XWayland display can be contacted.
 
@@ -156,10 +146,9 @@ def _usable_x11_display(display=None):
 def _external_child_env():
     """Environment for user applications launched by Mumble.
 
-    The controller intentionally pins its own Gtk/WebKit child to XWayland, but
-    a browser, xdg-open target or notification is not part of Mumble and must
-    retain the user's native Wayland backend. Preserve an explicit user setting;
-    scrub only the backend this controller marked as self-injected.
+    A browser, xdg-open target or notification is not part of Mumble and must
+    retain the user's native desktop backend. Preserve an explicit user setting;
+    scrub only a legacy backend marker from older installed versions.
     """
     env = os.environ.copy()
     if env.pop("MUMBLE_FORCED_GDK_BACKEND", None):
@@ -169,34 +158,9 @@ def _external_child_env():
 
 _X11_AVAILABLE = False
 if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("GDK_BACKEND"):
-    # A binary on PATH does not mean an XWayland server is running.  Forcing
-    # GDK_BACKEND=x11 with DISPLAY unset (or pointing at a dead display) makes
-    # Gtk fail to initialise and takes the island + web window down with it.
-    # Verify the actual DISPLAY.  xdpyinfo is authoritative when installed;
-    # otherwise a local X11 socket is the best dependency-free signal.
-    _x11_ok = _usable_x11_display()
-    if _x11_ok:
-        os.environ["GDK_BACKEND"] = "x11"
-        os.environ["MUMBLE_FORCED_GDK_BACKEND"] = "1"
-        _X11_AVAILABLE = True
-    else:
-        _msg = ("Wayland detected but X11/XWayland is not available — "
-                "the island overlay may not render. Dictation + hotkeys will still work.")
-        print("[startup] " + _msg)
-        _X11_AVAILABLE = False
-        # Surface a clear desktop notification so the user knows WHY the island
-        # isn't appearing — not a silent failure (VAL-LIN-PLAT-001).
-        try:
-            import subprocess as _sp
-            import shutil as _su
-            if _su.which("notify-send"):
-                _sp.Popen(
-                    ["notify-send", "-a", "Mumble", "-i", "dialog-warning",
-                     "Mumble — Pure Wayland Detected", _msg[:200]],
-                    stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
-                    env=_external_child_env())
-        except Exception:
-            pass
+    _X11_AVAILABLE = _usable_x11_display()
+    print("[startup] native Wayland session retained; compositor policy may "
+          "limit overlay placement, focus restoration, and cross-app drag")
 else:
     _X11_AVAILABLE = True  # Not Wayland, or GDK_BACKEND already set
 
@@ -307,6 +271,7 @@ import foreign_boost  # local (offline) Foreign-Mode phonetic term correction
 import formatting
 import islamic_terms  # Foreign mode: slash-candidate annotation for Arabic/Islamic terms
 import local_engine  # cloud-dominance routing gate (cloud-primary-when-key, local degrade)
+import linux_desktop
 import meeting  # Meeting mode: record, transcribe, diarise meetings
 import recording_limits
 import transcription  # optional cloud STT (advanced); local faster-whisper is default
@@ -315,6 +280,17 @@ from branding import MODE_LABELS, STATE_COLORS, C
 from clipboard import Clipboard, read_clipboard_text
 from context_store import ConversationStore
 from favorites import Favorites
+from insertion import ImagePayload, InsertionModule, InsertionOutcome, TextPayload
+from linux_insertion import (
+    LinuxClipboardAdapter, LinuxNativeInputAdapter, LinuxTargetAdapter,
+)
+from linux_dictation import DurableLinuxCapture
+from dictation_session import (
+    DurableDictationSession,
+    merge_stable_prefix,
+    reconcile_timestamped_segment,
+    transcribe_selected_route,
+)
 # Startup breadcrumbs: faster-whisper pulls in the heavy native stack
 # (av / numpy / ctranslate2). On a memory-starved machine that import can stall
 # or fail with "paging file too small" — and previously the log showed only the
@@ -363,6 +339,24 @@ class Mumble:
         self.clipboard = Clipboard(
             branding.CLIPBOARD_JSON, self.settings.get("clipboard_max", 100)
         )
+        self._desktop_session = linux_desktop.DesktopSession.detect()
+        self._linux_target = LinuxTargetAdapter(self._desktop_session)
+        self._linux_clipboard = LinuxClipboardAdapter(self._desktop_session)
+        self._linux_native_input = LinuxNativeInputAdapter(self._desktop_session)
+        self._insertion_module = InsertionModule(
+            self._linux_target, self._linux_clipboard,
+            self._linux_native_input)
+        self._dictation_insertion_operation_id = None
+        self._last_insertion_result = None
+        self._dictation_session_root = os.path.join(
+            branding.DATA_DIR, "dictation_sessions")
+        os.makedirs(self._dictation_session_root, exist_ok=True)
+        self._durable_capture = None
+        self._durable_transcription_snapshot = None
+        self._durable_forced_mode = False
+        self._dictation_inference_overlap_samples = SAMPLE_RATE // 2
+        self._durable_finalization_owner_id = None
+        self._durable_finalization_operation_id = None
         # Probe once for a pyperclip clipboard backend (xclip/xsel/wl-clipboard/
         # qt/gtk). On a headless or minimal Linux box none exists, so clipboard
         # writes fail and a blind Ctrl+V would paste stale content. Conservative:
@@ -710,25 +704,18 @@ class Mumble:
                 self._stream_idle.set()
         self._last_audio_cb_time = now
 
-        # Bound ordinary dictation to ten minutes.  This prevents an accidental
-        # all-day press from exhausting memory and keeps a cloud WAV below the
-        # supported providers' direct-upload limit. Stop outside PortAudio's
-        # callback thread because closing a stream in its callback can deadlock.
-        recorded = max(0, int(getattr(self, "_recorded_samples", 0)))
-        remaining = recording_limits.DICTATION_MAX_SAMPLES - recorded
-        if remaining <= 0:
+        # One logical session is persisted as bounded immutable PCM16 segments.
+        # The real-time callback never waits on storage and never grows one
+        # process-lifetime audio list.
+        capture = getattr(self, "_durable_capture", None)
+        block = indata.copy()
+        accepted = capture.accept(block) if capture is not None else 0
+        if accepted <= 0:
             block = None
         else:
-            block = indata[:remaining].copy()
-            self.frames.append(block)
-            self._recorded_samples = recorded + len(block)
-
-        if (self._recorded_samples >= recording_limits.DICTATION_MAX_SAMPLES
-                and not self._dictation_limit_triggered):
-            self._dictation_limit_triggered = True
-            threading.Thread(
-                target=self._stop_at_dictation_limit,
-                name="mumble-dictation-limit", daemon=True).start()
+            block = block[:accepted]
+            self._recorded_samples = (
+                max(0, int(getattr(self, "_recorded_samples", 0))) + accepted)
 
         if block is None or len(block) == 0:
             return
@@ -752,6 +739,127 @@ class Mumble:
             "Mumble stopped at the 10-minute dictation limit and is "
             "transcribing what it captured.")
         self._safe_stop()
+
+    def _stop_at_storage_pressure(self):
+        """Safely stop after the durable queue accepts its reserved block."""
+        if self._dictation_insertion_operation_id is None:
+            operation_id = uuid.uuid4().hex
+            self._insertion_module.begin(operation_id, "dictation")
+            self._dictation_insertion_operation_id = operation_id
+        self._notify(
+            "Recording stopped safely",
+            "Storage could not keep up. Accepted audio was preserved and will "
+            "be transcribed once.")
+        self._safe_stop()
+
+    def _recover_durable_dictations(self):
+        """Save interrupted logical sessions once without replaying insertion."""
+        for session in DurableDictationSession.discover(
+                self._dictation_session_root,
+                on_error=lambda row: print("durable recovery skipped:", row)):
+            try:
+                manifest = session.read_manifest()
+                finalization = manifest["finalization"]
+                if finalization.get("state") == "complete":
+                    continue
+                # Recovery is always local: a settings change after capture must
+                # never upload previously local audio. Bounded overlap protects
+                # speech at immutable segment boundaries.
+                transcript = self._decode_durable_session(
+                    session, manifest, local_only=True)
+                if not transcript:
+                    continue
+                owner_id = finalization.get("owner_id") or uuid.uuid4().hex
+                operation_id = (finalization.get("operation_id")
+                                or uuid.uuid4().hex)
+                if finalization.get("state") == "unclaimed":
+                    session.claim_finalization(owner_id, operation_id)
+                entry = self.history.add(
+                    transcript, "text",
+                    manifest["next_sample"] / float(SAMPLE_RATE),
+                    raw=transcript, via="recovery",
+                    record_id=session.session_id)
+                if entry is None:
+                    continue
+                session.mark_history_committed(owner_id, operation_id)
+                current = session.read_manifest()["finalization"]
+                outcome = "uncertain"
+                if current.get("insertion_state") == "not_requested":
+                    session.claim_final_insertion(owner_id, operation_id)
+                    outcome = "not_sent"
+                session.complete_finalization(
+                    owner_id, operation_id, insertion_outcome=outcome)
+                self._send_webui_async({"cmd": "refresh", "what": "history"})
+            except Exception as exc:
+                print("durable recovery failed closed:", exc)
+
+    @staticmethod
+    def _merge_stable_prefix(existing, update):
+        return merge_stable_prefix(existing, update)
+
+    @staticmethod
+    def _reconcile_timestamped_segment(
+            committed, tentative, words, *, index, segment_samples,
+            overlap_samples, sample_rate, previous_text_authoritative=False):
+        return reconcile_timestamped_segment(
+            committed, tentative, words, index=index,
+            segment_samples=segment_samples, overlap_samples=overlap_samples,
+            sample_rate=sample_rate,
+            previous_text_authoritative=previous_text_authoritative)
+
+    def _durable_inference_audio(self, session, manifest, index):
+        segment = manifest["segments"][index]
+        payload = (session.path / segment["filename"]).read_bytes()
+        owned = np.frombuffer(payload, dtype="<i2")
+        if index <= 0:
+            return owned.astype(np.float32) / 32767.0
+        previous = manifest["segments"][index - 1]
+        previous_payload = (session.path / previous["filename"]).read_bytes()
+        previous_audio = np.frombuffer(previous_payload, dtype="<i2")
+        overlap = min(len(previous_audio), max(
+            0, int(self._dictation_inference_overlap_samples)))
+        if overlap:
+            owned = np.concatenate((previous_audio[-overlap:], owned))
+        return owned.astype(np.float32) / 32767.0
+
+    def _decode_durable_session(self, session, manifest, *, local_only=False):
+        """Decode immutable segments once with a bounded prior-audio overlap."""
+        merged, committed, tentative = "", [], []
+        previous_text_authoritative = False
+        timestamped = len(manifest["segments"]) > 1
+        for index, segment in enumerate(manifest["segments"]):
+            audio = self._durable_inference_audio(session, manifest, index)
+            transcribe = self._local_transcribe if local_only else self._transcribe
+            result = transcribe(audio, want_words=timestamped)
+            text = result[0] if isinstance(result, tuple) else result
+            words = result[1] if isinstance(result, tuple) else []
+            overlap = min(
+                int(segment["sample_count"]),
+                int(manifest["segments"][index - 1]["sample_count"])
+                if index else int(segment["sample_count"]),
+                max(0, int(self._dictation_inference_overlap_samples)))
+            reconciled = self._reconcile_timestamped_segment(
+                committed, tentative, words, index=index,
+                segment_samples=int(segment["sample_count"]),
+                overlap_samples=overlap,
+                sample_rate=int(manifest["audio"]["sample_rate"]),
+                previous_text_authoritative=previous_text_authoritative,
+            ) if timestamped else None
+            if reconciled is not None:
+                committed, tentative = reconciled
+                merged = " ".join(committed + tentative)
+                previous_text_authoritative = False
+            else:
+                merged = self._merge_stable_prefix(merged, text)
+                if timestamped and str(text or "").strip():
+                    # A provider may return useful text without word timing.
+                    # Keep that text in the authoritative state so a later
+                    # timestamped segment cannot rebuild from stale lists and
+                    # erase it. The next timed overlap is already represented
+                    # by this stable text and must not be appended twice.
+                    committed, tentative = merged.split(), []
+                    previous_text_authoritative = True
+        return merged.strip()
 
     def _stream_worker(self):
         """Background worker: transcribes accumulated audio in chunks DURING the
@@ -823,15 +931,12 @@ class Mumble:
 
     # ========================================================= meeting mode
     def _meeting_start(self):
-        """Start meeting recording. Vetoed if dictation is active."""
+        """Start meeting capture independently of foreground dictation."""
         recorder = getattr(self, "meeting_recorder", None)
         if recorder is None:
             return {"ok": False, "message": "Meeting recorder not ready."}
         with self._meeting_lock:
             with self.lock:
-                if self.recording or self.busy or self._processing:
-                    return {"ok": False, "message":
-                            "Dictation is active — stop it first."}
                 if self.meeting_recording:
                     return {"ok": False, "message":
                             "A meeting is already recording."}
@@ -893,6 +998,36 @@ class Mumble:
         threading.Thread(target=_bg, daemon=True).start()
         return {"ok": True, "recording": False, "processing": True,
                 "meeting_id": meeting_id}
+
+    def _meeting_status(self):
+        """Return controller-owned live capture state for UI recovery."""
+        recorder = getattr(self, "meeting_recorder", None)
+        if recorder is None:
+            return {"ok": True, "active": False, "recording": False,
+                    "paused": False, "state": "idle",
+                    "captured_seconds": 0,
+                    "max_seconds": recording_limits.MEETING_MAX_SECONDS,
+                    "meeting_id": None}
+        snapshot_fn = getattr(recorder, "capture_status", None)
+        if callable(snapshot_fn):
+            snapshot = dict(snapshot_fn() or {})
+        else:
+            recording = bool(getattr(recorder, "_recording", False))
+            active = bool(getattr(self, "meeting_recording", False) or recording)
+            paused = bool(active and not recording)
+            snapshot = {"active": active, "recording": recording,
+                        "paused": paused, "state": (
+                            "paused" if paused else
+                            "recording" if active else "idle"),
+                        "captured_seconds": 0, "meeting_id": None}
+        snapshot.setdefault("active", bool(snapshot.get("recording")))
+        snapshot.setdefault("recording", bool(snapshot.get("active")))
+        snapshot.setdefault("paused", False)
+        snapshot.setdefault("state", "recording" if snapshot["active"] else "idle")
+        snapshot.setdefault("captured_seconds", 0)
+        snapshot.setdefault("max_seconds", recording_limits.MEETING_MAX_SECONDS)
+        snapshot.setdefault("meeting_id", None)
+        return {"ok": True, **snapshot}
 
     def _meeting_import(self, path):
         """Import an external audio file as a meeting. Runs in background."""
@@ -983,6 +1118,12 @@ class Mumble:
             return
         if self.island is None:
             return
+        # Dictation owns the foreground island while both independent capture
+        # streams are active. The meeting timer must not overwrite it each second.
+        if (getattr(self, "recording", False)
+                or getattr(self, "_processing", False)
+                or getattr(self, "busy", False)):
+            return
         if state == "recording":
             self._tk_schedule(self.island.set_state, "listening")
             self._tk_schedule(self.island.hint, f"Meeting \u00b7 {timer // 60}:{timer % 60:02d}")
@@ -998,6 +1139,27 @@ class Mumble:
         elif state == "done":
             self._tk_schedule(self.island.flash, "meeting", pasted=False)
             self._tk_schedule(self.island.hint, "Meeting saved")
+
+    def _restore_meeting_island(self):
+        """Restore the live meeting display after foreground dictation ends."""
+        island = getattr(self, "island", None)
+        if (island is None
+                or getattr(self, "recording", False)
+                or getattr(self, "_processing", False)
+                or not getattr(self, "meeting_recording", False)):
+            return False
+        snapshot = self._meeting_status()
+        timer = int(snapshot.get("captured_seconds", 0) or 0)
+        if snapshot.get("paused"):
+            self._tk_schedule(island.set_state, "idle")
+            self._tk_schedule(island.hint, "Meeting Paused")
+        elif snapshot.get("active"):
+            self._tk_schedule(island.set_state, "listening")
+            self._tk_schedule(
+                island.hint, f"Meeting · {timer // 60}:{timer % 60:02d}")
+        else:
+            return False
+        return True
 
     def _meeting_stop_at_limit(self):
         """Finalize, surface, and process a meeting capped by the recorder."""
@@ -1049,11 +1211,14 @@ class Mumble:
         if self.paused or not self._transcription_ready():
             self.busy = False
             return
-        # Meeting capture owns the microphone. Dictation must not open a
-        # competing stream and corrupt both recordings.
-        if getattr(self, "meeting_recording", False):
-            self.busy = False
-            return
+        self._durable_transcription_snapshot = self._transcription_snapshot()
+        self._durable_capture = DurableLinuxCapture(
+            self._dictation_session_root,
+            sample_rate=SAMPLE_RATE,
+            segment_seconds=30,
+            queue_blocks=4,
+            on_pressure=self._stop_at_storage_pressure,
+        )
         self.frames = []
         self._recorded_samples = 0
         self._dictation_limit_triggered = False
@@ -1089,8 +1254,15 @@ class Mumble:
             except Exception:
                 pass
         self._set_state(rec_state)
-        self.stream = self._open_input_stream()
-        self.stream.start()
+        try:
+            self.stream = self._open_input_stream()
+            self.stream.start()
+        except Exception:
+            durable = self._durable_capture
+            self._durable_capture = None
+            if durable is not None:
+                durable.discard_empty()
+            raise
         self.recording = True
         # Launch streaming transcription worker — transcribes chunks in the
         # background while the user speaks, so on stop the final paste is
@@ -1110,7 +1282,8 @@ class Mumble:
         # stop-path join a no-op, and an empty `_stream_results` makes `_process`
         # take its authoritative single full pass over the whole audio — so
         # transcription still works end to end, it just runs once at stop.
-        if self.settings.get("resource_saver") or self._mode_active:
+        if (self.settings.get("resource_saver") or self._mode_active
+                or self._durable_capture is not None):
             self._stream_worker_thread = None
         else:
             self._stream_worker_thread = threading.Thread(
@@ -1420,6 +1593,7 @@ class Mumble:
             self._idle()
         finally:
             self.busy = False
+            self._restore_meeting_island()
 
     def _finalize_text(self, clean):
         """Paste the polished plain-text default (the mode picker was dismissed).
@@ -1453,6 +1627,7 @@ class Mumble:
             self._idle()
         finally:
             self.busy = False
+            self._restore_meeting_island()
 
     def _mark_llm_ok(self):
         self.pro_key_failed = False
@@ -1465,32 +1640,46 @@ class Mumble:
         the saved choice, so a bad mic never throws an 'error' the moment you press the hotkey."""
         dev = self.settings.get("mic_device", None)
         try:
-            return sd.InputStream(
+            stream = sd.InputStream(
                 samplerate=SAMPLE_RATE,
                 channels=1,
                 dtype="float32",
                 device=dev,
                 callback=self._audio_cb,
             )
+            self._active_input_device = dev
+            self._audio_capability = linux_desktop.audio_capability(sd)
+            return stream
         except Exception as e:
             if dev is None:
+                self._audio_capability = linux_desktop.Capability(
+                    "denied" if isinstance(e, PermissionError) else "degraded",
+                    "portaudio", f"Microphone open failed: {e}",
+                    "Check PipeWire/PulseAudio permissions and reconnect the device.")
                 raise
             print(
                 f"mic device {dev!r} unavailable ({e}); falling back to system default"
             )
-            self.settings.set("mic_device", None)
+            # A busy, unplugged, Bluetooth, suspend/resume, or sandbox error is
+            # not authority to erase the user's saved device choice.
+            self._audio_capability = linux_desktop.Capability(
+                "degraded", "portaudio",
+                f"Saved microphone {dev!r} is temporarily unavailable.",
+                "The saved choice was kept; reconnect it or choose another device.")
             self._notify(
                 "Microphone",
-                "Your saved mic wasn't available — using the system "
-                "default. Pick it again in Settings if you want.",
+                "Your saved mic is temporarily unavailable. Mumble kept that "
+                "choice and is trying the system default for this recording.",
             )
-            return sd.InputStream(
+            stream = sd.InputStream(
                 samplerate=SAMPLE_RATE,
                 channels=1,
                 dtype="float32",
                 device=None,
                 callback=self._audio_cb,
             )
+            self._active_input_device = None
+            return stream
 
     def stop_recording(self):
         # Idempotent: a double hotkey press (or a hotkey racing the command
@@ -1522,6 +1711,55 @@ class Mumble:
                 self._tk_schedule(self.island.set_armed, False)
             except Exception:
                 pass
+        durable = getattr(self, "_durable_capture", None)
+        if durable is not None:
+            self._durable_capture = None
+            manifest = durable.finish(timeout=STREAM_DRAIN_TIMEOUT)
+            sample_count = int(manifest.get("next_sample", 0))
+            if sample_count <= 0:
+                durable.session.discard_unfinalized()
+                self._search_requested = False
+                self._idle()
+                return
+            if self.island:
+                self._tk_schedule(self.island.set_state, "transcribing")
+            self._set_state("transcribing")
+            operation_id = (self._dictation_insertion_operation_id
+                            or uuid.uuid4().hex)
+            if self._dictation_insertion_operation_id is None:
+                self._insertion_module.begin(operation_id, "dictation")
+                self._dictation_insertion_operation_id = operation_id
+            owner_id = uuid.uuid4().hex
+            durable.session.claim_finalization(owner_id, operation_id)
+            self._durable_finalization_owner_id = owner_id
+            self._durable_finalization_operation_id = operation_id
+            transcript = self._decode_durable_session(
+                durable.session, manifest, local_only=False)
+            self._stream_results = [transcript] if transcript else []
+            self._stream_processed_samples = sample_count
+            self._durable_forced_mode = bool(self._mode_active)
+            self._active_durable_session = durable.session
+            self._last_history_entry = None
+            self._last_insertion_result = None
+            duration = sample_count / float(SAMPLE_RATE)
+            with self.lock:
+                for window in self._mode_windows:
+                    if window[1] is None:
+                        window[1] = duration
+                windows = [tuple(window) for window in self._mode_windows]
+            try:
+                # Empty audio is deliberate: the immutable segments were already
+                # decoded exactly once into the streaming-result seam.
+                self._process(np.empty(0, dtype=np.float32), duration,
+                              False, windows)
+            finally:
+                self._active_durable_session = None
+                self._durable_forced_mode = False
+                self._durable_transcription_snapshot = None
+                self._durable_finalization_owner_id = None
+                self._durable_finalization_operation_id = None
+                self.frames = []
+            return
         if not self.frames:
             self._search_requested = False
             self._idle()
@@ -1544,6 +1782,13 @@ class Mumble:
             with self.lock:
                 self._stream_session_id += 1
                 self.frames = []
+            capture = getattr(self, "_durable_capture", None)
+            self._durable_capture = None
+            if capture is not None:
+                try:
+                    capture.discard_empty()
+                except Exception as cleanup_error:
+                    print("durable empty-session cleanup failed:", cleanup_error)
             self._search_requested = False
             self._idle()
             return
@@ -1579,19 +1824,22 @@ class Mumble:
         dictation; it falls back to local on ANY error so a flaky network never
         loses a dictation.
 
-        When `want_words` is True (mode key was held) we ALWAYS use local: the
-        mode-key feature needs per-word timestamps to map the button window onto the
-        spoken keyword, which the cloud path doesn't provide. Returns a plain string
-        normally, or (text, words) when want_words=True."""
-        invocation_snapshot = self._transcription_snapshot()
-        if not want_words and self._cloud_transcription_on(
-            invocation_snapshot.route
-        ):
-            text = self._cloud_transcribe(audio, invocation_snapshot)
-            if text and text.strip():
-                return text
-            # cloud failed → fall through to local so the dictation still lands
-        return self._local_transcribe(audio, want_words=want_words)
+        A word-timestamp request never overrides the user's selected cloud route.
+        Cloud providers without word timing return an empty word list, and durable
+        reconciliation preserves their text through the plain-text seam. Returns a
+        plain string normally, or (text, words) when want_words=True."""
+        invocation_snapshot = (getattr(
+            self, "_durable_transcription_snapshot", None)
+            or self._transcription_snapshot())
+        return transcribe_selected_route(
+            cloud_selected=self._cloud_transcription_on(
+                invocation_snapshot.route),
+            want_words=want_words,
+            cloud_transcribe=lambda: self._cloud_transcribe(
+                audio, invocation_snapshot),
+            local_transcribe=lambda *, want_words: self._local_transcribe(
+                audio, want_words=want_words),
+        )
 
     def _transcription_snapshot(self):
         """Freeze permission and every cloud speech-to-text input once."""
@@ -1773,6 +2021,8 @@ class Mumble:
         # browser search.
         search_requested = getattr(self, "_search_requested", False)
         self._search_requested = False
+        durable_mode = bool(getattr(self, "_durable_forced_mode", False))
+        requested_mode_active = bool(mode_active or durable_mode)
         # Snapshot the relevant settings fields BEFORE any AI calls so a rapid
         # providers/options change during the run doesn't give us a half-old
         # half-new config (VAL-CROSS-020). Read ONCE per utterance.
@@ -1811,7 +2061,7 @@ class Mumble:
             with self.lock:
                 stream_results = list(self._stream_results)
                 processed_samples = max(0, self._stream_processed_samples)
-            if stream_results and not mode_active:
+            if stream_results and (not requested_mode_active or durable_mode):
                 streaming_base = " ".join(stream_results)
                 # The seam: the worker counted EXACTLY how many samples its
                 # text covers (one unit — samples — on both sides). The tail is
@@ -1844,7 +2094,8 @@ class Mumble:
                 # Short recording, worker didn't fire, or the mode key was held
                 # (armed needs full word timestamps): authoritative full pass.
                 try:
-                    result = self._transcribe(audio, want_words=mode_active)
+                    result = self._transcribe(
+                        audio, want_words=requested_mode_active)
                     raw, words = result if isinstance(result, tuple) else (result, [])
                 except Exception as e:
                     print("transcription error:", e)
@@ -1856,10 +2107,14 @@ class Mumble:
             if not raw:
                 # Total mic failure WHILE the mode button was held: don't lose the press —
                 # tell the user to redo it on the island instead of going silent.
-                if mode_active:
+                if requested_mode_active:
                     self._suggest_redo()
                 self._idle()
                 return
+            # Durable segments enter through the plain streaming seam so each
+            # segment is decoded once. Restore the frozen requested mode only
+            # after transcript assembly.
+            mode_active = requested_mode_active
 
             # Personal vocabulary, two passes before anything downstream sees
             # the transcript: (1) explicit wrong=right pairs (advanced), then
@@ -1976,9 +2231,13 @@ class Mumble:
                     self.prompt_history.record(det_request or raw, out)
                 except Exception as e:
                     print("prompt history record error:", e)
-            entry = self.history.add(out, mode, duration, raw=raw,
-                                     quality=self._take_quality(),
-                                     via=via_convert)
+            durable_session = getattr(self, "_active_durable_session", None)
+            entry = self.history.add(
+                out, mode, duration, raw=raw,
+                quality=self._take_quality(), via=via_convert,
+                record_id=(durable_session.session_id
+                           if durable_session is not None else None))
+            self._last_history_entry = entry
             if entry is None:
                 self._notify("History save failed",
                              "This dictation could not be saved to History.")
@@ -1987,6 +2246,18 @@ class Mumble:
                     self.stat_store.record(entry["words"], duration, mode)
                 except Exception as e:
                     print("stats record error:", e)
+            durable_owner = getattr(
+                self, "_durable_finalization_owner_id", None)
+            durable_operation = getattr(
+                self, "_durable_finalization_operation_id", None)
+            if durable_session is not None and entry is not None:
+                # Persist both the History identity and the one allowed delivery
+                # attempt before any clipboard or browser side effect. A crash
+                # after this point is recovered as uncertain and is never resent.
+                durable_session.mark_history_committed(
+                    durable_owner, durable_operation)
+                durable_session.claim_final_insertion(
+                    durable_owner, durable_operation)
             # Live refresh: tell the web window new data exists — fire-and-forget
             # on a daemon thread so a slow/busy webui socket can NEVER delay the
             # PASTE below (owner v6 reliability: the paste is the user-facing
@@ -2002,6 +2273,18 @@ class Mumble:
                 print(f"[web-search] mode={mode!r} awaiting_consent={landed}")
             else:
                 landed = self._paste(out)
+            if durable_session is not None and entry is not None:
+                if search_requested:
+                    insertion_outcome = "not_sent"
+                else:
+                    insertion_outcome_value = getattr(
+                        self._last_insertion_result, "outcome", None)
+                    insertion_outcome = (
+                        insertion_outcome_value.value
+                        if insertion_outcome_value is not None else "not_sent")
+                durable_session.complete_finalization(
+                    durable_owner, durable_operation,
+                    insertion_outcome=insertion_outcome)
             if self.island:
                 # Honest verb (owner v4): "Pasted!" only when the text actually
                 # landed in a focused field; otherwise "Saved · Ctrl+Alt+H" — it's
@@ -2077,19 +2360,35 @@ class Mumble:
         return False
 
     def _paste(self, text, keep_on_clipboard=False):
-        """Paste `text` at the cursor. Returns True if it likely landed in an
-        editable field. With keep_on_clipboard=True the text is LEFT on the
-        clipboard afterwards (so Ctrl+V keeps working); otherwise the user's
-        previous clipboard is restored — Mumble must NOT silently replace what
-        the user had copied (Rule 2).
+        """Deliver text once through the shared target-bound authority.
 
-        SERIALIZED (owner v6 bug audit): the dictation paste path and the
-        flyout/cmd click-to-paste path call this from different threads, and the
-        clipboard pause/resume + previous-clipboard save/restore are NOT reentrant
-        — two overlapping pastes could corrupt the clipboard or re-capture
-        Mumble's own output. The lock lets one finish before the next starts."""
+        X11 captures and revalidates a native window identity. Wayland fails
+        closed to saved-only when compositor policy hides that identity.
+        """
         with self._paste_lock:
-            return self._paste_impl(text, keep_on_clipboard)
+            operation_id = self._dictation_insertion_operation_id
+            source = "dictation" if operation_id else "paste_latest"
+            if not operation_id:
+                operation_id = uuid.uuid4().hex
+                self._insertion_module.begin(operation_id, source)
+            try:
+                result = self._insertion_module.deliver(
+                    operation_id, TextPayload(str(text or "")))
+            except Exception as exc:
+                print("insertion transaction failed closed:", exc)
+                self._notify(
+                    "Not inserted - saved in Mumble",
+                    "Use Copy or Paste latest from Deck or History.")
+                return False
+            finally:
+                if operation_id == self._dictation_insertion_operation_id:
+                    self._dictation_insertion_operation_id = None
+            self._last_insertion_result = result
+            if keep_on_clipboard:
+                self._set_clipboard(text)
+            if result.outcome is not InsertionOutcome.CONFIRMED:
+                self._notify("Insertion status", result.message)
+            return result.outcome is InsertionOutcome.CONFIRMED
 
     def _paste_impl(self, text, keep_on_clipboard=False):
         landed = self._focused_editable()
@@ -2186,6 +2485,9 @@ class Mumble:
                 threading.Thread(target=self._safe_start, daemon=True).start()
                 return True
             else:
+                operation_id = uuid.uuid4().hex
+                self._insertion_module.begin(operation_id, "dictation")
+                self._dictation_insertion_operation_id = operation_id
                 self.busy = True
                 threading.Thread(target=self._safe_stop, daemon=True).start()
                 return False
@@ -2221,6 +2523,7 @@ class Mumble:
             self._idle()
         finally:
             self.busy = False
+            self._restore_meeting_island()
 
     def _safe_stop(self):
         try:
@@ -2237,6 +2540,7 @@ class Mumble:
             self._idle()
         finally:
             self.busy = False
+            self._restore_meeting_island()
 
     def _deck_items(self, max_per_source=60):
         """The Deck's unified data: recent transcripts + clipboard items + saved
@@ -2478,18 +2782,20 @@ class Mumble:
             self._set_state("idle")
 
     def _paste_image(self, path):
-        """Paste a clipboard-history image: put it back as CF_DIB and send
-        Ctrl+V. The image stays on the clipboard afterwards (there is no way to
-        snapshot/restore arbitrary prior non-text content without pywin32)."""
-        if not self.copy_image(path):
-            return   # copy_image already notified WHY — never blind-fire Ctrl+V
-        for mod in ("ctrl", "alt", "shift", "windows"):
-            try:
-                keyboard.release(mod)
-            except Exception:
-                pass
-        time.sleep(0.05)
-        keyboard.send("ctrl+v")
+        """Deliver a Deck image through the same exact-once transaction."""
+        operation_id = uuid.uuid4().hex
+        self._insertion_module.begin(operation_id, "deck_image")
+        try:
+            result = self._insertion_module.deliver(
+                operation_id, ImagePayload(str(path or "")))
+        except Exception as exc:
+            print("image insertion failed closed:", exc)
+            self._notify("Image not inserted", "The image remains saved in Deck.")
+            return False
+        self._last_insertion_result = result
+        if result.outcome is not InsertionOutcome.CONFIRMED:
+            self._notify("Image insertion status", result.message)
+        return result.outcome is InsertionOutcome.CONFIRMED
 
     # ---- the Mumble command channel (controller ⇄ web window) --------------
     # The web window runs as its own process; these two tiny localhost sockets
@@ -2579,6 +2885,12 @@ class Mumble:
                                 active_mode=getattr(self, "active_mode", None),
                                 prompt_mode_enabled=self.prompt_mode_enabled,
                                 meeting_recording=getattr(self, "meeting_recording", False))
+                elif cmd == "linux_capabilities":
+                    resp.update(linux_desktop.capability_snapshot(
+                        readable_input=any(
+                            bindings._linux_event_is_readable(path)
+                            for path in bindings._linux_event_paths("kbd")),
+                        sounddevice_module=sd))
                 elif cmd == "record":
                     # EXACTLY the activation-hotkey pipeline (Rule: every
                     # recording entry point behaves identically).
@@ -2699,6 +3011,8 @@ class Mumble:
                         resp = {"ok": bool(ok), "paused": not bool(ok)}
                     else:
                         resp = {"ok": False, "message": "No meeting recording to resume."}
+                elif cmd == "meeting_record_status":
+                    resp = self._meeting_status()
                 elif cmd == "meeting_import_audio":
                     path = req.get("path", "")
                     if path:
@@ -3029,7 +3343,7 @@ class Mumble:
 
     def _show_system_search_page(self):
         """Open the main web window directly on the local Search launcher."""
-        message = {"cmd": "system_search"}
+        message = {"cmd": "system_search", "operation_id": uuid.uuid4().hex}
         if self._send_webui(message):
             return True
         if not self._open_web_ui():
@@ -4950,25 +5264,20 @@ class Mumble:
         import shutil
         import subprocess
 
-        # Use the INPUT session type, NOT GDK_BACKEND: the app pins
-        # GDK_BACKEND=x11 on Wayland (so the GTK island renders), which made the
-        # old `not GDK_BACKEND.startswith("x11")` test always False on real
-        # Wayland — so an image copy used xclip (XWayland clipboard) even with
-        # wl-clipboard installed, and native-Wayland apps couldn't paste it.
+        # Use the input session type, never DISPLAY/XWayland presence, to choose
+        # the native clipboard protocol.
         try:
             wayland = bindings._session_type() == "wayland"
         except Exception:
             wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
         cmd = None
-        if wayland and shutil.which("wl-copy"):
-            cmd = ["wl-copy", "--type", "image/png"]
-            stdin_file = path
+        if wayland:
+            if shutil.which("wl-copy"):
+                cmd = ["wl-copy", "--type", "image/png"]
+                stdin_file = path
         elif shutil.which("xclip"):
             cmd = ["xclip", "-selection", "clipboard", "-t", "image/png", "-i", path]
             stdin_file = None
-        elif shutil.which("wl-copy"):  # X11-less fallback
-            cmd = ["wl-copy", "--type", "image/png"]
-            stdin_file = path
         if cmd is None:
             self._notify("Couldn't copy image",
                          "Install xclip (X11) or wl-clipboard (Wayland) to copy "
@@ -5696,6 +6005,9 @@ class Mumble:
             # already signals "ready". Cloud mode is "ready" with no local model
             # loaded — that's the deliberate deferral, not an error.
             self._idle()
+            threading.Thread(
+                target=self._recover_durable_dictations,
+                name="mumble-linux-dictation-recovery", daemon=True).start()
         else:
             self._set_state("error")
         if self.settings.get("first_run", True):
@@ -5725,7 +6037,10 @@ class Mumble:
             self.island.set_widget_callbacks(
                 on_mode=self.set_active_mode,
                 on_deck=self.on_open_history,
-                on_foreign=self.toggle_island_foreign)
+                on_foreign=self.toggle_island_foreign,
+                on_stop=self.on_hotkey)
+            self.island.bar_state["reduced_motion"] = (
+                linux_desktop.prefers_reduced_motion())
             self._push_island_bar_state()
         except Exception as e:
             print("island widget wiring skipped:", e)

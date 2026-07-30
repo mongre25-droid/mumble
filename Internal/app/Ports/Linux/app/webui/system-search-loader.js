@@ -10,6 +10,10 @@
     pendingOpen = true;
     if (!loaded) { loadFromBridge(); return false; }
     if (typeof window.bootSystemSearch === "function") window.bootSystemSearch();
+    if (typeof window.showSystemSearch === "function") {
+      pendingOpen = false;
+      return window.showSystemSearch();
+    }
     if (typeof window.navTo === "function" && document.querySelector('[data-view="system-search"]')) {
       window.navTo("system-search");
       const input = document.querySelector("#ss-input");

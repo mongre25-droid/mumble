@@ -218,7 +218,7 @@ def test_webui_source_contracts_follow_platform_defaults():
     assert "wireAccountCard();" in wiring
     assert "meetingsById.get(String(mid))" in meetings
     assert 'title: "Delete " + esc(title)' not in meetings
-    assert "settings.meeting_processing_mode" in meetings
+    assert 'case "meeting_set_processing_mode"' in source
     assert "if (!r || r.ok === false)" in hydrate
     assert f'history_hotkey: "{expected_history}"' in source
 
@@ -228,12 +228,12 @@ def test_static_document_and_fallback_contracts():
     css = (APP_DIR / "webui" / "app.css").read_text(encoding="utf-8")
     assert '<main id="main-content">' in html
     assert 'rel="icon" href="mumble.png"' in html
-    assert 'role="navigation" aria-label="Primary"' in html
+    assert 'role="navigation" aria-label="Primary destinations"' in html
     assert "var(--text-primary)" not in css
     assert not (APP_DIR / "app_window.py").exists()
     app_js = APP_JS.read_text(encoding="utf-8")
-    assert 'Format: ${esc(fmtLabel)}' in app_js
-    assert '${esc(d.format ? d.format.toUpperCase()' in app_js
+    assert 'aria-label="Format: ${fmtLabel}"' in app_js
+    assert 'if (fmtLabel === "MARKDOWN") fmtLabel = "MD";' in app_js
     shell_source = (APP_DIR / "webui_shell.py").read_text(encoding="utf-8")
     assert "*.m4a" not in shell_source
 

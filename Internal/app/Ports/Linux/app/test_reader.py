@@ -157,11 +157,10 @@ finally:
 print("\n== format negotiation — payload.response_format matches the model ==")
 orig = _install_fake(b"ID3mp3bytes", "audio/mpeg")
 try:
-    audio, ctype = ai.openrouter_tts(
-        "hello", "sk-or-key", model="mistralai/voxtral-mini-tts-2603",
-        voice="gb_oliver_neutral",
-        route_decision=_openrouter_route(
-            "mistralai/voxtral-mini-tts-2603"))
+    audio, ctype = ai.openrouter_tts("hello", "sk-or-key",
+                                     model="mistralai/voxtral-mini-tts-2603",
+                                     route_decision=_openrouter_route(
+                                         "mistralai/voxtral-mini-tts-2603"))
     check("mp3 model sends response_format=mp3",
           _captured["payload"].get("response_format") == "mp3")
     check("mp3 bytes pass through unchanged", audio == b"ID3mp3bytes")
@@ -175,10 +174,10 @@ print("\n== PCM→WAV — Gemini returns raw PCM; we frame it as a playable WAV 
 pcm = b"\x00\x00" * 100
 orig = _install_fake(pcm, "audio/L16")
 try:
-    audio, ctype = ai.openrouter_tts(
-        "hello", "sk-or-key", model="google/gemini-3.1-flash-tts-preview",
-        route_decision=_openrouter_route(
-            "google/gemini-3.1-flash-tts-preview"))
+    audio, ctype = ai.openrouter_tts("hello", "sk-or-key",
+                                     model="google/gemini-3.1-flash-tts-preview",
+                                     route_decision=_openrouter_route(
+                                         "google/gemini-3.1-flash-tts-preview"))
     check("Gemini sends response_format=pcm",
           _captured["payload"].get("response_format") == "pcm")
     check("raw PCM is wrapped to WAV (RIFF header)", audio[:4] == b"RIFF")
@@ -215,44 +214,47 @@ check("Reader catalogue is male-only (no female voices)",
 check("Reader catalogue still has male voices", any(v.get("gender") == ai.GENDER_MALE for v in _ui_voices))
 check("No purged female id leaks into the Gemini known-voice list",
       not any(g in gemini_voices for g in ("Kore", "Leda", "Aoede", "Despina")))
-check("Voxtral model exposes its verified voice catalogue",
-      "gb_oliver_neutral" in
-      ai.OPENROUTER_TTS_VOICES.get("mistralai/voxtral-mini-tts-2603", []))
-check("MAI Voice model exposes its verified voice catalogue",
-      "en-US-Harper:MAI-Voice-2" in
-      ai.OPENROUTER_TTS_VOICES.get("microsoft/mai-voice-2", []))
+check("Voxtral exposes its supported British male default",
+      ai.OPENROUTER_TTS_DEFAULT_VOICES.get(
+          "mistralai/voxtral-mini-tts-2603") == "gb_oliver_neutral"
+      and "gb_oliver_neutral" in ai.OPENROUTER_TTS_VOICES.get(
+          "mistralai/voxtral-mini-tts-2603", []))
+check("MAI Voice exposes its supported English default",
+      ai.OPENROUTER_TTS_DEFAULT_VOICES.get(
+          "microsoft/mai-voice-2") == "en-US-Harper:MAI-Voice-2"
+      and "en-US-Harper:MAI-Voice-2" in ai.OPENROUTER_TTS_VOICES.get(
+          "microsoft/mai-voice-2", []))
 
 print("\n== reader_tts_models — has_key logic (VAL-READER-013) ==")
-# Simulate settings with and without an OpenRouter key.
-try:
-    from settings import AppSettings
-    from reader_store import _lib_path
-    import os, tempfile
-    
-    # Create ephemeral settings in a temp directory
-    tmp = tempfile.mkdtemp(prefix="mumble_test_")
-    st = AppSettings(os.path.join(tmp, "settings.json"))
-    # No key -> has_key should be False
-    st.set("openrouter_api_key", "")
-    valid = {mid for (mid, _l, _f) in ai.OPENROUTER_TTS_MODELS}
-    saved_model = st.get("reader_tts_model", "").strip()
-    has_key = bool(st.get("openrouter_api_key", "").strip())
-    check("has_key is False when openrouter_api_key is empty", not has_key)
-    
-    # With a key -> has_key should be True
-    st.set("openrouter_api_key", "sk-or-v1-testkey1234")
-    has_key = bool(st.get("openrouter_api_key", "").strip())
-    check("has_key is True when openrouter_api_key is present", has_key)
-    
-    # Clean up
-    import shutil
-    shutil.rmtree(tmp, ignore_errors=True)
-except ImportError:
-    # Offline: just verify the logic concept
-    check("has_key detection logic: empty key -> False", 
-          not bool(("" or "").strip()))
-    check("has_key detection logic: present key -> True",
-          bool(("sk-or-test" or "").strip()))
+import webui_shell
+
+
+class _ReaderSettings:
+    def __init__(self, **values):
+        self.values = dict(values)
+
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+    def set(self, key, value):
+        self.values[key] = value
+
+
+api = webui_shell.Api.__new__(webui_shell.Api)
+api.settings = _ReaderSettings(
+    reader_tts_provider="openrouter", openrouter_api_key="", openai_api_key="")
+info_no_key = api.reader_tts_models()
+check("reader_tts_models endpoint reports no key", info_no_key.get("has_key") is False)
+api.settings.set("openrouter_api_key", "sk-or-v1-testkey1234")
+info_with_key = api.reader_tts_models()
+check("reader_tts_models endpoint reports configured key", info_with_key.get("has_key") is True)
+check("reader_tts_models endpoint returns selectable voices",
+      bool(info_with_key.get("voices")))
+api.settings.set("reader_tts_model", "mistralai/voxtral-mini-tts-2603")
+api.settings.set("reader_voice", "Fenrir")  # valid Gemini voice, invalid here
+info_voxtral = api.reader_tts_models()
+check("reader_tts_models heals a cross-model voice to Voxtral's default",
+      info_voxtral.get("default_voice") == "gb_oliver_neutral")
 
 # ============================================================ TTSProvider architecture
 print("\n== TTSProvider abstraction (VAL-TTS-001, VAL-TTS-002, VAL-TTS-003, VAL-TTS-006) ==")
@@ -373,7 +375,8 @@ _fake_map = {
 ai.get_tts_provider = lambda pid: _fake_map.get(pid, _fake_map["openrouter"])
 
 try:
-    # The OpenRouter route fails closed without crossing to OpenAI.
+    # One frozen route authorizes exactly one provider. It may fall back to a
+    # sibling model, but it must never cross to OpenAI.
     audio, ctype, meta = ai.synthesize_with_fallback(
         "hello", voice_id="Kore", provider_id="openrouter",
         route_decision=_openrouter_route())
@@ -407,6 +410,60 @@ try:
 
 finally:
     ai.get_tts_provider = _orig_get
+
+# ============================================== intra-catalogue fallback (VAL-TTS-008)
+print("\n== frozen model — a bad OpenRouter model does not try siblings ==")
+_orig_get2 = ai.get_tts_provider
+_cat = [m for (m, _l, _f) in ai.OPENROUTER_TTS_MODELS]
+
+
+class _ModelAwareProvider:
+    """Mock that fails for specific model ids and records what it was asked."""
+    def __init__(self, pid, bad_models):
+        self.provider_id = pid
+        self._bad = set(bad_models)
+        self.tried = []
+
+    def synthesize(self, text, voice_id=None, model=None,
+                   response_format=None, timeout=60, route_decision=None,
+                   operation_lane=None):
+        self.tried.append(model)
+        if model in self._bad:
+            raise RuntimeError(f"model {model} 404")
+        return (b"ok_" + str(model).encode(), "audio/wav")
+
+
+# The frozen model fails while siblings and OpenAI would succeed. Neither may
+# be reached because one route authorizes one exact provider and model.
+_or = _ModelAwareProvider("openrouter", bad_models=[_cat[0]])
+_oa = _ModelAwareProvider("openai", bad_models=[])
+ai.get_tts_provider = lambda pid: {"openrouter": _or, "openai": _oa}.get(pid, _or)
+try:
+    audio, ctype, meta = ai.synthesize_with_fallback(
+        "hi", model=_cat[0], voice_id="Fenrir", provider_id="openrouter",
+        route_decision=_openrouter_route(_cat[0]))
+    check("frozen-model: failure returns ok=False", meta.get("ok") is False)
+    check("frozen-model: OpenAI was never reached", _oa.tried == [])
+    check("frozen-model: only the authorized model was tried",
+          _or.tried == [_cat[0]])
+    check("frozen-model: no audio was returned", audio is None and ctype is None)
+finally:
+    ai.get_tts_provider = _orig_get2
+
+# ============================================ PCM sample-rate from Content-Type (VAL-TTS-009)
+print("\n== PCM rate parsing — honour the response's signalled sample rate ==")
+check("rate parsed from 'audio/L16;rate=16000'",
+      ai._pcm_rate_from_ctype("audio/L16;rate=16000") == 16000)
+check("rate parsed with spaces 'audio/pcm; rate=22050'",
+      ai._pcm_rate_from_ctype("audio/pcm; rate=22050") == 22050)
+check("missing rate → 24k default",
+      ai._pcm_rate_from_ctype("audio/wav") == ai._TTS_PCM_RATE)
+check("empty content-type → default",
+      ai._pcm_rate_from_ctype("") == ai._TTS_PCM_RATE)
+check("absurd rate rejected → default",
+      ai._pcm_rate_from_ctype("audio/L16;rate=999999999") == ai._TTS_PCM_RATE)
+check("non-numeric rate rejected → default",
+      ai._pcm_rate_from_ctype("audio/L16;rate=abc") == ai._TTS_PCM_RATE)
 
 # ===================================================================== final
 if _fails:

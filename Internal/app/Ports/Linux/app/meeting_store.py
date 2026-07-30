@@ -11,6 +11,7 @@ Entry shape:
   created: float,       # epoch
   duration_sec: float,
   audio_path: str,      # relative path to WAV in data dir
+  capture_warning: str | null, # durable early-stop/integrity warning
   processing_mode: str, # "lightweight" or "deep"
   segments: [{          # the structured transcript
     speaker: str,       # "Speaker 1", "Speaker 2", …
@@ -36,9 +37,10 @@ Owner 2026-06-29 — meeting-mode milestone.
 """
 
 import json
+import glob
+import math
 import os
 import shutil
-import tempfile
 import threading
 import time
 import uuid
@@ -50,8 +52,13 @@ PATH = os.path.join(branding.DATA_DIR, "meetings.json")
 # Meetings are user-owned records.  Never silently prune transcript/audio data;
 # retention lasts until the user explicitly deletes a meeting.
 CAP = None
+# Meeting records can contain long transcripts, and the durable write includes
+# an fsync plus a backup generation. Give a simultaneous controller/web writer
+# enough time to finish instead of reporting a false save failure after 3s.
+WRITE_LOCK_TIMEOUT = 10.0
 
 _LOCK = threading.RLock()
+_LAST_LOAD_HEALTH = "unknown"
 
 # Speaker accent palette — distinct, accessible colours for up to 8 speakers.
 SPEAKER_COLORS = [
@@ -82,14 +89,22 @@ def _load():
     if neither generation parses, move the damaged primary aside before
     returning an empty store so its original bytes remain recoverable.
     """
+    global _LAST_LOAD_HEALTH
     with _LOCK:
         try:
-            return _read_store(PATH)
+            rows = _read_store(PATH)
+            _LAST_LOAD_HEALTH = "ok"
+            return rows
         except FileNotFoundError:
             backup = PATH + ".bak"
             try:
                 rows = _read_store(backup)
-            except Exception:
+            except FileNotFoundError:
+                _LAST_LOAD_HEALTH = "missing"
+                return []
+            except Exception as backup_error:
+                _LAST_LOAD_HEALTH = "corrupt"
+                print("meeting store backup load error:", backup_error)
                 return []
             try:
                 shutil.copy2(backup, PATH)
@@ -97,6 +112,7 @@ def _load():
                 print("meeting store restored missing primary from backup")
             except OSError as restore_error:
                 print("meeting store restore error:", restore_error)
+            _LAST_LOAD_HEALTH = "recovered"
             return rows
         except Exception as e:
             print("meeting store load error:", e)
@@ -112,6 +128,7 @@ def _load():
                         pass
                 if not isinstance(backup_error, FileNotFoundError):
                     print("meeting store backup load error:", backup_error)
+                _LAST_LOAD_HEALTH = "corrupt"
                 return []
             try:
                 corrupt = PATH + ".corrupt-" + uuid.uuid4().hex[:12]
@@ -121,6 +138,7 @@ def _load():
                 print("meeting store recovered from backup")
             except OSError as restore_error:
                 print("meeting store restore error:", restore_error)
+            _LAST_LOAD_HEALTH = "recovered"
             return rows
 
 
@@ -134,58 +152,59 @@ def _save(rows):
     ordered = sorted((r for r in rows if isinstance(r, dict)),
                      key=_created, reverse=True)
     rows = ordered
-    tmp = backup_tmp = None
     try:
         parent = os.path.dirname(PATH)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(
-            prefix=os.path.basename(PATH) + ".", suffix=".tmp",
-            dir=parent or ".", text=True)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        tmp = PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(rows, f, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
         backup = PATH + ".bak"
-        if os.path.isfile(PATH):
-            backup_fd, backup_tmp = tempfile.mkstemp(
-                prefix=os.path.basename(backup) + ".", suffix=".tmp",
-                dir=parent or ".")
-            with os.fdopen(backup_fd, "wb") as output, open(PATH, "rb") as source:
-                shutil.copyfileobj(source, output)
-                output.flush()
-                os.fsync(output.fileno())
+        had_current = os.path.exists(PATH)
+        if had_current:
+            backup_tmp = backup + ".tmp"
+            shutil.copy2(PATH, backup_tmp)
             os.replace(backup_tmp, backup)
-            backup_tmp = None
-        # Replace the live generation in one atomic step; readers never observe
-        # the missing-primary window created by moving PATH to .bak first.
-        os.replace(tmp, PATH)
-        tmp = None
+        try:
+            os.replace(tmp, PATH)
+        except Exception:
+            if had_current and os.path.exists(backup) and not os.path.exists(PATH):
+                shutil.copy2(backup, PATH)
+            raise
         branding.protect_private_path(PATH)
-        branding.protect_private_path(backup)
         return True
     except Exception as e:
         print(f"meeting store save error ({type(e).__name__}): {e}")
-        for candidate in (tmp, backup_tmp):
-            if candidate:
-                try:
-                    os.remove(candidate)
-                except OSError:
-                    pass
+        try:
+            os.remove(PATH + ".tmp")
+        except OSError:
+            pass
+        try:
+            os.remove(PATH + ".bak.tmp")
+        except OSError:
+            pass
         return False
 
 
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
-def list_meetings():
-    """Return meeting metadata (without full segments), newest first."""
-    rows = _load()
-    out = []
-    for r in rows:
-        segments = r.get("segments") or []
-        speakers = r.get("speakers") or []
-        out.append({
+def _audio_available(filename):
+    """Whether a stored recording points to a usable private audio file."""
+    path = _safe_audio_path(filename)
+    try:
+        return bool(path and os.path.isfile(path) and os.path.getsize(path) > 44)
+    except OSError:
+        return False
+
+
+def _meeting_projection(r):
+    """List-safe meeting metadata, excluding the full transcript payload."""
+    segments = r.get("segments") or []
+    speakers = r.get("speakers") or []
+    return {
             "id": r.get("id"),
             "title": r.get("title", "Untitled Meeting"),
             "created": r.get("created", 0),
@@ -200,16 +219,116 @@ def list_meetings():
             "key_decision_count": len(r.get("key_decisions") or []),
             "open_question_count": len(r.get("open_questions") or []),
             "processing_mode": r.get("processing_mode", "lightweight"),
+            "transcription_mode": r.get("transcription_mode"),
+            "transcription_provider": r.get("transcription_provider"),
             "starred": bool(r.get("starred")),
             "tags": r.get("tags") or [],
             "preview": (segments[0].get("text", "") if segments else "")[:120],
             "audio_path": r.get("audio_path"),
+            "audio_available": _audio_available(r.get("audio_path")),
             "status": r.get("status", "ready"),
             "error": r.get("error"),
-            "analysis_status": r.get("analysis_status", "idle"),
-            "analysis_error": r.get("analysis_error"),
-        })
-    return out
+            "capture_warning": r.get("capture_warning"),
+        }
+
+
+def list_meetings():
+    """Return meeting metadata (without full segments), newest first."""
+    return [_meeting_projection(r) for r in _load()]
+
+
+def search_meetings(query):
+    """Search titles and complete transcripts locally, newest first."""
+    needle = str(query or "").strip().casefold()
+    rows = _load()
+    if not needle:
+        return [_meeting_projection(r) for r in rows]
+    matches = []
+    for row in rows:
+        speakers = row.get("speakers") or []
+        segments = row.get("segments") or []
+        haystack = [
+            row.get("title", ""), row.get("status", ""),
+            *(row.get("tags") or []),
+            *(s.get("label", "") for s in speakers if isinstance(s, dict)),
+            *(s.get("name", "") for s in speakers if isinstance(s, dict)),
+            *(s.get("text", "") for s in segments if isinstance(s, dict)),
+        ]
+        if any(needle in str(value or "").casefold() for value in haystack):
+            matches.append(_meeting_projection(row))
+    return matches
+
+
+def store_health():
+    """Last observed metadata health for truthful empty/error UI states."""
+    return _LAST_LOAD_HEALTH
+
+
+def activity_summary():
+    """Return privacy-minimal activity derived from currently saved meetings.
+
+    These are retained-library metrics, not lifetime counters: deleting a meeting
+    removes it from the totals, and imported audio is included. Bad duration fields
+    never erase valid rows or turn the whole widget into a fabricated zero state.
+    """
+    rows = _load()
+    health = _LAST_LOAD_HEALTH
+    if health == "corrupt":
+        return {
+            "available": False,
+            "health": health,
+            "has_activity": None,
+            "saved_count": None,
+            "saved_duration_seconds": None,
+            "duration_complete": False,
+            "latest_created": None,
+            "processing_count": None,
+            "attention_count": None,
+        }
+
+    total_seconds = 0.0
+    duration_complete = True
+    latest_created = None
+    processing_count = 0
+    attention_count = 0
+    for row in rows:
+        try:
+            if "duration_sec" not in row:
+                raise ValueError("missing duration")
+            duration = float(row.get("duration_sec", 0) or 0)
+            if not math.isfinite(duration) or duration < 0:
+                raise ValueError("invalid duration")
+            total_seconds += duration
+        except (TypeError, ValueError, OverflowError, AttributeError):
+            duration_complete = False
+
+        try:
+            created = float(row.get("created", 0) or 0)
+            if math.isfinite(created) and created > 0:
+                latest_created = max(latest_created or created, created)
+        except (TypeError, ValueError, OverflowError, AttributeError):
+            pass
+
+        status = str(row.get("status", "ready") or "ready").lower()
+        if status in ("pending", "processing"):
+            processing_count += 1
+        if (status in ("failed", "interrupted")
+                or status not in ("ready", "pending", "processing")
+                or bool(row.get("capture_warning"))
+                or bool(row.get("error"))):
+            attention_count += 1
+
+    return {
+        "available": True,
+        "health": health,
+        "has_activity": bool(rows),
+        "saved_count": len(rows),
+        "saved_duration_seconds": round(total_seconds, 1),
+        "duration_complete": duration_complete,
+        "latest_created": latest_created,
+        "processing_count": processing_count,
+        "attention_count": attention_count,
+    }
 
 
 def get_meeting(meeting_id):
@@ -223,11 +342,13 @@ def get_meeting(meeting_id):
                 "duration_sec": r.get("duration_sec", 0),
                 "duration_display": _fmt_duration(r.get("duration_sec", 0)),
                 "audio_path": r.get("audio_path"),
+                "audio_available": _audio_available(r.get("audio_path")),
                 "status": r.get("status", "ready"),
                 "error": r.get("error"),
-                "analysis_status": r.get("analysis_status", "idle"),
-                "analysis_error": r.get("analysis_error"),
+                "capture_warning": r.get("capture_warning"),
                 "processing_mode": r.get("processing_mode", "lightweight"),
+                "transcription_mode": r.get("transcription_mode"),
+                "transcription_provider": r.get("transcription_provider"),
                 "segments": r.get("segments") or [],
                 "speakers": r.get("speakers") or [],
                 "segment_count": len(r.get("segments") or []),
@@ -245,14 +366,17 @@ def get_meeting(meeting_id):
 def save_meeting(title, audio_path, duration_sec, segments, speakers,
                  summary=None, action_items=None,
                  key_decisions=None, open_questions=None,
-                 processing_mode="lightweight", status="ready", error=None):
+                 processing_mode="lightweight", status="ready", error=None,
+                 capture_warning=None, transcription_mode=None,
+                 transcription_provider=None):
     """Persist a new meeting. Returns the meeting id."""
     title = (title or "").strip()
     if not title:
         title = _auto_title(duration_sec)
     mid = uuid.uuid4().hex[:12]
     now = time.time()
-    with _LOCK, exclusive_file_lock(PATH) as acquired:
+    with _LOCK, exclusive_file_lock(
+            PATH, timeout=WRITE_LOCK_TIMEOUT) as acquired:
         if not acquired:
             return None
         rows = _load()
@@ -263,10 +387,11 @@ def save_meeting(title, audio_path, duration_sec, segments, speakers,
             "duration_sec": duration_sec,
             "audio_path": audio_path,
             "processing_mode": processing_mode or "lightweight",
+            "transcription_mode": transcription_mode,
+            "transcription_provider": transcription_provider,
             "status": status or "ready",
             "error": error,
-            "analysis_status": "idle",
-            "analysis_error": None,
+            "capture_warning": capture_warning,
             "segments": segments,
             "speakers": speakers,
             "summary": summary,
@@ -284,7 +409,8 @@ def save_meeting(title, audio_path, duration_sec, segments, speakers,
 def update_meeting(meeting_id, **kwargs):
     """Update mutable fields: title, summary, action_items, key_decisions,
     open_questions, processing_mode, starred, tags, speaker names."""
-    with _LOCK, exclusive_file_lock(PATH) as acquired:
+    with _LOCK, exclusive_file_lock(
+            PATH, timeout=WRITE_LOCK_TIMEOUT) as acquired:
         if not acquired:
             return False
         rows = _load()
@@ -294,8 +420,10 @@ def update_meeting(meeting_id, **kwargs):
                 for k in ("title", "summary", "starred", "tags", "speakers",
                           "action_items", "key_decisions", "open_questions",
                           "processing_mode", "segments", "audio_path", "status",
-                          "error", "duration_sec", "analysis_status",
-                          "analysis_error"):
+                          "error", "capture_warning", "duration_sec"):
+                    if k in kwargs:
+                        r[k] = kwargs[k]
+                for k in ("transcription_mode", "transcription_provider"):
                     if k in kwargs:
                         r[k] = kwargs[k]
                 hit = True
@@ -307,7 +435,8 @@ def update_meeting(meeting_id, **kwargs):
 
 def rename_speaker(meeting_id, label, name):
     """Assign a human-readable name to a speaker label."""
-    with _LOCK, exclusive_file_lock(PATH) as acquired:
+    with _LOCK, exclusive_file_lock(
+            PATH, timeout=WRITE_LOCK_TIMEOUT) as acquired:
         if not acquired:
             return False
         rows = _load()
@@ -325,7 +454,8 @@ def rename_speaker(meeting_id, label, name):
 
 
 def set_starred(meeting_id, starred):
-    with _LOCK, exclusive_file_lock(PATH) as acquired:
+    with _LOCK, exclusive_file_lock(
+            PATH, timeout=WRITE_LOCK_TIMEOUT) as acquired:
         if not acquired:
             return False
         rows = _load()
@@ -341,27 +471,27 @@ def set_starred(meeting_id, starred):
 
 
 def delete_meeting(meeting_id):
-    with _LOCK, exclusive_file_lock(PATH) as acquired:
+    with _LOCK, exclusive_file_lock(
+            PATH, timeout=WRITE_LOCK_TIMEOUT) as acquired:
         if not acquired:
             return False
         existing = _load()
         target = next((r for r in existing if r.get("id") == meeting_id), None)
         if target is None:
-            return True
+            return _LAST_LOAD_HEALTH != "corrupt"
         rows = [r for r in existing if r.get("id") != meeting_id]
         if not _save(rows):
             return False
         # Metadata is the source of truth. Delete it durably first so a later
         # filesystem failure can leave only a harmless orphan, never a meeting
         # record whose audio has already been destroyed.
-        _delete_audio_file(target.get("audio_path"), missing_ok=True)
-        return True
+        return _delete_audio_file(target.get("audio_path"), missing_ok=True)
 
 
 def list_pending_meetings():
     """Return durable recordings whose transcription was interrupted."""
     return [r for r in _load()
-            if r.get("status") in ("processing", "interrupted")
+            if r.get("status") in ("recording", "processing", "interrupted")
             and r.get("audio_path")]
 
 
@@ -370,8 +500,16 @@ def cleanup_orphan_audio():
     audio_dir = _audio_dir()
     if not os.path.isdir(audio_dir):
         return 0
+    rows = _load()
+    # If metadata is missing/corrupt (or a corrupt snapshot exists), an
+    # apparently unreferenced WAV may be the only recoverable copy of a meeting.
+    # Cleanup is an optimisation, never a reason to destroy user audio.
+    if (_LAST_LOAD_HEALTH not in ("ok", "recovered")
+            or glob.glob(PATH + ".corrupt-*")):
+        print("meeting audio cleanup skipped: metadata recovery is unresolved")
+        return 0
     referenced = {os.path.basename(str(r.get("audio_path") or ""))
-                  for r in _load() if r.get("audio_path")}
+                  for r in rows if r.get("audio_path")}
     removed = 0
     for name in os.listdir(audio_dir):
         if (name.startswith("meeting_") and name.endswith(".wav")

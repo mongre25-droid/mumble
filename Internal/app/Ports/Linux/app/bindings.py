@@ -24,6 +24,8 @@ import shutil
 import subprocess
 import sys
 
+import portal_shortcuts
+
 try:
     import mouse as _mouse
     HAVE_MOUSE = True
@@ -446,6 +448,8 @@ def register_hotkey(spec, callback):
     spec. The callback is invoked with no arguments (both libraries support
     this), matching the existing handlers."""
     s = normalize(spec)
+    if portal_shortcuts.native_wayland():
+        return _Handle("portal", portal_shortcuts.register_hotkey(s, callback))
     if s.startswith(MOUSE_PREFIX):
         if not HAVE_MOUSE:
             raise RuntimeError("mouse library not available")
@@ -476,6 +480,9 @@ def register_hold(spec, on_down, on_up):
     on_down/on_up must tolerate being called with zero args (mouse) or one
     event arg (keyboard) — give them a default-valued parameter."""
     s = normalize(spec)
+    if portal_shortcuts.native_wayland():
+        return _Handle(
+            "portal", portal_shortcuts.register_hold(s, on_down, on_up))
     if s.startswith(MOUSE_PREFIX):
         if not HAVE_MOUSE:
             raise RuntimeError("mouse library not available")
@@ -507,6 +514,8 @@ def unregister(handle):
         elif handle.kind == "mouse_hold":
             for h in handle.h:
                 _mouse.unhook(h)
+        elif handle.kind == "portal":
+            handle.h.close()
         return True
     except Exception:
         return False
@@ -721,22 +730,28 @@ def _xdotool_send(spec):
 
 
 def send(spec):
-    """Inject a key/combo across Wayland, X11, then raw evdev/uinput fallback."""
+    """Inject a key/combo without crossing native session boundaries."""
     s = normalize(spec)
     if not s:
         raise ValueError("empty key specification")
     if _session_type() == "wayland":
-        if _wtype_send(s) or _ydotool_send(s) or _xdotool_send(s):
+        # DISPLAY may name XWayland, but the user's target can be a native
+        # Wayland surface. Never interpret XWayland availability as permission
+        # to send the command to an unrelated X11 focus owner.
+        if _wtype_send(s) or _ydotool_send(s):
             return True
-    elif _xdotool_send(s) or _ydotool_send(s):
+        raise RuntimeError(
+            "Could not inject keys on Wayland. Install/enable wtype or "
+            "permission-backed ydotool; XWayland is not used as a fallback.")
+    if _xdotool_send(s) or _ydotool_send(s):
         return True
     try:
         keyboard.send(s)
         return True
     except Exception as exc:
         raise RuntimeError(
-            "Could not inject keys. Install/enable wtype (Wayland), xdotool "
-            "(X11), or grant write access to /dev/uinput.") from exc
+            "Could not inject keys. Install xdotool (X11) or grant write "
+            "access to /dev/uinput.") from exc
 
 
 def release(key):
@@ -753,7 +768,7 @@ def release(key):
         if exe and modifier and _run_inject([exe, "-m", modifier]):
             return True
     exe = shutil.which("xdotool")
-    if exe and os.environ.get("DISPLAY"):
+    if _session_type() == "x11" and exe and os.environ.get("DISPLAY"):
         xname = name.replace("windows", "super").replace("win", "super")
         if _run_inject([exe, "keyup", xname]):
             return True

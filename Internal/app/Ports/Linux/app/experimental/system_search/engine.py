@@ -23,8 +23,18 @@ import sys
 import threading
 import time
 import unicodedata
+import uuid
 from urllib.parse import quote_plus
 import webbrowser
+
+try:
+    from linux_desktop import DesktopSession, LinuxSearchAdapter, drag_capability
+    from linux_insertion import LinuxClipboardAdapter
+    from linux_native_drag import LinuxNativeDragAdapter
+    from insertion import InsertionRequest
+except ImportError:  # package import in extracted/runtime tests
+    DesktopSession = LinuxSearchAdapter = drag_capability = None
+    LinuxClipboardAdapter = LinuxNativeDragAdapter = InsertionRequest = None
 
 
 INDEX_VERSION = 1
@@ -124,6 +134,17 @@ class SystemSearchEngine:
         self._refreshing = False
         self._updated_at = ""
         self._last_error = ""
+        self._linux_search_state = None
+        self._linux_search = None
+        self._linux_clipboard = None
+        self._linux_drag = None
+        if self.platform == "linux" and LinuxSearchAdapter is not None:
+            session = DesktopSession.detect()
+            self._linux_search = LinuxSearchAdapter(session)
+            if LinuxClipboardAdapter is not None:
+                self._linux_clipboard = LinuxClipboardAdapter(session)
+            if LinuxNativeDragAdapter is not None:
+                self._linux_drag = LinuxNativeDragAdapter(session)
         self._state = {"favorites": [], "usage": {}}
         self._load_state()
         self._load_cache()
@@ -255,8 +276,10 @@ class SystemSearchEngine:
                 if len(items) >= self.max_items:
                     break
             remaining = max(0, self.max_items - len(items))
-            if remaining and bool(_setting(
-                    self.settings, "system_search_include_files", True)):
+            if (remaining and bool(_setting(
+                    self.settings, "system_search_include_files", True))
+                    and not (self.platform == "linux"
+                             and self._file_roots_override is None)):
                 for item in self._discover_files(remaining):
                     items[item.id] = item
                     if len(items) >= self.max_items:
@@ -513,7 +536,7 @@ class SystemSearchEngine:
             for item in self._items.values():
                 if item.kind in counts:
                     counts[item.kind] += 1
-            return {
+            result = {
                 "ok": self.supported,
                 "supported": self.supported,
                 "platform": self.platform,
@@ -533,6 +556,16 @@ class SystemSearchEngine:
                     if not self.supported else ""
                 ),
             }
+            if self.platform == "linux" and self._linux_search is not None:
+                provider, executable = self._linux_search._route()
+                result["file_provider"] = provider or "none"
+                result["file_provider_status"] = (
+                    "degraded" if provider == "plocate" else
+                    "ready" if executable else "unsupported")
+                result["file_provider_message"] = (
+                    self._linux_search_state.message
+                    if self._linux_search_state is not None else "")
+            return result
 
     @staticmethod
     def _subsequence_score(query, text):
@@ -612,6 +645,10 @@ class SystemSearchEngine:
             actions.append("reveal")
         if item.source not in {"start-apps"}:
             actions.append("copy_path")
+        if (sys.platform.startswith("linux") and item.kind in {"file", "folder"}
+                and drag_capability is not None
+                and drag_capability(DesktopSession.detect()).status == "ready"):
+            actions.append("drag")
         return actions
 
     def _public_result(self, item, score=0.0):
@@ -640,7 +677,8 @@ class SystemSearchEngine:
             self._ephemeral[item.id] = item
         return item
 
-    def search(self, query="", category="all", limit=DEFAULT_RESULT_LIMIT):
+    def search(self, query="", category="all", limit=12,
+               generation=None, deadline_ms=1500):
         if not self.supported:
             return {"ok": False, "supported": False, "results": [],
                     "message": "Mumble Find is available on Windows and Linux."}
@@ -669,6 +707,30 @@ class SystemSearchEngine:
             items = list(self._items.values())
             favorites = set(self._state.get("favorites", []))
             refreshing = self._refreshing
+        provider_response = None
+        if (self.platform == "linux" and self._linux_search is not None
+                and query and category in {"all", "file", "folder"}
+                and bool(_setting(self.settings,
+                                  "system_search_include_files", True))):
+            try:
+                timeout = max(0.1, min(4.0, float(deadline_ms) / 1000.0))
+            except (TypeError, ValueError):
+                timeout = 1.5
+            provider_response = self._linux_search.search(
+                query, limit=limit, timeout=timeout,
+                operation_id=hashlib.sha256(query.encode(
+                    "utf-8", "replace")).hexdigest()[:16])
+            self._linux_search_state = provider_response
+            for value in provider_response.paths:
+                path = Path(value)
+                kind = "folder" if path.is_dir() else "file"
+                item = SearchItem.make(
+                    kind, path.name or value, value, str(path.parent),
+                    provider_response.provider,
+                    keywords=path.suffix.lstrip("."))
+                items.append(item)
+                with self._lock:
+                    self._ephemeral[item.id] = item
         ranked = []
         for item in items:
             if category != "all" and item.kind != category:
@@ -684,7 +746,7 @@ class SystemSearchEngine:
             ranked.append((score, item))
         ranked.sort(key=lambda row: (-row[0], row[1].name.casefold(), row[1].id))
         results = [self._public_result(item, score) for score, item in ranked[:limit]]
-        return {
+        payload = {
             "ok": True,
             "supported": True,
             "query": query,
@@ -693,6 +755,32 @@ class SystemSearchEngine:
             "results": results,
             "total_matches": len(ranked),
         }
+        if provider_response is not None:
+            payload.update({
+                "provider": provider_response.provider,
+                "provider_status": provider_response.status,
+                "provider_message": provider_response.message,
+            })
+        return payload
+
+    def cancel(self, _generation=None):
+        if self._linux_search is None:
+            return False
+        self._linux_search.cancel()
+        return True
+
+    def icons(self, result_ids, generation=None, icon_version=None):
+        # Text-first rendering is authoritative. Linux desktop icon themes need
+        # a live GTK theme lookup, so unresolved rows retain accessible generic
+        # icons instead of exposing paths or blocking query paint.
+        allowed = []
+        with self._lock:
+            known = set(self._items) | set(self._ephemeral)
+        for value in list(result_ids or [])[:12]:
+            if str(value) in known:
+                allowed.append(str(value))
+        return {"ok": True, "icons": {}, "generation": generation,
+                "icon_version": icon_version, "unresolved": allowed}
 
     def toggle_favorite(self, item_id, favorite=None):
         item_id = str(item_id or "")
@@ -737,9 +825,30 @@ class SystemSearchEngine:
         if action not in self._actions_for(item):
             return {"ok": False, "message": "That action is not available for this result."}
         try:
+            if action == "drag":
+                capability = drag_capability(DesktopSession.detect())
+                if capability.status != "ready" or self._linux_drag is None:
+                    return {"ok": False, "action": "drag", "id": item.id,
+                            "status": capability.status,
+                            "message": capability.message,
+                            "alternatives": list(capability.alternatives)}
+                result = self._linux_drag.start(item.target)
+                return {"action": "drag", "id": item.id, **result}
             if action == "copy_path":
-                import pyperclip
-                pyperclip.copy(item.target)
+                if self.platform == "linux":
+                    if self._linux_clipboard is None:
+                        raise RuntimeError(
+                            "No native-session clipboard route is available.")
+                    request = InsertionRequest(
+                        operation_id="find-copy-" + uuid.uuid4().hex,
+                        source="mumble_find", content_kind="text",
+                        activation_target=None, text=item.target,
+                        restore_focus=False, restore_clipboard=False)
+                    self._linux_clipboard.write(
+                        request, self._linux_clipboard.snapshot())
+                else:
+                    import pyperclip
+                    pyperclip.copy(item.target)
             elif action == "reveal":
                 self._reveal(item)
             else:

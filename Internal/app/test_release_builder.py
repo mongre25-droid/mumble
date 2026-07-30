@@ -93,7 +93,7 @@ def test_sql_checkout_line_endings_produce_identical_release_bytes(tmp_path):
                     source = sql_source
                 builder.write_file(archive, source, archive_name)
         with zipfile.ZipFile(archive_path) as archive:
-            assert len(archive.namelist()) == 136
+            assert len(archive.namelist()) == len(builder.release_sources(REPO_ROOT))
             assert archive.read(sql_archive_name) == lf_sql
         archive_bytes.append(archive_path.read_bytes())
 

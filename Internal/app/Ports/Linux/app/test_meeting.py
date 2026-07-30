@@ -23,6 +23,7 @@ except Exception:
     pass
 
 import ai
+import branding
 import meeting
 import meeting_diarise
 import meeting_store
@@ -67,7 +68,6 @@ class _FakeSettings:
 
     def set(self, key, value):
         self._d[key] = value
-        return True
 
     def authority_read(self):
         return dict(self._d)
@@ -201,9 +201,12 @@ def _isolate_store():
     _orig_path = meeting_store.PATH
     fd, tmp = tempfile.mkstemp(suffix=".json", prefix="test_meeting_")
     os.close(fd)
+    with open(tmp, "w", encoding="utf-8") as fresh_store:
+        fresh_store.write("[]")
     # Also redirect meetings_audio
     meeting_store._orig_data_dir = branding.DATA_DIR
     meeting_store.PATH = tmp
+    meeting_store._LAST_LOAD_HEALTH = "unknown"
     branding.DATA_DIR = os.path.join(tempfile.gettempdir(),
                                      "test_meeting_data")
     os.makedirs(branding.DATA_DIR, exist_ok=True)
@@ -592,11 +595,21 @@ try:
               overflow_record.get("status") == "interrupted")
         check("writer queue overflow persists an explicit integrity error",
               "stopped" in (overflow_record.get("error") or "").lower())
+        check("writer queue overflow persists a durable capture warning",
+              overflow_record.get("capture_warning") == overflow_record.get("error"))
         overflow_path = meeting._resolve_audio_path(
             overflow_record.get("audio_path"))
         with wave.open(overflow_path, "rb") as wf:
             check("overflow WAV contains exactly the contiguous prefix",
                   wf.getnframes() == contiguous_samples)
+        overflow_recorder.process_pending(overflow_id)
+        processed_overflow = meeting_store.get_meeting(overflow_id)
+        check("capture warning survives successful partial transcription",
+              processed_overflow.get("status") == "ready" and
+              "stopped" in (processed_overflow.get("capture_warning") or "").lower())
+        check("capture warning is included in exported transcript",
+              "WARNING: Recording ended early" in
+              meeting.export_meeting(overflow_id, "txt").get("content", ""))
         meeting_store.delete_meeting(overflow_id)
     finally:
         meeting.queue.Queue = original_queue_class
@@ -623,7 +636,9 @@ try:
     check("writer failure remains visibly retryable",
           failed_writer_record is not None and
           failed_writer_record.get("status") == "interrupted" and
-          "writer failed" in (failed_writer_record.get("error") or "").lower())
+          "writer failed" in (failed_writer_record.get("error") or "").lower() and
+          failed_writer_record.get("capture_warning") ==
+          failed_writer_record.get("error"))
     meeting_store.delete_meeting(failed_writer_id)
 
     # VAL-MEETING-003: timer emits island callbacks
@@ -1101,14 +1116,12 @@ _install_ai_stub(['["Valid item", "", "  ", "Another item"]'])
 items3 = meeting.extract_action_items(mid, settings)
 check("empty strings filtered", len(items3) == 2)
 
-# VAL-MEETING-047: empty result doesn't overwrite
-# (previous items persist)
-prev_count = len(meeting_store.get_meeting(mid)["action_items"])
+# VAL-MEETING-047: a successful empty extraction clears stale findings
 _install_ai_stub(["[]"])
 items4 = meeting.extract_action_items(mid, settings)
 check("empty JSON array returns []", items4 == [])
-check("empty result does not overwrite",
-      len(meeting_store.get_meeting(mid)["action_items"]) == prev_count)
+check("empty action result clears stale stored items",
+      meeting_store.get_meeting(mid)["action_items"] == [])
 
 # VAL-MEETING-041: non-existent meeting returns []
 check("extract_actions nonexistent returns []",
@@ -1124,11 +1137,15 @@ check("extract_actions empty transcript returns []",
 
 # VAL-MEETING-048: LLM exception returns []
 _restore_ai()
+meeting_store.update_meeting(mid, action_items=["Keep on exception"])
 _orig = ai.cerebras_chat
 ai.cerebras_chat = _raising_chat
 try:
     check("extract_actions on exception returns []",
           meeting.extract_action_items(mid, settings) == [])
+    check("action extraction exception preserves prior findings",
+          meeting_store.get_meeting(mid)["action_items"] ==
+          ["Keep on exception"])
 finally:
     ai.cerebras_chat = _orig
 
@@ -1170,6 +1187,10 @@ check("extract_key_decisions has items", len(decisions) == 2)
 m = meeting_store.get_meeting(mid)
 check("key_decisions persisted in store",
       m["key_decisions"] == decisions)
+_install_ai_stub(["[]"])
+check("empty decision result clears stale stored decisions",
+      meeting.extract_key_decisions(mid, settings) == [] and
+      meeting_store.get_meeting(mid)["key_decisions"] == [])
 
 # VAL-MEETING-050: no LLM key returns []
 settings_no_key = _FakeSettings(llm_provider="cerebras", cerebras_api_key="")
@@ -1178,11 +1199,15 @@ check("extract_key_decisions no key returns []",
 
 # Exception handling
 _restore_ai()
+meeting_store.update_meeting(mid, key_decisions=["Keep decision on exception"])
 _orig = ai.cerebras_chat
 ai.cerebras_chat = _raising_chat
 try:
     check("extract_key_decisions on exception returns []",
           meeting.extract_key_decisions(mid, settings) == [])
+    check("decision extraction exception preserves prior findings",
+          meeting_store.get_meeting(mid)["key_decisions"] ==
+          ["Keep decision on exception"])
 finally:
     ai.cerebras_chat = _orig
 
@@ -1216,6 +1241,10 @@ check("extract_open_questions has items", len(questions) == 2)
 m = meeting_store.get_meeting(mid)
 check("open_questions persisted in store",
       m["open_questions"] == questions)
+_install_ai_stub(["[]"])
+check("single-part empty question result clears stale stored questions",
+      meeting.extract_open_questions(mid, settings) == [] and
+      meeting_store.get_meeting(mid)["open_questions"] == [])
 
 # VAL-MEETING-052: no LLM key returns []
 settings_no_key = _FakeSettings(llm_provider="cerebras", cerebras_api_key="")
@@ -1224,11 +1253,15 @@ check("extract_open_questions no key returns []",
 
 # Exception handling
 _restore_ai()
+meeting_store.update_meeting(mid, open_questions=["Keep question on exception"])
 _orig = ai.cerebras_chat
 ai.cerebras_chat = _raising_chat
 try:
     check("extract_open_questions on exception returns []",
           meeting.extract_open_questions(mid, settings) == [])
+    check("question extraction exception preserves prior findings",
+          meeting_store.get_meeting(mid)["open_questions"] ==
+          ["Keep question on exception"])
 finally:
     ai.cerebras_chat = _orig
 
@@ -1526,16 +1559,27 @@ try:
     # VAL-MEETING-099: process_audio_file returns meeting_id
     transcribe = _FakeTranscribe("Test import transcript. We discussed the plan.")
     import_events = []
+    recovery_attempts = []
     def _ordered_transcribe(audio, want_words=False):
         import_events.append("transcribe")
         return transcribe(audio, want_words=want_words)
 
+    recovery_recorder = meeting.MeetingRecorder(
+        _FakeTranscribe("duplicate recovery transcript"), settings)
+    def _saved_then_recover(meeting_id):
+        import_events.append("saved")
+        # Simulate startup recovery observing the newly persisted processing row
+        # while the import is still inside its on_saved notification.
+        recovery_attempts.append(recovery_recorder.process_pending(meeting_id))
+
     mid = meeting.process_audio_file(
         tmp_wav, _ordered_transcribe, settings, title="Imported Meeting",
-        on_saved=lambda meeting_id: import_events.append("saved"))
+        on_saved=_saved_then_recover)
     check("process_audio_file returns meeting_id", mid is not None)
     check("import notifies durable record before transcription",
           import_events and import_events[0] == "saved")
+    check("live import lease blocks concurrent startup recovery",
+          recovery_attempts == [None] and len(transcribe.calls) == 1)
     m = meeting_store.get_meeting(mid)
     check("imported meeting exists", m is not None)
     check("imported meeting has segments", len(m["segments"]) > 0)
@@ -1599,6 +1643,53 @@ try:
               "Boundary", "continues.", "Tail."])
     check("per-chunk energy survives global diarisation",
           all("energy" in s for s in chunk_segments))
+
+    # Audio overlap is not itself proof of duplicate text: if the first chunk
+    # missed speech, a later window may recover novel words wholly in the shared
+    # time range. Keep those words while still deduplicating lexical repeats.
+    original_iter_wav = meeting._iter_wav_audio
+    try:
+        def _overlap_windows(_path, chunk_seconds=None):
+            yield np.zeros(20 * sample_rate, dtype=np.float32), 0.0
+            yield np.zeros(20 * sample_rate, dtype=np.float32), 18.0
+
+        overlap_calls = []
+        def _overlap_transcribe(_audio, want_words=False):
+            overlap_calls.append(True)
+            if len(overlap_calls) == 1:
+                return "Boundary", [
+                    {"word": "Boundary", "start": 19.7, "end": 19.9,
+                     "prob": 0.9}]
+            return "Recovered", [
+                {"word": "Recovered", "start": 0.1, "end": 0.2,
+                 "prob": 0.9}]
+
+        meeting._iter_wav_audio = _overlap_windows
+        recovered_segments, _ = meeting._process_wav_path(
+            tmp_wav, _overlap_transcribe, settings)
+        check("novel speech wholly inside overlap is retained",
+              any(s.get("text") == "Recovered" and
+                  s.get("start_sec") == 18.1 for s in recovered_segments))
+    finally:
+        meeting._iter_wav_audio = original_iter_wav
+
+    # Cumulative target boundaries prevent per-block rounding from rejecting an
+    # exact four-hour non-16kHz source (44.1kHz used to land 132 samples over).
+    source_rate_44k = 44_100
+    source_total = source_rate_44k * recording_limits.MEETING_MAX_SECONDS
+    source_seen = 0
+    target_seen = 0
+    non_negative_steps = True
+    while source_seen < source_total:
+        source_seen += min(1_000_000, source_total - source_seen)
+        target_total = meeting._resampled_frame_total(
+            source_seen, source_rate_44k, recording_limits.SAMPLE_RATE)
+        target_step = target_total - target_seen
+        non_negative_steps = non_negative_steps and target_step >= 0
+        target_seen = target_total
+    check("cumulative resample steps remain monotonic", non_negative_steps)
+    check("exact four-hour 44.1kHz resample lands on exact meeting cap",
+          target_seen == recording_limits.MEETING_MAX_SAMPLES)
 
     # A header-only fixture is sufficient for duration preflight: decoding must
     # never begin once declared duration exceeds four hours.
@@ -1712,10 +1803,20 @@ for snapshot in new_snapshots:
         preserved_primary = preserved_primary or f.read() == primary_damage
 check("unrecoverable primary is moved aside",
       len(new_snapshots) == 1 and preserved_primary)
+orphan_name, orphan_path = meeting._new_meeting_audio_path()
+with wave.open(orphan_path, "wb") as wf:
+    wf.setnchannels(1)
+    wf.setsampwidth(2)
+    wf.setframerate(recording_limits.SAMPLE_RATE)
+    wf.writeframes(b"\x00\x00" * 100)
+removed_during_corruption = meeting_store.cleanup_orphan_audio()
+check("orphan cleanup preserves audio while metadata recovery is unresolved",
+      removed_during_corruption == 0 and os.path.isfile(orphan_path))
 replacement_id = meeting_store.save_meeting(
     "Recovered Library", "recovered.wav", 1.0, segments=[], speakers=[])
 check("new save succeeds without overwriting corrupt snapshot",
       replacement_id is not None and all(os.path.isfile(p) for p in new_snapshots))
+meeting_store._delete_audio_file(orphan_name, missing_ok=True)
 
 # VAL-MEETING-096: WAV written with correct params
 import branding
@@ -1775,7 +1876,10 @@ print("\n== Full Transcript Analysis ==")
 _isolate_store()
 
 # Decisive content appears well beyond the old 24,000-character cut.
-late_marker = "LATE_MARKER: Priya owns the launch checklist by Friday."
+late_marker = (
+    "LATE_MARKER: Priya owns the launch checklist by Friday. "
+    "Alex answered the sign-off question: Alex signs off. "
+    "The early action was cancelled and the early decision was superseded.")
 segments = [
     {"speaker": "S1", "start_sec": 0.0, "end_sec": 100.0,
      "text": "A" * 30000, "confidence": 0.5},
@@ -1798,6 +1902,15 @@ def _capturing_chat(system, user, key, model=None, url=None,
                     max_tokens=None, timeout=None, **_kwargs):
     _captured_user.append(user)
     late = "LATE_MARKER" in user
+    if "Maintain the complete list" in system:
+        return json.dumps([] if late else ["Who signs off?"])
+    if "Merge these chronological" in system:
+        return json.dumps({
+            "summary": "LATE_MARKER covered and sign-off resolved",
+            "action_items": ["Priya: launch checklist by Friday"],
+            "key_decisions": ["Launch proceeds Friday"],
+            "open_questions": [],
+        })
     if "JSON object" in system:
         return json.dumps({
             "summary": "LATE_MARKER covered" if late else "Early part",
@@ -1836,12 +1949,27 @@ try:
           "Early finding" in actions)
 
     _captured_user.clear()
+    meeting_store.update_meeting(mid, open_questions=["Stale question"])
+    questions = meeting.extract_open_questions(mid, settings)
+    check("open-question analysis reconciles every chunk",
+          len(_captured_user) == 2)
+    check("later answers remove earlier open questions",
+          questions == [] and
+          meeting_store.get_meeting(mid)["open_questions"] == [])
+
+    _captured_user.clear()
     deep = meeting.process_meeting_deep(mid, settings)
     check("deep analysis maps chunks then reduces", len(_captured_user) == 3)
     check("deep analysis includes late action",
           "Priya: launch checklist by Friday" in deep["action_items"])
     check("deep analysis includes late decision",
           "Launch proceeds Friday" in deep["key_decisions"])
+    check("deep reducer does not resurrect resolved questions",
+          deep["open_questions"] == [])
+    check("deep reducer does not resurrect cancelled actions",
+          "Early action" not in deep["action_items"])
+    check("deep reducer does not resurrect superseded decisions",
+          "Early decision" not in deep["key_decisions"])
 
 finally:
     ai.cerebras_chat = _orig
@@ -1927,6 +2055,126 @@ check("already-named speaker is not re-suggested its own name",
 # Empty / single-speaker inputs are safe and add the field.
 _empty = meeting_diarise.infer_speaker_names({"speakers": [], "segments": []})
 check("infer_speaker_names safe on empty", _empty["speakers"] == [])
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Durable capture journal, full transcript search, and truthful audio state
+# ═══════════════════════════════════════════════════════════════════════════════
+
+print("\n== Meeting Recovery + Search Refresh ==")
+_isolate_store()
+try:
+    import struct as _struct
+    import wave as _wave
+
+    audio_dir = os.path.join(branding.DATA_DIR, "meetings_audio")
+    os.makedirs(audio_dir, exist_ok=True)
+    search_name = "meeting_search_refresh.wav"
+    search_path = os.path.join(audio_dir, search_name)
+    with _wave.open(search_path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(recording_limits.SAMPLE_RATE)
+        wf.writeframes(b"\x00\x00" * 1600)
+    search_id = meeting_store.save_meeting(
+        "Searchable review", search_name, 0.1,
+        [
+            {"speaker": "Speaker 1", "start_sec": 0, "end_sec": .05,
+             "text": "Opening context without the query."},
+            {"speaker": "Speaker 2", "start_sec": .05, "end_sec": .1,
+             "text": "The late-only phrase is Project Firefly."},
+        ],
+        [{"label": "Speaker 1", "name": None, "color": "#D4AF37"},
+         {"label": "Speaker 2", "name": "Priya", "color": "#5AA9E6"}],
+    )
+    search_hits = meeting_store.search_meetings("Project Firefly")
+    check("full transcript search finds a later segment",
+          [row.get("id") for row in search_hits] == [search_id])
+    check("full transcript search includes speaker names",
+          [row.get("id") for row in meeting_store.search_meetings("Priya")]
+          == [search_id])
+    check("meeting list reports available private audio truthfully",
+          meeting_store.list_meetings()[0].get("audio_available") is True)
+    check("meeting detail reports available private audio truthfully",
+          meeting_store.get_meeting(search_id).get("audio_available") is True)
+    os.remove(search_path)
+    check("meeting detail reports a missing recording truthfully",
+          meeting_store.get_meeting(search_id).get("audio_available") is False)
+
+    delete_id = meeting_store.save_meeting(
+        "Locked recording", "meeting_locked.wav", 1.0, [], [])
+    original_delete_audio = meeting_store._delete_audio_file
+    meeting_store._delete_audio_file = lambda *args, **kwargs: False
+    check("audio unlink failure is not reported as a complete deletion",
+          meeting_store.delete_meeting(delete_id) is False)
+    check("audio unlink failure leaves no false meeting row",
+          meeting_store.get_meeting(delete_id) is None)
+    meeting_store._delete_audio_file = original_delete_audio
+
+    # Emulate a hard-killed wave writer: canonical 44-byte PCM header still has
+    # zero RIFF/data sizes, but the OS persisted a contiguous sample prefix.
+    crash_name = "meeting_crash_recovery.wav"
+    crash_path = os.path.join(audio_dir, crash_name)
+    stale_header = (
+        b"RIFF" + _struct.pack("<I", 36) + b"WAVEfmt "
+        + _struct.pack("<IHHIIHH", 16, 1, 1,
+                       recording_limits.SAMPLE_RATE,
+                       recording_limits.SAMPLE_RATE * 2, 2, 16)
+        + b"data" + _struct.pack("<I", 0)
+    )
+    with open(crash_path, "wb") as f:
+        f.write(stale_header)
+        f.write(b"\x00\x00" * 3200)
+        f.flush()
+        os.fsync(f.fileno())
+    crash_id = meeting_store.save_meeting(
+        "Interrupted capture", crash_name, 0.0, [], [], status="recording")
+    recovery_events = []
+    recovery_island = _FakeIslandCb()
+    recovery = meeting.MeetingRecorder(
+        _FakeTranscribe("Recovered meeting transcript."),
+        _FakeSettings(), recovery_island)
+    recovered_ids = recovery.recover_pending(
+        on_processed=recovery_events.append)
+    recovered = meeting_store.get_meeting(crash_id)
+    check("hard-exit capture is discovered by pending recovery",
+          crash_id in recovered_ids)
+    check("hard-exit WAV header is repaired to its captured prefix",
+          recovered is not None and recovered.get("duration_sec") == 0.2)
+    check("hard-exit capture becomes a ready meeting",
+          recovered is not None and recovered.get("status") == "ready"
+          and bool(recovered.get("segments")))
+    check("hard-exit recovery keeps an explicit capture warning",
+          "interrupted" in (recovered.get("capture_warning") or "").lower())
+    check("recovered meeting records its non-secret transcription route",
+          recovered.get("transcription_mode") == "local" and
+          recovered.get("transcription_provider") == "local")
+    check("recovery publishes a refresh callback for the meeting",
+          recovery_events == [crash_id])
+
+    # A failed final transcript commit must remain retryable and must never
+    # announce the island's success state.
+    meeting_store.update_meeting(crash_id, status="interrupted", error="retry")
+    original_update = meeting_store.update_meeting
+    def _fail_ready_update(meeting_id, **kwargs):
+        if kwargs.get("status") == "ready":
+            return False
+        return original_update(meeting_id, **kwargs)
+    meeting_store.update_meeting = _fail_ready_update
+    recovery_island.calls.clear()
+    recovery.process_pending(crash_id)
+    failed_commit = meeting_store.get_meeting(crash_id)
+    check("failed transcript commit remains interrupted",
+          failed_commit.get("status") == "interrupted")
+    check("failed transcript commit never emits done",
+          not any(call[0] == "done" for call in recovery_island.calls))
+    meeting_store.update_meeting = original_update
+finally:
+    if 'original_update' in locals():
+        meeting_store.update_meeting = original_update
+    if 'original_delete_audio' in locals():
+        meeting_store._delete_audio_file = original_delete_audio
+    _restore_store()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

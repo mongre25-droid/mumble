@@ -30,13 +30,37 @@ HOW TO USE IT
 
 LINUX NOTES
 
-  Mumble supports X11 and Wayland. Global hotkeys need permission to read the
-  input devices. If the app warns about permissions, run:
+  Mumble keeps X11 and Wayland separate. On Wayland, global shortcuts use the
+  desktop approval window only when the live xdg-desktop-portal
+  GlobalShortcuts service is available. Approve each shortcut when GNOME or KDE
+  asks. If that service cannot be proved, Mumble reports a degraded or unknown
+  route and does not silently send shortcuts through XWayland.
+
+  On X11, global hotkeys need permission to read input devices. If the app
+  warns about permissions, run:
 
        sudo usermod -aG input "$USER"
 
-  Then log out and back in. Wayland paste support uses wl-clipboard; X11 uses
-  xclip/xdotool. The installer offers both sets of helpers.
+  Then log out and back in. Wayland paste uses wl-clipboard plus wtype or the
+  permission-dependent ydotool route; X11 uses xclip or xsel plus xdotool. When
+  a compositor blocks insertion or drag, Mumble keeps the result saved and
+  offers Copy, Open, or Show in folder instead of claiming success.
+  On X11, indexed files and folders use a GTK-owned URI drag; whether the target
+  accepts the drop still requires a real desktop check.
+
+  Mumble Find asks GNOME LocalSearch/Tracker or KDE Baloo first. A plocate result
+  is labelled degraded because its filename database can be stale. No desktop
+  index means local Find reports unsupported; it does not crawl your home folder.
+
+  Audio reports PipeWire, PulseAudio, permission denial, and no-device states
+  separately. A temporarily missing saved microphone is used only as a one-run
+  fallback and is not erased from Settings.
+
+  Flatpak, Snap, compositor policy, and distribution package availability can
+  limit these routes. Source checks are not proof of real GNOME, KDE, X11,
+  Wayland, microphone, tray, autostart, focus, clipboard, or drag behaviour.
+  Login autostart is ready only after Mumble can validate its enabled XDG entry
+  and installed launch route; otherwise Settings keeps the limitation visible.
 
 PRIVACY
 

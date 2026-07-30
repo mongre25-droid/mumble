@@ -5,6 +5,7 @@ ever lost) and the source for the Stats screen."""
 import json
 import math
 import os
+import re
 import threading
 from collections import deque
 from datetime import date, datetime
@@ -25,6 +26,7 @@ class History:
         # that may re-acquire. Mirrors Clipboard's lock.
         self._lock = threading.RLock()
         self.items = deque(maxlen=maxlen)
+        self._disk_sig = None
         self._cumulative_path = json_path.replace(".json", "_cumulative.json")
         self._cumulative = {"total_words": 0, "total_transcripts": 0}
         self._load()
@@ -62,8 +64,16 @@ class History:
     def _load(self):
         try:
             self.items = self._read_items()
+            self._disk_sig = self._file_signature()
         except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError, TypeError):
             pass
+
+    def _file_signature(self):
+        try:
+            stat = os.stat(self.json_path)
+            return stat.st_mtime_ns, stat.st_size
+        except OSError:
+            return None
 
     def _sync_from_disk(self):
         """Reconcile the in-memory list with disk BEFORE appending, so a deletion
@@ -72,8 +82,12 @@ class History:
         reloaded after init, so deleted transcripts reappeared on the next
         dictation. Keeps the current list on any read failure (atomic os.replace
         means a successful read is always a whole file, never partial)."""
+        signature = self._file_signature()
+        if signature == self._disk_sig:
+            return
         try:
             self.items = self._read_items()
+            self._disk_sig = signature
         except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError, TypeError):
             pass
         self._load_cumulative()
@@ -92,24 +106,14 @@ class History:
             pass
 
     def _save_cumulative(self):
-        tmp = self._cumulative_path + ".tmp"
         try:
-            with open(tmp, "w", encoding="utf-8") as f:
+            with open(self._cumulative_path, "w", encoding="utf-8") as f:
                 json.dump(self._cumulative, f, ensure_ascii=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, self._cumulative_path)
-            return True
-        except OSError as e:
-            print(f"history cumulative save error ({type(e).__name__}): {e}")
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            return False
+        except OSError:
+            pass
 
     def add(self, text, mode="text", duration=0.0, raw=None, quality=None,
-            via=None):
+            via=None, record_id=None):
         # Reconcile with disk first so a deletion made in the webui window isn't
         # resurrected by writing back our stale in-memory list (the resurrection
         # bug: the controller never reloaded, so deleted transcripts reappeared
@@ -120,9 +124,21 @@ class History:
                 if not acquired:
                     return None
                 self._sync_from_disk()
+                if record_id is not None:
+                    record_id = str(record_id)
+                    if re.fullmatch(r"[0-9a-f]{32}", record_id) is None:
+                        raise ValueError("invalid_history_record_id")
+                    for existing in self.items:
+                        if existing.get("record_id") == record_id:
+                            if (existing.get("text") != (text or "")
+                                    or existing.get("mode", "text") != mode):
+                                raise ValueError("history_record_id_conflict")
+                            return dict(existing)
                 previous_items = deque(self.items, maxlen=self.maxlen)
                 previous_cumulative = dict(self._cumulative)
-                entry = self._build_entry(text, mode, duration, raw, quality, via)
+                entry = self._build_entry(
+                    text, mode, duration, raw, quality, via, record_id
+                )
                 self.items.append(entry)
                 # Update cumulative stats (persist independently of history clearing)
                 self._cumulative["total_words"] += entry["words"]
@@ -135,10 +151,11 @@ class History:
                 self._save_cumulative()
                 return entry
 
-    def _build_entry(self, text, mode, duration, raw, quality, via):
+    def _build_entry(self, text, mode, duration, raw, quality, via,
+                     record_id=None):
         now = datetime.now()
         text = text or ""
-        return {
+        entry = {
             "time": now.strftime("%H:%M"),
             "stamp": now.strftime("%Y-%m-%d %H:%M:%S"),
             "mode": mode,
@@ -161,34 +178,69 @@ class History:
             # mode's category with a small via-label.
             "via": via,
         }
+        if record_id is not None:
+            entry["record_id"] = record_id
+        return entry
 
     def recent(self, n=10):
         with self._lock:
-            self._load()
+            # The controller and Web UI are separate processes over one atomic
+            # store. Reads must reconcile too, otherwise a Web UI clear/delete
+            # remains visible to controller actions until the next mutation.
+            self._sync_from_disk()
             items = list(self.items)
         if n <= 0:
             return []
         return items[-n:][::-1]
 
+    def find_record(self, record_id):
+        """Return one durable logical-session record without changing History."""
+        record_id = str(record_id or "")
+        if re.fullmatch(r"[0-9a-f]{32}", record_id) is None:
+            return None
+        with self._lock:
+            self._sync_from_disk()
+            for entry in reversed(self.items):
+                if entry.get("record_id") == record_id:
+                    return dict(entry)
+        return None
+
     def all_newest_first(self):
         with self._lock:
-            self._load()
+            self._sync_from_disk()
             return list(self.items)[::-1]
+
+    def resize(self, maxlen):
+        """Apply a retention-limit change durably without waiting for restart."""
+        try:
+            maxlen = max(1, min(5000, int(maxlen)))
+        except (TypeError, ValueError, OverflowError):
+            return False
+        with self._lock, exclusive_file_lock(self.json_path) as acquired:
+            if not acquired:
+                return False
+            self._sync_from_disk()
+            old_maxlen = self.maxlen
+            previous_items = self.items
+            kept = list(self.items)[-maxlen:]
+            self.maxlen = maxlen
+            self.items = deque(kept, maxlen=maxlen)
+            if self._save_json():
+                return True
+            self.maxlen = old_maxlen
+            self.items = previous_items
+            return False
 
     def clear(self):
         with self._lock:
             with exclusive_file_lock(self.json_path) as acquired:
                 if not acquired:
                     return False
-                previous = deque(self.items, maxlen=self.maxlen)
+                previous_items = deque(self.items, maxlen=self.maxlen)
                 self.items.clear()
-                if self._save_json() and self._clear_text_log():
+                if self._save_json():
                     return True
-                # Keep the two user-visible history representations aligned. If
-                # either deletion failed, restore the JSON snapshot and report
-                # failure so the UI never claims private text was fully erased.
-                self.items = previous
-                self._save_json()
+                self.items = previous_items
                 return False
 
     def delete_index(self, i):
@@ -207,14 +259,12 @@ class History:
                 # transcripts — so deleting one does NOT decrement it, matching the
                 # displayed Stats store (which also never drops on delete). The old
                 # decrement made the two lifetime totals diverge after a deletion.
-                previous = deque(self.items, maxlen=self.maxlen)
                 del items[j]
+                previous_items = self.items
                 self.items = deque(items, maxlen=self.maxlen)
-                if self._save_json() and self._rewrite_text_log():
+                if self._save_json():
                     return True
-                self.items = previous
-                self._save_json()
-                self._rewrite_text_log()
+                self.items = previous_items
                 return False
             return False
 
@@ -240,14 +290,12 @@ class History:
                 return False
             # _cumulative is the monotonic lifetime seed-floor (see delete_index) —
             # deleting a transcript does not decrement it.
-            previous = deque(self.items, maxlen=self.maxlen)
             items.remove(target)
+            previous_items = self.items
             self.items = deque(items, maxlen=self.maxlen)
-            if self._save_json() and self._rewrite_text_log():
+            if self._save_json():
                 return True
-            self.items = previous
-            self._save_json()
-            self._rewrite_text_log()
+            self.items = previous_items
             return False
 
     def stats(self):
@@ -375,12 +423,10 @@ class History:
         """Atomically write history.json (tmp + rename)."""
         tmp = self.json_path + ".tmp"
         try:
-            os.makedirs(os.path.dirname(os.path.abspath(self.json_path)), exist_ok=True)
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(list(self.items), f, ensure_ascii=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
             os.replace(tmp, self.json_path)
+            self._disk_sig = self._file_signature()
             return True
         except OSError as e:
             print(f"history save error ({type(e).__name__}): {e}")
@@ -394,53 +440,5 @@ class History:
         try:
             with open(self.text_path, "a", encoding="utf-8") as f:
                 f.write(f"[{entry['stamp']}] ({entry['mode']})\n{entry['text']}\n\n")
-                f.flush()
-                os.fsync(f.fileno())
-            return True
         except OSError as e:
             print(f"history text append error ({type(e).__name__}): {e}")
-            return False
-
-    def _clear_text_log(self):
-        """Atomically empty the append-only transcript mirror."""
-        tmp = self.text_path + ".tmp"
-        try:
-            os.makedirs(os.path.dirname(os.path.abspath(self.text_path)), exist_ok=True)
-            with open(tmp, "w", encoding="utf-8") as handle:
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(tmp, self.text_path)
-            return True
-        except OSError as e:
-            print(f"history text clear error ({type(e).__name__}): {e}")
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            return False
-
-    def _rewrite_text_log(self):
-        """Rebuild the human-readable mirror from the live JSON entries.
-
-        Per-item deletion must remove the same private text from both stores;
-        an append-only mirror otherwise defeats the UI's Delete action.
-        """
-        tmp = self.text_path + ".tmp"
-        try:
-            os.makedirs(os.path.dirname(os.path.abspath(self.text_path)), exist_ok=True)
-            with open(tmp, "w", encoding="utf-8") as handle:
-                for entry in self.items:
-                    handle.write(
-                        f"[{entry.get('stamp', '')}] ({entry.get('mode', 'text')})\n"
-                        f"{entry.get('text', '')}\n\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(tmp, self.text_path)
-            return True
-        except OSError as e:
-            print(f"history text rewrite error ({type(e).__name__}): {e}")
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            return False

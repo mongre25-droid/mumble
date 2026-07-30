@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from linux_desktop import Capability
+
 from experimental.system_search import SystemSearchEngine
 
 
@@ -76,6 +78,49 @@ class SystemSearchTests(unittest.TestCase):
                 opened = engine.execute(item["id"], "open")
             self.assertTrue(opened["ok"])
             popen.assert_called_once()
+
+    def test_linux_copy_path_uses_native_session_clipboard_adapter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = self.make_engine(tmp)
+            engine.refresh()
+            item = engine.search("Project notes", "file")["results"][0]
+            writes = []
+
+            class Clipboard:
+                def snapshot(self):
+                    return object()
+
+                def write(self, request, snapshot):
+                    writes.append((request, snapshot))
+                    return object()
+
+            engine._linux_clipboard = Clipboard()
+            copied = engine.execute(item["id"], "copy_path")
+            self.assertTrue(copied["ok"])
+            self.assertEqual(writes[0][0].text, str(
+                Path(tmp) / "files" / "Project notes.md"))
+
+    def test_x11_drag_resolves_only_the_trusted_indexed_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = self.make_engine(tmp)
+            engine.refresh()
+            starts = []
+
+            class Drag:
+                def start(self, path):
+                    starts.append(path)
+                    return {"ok": True, "status": "started", "dropped": False}
+
+            engine._linux_drag = Drag()
+            with patch("experimental.system_search.engine.sys.platform", "linux"), \
+                    patch("experimental.system_search.engine.drag_capability",
+                          return_value=Capability(
+                              "ready", "gtk-uri-drag", "ready")):
+                item = engine.search("Project notes", "file")["results"][0]
+                result = engine.execute(item["id"], "drag")
+            self.assertTrue(result["ok"])
+            self.assertEqual(starts, [str(
+                Path(tmp) / "files" / "Project notes.md")])
 
     def test_mac_and_unknown_platforms_are_not_supported(self):
         with tempfile.TemporaryDirectory() as tmp:
