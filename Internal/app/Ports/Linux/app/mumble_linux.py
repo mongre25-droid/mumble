@@ -285,7 +285,12 @@ from linux_insertion import (
     LinuxClipboardAdapter, LinuxNativeInputAdapter, LinuxTargetAdapter,
 )
 from linux_dictation import DurableLinuxCapture
-from dictation_session import DurableDictationSession
+from dictation_session import (
+    DurableDictationSession,
+    merge_stable_prefix,
+    reconcile_timestamped_segment,
+    transcribe_selected_route,
+)
 # Startup breadcrumbs: faster-whisper pulls in the heavy native stack
 # (av / numpy / ctranslate2). On a memory-starved machine that import can stall
 # or fail with "paging file too small" — and previously the log showed only the
@@ -790,54 +795,17 @@ class Mumble:
 
     @staticmethod
     def _merge_stable_prefix(existing, update):
-        left = str(existing or "").split()
-        right = str(update or "").split()
-        if not left:
-            return " ".join(right)
-        if not right:
-            return " ".join(left)
-        for width in range(min(len(left), len(right)), 0, -1):
-            if ([word.casefold() for word in left[-width:]]
-                    == [word.casefold() for word in right[:width]]):
-                return " ".join(left + right[width:])
-        return " ".join(left + right)
+        return merge_stable_prefix(existing, update)
 
     @staticmethod
     def _reconcile_timestamped_segment(
             committed, tentative, words, *, index, segment_samples,
             overlap_samples, sample_rate, previous_text_authoritative=False):
-        parsed = []
-        for word in words or []:
-            if not isinstance(word, dict):
-                continue
-            value = str(word.get("word") or "").strip()
-            start, end = word.get("start"), word.get("end")
-            if (not value or not isinstance(start, (int, float))
-                    or not isinstance(end, (int, float)) or end < start):
-                continue
-            parsed.append((value, (float(start) + float(end)) / 2.0))
-        if not parsed:
-            return None
-        overlap_seconds = overlap_samples / float(sample_rate)
-        segment_seconds = segment_samples / float(sample_rate)
-        if index:
-            revised = [value for value, mid in parsed if mid < overlap_seconds]
-            committed = list(committed)
-            if previous_text_authoritative:
-                committed = Mumble._merge_stable_prefix(
-                    " ".join(committed), " ".join(revised)).split()
-            else:
-                committed += revised if revised else list(tentative)
-            owned = [(value, mid) for value, mid in parsed if mid >= overlap_seconds]
-            tail_starts = overlap_seconds + max(
-                0.0, segment_seconds - overlap_seconds)
-        else:
-            committed = list(committed)
-            owned = parsed
-            tail_starts = max(0.0, segment_seconds - overlap_seconds)
-        committed.extend(value for value, mid in owned if mid < tail_starts)
-        tentative = [value for value, mid in owned if mid >= tail_starts]
-        return committed, tentative
+        return reconcile_timestamped_segment(
+            committed, tentative, words, index=index,
+            segment_samples=segment_samples, overlap_samples=overlap_samples,
+            sample_rate=sample_rate,
+            previous_text_authoritative=previous_text_authoritative)
 
     def _durable_inference_audio(self, session, manifest, index):
         segment = manifest["segments"][index]
@@ -1863,12 +1831,15 @@ class Mumble:
         invocation_snapshot = (getattr(
             self, "_durable_transcription_snapshot", None)
             or self._transcription_snapshot())
-        if self._cloud_transcription_on(invocation_snapshot.route):
-            text = self._cloud_transcribe(audio, invocation_snapshot)
-            if text is not None:
-                return (text, []) if want_words else text
-            # cloud failed → fall through to local so the dictation still lands
-        return self._local_transcribe(audio, want_words=want_words)
+        return transcribe_selected_route(
+            cloud_selected=self._cloud_transcription_on(
+                invocation_snapshot.route),
+            want_words=want_words,
+            cloud_transcribe=lambda: self._cloud_transcribe(
+                audio, invocation_snapshot),
+            local_transcribe=lambda *, want_words: self._local_transcribe(
+                audio, want_words=want_words),
+        )
 
     def _transcription_snapshot(self):
         """Freeze permission and every cloud speech-to-text input once."""

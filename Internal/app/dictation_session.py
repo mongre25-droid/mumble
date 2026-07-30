@@ -77,6 +77,71 @@ _SESSION_LOCKS = {}
 _SESSION_LOCKS_GUARD = threading.Lock()
 
 
+def merge_stable_prefix(existing, update):
+    """Merge a plain-text decode while retaining exact overlap only once."""
+    left = str(existing or "").split()
+    right = str(update or "").split()
+    if not left:
+        return " ".join(right)
+    if not right:
+        return " ".join(left)
+    for width in range(min(len(left), len(right)), 0, -1):
+        if ([word.casefold() for word in left[-width:]]
+                == [word.casefold() for word in right[:width]]):
+            return " ".join(left + right[width:])
+    return " ".join(left + right)
+
+
+def reconcile_timestamped_segment(
+        committed, tentative, words, *, index, segment_samples,
+        overlap_samples, sample_rate, previous_text_authoritative=False):
+    """Assign overlap words to the newer decode by their audio midpoint."""
+    parsed = []
+    for word in words or []:
+        if not isinstance(word, dict):
+            continue
+        value = str(word.get("word") or "").strip()
+        start, end = word.get("start"), word.get("end")
+        if (not value or not isinstance(start, (int, float))
+                or not isinstance(end, (int, float)) or end < start):
+            continue
+        parsed.append((value, (float(start) + float(end)) / 2.0))
+    if not parsed:
+        return None
+
+    overlap_seconds = overlap_samples / float(sample_rate)
+    segment_seconds = segment_samples / float(sample_rate)
+    if index:
+        revised = [value for value, mid in parsed if mid < overlap_seconds]
+        committed = list(committed)
+        if previous_text_authoritative:
+            committed = merge_stable_prefix(
+                " ".join(committed), " ".join(revised)).split()
+        else:
+            committed += revised if revised else list(tentative)
+        owned = [(value, mid) for value, mid in parsed
+                 if mid >= overlap_seconds]
+        tail_starts = overlap_seconds + max(
+            0.0, segment_seconds - overlap_seconds)
+    else:
+        committed = list(committed)
+        owned = parsed
+        tail_starts = max(0.0, segment_seconds - overlap_seconds)
+    committed.extend(value for value, mid in owned if mid < tail_starts)
+    tentative = [value for value, mid in owned if mid >= tail_starts]
+    return committed, tentative
+
+
+def transcribe_selected_route(*, cloud_selected, want_words,
+                              cloud_transcribe, local_transcribe):
+    """Keep a selected cloud route unless it genuinely fails with ``None``."""
+    if cloud_selected:
+        text = cloud_transcribe()
+        if text is not None:
+            return (text, []) if want_words else text
+    return local_transcribe(want_words=want_words)
+
+
 def _thread_lock(path: Path):
     key = os.path.normcase(str(path.resolve(strict=False)))
     with _SESSION_LOCKS_GUARD:

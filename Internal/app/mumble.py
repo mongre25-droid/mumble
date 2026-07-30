@@ -80,7 +80,13 @@ import ai
 import autostart
 import bindings  # unified keyboard+mouse binding layer (record/re-paste/search/mode key)
 import dictation_trace
-from dictation_session import DEFAULT_SEGMENT_SECONDS, DurableDictationSession
+from dictation_session import (
+    DEFAULT_SEGMENT_SECONDS,
+    DurableDictationSession,
+    merge_stable_prefix,
+    reconcile_timestamped_segment,
+    transcribe_selected_route,
+)
 import foreign_boost  # local (offline) Foreign-Mode phonetic term correction
 import formatting
 import islamic_terms  # Foreign mode: slash-candidate annotation for Arabic/Islamic terms
@@ -302,6 +308,8 @@ class Mumble:
         self._dictation_stable_transcript = ""
         self._dictation_committed_words = []
         self._dictation_tentative_words = []
+        self._dictation_previous_text_authoritative = False
+        self._durable_transcription_snapshot = None
         self._dictation_partial_wakeup = threading.Event()
         self._dictation_partial_stop = threading.Event()
         self._dictation_partial_thread = None
@@ -1207,6 +1215,7 @@ class Mumble:
         self._dictation_session = None
         self._dictation_capture_writer = None
         self._dictation_capture_queue = None
+        self._durable_transcription_snapshot = None
 
     def _start_durable_dictation(self):
         """Create the accepted Stage A session for the real live-capture path."""
@@ -1214,6 +1223,7 @@ class Mumble:
         if not root:
             self._dictation_session = None
             return None
+        transcription_snapshot = self._transcription_snapshot()
         bound = max(1, int(getattr(
             self, "_dictation_segment_max_samples", SAMPLE_RATE * 30
         )))
@@ -1238,6 +1248,8 @@ class Mumble:
         self._dictation_stable_transcript = ""
         self._dictation_committed_words = []
         self._dictation_tentative_words = []
+        self._dictation_previous_text_authoritative = False
+        self._durable_transcription_snapshot = transcription_snapshot
         self._dictation_partial_wakeup = threading.Event()
         self._dictation_partial_stop = threading.Event()
         self._dictation_partial_thread = None
@@ -1455,57 +1467,18 @@ class Mumble:
     @staticmethod
     def _merge_stable_prefix(existing, update):
         """Compatibility merge for decoders that omit requested timestamps."""
-        left = str(existing or "").split()
-        right = str(update or "").split()
-        if not left:
-            return " ".join(right)
-        if not right:
-            return " ".join(left)
-        for width in range(min(len(left), len(right)), 0, -1):
-            if ([word.casefold() for word in left[-width:]]
-                    == [word.casefold() for word in right[:width]]):
-                return " ".join(left + right[width:])
-        return " ".join(left + right)
+        return merge_stable_prefix(existing, update)
 
     @staticmethod
     def _reconcile_timestamped_segment(
             committed, tentative, words, *, index, segment_samples,
-            overlap_samples, sample_rate):
+            overlap_samples, sample_rate, previous_text_authoritative=False):
         """Assign overlap words to the newer decode by their audio midpoint."""
-        parsed = []
-        for word in words:
-            if not isinstance(word, dict):
-                continue
-            value = str(word.get("word") or "").strip()
-            start = word.get("start")
-            end = word.get("end")
-            if (not value or not isinstance(start, (int, float))
-                    or not isinstance(end, (int, float)) or end < start):
-                continue
-            parsed.append((value, (float(start) + float(end)) / 2.0))
-        if not parsed:
-            return None
-
-        overlap_seconds = overlap_samples / float(sample_rate)
-        segment_seconds = segment_samples / float(sample_rate)
-        if index:
-            revised = [value for value, mid in parsed if mid < overlap_seconds]
-            committed = list(committed) + (
-                revised if revised else list(tentative)
-            )
-            owned = [(value, mid) for value, mid in parsed
-                     if mid >= overlap_seconds]
-            tail_starts = overlap_seconds + max(
-                0.0, segment_seconds - overlap_seconds
-            )
-        else:
-            committed = list(committed)
-            owned = parsed
-            tail_starts = max(0.0, segment_seconds - overlap_seconds)
-        stable_owned = [value for value, mid in owned if mid < tail_starts]
-        tentative = [value for value, mid in owned if mid >= tail_starts]
-        committed.extend(stable_owned)
-        return committed, tentative
+        return reconcile_timestamped_segment(
+            committed, tentative, words, index=index,
+            segment_samples=segment_samples, overlap_samples=overlap_samples,
+            sample_rate=sample_rate,
+            previous_text_authoritative=previous_text_authoritative)
 
     def _durable_inference_audio(self, session, manifest, index):
         """Read one owned segment plus a bounded prior-audio overlap."""
@@ -1541,6 +1514,8 @@ class Mumble:
         merged = str(getattr(self, "_dictation_stable_transcript", "") or "")
         committed = list(getattr(self, "_dictation_committed_words", []) or [])
         tentative = list(getattr(self, "_dictation_tentative_words", []) or [])
+        previous_text_authoritative = bool(getattr(
+            self, "_dictation_previous_text_authoritative", False))
         for index in range(start, len(manifest["segments"])):
             segment = manifest["segments"][index]
             self._trace_mark("conversion_started")
@@ -1576,15 +1551,22 @@ class Mumble:
                     ))),
                 ),
                 sample_rate=int(manifest["audio"]["sample_rate"]),
+                previous_text_authoritative=previous_text_authoritative,
             ) if want_words else None
             if timestamped is not None:
                 committed, tentative = timestamped
                 merged = " ".join(committed)
+                previous_text_authoritative = False
             else:
                 merged = self._merge_stable_prefix(merged, text)
+                if want_words and str(text or "").strip():
+                    committed, tentative = merged.split(), []
+                    previous_text_authoritative = True
             self._dictation_transcribed_segments = index + 1
             self._dictation_committed_words = committed
             self._dictation_tentative_words = tentative
+            self._dictation_previous_text_authoritative = (
+                previous_text_authoritative)
             self._dictation_stable_transcript = merged
             self._stream_results = [merged] if merged else []
             self._stream_processed_samples = int(segment["sample_end"])
@@ -2837,6 +2819,7 @@ class Mumble:
             self._process(audio, duration, mode_active, windows)
         finally:
             self._processing = False
+            self._durable_transcription_snapshot = None
             self._restore_meeting_island()
 
     def _transcribe(self, audio, want_words=False):
@@ -2850,24 +2833,23 @@ class Mumble:
         dictation; it falls back to local on ANY error so a flaky network never
         loses a dictation.
 
-        When `want_words` is True (mode key was held) we ALWAYS use local: the
-        mode-key feature needs per-word timestamps to map the button window onto the
-        spoken keyword, which the cloud path doesn't provide. Returns a plain string
-        normally, or (text, words) when want_words=True."""
-        invocation_snapshot = self._transcription_snapshot()
-        if not want_words and self._cloud_transcription_on(
-            invocation_snapshot.route
-        ):
-            text = self._cloud_transcribe(audio, invocation_snapshot)
-            # Treat an empty/whitespace cloud result as a non-result, not success:
-            # a provider that returns {"text": ""} on a real utterance would
-            # otherwise short-circuit the local fallback and silently drop the
-            # dictation. Mirror the empty-is-not-a-result convention used elsewhere
-            # (the streaming worker and _process both gate on truthy text).
-            if text and text.strip():
-                return text
-            # cloud failed/empty → fall through to local so the dictation still lands
-        return self._local_transcribe(audio, want_words=want_words)
+        A word-timestamp request never overrides the selected cloud route. Cloud
+        providers without word timing return an empty word list. A successful
+        silent cloud result remains authoritative; only a genuine failure falls
+        back locally."""
+        invocation_snapshot = ((getattr(
+            self, "_durable_transcription_snapshot", None)
+            if getattr(self, "_dictation_session", None) is not None else None)
+            or self._transcription_snapshot())
+        return transcribe_selected_route(
+            cloud_selected=self._cloud_transcription_on(
+                invocation_snapshot.route),
+            want_words=want_words,
+            cloud_transcribe=lambda: self._cloud_transcribe(
+                audio, invocation_snapshot),
+            local_transcribe=lambda *, want_words: self._local_transcribe(
+                audio, want_words=want_words),
+        )
 
     def _transcription_snapshot(self):
         """Freeze permission and every cloud speech-to-text input once."""
@@ -2927,7 +2909,7 @@ class Mumble:
                 inference_ordinal=ordinal,
                 route="cloud",
                 provider=provider,
-                success=bool(text and text.strip()),
+                success=text is not None,
             )
             return text
         except Exception as e:

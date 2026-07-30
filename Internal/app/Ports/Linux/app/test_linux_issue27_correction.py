@@ -219,3 +219,57 @@ def test_capability_probes_require_real_portal_and_autostart_routes(tmp_path):
          mock.patch.object(autostart, "_VENV_PYTHON", str(missing / "python")):
         stale_status, _stale_message = autostart.probe_route()
     assert stale_status == "degraded"
+
+
+def test_enabled_obsolete_exec_is_not_rescued_by_a_current_launcher(tmp_path):
+    current_launcher = tmp_path / "current" / "mumble"
+    current_launcher.parent.mkdir()
+    current_launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    current_launcher.chmod(0o755)
+    current_main = tmp_path / "current" / "app" / "mumble_linux.py"
+    current_main.parent.mkdir()
+    current_main.write_text("# current Mumble\n", encoding="utf-8")
+    desktop = tmp_path / "autostart" / autostart.DESKTOP_NAME
+    desktop.parent.mkdir()
+    desktop.write_text(
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Mumble\n"
+        "Exec=/removed/old/mumble\n"
+        "X-GNOME-Autostart-enabled=true\n",
+        encoding="utf-8",
+    )
+
+    with mock.patch.object(autostart, "DESKTOP_PATH", str(desktop)), \
+         mock.patch.object(autostart, "LEGACY_DESKTOP_PATH", str(
+             tmp_path / "autostart" / "mumble.desktop")), \
+         mock.patch.object(autostart, "_MUMBLE_MAIN", str(current_main)), \
+         mock.patch.object(
+             autostart, "_INSTALL_LAUNCHER", str(current_launcher)), \
+         mock.patch.object(
+             autostart, "_VENV_PYTHON", str(tmp_path / "missing-python")):
+        status, message = autostart.probe_route()
+
+    assert status in {"degraded", "unknown"}
+    assert "exec" in message.casefold() or "target" in message.casefold()
+
+    desktop.write_text(
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Mumble\n"
+        f'Exec="{current_launcher}"\n'
+        "X-GNOME-Autostart-enabled=true\n",
+        encoding="utf-8",
+    )
+    with mock.patch.object(autostart, "DESKTOP_PATH", str(desktop)), \
+         mock.patch.object(autostart, "LEGACY_DESKTOP_PATH", str(
+             tmp_path / "autostart" / "mumble.desktop")), \
+         mock.patch.object(autostart, "_MUMBLE_MAIN", str(current_main)), \
+         mock.patch.object(
+             autostart, "_INSTALL_LAUNCHER", str(current_launcher)), \
+         mock.patch.object(
+             autostart, "_VENV_PYTHON", str(tmp_path / "missing-python")):
+        ready_status, ready_message = autostart.probe_route()
+
+    assert ready_status == "ready"
+    assert "current mumble launch route" in ready_message.casefold()

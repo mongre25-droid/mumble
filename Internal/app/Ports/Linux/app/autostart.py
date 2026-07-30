@@ -14,6 +14,7 @@ Public API (shared with Windows/macOS ports):
 """
 
 import os
+import shlex
 import shutil
 import sys
 import tempfile
@@ -88,13 +89,15 @@ def _build_desktop_entry():
     )
 
 
-def _desktop_valid(path):
-    """Return whether *path* is an enabled, minimally valid autostart entry."""
+def _desktop_fields(path):
+    """Read one bounded Desktop Entry group into a normalized field mapping."""
     if not os.path.isfile(path):
-        return False
+        return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
+        with open(path, "r", encoding="utf-8") as handle:
+            content = handle.read(65537)
+        if len(content) > 65536:
+            return None
         fields = {}
         in_desktop_group = False
         for raw in content.splitlines():
@@ -107,15 +110,68 @@ def _desktop_valid(path):
             if in_desktop_group and "=" in line:
                 key, value = line.split("=", 1)
                 fields[key.strip().casefold()] = value.strip()
-        return (
-            fields.get("type", "").casefold() == "application"
-            and bool(fields.get("exec", ""))
-            and fields.get("hidden", "false").casefold() != "true"
-            and fields.get("x-gnome-autostart-enabled", "true").casefold()
-            != "false"
-        )
-    except Exception:
+        return fields
+    except (OSError, UnicodeError):
+        return None
+
+
+def _desktop_valid(path):
+    """Return whether *path* is an enabled, minimally valid autostart entry."""
+    fields = _desktop_fields(path)
+    if fields is None:
         return False
+    return (
+        fields.get("type", "").casefold() == "application"
+        and bool(fields.get("exec", ""))
+        and fields.get("hidden", "false").casefold() != "true"
+        and fields.get("x-gnome-autostart-enabled", "true").casefold()
+        != "false"
+    )
+
+
+def _desktop_exec(path):
+    """Return the desktop entry's parsed Exec command, or no command."""
+    fields = _desktop_fields(path)
+    if fields is None:
+        return None
+    try:
+        argv = shlex.split(fields.get("exec", ""), posix=True)
+        if not argv or any("%" in value.replace("%%", "")
+                           for value in argv):
+            return None
+        return [value.replace("%%", "%") for value in argv]
+    except ValueError:
+        return None
+
+
+def _enabled_entry_path():
+    if _desktop_valid(DESKTOP_PATH):
+        return DESKTOP_PATH
+    if _legacy_entry_owned() and _desktop_valid(LEGACY_DESKTOP_PATH):
+        return LEGACY_DESKTOP_PATH
+    return None
+
+
+def _exec_matches_current_route(argv):
+    """Prove that an Exec command resolves to a current installed route."""
+    if not argv:
+        return False
+
+    def same_path(left, right):
+        return os.path.normcase(os.path.realpath(left)) == os.path.normcase(
+            os.path.realpath(right))
+
+    executable = argv[0]
+    if not (os.path.isfile(executable) and os.access(executable, os.X_OK)):
+        return False
+    if same_path(executable, _INSTALL_LAUNCHER):
+        return len(argv) == 1
+    return bool(
+        len(argv) == 2
+        and same_path(executable, _VENV_PYTHON)
+        and os.path.isfile(_MUMBLE_MAIN)
+        and same_path(argv[1], _MUMBLE_MAIN)
+    )
 
 
 def _legacy_entry_owned(path=None):
@@ -154,8 +210,16 @@ def probe_route():
             return (
                 "degraded",
                 "No installed Mumble launch route is available for autostart.")
-        if is_enabled():
-            return "ready", "A valid Mumble XDG autostart entry is enabled."
+        enabled_entry = _enabled_entry_path()
+        if enabled_entry:
+            argv = _desktop_exec(enabled_entry)
+            if _exec_matches_current_route(argv):
+                return (
+                    "ready",
+                    "The enabled XDG entry uses the current Mumble launch route.")
+            return (
+                "degraded",
+                "The enabled XDG entry has a missing, stale, or mismatched Exec target.")
         destination = AUTOSTART_DIR
         while not os.path.exists(destination):
             parent = os.path.dirname(destination)
