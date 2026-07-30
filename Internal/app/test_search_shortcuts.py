@@ -266,6 +266,32 @@ class SearchShortcutMigrationTests(unittest.TestCase):
         self.assertFalse(settings.get("web_search_hotkey_default_applied"))
         self.assertIn("Dictate", settings.web_search_migration_notice)
 
+    def test_macos_translation_created_web_search_conflict_stays_retryable(self):
+        settings, _module = self.load_macos_settings({
+            "hotkey": "ctrl+windows",
+            "web_search_hotkey": "ctrl+option+d",
+            "web_search_hotkey_default_applied": False,
+            "search_hotkey_find_default_applied": True,
+            "mac_hotkeys_v1_applied": False,
+        })
+        self.assertEqual(settings.get("hotkey"), "ctrl+option+d")
+        self.assertEqual(settings.get("web_search_hotkey"), "ctrl+option+d")
+        self.assertFalse(settings.get("web_search_hotkey_default_applied"))
+        self.assertIn("Dictate", settings.web_search_migration_notice)
+
+    def test_macos_safe_translated_shortcuts_complete_migration(self):
+        settings, _module = self.load_macos_settings({
+            "hotkey": "ctrl+windows",
+            "web_search_hotkey": "ctrl+alt+s",
+            "web_search_hotkey_default_applied": False,
+            "search_hotkey_find_default_applied": True,
+            "mac_hotkeys_v1_applied": False,
+        })
+        self.assertEqual(settings.get("hotkey"), "ctrl+option+d")
+        self.assertEqual(settings.get("web_search_hotkey"), "ctrl+option+s")
+        self.assertTrue(settings.get("web_search_hotkey_default_applied"))
+        self.assertIsNone(getattr(settings, "web_search_migration_notice", None))
+
     def test_first_run_uses_find_default(self):
         settings = self.load_settings()
         self.assertEqual(settings.get("search_hotkey"), SEARCH_HOTKEY_DEFAULT)

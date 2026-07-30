@@ -329,13 +329,44 @@ class Settings:
         # Snapshot the freshly-loaded state so we can mark exactly the keys this
         # migration changes as dirty (they must win over the on-disk snapshot).
         before = json.loads(json.dumps(self.data))
+        changed = False
+        # Translate only known historical platform defaults before any shortcut
+        # migration compares chords; custom values remain untouched. Every
+        # conflict decision must use final effective macOS values, including
+        # commands translated in this launch. Deck stays Option+H because
+        # Option+D is the activation shortcut.
+        if not self.data.get("mac_hotkeys_v1_applied"):
+            replacements = {
+                "hotkey": {
+                    "ctrl+windows": "ctrl+option+d",
+                    "ctrl+win": "ctrl+option+d",
+                },
+                "quick_paste_hotkey": {
+                    "ctrl+alt+v": "ctrl+option+v",
+                },
+                "history_hotkey": {
+                    "ctrl+alt+d": "ctrl+option+h",
+                    "ctrl+alt+h": "ctrl+option+h",
+                },
+                "web_search_hotkey": {
+                    "ctrl+alt+s": "ctrl+option+s",
+                },
+                "search_hotkey": {
+                    "ctrl+alt+f": SEARCH_HOTKEY_DEFAULT,
+                },
+            }
+            for key, mapping in replacements.items():
+                current = str(self.data.get(key, "") or "").strip().lower()
+                if current in mapping:
+                    self.data[key] = mapping[current]
+            self.data["mac_hotkeys_v1_applied"] = True
+            changed = True
         legacy_search_hotkey = (
             self.data.get("search_hotkey")
             if "search_hotkey" in self._loaded_keys
             and not self.data.get("search_hotkey_find_default_applied")
             else None
         )
-        changed = False
         removed = {key for key in REMOVED_SETTINGS if key in self.data}
         for key in removed:
             self.data.pop(key, None)
@@ -490,35 +521,6 @@ class Settings:
             m = str(self.data.get("model", "small.en")).lower()
             self.data["english_only"] = m.endswith(".en")
             self.data["big_shift_applied"] = True
-            changed = True
-        # macOS parity repair: translate only known historical platform defaults.
-        # Custom shortcuts are deliberately left untouched.  In particular the
-        # Deck remains Option+H because Option+D is the activation shortcut.
-        if not self.data.get("mac_hotkeys_v1_applied"):
-            replacements = {
-                "hotkey": {
-                    "ctrl+windows": "ctrl+option+d",
-                    "ctrl+win": "ctrl+option+d",
-                },
-                "quick_paste_hotkey": {
-                    "ctrl+alt+v": "ctrl+option+v",
-                },
-                "history_hotkey": {
-                    "ctrl+alt+d": "ctrl+option+h",
-                    "ctrl+alt+h": "ctrl+option+h",
-                },
-                "web_search_hotkey": {
-                    "ctrl+alt+s": "ctrl+option+s",
-                },
-                "search_hotkey": {
-                    "ctrl+alt+f": SEARCH_HOTKEY_DEFAULT,
-                },
-            }
-            for key, mapping in replacements.items():
-                current = str(self.data.get(key, "") or "").strip().lower()
-                if current in mapping:
-                    self.data[key] = mapping[current]
-            self.data["mac_hotkeys_v1_applied"] = True
             changed = True
         if changed:
             self._dirty.update(
