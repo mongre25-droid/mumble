@@ -472,5 +472,13 @@
   <li><span class="badge b-gated">boundary</span> This is one local, unpushed test-and-record correction directly above <code>1d4d176115574ede3757d2eb6a47f941cfa0601f</code>. Independent review, a new exact-head Level B CI run, genuine providers, physical platforms, package/install, signing, deployment, release, rollback, and owner acceptance remain open.</li>
 </ul>
 
+<h2 data-evidence-boundary="issue-33-windows-package-correction"><span class="sec">53</span>29 July 2026 &mdash; stale tracked Windows packages corrected locally</h2>
+<ul>
+  <li><span class="badge b-exist">stale package reproduced</span> From clean exact accepted baseline <code>c34e7baaf8d7cd28354960472bd26ba9001c84d3</code>, both tracked downloads had SHA-256 <code>5FA067D3BC6F60976348BB8BC03AD15676E3C076A2442AAD3280FB07FEB0A2E4</code>, 130 unique members, six missing current runtime files, and 30 older shared runtime members. Clean CRC and byte identity between two stale archives did not make them source-current.</li>
+  <li><span class="badge b-done">canonical source binding and checkout determinism</span> The deterministic builder exposes and consumes one ordered release manifest. The first focused red rejected both stale archives and named all six absent files. Independent review then exposed <code>cloud_schema.sql</code> as the only unnormalized text member: full 136-member CRLF and LF checkout archives had different hashes. The second focused red reproduced that member-byte difference; adding SQL to canonical text normalization made the two full archives byte-identical without changing runtime source semantics.</li>
+  <li><span class="badge b-done">fresh package candidate</span> The canonical Windows builder ran once after the final expanded tooling, test, and Core edits. <code>Internal/Releases/Mumble.zip</code> and the maintained website download are byte-identical at checkout-independent SHA-256 <code>B9B148F581E49CB89525C9839228DBBDC37A447140151DC59A9AC905642F372A</code>, with 136 unique members, clean CRC, deterministic metadata, required exclusions, and exact canonical packaged-byte matches.</li>
+  <li><span class="badge b-gated">boundary</span> This is one unpushed local direct-child package correction from <code>c34e7baa</code>. Runtime application behaviour is unchanged. Issue #25's missing manifest/SBOM, dependency/licence/runtime/model provenance, disposable lifecycle, physical and real-application matrix, signing, public release, rollback, and owner-acceptance gates remain open; Issues #25 and #33 are not closed.</li>
+</ul>
+
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
 </div></body></html>

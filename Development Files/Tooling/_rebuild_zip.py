@@ -44,7 +44,7 @@ ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 TEXT_EXTENSIONS = {
     ".bat", ".cfg", ".cmd", ".css", ".csv", ".desktop", ".html",
     ".ini", ".js", ".json", ".jsx", ".md", ".ps1", ".py", ".service",
-    ".sh", ".svg", ".toml", ".ts", ".tsx", ".txt", ".vbs", ".xml",
+    ".sh", ".sql", ".svg", ".toml", ".ts", ".tsx", ".txt", ".vbs", ".xml",
     ".yaml", ".yml",
 }
 TEXT_NAMES = {"LICENSE", "NOTICE"}
@@ -88,20 +88,32 @@ def _skip_file(name):
             or name.endswith((".pyc", ".pyo")))
 
 
-def add_tree(z, src_dir, arc_prefix):
-    """Add every file under src_dir to the zip at arc_prefix, pruning EXCLUDE_DIRS
-    and test/compiled files (the app/ runtime)."""
-    n = 0
-    for root, dirs, files in os.walk(src_dir):
-        dirs[:] = sorted(d for d in dirs if d not in EXCLUDE_DIRS)
-        for fn in sorted(files):
-            if _skip_file(fn):
+def release_sources(root):
+    """Return the canonical ordered (source, archive-name) release manifest."""
+    root = Path(root)
+    internal = root / "Internal"
+    appdir = internal / "app"
+    sources = []
+
+    for source, archive_name in (
+        (root / "Mumble.exe", "Mumble/Mumble.exe"),
+        (root / "LICENSE", "Mumble/LICENSE"),
+    ):
+        if source.is_file():
+            sources.append((source, archive_name))
+
+    for source in sorted(path for path in internal.iterdir() if path.is_file()):
+        sources.append((source, f"Mumble/Internal/{source.name}"))
+
+    for current, dirs, files in os.walk(appdir):
+        dirs[:] = sorted(directory for directory in dirs if directory not in EXCLUDE_DIRS)
+        for filename in sorted(files):
+            if _skip_file(filename):
                 continue
-            full = os.path.join(root, fn)
-            rel = os.path.relpath(full, src_dir).replace(os.sep, "/")
-            write_file(z, full, arc_prefix + rel)
-            n += 1
-    return n
+            source = Path(current) / filename
+            relative = source.relative_to(appdir).as_posix()
+            sources.append((source, f"Mumble/Internal/app/{relative}"))
+    return sources
 
 
 def website_archive_path(root):
@@ -146,37 +158,27 @@ def main():
         sys.exit(1)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     tmp = out + ".new"
-    internal = os.path.join(root, "Internal")
-    appdir = os.path.join(internal, "app")
+    sources = release_sources(root)
 
     counts = {}
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-        # 1. root Mumble.exe — the native launcher.
-        exe = os.path.join(root, "Mumble.exe")
-        if os.path.isfile(exe):
-            write_file(z, exe, "Mumble/Mumble.exe")
-            counts["Mumble.exe"] = 1
-        else:
+        source_names = {archive_name for _, archive_name in sources}
+        if "Mumble/Mumble.exe" not in source_names:
             print("WARNING: root Mumble.exe missing — zip will lack the launcher.")
-        # Ship Mumble's own MIT licence at the distribution root. Third-party
-        # component notices live under Internal/app and are included by add_tree.
-        licence = os.path.join(root, "LICENSE")
-        if os.path.isfile(licence):
-            write_file(z, licence, "Mumble/LICENSE")
-            counts["LICENSE"] = 1
-        else:
+        if "Mumble/LICENSE" not in source_names:
             print("WARNING: root LICENSE missing — zip will lack Mumble's licence.")
-        # 2. Internal/ top-level launchers + docs (every file directly under
-        #    Internal/, i.e. NOT the app/ dir).
-        ni = 0
-        for fn in sorted(os.listdir(internal)):
-            full = os.path.join(internal, fn)
-            if os.path.isfile(full):
-                write_file(z, full, "Mumble/Internal/" + fn)
-                ni += 1
-        counts["Internal launchers"] = ni
-        # 3. Internal/app/ runtime (pruned).
-        counts["app files"] = add_tree(z, appdir, "Mumble/Internal/app/")
+        for source, archive_name in sources:
+            write_file(z, source, archive_name)
+        counts["Mumble.exe"] = int("Mumble/Mumble.exe" in source_names)
+        counts["LICENSE"] = int("Mumble/LICENSE" in source_names)
+        counts["Internal launchers"] = sum(
+            name.startswith("Mumble/Internal/")
+            and not name.startswith("Mumble/Internal/app/")
+            for name in source_names
+        )
+        counts["app files"] = sum(
+            name.startswith("Mumble/Internal/app/") for name in source_names
+        )
     os.replace(tmp, out)
 
     # ---- verify + report -------------------------------------------------
