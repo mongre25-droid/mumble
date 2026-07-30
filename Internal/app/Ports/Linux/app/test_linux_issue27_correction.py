@@ -471,3 +471,67 @@ def test_probe_route_rejects_entry_changed_after_snapshot(tmp_path):
         status, _message = autostart.probe_route()
 
     assert status in {"degraded", "unknown"}
+
+
+def test_probe_route_rejects_same_size_mutation_with_restored_metadata(
+        tmp_path):
+    current_launcher = tmp_path / "current" / "mumble"
+    current_launcher.parent.mkdir()
+    current_launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    current_launcher.chmod(0o755)
+    stale_launcher = tmp_path / "removed" / "mumble"
+    assert len(str(stale_launcher)) == len(str(current_launcher))
+    current_main = tmp_path / "current" / "app" / "mumble_linux.py"
+    current_main.parent.mkdir()
+    current_main.write_text("# current Mumble\n", encoding="utf-8")
+    desktop = tmp_path / "autostart" / autostart.DESKTOP_NAME
+    desktop.parent.mkdir()
+    original = (
+        "[Desktop Entry]\nType=Application\nName=Mumble\n"
+        f'Exec="{current_launcher}"\n')
+    changed = original.replace(str(current_launcher), str(stale_launcher))
+    assert len(changed.encode("utf-8")) == len(original.encode("utf-8"))
+    desktop.write_text(original, encoding="utf-8")
+    original_stat = desktop.stat()
+
+    def mutate_after_match(_argv):
+        desktop.write_text(changed, encoding="utf-8")
+        os.utime(desktop, ns=(
+            original_stat.st_atime_ns, original_stat.st_mtime_ns))
+        return True
+
+    with mock.patch.object(autostart, "DESKTOP_PATH", str(desktop)), \
+         mock.patch.object(autostart, "LEGACY_DESKTOP_PATH", str(
+             tmp_path / "autostart" / "mumble.desktop")), \
+         mock.patch.object(autostart, "_MUMBLE_MAIN", str(current_main)), \
+         mock.patch.object(
+             autostart, "_INSTALL_LAUNCHER", str(current_launcher)), \
+         mock.patch.object(autostart, "_VENV_PYTHON", str(
+             tmp_path / "missing-python")), \
+         mock.patch.object(
+             autostart, "_exec_matches_current_route", mutate_after_match):
+        status, _message = autostart.probe_route()
+
+    assert status in {"degraded", "unknown"}
+
+
+@pytest.mark.parametrize(("visibility", "expected"), [
+    ("OnlyShowIn=KDE;\n", {"degraded", "unknown"}),
+    ("NotShowIn=GNOME;\n", {"degraded", "unknown"}),
+    ("OnlyShowIn=gnome;\n", {"degraded", "unknown"}),
+    ("OnlyShowIn=KDE;GNOME\n", {"ready"}),
+    ("OnlyShowIn=GNOME;\nNotShowIn=KDE;\n", {"ready"}),
+])
+def test_probe_route_applies_current_desktop_visibility(
+        tmp_path, monkeypatch, visibility, expected):
+    monkeypatch.setenv("XDG_CURRENT_DESKTOP", "GNOME:GNOME-Classic")
+    status, _message = _probe_current_autostart_entry(
+        tmp_path,
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Mumble\n"
+        'Exec="{launcher}"\n'
+        f"{visibility}",
+    )
+
+    assert status in expected

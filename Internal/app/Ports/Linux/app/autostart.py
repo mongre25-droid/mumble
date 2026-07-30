@@ -13,6 +13,8 @@ Public API (shared with Windows/macOS ports):
   set_enabled(bool) → bool
 """
 
+import hashlib
+import io
 import os
 import shlex
 import shutil
@@ -60,6 +62,7 @@ class _DesktopEntrySnapshot:
     fields: tuple
     duplicate_authority_keys: frozenset
     file_identity: tuple
+    content_digest: bytes
 
 
 def _desktop_quote(value):
@@ -157,6 +160,7 @@ def _desktop_snapshot(path):
             fields=tuple(fields.items()),
             duplicate_authority_keys=frozenset(duplicate_authority_keys),
             file_identity=identity_after,
+            content_digest=hashlib.sha256(raw_content).digest(),
         )
     except (OSError, UnicodeError):
         return None
@@ -171,9 +175,83 @@ def _snapshot_field(snapshot, key, default=""):
 
 def _snapshot_unchanged(snapshot):
     try:
-        return _file_identity(snapshot.path) == snapshot.file_identity
+        with io.open(snapshot.path, "rb") as handle:
+            opened_identity = _stat_identity(os.fstat(handle.fileno()))
+            raw_content = handle.read(65537)
+            opened_identity_after = _stat_identity(os.fstat(handle.fileno()))
+        return bool(
+            len(raw_content) <= 65536
+            and snapshot.file_identity == opened_identity
+            and opened_identity == opened_identity_after
+            and opened_identity_after == _file_identity(snapshot.path)
+            and hashlib.sha256(raw_content).digest() == snapshot.content_digest
+        )
     except OSError:
         return False
+
+
+def _desktop_list(value):
+    """Parse one XDG semicolon-separated string list, or fail closed."""
+    values = []
+    current = []
+    escaped = False
+    escapes = {
+        "s": " ", "n": "\n", "t": "\t", "r": "\r",
+        "\\": "\\", ";": ";",
+    }
+    for character in value:
+        if escaped:
+            decoded = escapes.get(character)
+            if decoded is None:
+                return None
+            current.append(decoded)
+            escaped = False
+        elif character == "\\":
+            escaped = True
+        elif character == ";":
+            if not current:
+                return None
+            values.append("".join(current))
+            current = []
+        else:
+            current.append(character)
+    if escaped:
+        return None
+    if current:
+        values.append("".join(current))
+    if not values or any(
+            not item or any(ord(ch) < 32 or ord(ch) == 127 for ch in item)
+            for item in values):
+        return None
+    return frozenset(values)
+
+
+def _desktop_visible_in_current_environment(snapshot):
+    """Apply OnlyShowIn/NotShowIn to XDG_CURRENT_DESKTOP."""
+    fields = dict(snapshot.fields)
+    only_value = fields.get("onlyshowin")
+    not_value = fields.get("notshowin")
+    if only_value is None and not_value is None:
+        return True
+    only_desktops = (_desktop_list(only_value)
+                     if only_value is not None else frozenset())
+    excluded_desktops = (_desktop_list(not_value)
+                         if not_value is not None else frozenset())
+    if ((only_value is not None and not only_desktops)
+            or (not_value is not None and not excluded_desktops)
+            or only_desktops.intersection(excluded_desktops)):
+        return False
+    current = tuple(
+        item
+        for item in (os.environ.get("XDG_CURRENT_DESKTOP") or "").split(":")
+        if item
+    )
+    for desktop in current:
+        if desktop in only_desktops:
+            return True
+        if desktop in excluded_desktops:
+            return False
+    return only_value is None
 
 
 def _desktop_snapshot_valid(snapshot):
@@ -186,6 +264,7 @@ def _desktop_snapshot_valid(snapshot):
         and _snapshot_field(
             snapshot, "x-gnome-autostart-enabled", "true").casefold()
         != "false"
+        and _desktop_visible_in_current_environment(snapshot)
         and _try_exec_available(snapshot)
     )
 
@@ -313,9 +392,9 @@ def probe_route():
                     "The enabled XDG entry uses the current Mumble launch route.")
             return (
                 "degraded",
-                "The enabled XDG entry's Exec authority is missing, stale, "
-                "malformed, ambiguous, mismatched, or changed while it was "
-                "checked.")
+                "The enabled XDG entry's startup authority is hidden, "
+                "desktop-ineligible, missing, stale, malformed, ambiguous, "
+                "mismatched, or changed while it was checked.")
         destination = AUTOSTART_DIR
         while not os.path.exists(destination):
             parent = os.path.dirname(destination)
