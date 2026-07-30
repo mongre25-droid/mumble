@@ -393,8 +393,9 @@ def probe_route():
             return (
                 "degraded",
                 "The enabled XDG entry's startup authority is hidden, "
-                "desktop-ineligible, missing, stale, malformed, ambiguous, "
-                "mismatched, or changed while it was checked.")
+                "desktop-ineligible, or has an Exec or launch target that is "
+                "missing, stale, malformed, ambiguous, mismatched, or changed "
+                "while it was checked.")
         destination = AUTOSTART_DIR
         while not os.path.exists(destination):
             parent = os.path.dirname(destination)
