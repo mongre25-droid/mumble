@@ -204,6 +204,68 @@ class SearchShortcutMigrationTests(unittest.TestCase):
         temp.cleanup()
         return result
 
+    def load_macos_settings(self, initial=None):
+        app_root = Path(__file__).resolve().parent
+        settings_path = app_root / "Ports" / "macOS" / "app" / "settings.py"
+        module_spec = importlib.util.spec_from_file_location(
+            "shortcut_settings_macos_focused", settings_path
+        )
+        settings_module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(settings_module)
+
+        temp = tempfile.TemporaryDirectory()
+        root = Path(temp.name)
+        disk_path = root / "settings.json"
+        if initial is not None:
+            disk_path.write_text(json.dumps(initial), encoding="utf-8")
+        try:
+            with patch.object(branding, "DATA_DIR", str(root)), patch.object(
+                branding, "SETTINGS_PATH", str(disk_path)
+            ), patch.object(branding, "ensure_dirs", lambda: None):
+                result = settings_module.Settings()
+        finally:
+            temp.cleanup()
+        return result, settings_module
+
+    def test_macos_fresh_settings_keep_find_and_web_search_independent(self):
+        settings, module = self.load_macos_settings()
+        self.assertEqual(settings.get("search_hotkey"), module.SEARCH_HOTKEY_DEFAULT)
+        self.assertEqual(
+            settings.get("web_search_hotkey"), module.WEB_SEARCH_HOTKEY_DEFAULT
+        )
+        self.assertNotEqual(
+            settings.get("search_hotkey"), settings.get("web_search_hotkey")
+        )
+
+    def test_macos_genuine_disk_legacy_web_search_choice_is_preserved(self):
+        settings, module = self.load_macos_settings({
+            "search_hotkey": "ctrl+option+g",
+            "search_hotkey_find_default_applied": False,
+        })
+        self.assertEqual(settings.get("web_search_hotkey"), "ctrl+option+g")
+        self.assertEqual(settings.get("search_hotkey"), module.SEARCH_HOTKEY_DEFAULT)
+        self.assertTrue(settings.get("web_search_hotkey_default_applied"))
+
+    def test_macos_legacy_choice_conflicting_with_find_stays_retryable(self):
+        settings, _module = self.load_macos_settings({
+            "search_hotkey": "ctrl+option+f",
+            "search_hotkey_find_default_applied": False,
+        })
+        self.assertEqual(settings.get("web_search_hotkey"), "ctrl+option+f")
+        self.assertFalse(settings.get("web_search_hotkey_default_applied"))
+        self.assertIn("Mumble Find", settings.web_search_migration_notice)
+
+    def test_macos_loaded_web_search_conflict_stays_retryable(self):
+        settings, _module = self.load_macos_settings({
+            "hotkey": "ctrl+option+s",
+            "web_search_hotkey": "ctrl+option+s",
+            "web_search_hotkey_default_applied": False,
+            "search_hotkey_find_default_applied": True,
+        })
+        self.assertEqual(settings.get("web_search_hotkey"), "ctrl+option+s")
+        self.assertFalse(settings.get("web_search_hotkey_default_applied"))
+        self.assertIn("Dictate", settings.web_search_migration_notice)
+
     def test_first_run_uses_find_default(self):
         settings = self.load_settings()
         self.assertEqual(settings.get("search_hotkey"), SEARCH_HOTKEY_DEFAULT)

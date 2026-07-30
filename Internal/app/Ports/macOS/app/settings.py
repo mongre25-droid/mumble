@@ -329,7 +329,12 @@ class Settings:
         # Snapshot the freshly-loaded state so we can mark exactly the keys this
         # migration changes as dirty (they must win over the on-disk snapshot).
         before = json.loads(json.dumps(self.data))
-        legacy_search_hotkey = self.data.get("search_hotkey")
+        legacy_search_hotkey = (
+            self.data.get("search_hotkey")
+            if "search_hotkey" in self._loaded_keys
+            and not self.data.get("search_hotkey_find_default_applied")
+            else None
+        )
         changed = False
         removed = {key for key in REMOVED_SETTINGS if key in self.data}
         for key in removed:
@@ -391,43 +396,51 @@ class Settings:
         # on the OLD "google" default, so flip google -> perplexity once. A
         # deliberate "brave"/already-"perplexity" choice is left untouched.
         if not self.data.get("web_search_hotkey_default_applied"):
-            if "web_search_hotkey" not in self._loaded_keys:
-                import bindings
+            import bindings
 
-                candidate = legacy_search_hotkey or "ctrl+option+s"
-                existing = {
-                    key: self.data.get(key, "")
-                    for key in (
-                        "hotkey", "quick_paste_hotkey", "history_hotkey"
-                    )
-                }
-                conflict = next(
-                    (
-                        (key, value)
-                        for key, value in existing.items()
-                        if bindings.conflicts(candidate, value)
-                    ),
-                    None,
-                )
-                if conflict:
-                    other_key, other_spec = conflict
-                    label = {
-                        "hotkey": "Dictate",
-                        "quick_paste_hotkey": "Paste latest",
-                        "history_hotkey": "Open Deck",
-                    }.get(other_key, other_key)
-                    self.web_search_migration_notice = (
-                        f"Web Search was left unregistered because {label} "
-                        f"already uses {bindings.pretty(other_spec)}. Your "
-                        "existing shortcut was preserved; choose a free Web "
-                        "Search shortcut in Settings."
-                    )
-                    print("[hotkey-migration]", self.web_search_migration_notice)
-                else:
-                    self.data["web_search_hotkey"] = candidate
-                    self.data["web_search_hotkey_default_applied"] = True
-                    changed = True
+            if "web_search_hotkey" in self._loaded_keys:
+                candidate = self.data.get("web_search_hotkey")
             else:
+                candidate = legacy_search_hotkey or WEB_SEARCH_HOTKEY_DEFAULT
+            existing = {
+                key: self.data.get(key, "")
+                for key in (
+                    "hotkey", "quick_paste_hotkey", "history_hotkey"
+                )
+            }
+            existing["search_hotkey"] = (
+                self.data.get("search_hotkey", "")
+                if self.data.get("search_hotkey_find_default_applied")
+                else SEARCH_HOTKEY_DEFAULT
+            )
+            conflict = next(
+                (
+                    (key, value)
+                    for key, value in existing.items()
+                    if bindings.conflicts(candidate, value)
+                ),
+                None,
+            )
+            if conflict:
+                if legacy_search_hotkey is not None:
+                    self.data["web_search_hotkey"] = legacy_search_hotkey
+                    changed = True
+                other_key, other_spec = conflict
+                label = {
+                    "hotkey": "Dictate",
+                    "quick_paste_hotkey": "Paste latest",
+                    "history_hotkey": "Open Deck",
+                    "search_hotkey": "Mumble Find",
+                }.get(other_key, other_key)
+                self.web_search_migration_notice = (
+                    f"Web Search was left unregistered because {label} "
+                    f"already uses {bindings.pretty(other_spec)}. Your "
+                    "existing shortcut was preserved; choose a free Web "
+                    "Search shortcut in Settings."
+                )
+                print("[hotkey-migration]", self.web_search_migration_notice)
+            else:
+                self.data["web_search_hotkey"] = candidate
                 self.data["web_search_hotkey_default_applied"] = True
                 changed = True
         if not self.data.get("search_hotkey_find_default_applied"):
