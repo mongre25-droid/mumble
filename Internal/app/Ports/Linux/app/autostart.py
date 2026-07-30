@@ -241,11 +241,12 @@ def _desktop_visible_in_current_environment(snapshot):
             or (not_value is not None and not excluded_desktops)
             or only_desktops.intersection(excluded_desktops)):
         return False
-    current = tuple(
-        item
-        for item in (os.environ.get("XDG_CURRENT_DESKTOP") or "").split(":")
-        if item
-    )
+    current_value = os.environ.get("XDG_CURRENT_DESKTOP")
+    if not current_value:
+        return False
+    current = tuple(current_value.split(":"))
+    if any(not item for item in current):
+        return False
     for desktop in current:
         if desktop in only_desktops:
             return True

@@ -527,5 +527,13 @@
   <li><span class="badge b-gated">candidate boundary</span> This remains local source evidence only. CI, physical GNOME/KDE/X11/device testing, distribution/sandbox testing, package/install/signing, merge/push, deployment, release/rollback, issue closure, and owner acceptance remain open.</li>
 </ul>
 
+<h2 data-evidence-boundary="issue-27-linux-parity-sixth-correction"><span class="sec">59</span>30 July 2026 &mdash; Linux current-desktop authority fails closed</h2>
+<ul>
+  <li><span class="badge b-exist">prior candidate record corrected</span> Fifth candidate <code>bb536be43ee0e9044ddde535d269d52750d69a3a</code>, Entry 58, and the full earlier lineage remain unchanged. Delayed independent review of fourth candidate <code>0847ae34</code> established that absent or malformed <code>XDG_CURRENT_DESKTOP</code> authority could still let a <code>NotShowIn</code>-controlled entry report <em>ready</em>. The fifth candidate already restored stale-route diagnostic truth; this direct-child sixth correction closes the remaining visibility-authority finding without rewriting history.</li>
+  <li><span class="badge b-done">current-desktop authority</span> When <code>OnlyShowIn</code> or <code>NotShowIn</code> controls startup, the current-desktop value must now exist, be non-empty, and contain no empty colon-separated component. Missing, empty, colon-only, leading-empty, trailing-empty, and double-colon values fail closed before ordered matching. Valid <code>GNOME:GNOME-Classic</code> authority, case sensitivity, optional list terminators, supported escapes, and valid non-overlapping dual keys remain unchanged.</li>
+  <li><span class="badge b-done">red first and focused green</span> Twelve new public-readiness cases across both visibility controls produced eight failures and four already-safe passes before the source correction. Afterward, all 18 directly affected visibility cases passed, then the complete Issue #27 correction file passed all 40 cases and the directly affected launcher/quoting case passed separately. Existing digest, restored-metadata mutation, stale-route wording, duplicate/snapshot/handle, <code>Exec</code>/<code>TryExec</code>, replacement, and quoting tests remained present and green.</li>
+  <li><span class="badge b-gated">candidate boundary</span> This remains local source evidence only. CI, physical GNOME/KDE/X11/device testing, distribution/sandbox testing, package/install/signing, merge/push, deployment, release/rollback, issue closure, and owner acceptance remain open.</li>
+</ul>
+
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
 </div></body></html>

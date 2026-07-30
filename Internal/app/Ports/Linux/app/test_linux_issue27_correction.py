@@ -521,6 +521,7 @@ def test_probe_route_rejects_same_size_mutation_with_restored_metadata(
     ("OnlyShowIn=gnome;\n", {"degraded", "unknown"}),
     ("OnlyShowIn=KDE;GNOME\n", {"ready"}),
     ("OnlyShowIn=GNOME;\nNotShowIn=KDE;\n", {"ready"}),
+    (r"OnlyShowIn=GNOME\;Shell;GNOME;" "\n", {"ready"}),
 ])
 def test_probe_route_applies_current_desktop_visibility(
         tmp_path, monkeypatch, visibility, expected):
@@ -535,3 +536,33 @@ def test_probe_route_applies_current_desktop_visibility(
     )
 
     assert status in expected
+
+
+@pytest.mark.parametrize("visibility", [
+    "OnlyShowIn=GNOME;\n",
+    "NotShowIn=KDE;\n",
+])
+@pytest.mark.parametrize("current_desktop", [
+    None,
+    "",
+    ":",
+    ":GNOME",
+    "GNOME:",
+    "GNOME::KDE",
+])
+def test_visibility_authority_rejects_absent_or_empty_desktop_components(
+        tmp_path, monkeypatch, visibility, current_desktop):
+    if current_desktop is None:
+        monkeypatch.delenv("XDG_CURRENT_DESKTOP", raising=False)
+    else:
+        monkeypatch.setenv("XDG_CURRENT_DESKTOP", current_desktop)
+    status, _message = _probe_current_autostart_entry(
+        tmp_path,
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Mumble\n"
+        'Exec="{launcher}"\n'
+        f"{visibility}",
+    )
+
+    assert status in {"degraded", "unknown"}
