@@ -1085,11 +1085,15 @@ class MumbleFindUiContractTests(unittest.TestCase):
                 self.assertNotIn("Search apps &amp; files", source)
 
         self.assertIn(
-            'aria-label="Mumble Find launcher"',
+            'role="dialog" aria-modal="true" aria-labelledby="ss-title" aria-describedby="ss-privacy"',
             self.linux_launcher_sources["loaded launcher UI"],
         )
         self.assertIn(
-            'aria-label="Find apps &amp; files"',
+            'aria-label="Move Mumble Find window"',
+            self.linux_launcher_sources["loaded launcher UI"],
+        )
+        self.assertIn(
+            '<label class="sr-only" for="ss-input">Find apps & files</label>',
             self.linux_launcher_sources["loaded launcher UI"],
         )
         self.assertIn(

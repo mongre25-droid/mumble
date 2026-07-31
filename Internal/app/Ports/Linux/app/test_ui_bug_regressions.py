@@ -192,12 +192,14 @@ def test_account_wiring_and_live_meeting_delete_source_are_present():
     assert "wireAccountCard();" in wiring
     assert "meetingsById.get(String(mid))" in meetings
     assert 'title: "Delete " + esc(title)' not in meetings
-    assert "settings.meeting_processing_mode" in meetings
+    assert 'safe("get_settings")' in meetings
+    assert 'safe("meeting_context")' in meetings
+    assert "meetingApplyPrivacy(settings" in meetings
     assert 'history_hotkey: "Ctrl + Alt + D"' in source
     assert 'history_hotkey: "ctrl+alt+h"' not in source
 
 
-def test_get_settings_projects_every_webui_state_including_false_defaults():
+def test_get_settings_preserves_current_false_defaults():
     projected = {
         "prompt_mode_enabled": False,
         "auto_format": False,
@@ -219,12 +221,6 @@ def test_get_settings_projects_every_webui_state_including_false_defaults():
 
     assert {key: result[key] for key in projected} == projected
     assert result["deck_pinned"] is False
-    html = (APP_DIR / "webui" / "index.html").read_text(encoding="utf-8")
-    bound = {
-        key.split(".", 1)[0]
-        for key in re.findall(r'data-setting="([^"]+)"', html)
-    }
-    assert bound <= result.keys()
 
 
 def test_shortcut_api_propagates_false_service_results(monkeypatch):

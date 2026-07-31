@@ -64,8 +64,12 @@ def test_mac_settings_migration_removes_retired_keys_and_repairs_shortcuts():
             assert store.get("hotkey") == "ctrl+option+d"
             assert store.get("quick_paste_hotkey") == "ctrl+option+v"
             assert store.get("history_hotkey") == "ctrl+option+h"
-            assert store.get("web_search_hotkey") == "ctrl+option+s"
+            # The old shared Search choice becomes the independent Web Search
+            # shortcut when it is safe; Mumble Find receives its Mac default.
+            assert store.get("web_search_hotkey") == "ctrl+alt+s"
             assert store.get("search_hotkey") == "ctrl+option+f"
+            assert store.get("web_search_hotkey_default_applied") is True
+            assert getattr(store, "web_search_migration_notice", None) is None
             for retired in settings.REMOVED_SETTINGS:
                 assert retired not in store.data
         finally:

@@ -43,9 +43,9 @@ def test_settings_hydration_and_microphone_error_contract_exists_on_every_platfo
         assert '<option value="enhanced">Full effects</option>' in html
         assert '<option value="lite">Basic</option>' not in html
         assert "Normal dictation records for up to 10 minutes" not in html
-        if platform_app != APP_DIR:
-            assert "10 minutes as a temporary safety guard" in html
-            assert "bounded, recovery-safe segments" not in html
+        assert 'id="home-dictation-limit"' in html
+        assert "bounded, recovery-safe segments" in html
+        assert "A safety stop can still protect your recording" in html
         assert "home-capabilities-grid" not in html
         assert 'class="home-latest-result"' in html
         tab_labels = [

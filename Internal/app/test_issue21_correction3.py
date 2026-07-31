@@ -378,7 +378,7 @@ app._notify = lambda *_args: None
 app._idle = lambda: None
 app._collect_text = lambda chunks: "".join(chunks)
 app._mark_llm_ok = lambda: None
-app._paste = lambda _text: True
+app._paste = lambda _text, **_kwargs: True
 app._set_state = lambda _state: None
 app.history = types.SimpleNamespace(add=lambda *_args, **_kwargs: None)
 

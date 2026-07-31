@@ -29,6 +29,22 @@ def _callback_controller():
     return app
 
 
+class _DurableCapture:
+    def __init__(self, accepted_samples=0, limit=None):
+        self.accepted_samples = accepted_samples
+        self.limit = limit
+        self.blocks = []
+
+    def accept(self, block):
+        remaining = (len(block) if self.limit is None else
+                     max(0, self.limit - self.accepted_samples))
+        accepted = min(len(block), remaining)
+        if accepted:
+            self.blocks.append(block[:accepted].copy())
+            self.accepted_samples += accepted
+        return accepted
+
+
 def test_product_limits_and_labels_are_stable():
     assert recording_limits.DICTATION_MAX_SECONDS == 600
     assert recording_limits.MEETING_MAX_SECONDS == 14_400
@@ -37,30 +53,21 @@ def test_product_limits_and_labels_are_stable():
     assert recording_limits.MEETING_MAX_DISPLAY == "4:00:00"
 
 
-def test_audio_callback_trims_exactly_at_dictation_limit(monkeypatch):
+def test_audio_callback_honours_durable_capture_acceptance_boundary():
     app = _callback_controller()
     app.frames = [np.ones((3, 1), dtype=np.float32)]
     app._recorded_samples = 3
-    stopped = threading.Event()
-    app._stop_at_dictation_limit = stopped.set
-
-    class ImmediateThread:
-        def __init__(self, target, **_kwargs):
-            self.target = target
-
-        def start(self):
-            self.target()
-
-    monkeypatch.setattr(recording_limits, "DICTATION_MAX_SAMPLES", 5)
-    monkeypatch.setattr(mumble.threading, "Thread", ImmediateThread)
+    capture = _DurableCapture(accepted_samples=3, limit=5)
+    app._durable_capture = capture
 
     app._audio_cb(np.ones((4, 1), dtype=np.float32), 4, None, None)
     app._audio_cb(np.ones((4, 1), dtype=np.float32), 4, None, None)
 
-    assert sum(len(block) for block in app.frames) == 5
+    assert sum(len(block) for block in capture.blocks) == 2
+    assert capture.accepted_samples == 5
+    assert sum(len(block) for block in app.frames) == 3
     assert app._recorded_samples == 5
-    assert app._dictation_limit_triggered is True
-    assert stopped.is_set()
+    assert app._dictation_limit_triggered is False
 
 
 def test_sleep_gap_resets_duration_counter_before_cap(monkeypatch):
@@ -68,15 +75,16 @@ def test_sleep_gap_resets_duration_counter_before_cap(monkeypatch):
     app.frames = [np.ones((4, 1), dtype=np.float32)]
     app._recorded_samples = 4
     app._last_audio_cb_time = 1.0
-    app._stop_at_dictation_limit = lambda: None
+    capture = _DurableCapture(accepted_samples=4)
+    app._durable_capture = capture
 
-    monkeypatch.setattr(recording_limits, "DICTATION_MAX_SAMPLES", 5)
     monkeypatch.setattr(mumble.time, "time", lambda: 10.0)
 
     app._audio_cb(np.ones((3, 1), dtype=np.float32), 3, None, None)
 
-    assert len(app.frames) == 1
-    assert len(app.frames[0]) == 3
+    assert app.frames == []
+    assert sum(len(block) for block in capture.blocks) == 3
+    assert capture.accepted_samples == 7
     assert app._recorded_samples == 3
     assert app._dictation_limit_triggered is False
 

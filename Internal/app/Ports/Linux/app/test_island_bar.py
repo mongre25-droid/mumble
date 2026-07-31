@@ -51,7 +51,8 @@ def test_foreign_zone_only_when_enabled():
     on = ir.bar_layout({"modes": MODES, "show_foreign": True, "expanded": True})
     check("foreign zone present when enabled", on["foreign"] is not None)
     if on["foreign"]:
-        check("foreign sits after the deck", on["foreign"][0] >= on["deck"][1] - 0.01)
+        check("foreign sits before the separate Deck action",
+              on["foreign"][1] <= on["deck"][0] + 0.01)
         check("foreign inside the pill", on["foreign"][1] <= on["pill"][1] + 0.01)
 
 
