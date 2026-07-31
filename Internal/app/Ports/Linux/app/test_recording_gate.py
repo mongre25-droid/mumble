@@ -122,6 +122,44 @@ def _discard_empty_durable_capture(m):
           capture.discard_empty() is True)
 
 
+print("\n== durable identity API — omission generates, supplied invalid fails ==")
+identity_root = os.path.join(_TMP, "identity_sessions")
+omitted_first = mumble.DurableLinuxCapture(identity_root, sample_rate=10)
+omitted_second = mumble.DurableLinuxCapture(identity_root, sample_rate=10)
+first_id = omitted_first.session.session_id
+second_id = omitted_second.session.session_id
+check("omitted session_id generates a valid opaque identity",
+      len(first_id) == 32
+      and all(char in "0123456789abcdef" for char in first_id))
+check("two omitted session_id calls generate distinct identities",
+      first_id != second_id)
+check("first omitted identity session discards safely",
+      omitted_first.discard_empty() is True)
+check("second omitted identity session discards safely",
+      omitted_second.discard_empty() is True)
+
+
+def _check_invalid_session_id(label, value):
+    capture = None
+    try:
+        capture = mumble.DurableLinuxCapture(
+            identity_root, sample_rate=10, session_id=value)
+    except ValueError as exc:
+        check(label, str(exc) == "invalid_session_id")
+    else:
+        check(label, False)
+    finally:
+        if capture is not None:
+            capture.discard_empty()
+
+
+_check_invalid_session_id("explicit None session_id fails closed", None)
+_check_invalid_session_id("empty session_id fails closed", "")
+_check_invalid_session_id("malformed session_id fails closed", "short")
+_check_invalid_session_id("numeric session_id fails closed", 123)
+_check_invalid_session_id("non-string session_id fails closed", object())
+
+
 print("\n== record gate — CLOUD mode, no local model (the regression case) ==")
 m = _blank()
 _arm(m, paused=False, model=None, cloud=True)

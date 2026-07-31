@@ -11,14 +11,18 @@ import numpy as np
 from dictation_session import DurableDictationSession
 
 
+_SESSION_ID_OMITTED = object()
+
+
 class DurableLinuxCapture:
     """Convert float callback blocks into immutable bounded PCM16 segments."""
 
     def __init__(self, root, *, sample_rate=16000, segment_seconds=30,
-                 queue_blocks=4, session_id=None, on_pressure=None):
+                 queue_blocks=4, session_id=_SESSION_ID_OMITTED,
+                 on_pressure=None):
         self.sample_rate = int(sample_rate)
         self.segment_samples = self.sample_rate * max(1, int(segment_seconds))
-        if session_id is None:
+        if session_id is _SESSION_ID_OMITTED:
             session_id = uuid.uuid4().hex
         self.session = DurableDictationSession.create(
             root, session_id=session_id, sample_rate=self.sample_rate,
