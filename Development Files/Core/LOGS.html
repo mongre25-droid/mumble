@@ -636,5 +636,15 @@
   <li><span class="badge b-gated">candidate boundary</span> This local direct-child correction awaits fresh independent review and replacement exact-head CI. Physical Linux audio and long-duration use, package installation and lifecycle, signing/notarisation, merge/push, deployment, release/rollback, issue closure, and owner acceptance remain open.</li>
 </ul>
 
+<h2 data-evidence-boundary="issue-25-windows-disposable-package-smoke"><span class="sec">71</span>31 July 2026 &mdash; Windows candidate extraction checked without owner-state changes</h2>
+<ul>
+  <li><span class="badge b-done">exact identity</span> The clean detached worktree was exact accepted head <code>01cdaded4807066281f92c606459046e11b2e5c7</code>, a direct child of <code>6d329d3a97d93b4086a8d4f60b690b1ee3155dad</code>. Exact-head GitHub Actions aggregate <code>30624018386</code> was already green and was reused rather than rerun.</li>
+  <li><span class="badge b-done">canonical package</span> <code>Internal/Releases/Mumble.zip</code> and the synchronized website download are byte-identical at SHA-256 <code>3588D7E86F7F0DC4634DE579E60C30341519A4D8E0AEF125AA52DD137CB99C03</code>. The current 141-member manifest is the later accepted descendant of Issue #33's 136-member <code>B9B148F581E49CB89525C9839228DBBDC37A447140151DC59A9AC905642F372A</code> package, not a regression to the stale 130-member archives.</li>
+  <li><span class="badge b-done">disposable path-with-spaces extraction</span> The canonical archive extracted once into <code>Codex Mumble QA 01cdaded\Extracted Candidate With Spaces</code> beneath the Windows temporary directory. All 141 files were present after extraction. No dictation, clipboard, API-key, or private user content was read or retained.</li>
+  <li><span class="badge b-gated">lifecycle unavailable</span> Windows Sandbox is not installed. The packaged runtime requires its installer before normal launch; that installer can stop Mumble processes and change this account's shortcuts and login startup. Under the owner-state prohibition, install, upgrade, uninstall, normal launch/readiness, and residue isolation were therefore recorded as <code>UNAVAILABLE</code> rather than simulated.</li>
+  <li><span class="badge b-gated">physical owner gates</span> Microphone start/stop and repeated or long dictation, target-visible paste and clipboard fallback, physical shortcuts and conflicts, Mumble Find actions and drag, Meetings/Island controls, elevation parity, non-US keyboard behavior, accessibility, signing, release, rollback, and owner acceptance were not inferred from source or CI and remain <code>OWNER-ONLY</code>.</li>
+  <li><span class="badge b-exist">scope and cleanup</span> Entries 1&ndash;70 remain unchanged. No application process, installer, shortcut, startup entry, registry value, owner data, GitHub state, main branch, release, or owner installation was changed. The disposable extraction tree was removed after the bounded check.</li>
+</ul>
+
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
 </div></body></html>
