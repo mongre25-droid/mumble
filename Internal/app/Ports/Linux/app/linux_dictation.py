@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import uuid
 
 import numpy as np
 
@@ -17,6 +18,8 @@ class DurableLinuxCapture:
                  queue_blocks=4, session_id=None, on_pressure=None):
         self.sample_rate = int(sample_rate)
         self.segment_samples = self.sample_rate * max(1, int(segment_seconds))
+        if session_id is None:
+            session_id = uuid.uuid4().hex
         self.session = DurableDictationSession.create(
             root, session_id=session_id, sample_rate=self.sample_rate,
             channels=1, segment_max_samples=self.segment_samples)

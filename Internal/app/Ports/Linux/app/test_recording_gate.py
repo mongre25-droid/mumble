@@ -40,6 +40,7 @@ except Exception:
 import mumble_linux as mumble  # noqa: E402  (exercise the shipped Linux controller)
 
 _fails = []
+_durable_session_ids = []
 
 
 def check(desc, cond):
@@ -93,6 +94,10 @@ def _arm(m, *, paused, model, cloud):
     m._mode_key_down = False
     m.prompt_mode_enabled = False   # Big Shift: the sticky Prompt toggle (off here)
     m._stream_done = threading.Event()
+    m._dictation_session_root = os.path.join(_TMP, "dictation_sessions")
+    os.makedirs(m._dictation_session_root, exist_ok=True)
+    transcription_snapshot = object()
+    m._transcription_snapshot = lambda: transcription_snapshot
     m._set_state = lambda *a, **k: None
     m._tk_schedule = lambda *a, **k: None
     m._maybe_warm_ai = lambda *a, **k: None
@@ -103,6 +108,20 @@ def _arm(m, *, paused, model, cloud):
                                                      True if k == "resource_saver" else d)})()
 
 
+def _discard_empty_durable_capture(m):
+    """Close the real empty durable session created by the recording gate."""
+    capture = m._durable_capture
+    m._durable_capture = None
+    session_id = capture.session.session_id
+    check("durable session received a fresh opaque identity",
+          len(session_id) == 32
+          and all(char in "0123456789abcdef" for char in session_id)
+          and session_id not in _durable_session_ids)
+    _durable_session_ids.append(session_id)
+    check("empty durable session was safely discarded",
+          capture.discard_empty() is True)
+
+
 print("\n== record gate — CLOUD mode, no local model (the regression case) ==")
 m = _blank()
 _arm(m, paused=False, model=None, cloud=True)
@@ -110,12 +129,14 @@ m.start_recording()
 check("recording STARTED in cloud mode with self.model=None", m.recording is True)
 check("input stream was opened + started", getattr(m, "stream", None)
       and m.stream.started)
+_discard_empty_durable_capture(m)
 
 print("\n== record gate — LOCAL model resident ==")
 m = _blank()
 _arm(m, paused=False, model=object(), cloud=False)
 m.start_recording()
 check("recording STARTED with a local model", m.recording is True)
+_discard_empty_durable_capture(m)
 
 print("\n== record gate — vetoes when there is NO way to transcribe ==")
 m = _blank()
