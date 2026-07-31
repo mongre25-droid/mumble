@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Mumble's substantial work, specifications, planning maps, and decisions live in the private `mongre25-droid/mumble` GitHub repository. Use the `gh` command-line tool from this checkout so it infers the repository from the configured remote.
+Mumble's substantial work, specifications, planning maps, and decisions live in the `mongre25-droid/mumble` GitHub repository. Use the `gh` command-line tool from this checkout so it infers the repository from the configured remote.
 
 ## Conventions
 

@@ -646,5 +646,15 @@
   <li><span class="badge b-exist">scope and cleanup</span> Entries 1&ndash;70 remain unchanged. No application process, installer, shortcut, startup entry, registry value, owner data, GitHub state, main branch, release, or owner installation was changed. The disposable extraction tree was removed after the bounded check.</li>
 </ul>
 
+<h2 data-evidence-boundary="final-reviewed-integration-promotion"><span class="sec">72</span>31 July 2026 &mdash; reviewed integration promoted to main and restarted</h2>
+<ul>
+  <li><span class="badge b-done">reviewed integrated main</span> Independent integration review returned <strong>ACCEPT</strong> with zero P0&ndash;P3 findings for exact product commit <code>babdc38d2d3869540afb7bc1e7523151c5de4237</code>. GitHub <code>main</code> and local <code>C:\Mumble</code> <code>main</code> were confirmed synchronized at that exact commit.</li>
+  <li><span class="badge b-done">complete exact-SHA automation</span> GitHub Actions run <code>30667435877</code> passed every required Windows, macOS, Linux, security, website, packaging, cleanliness, and Linux lifecycle job at <code>babdc38d</code>. The workflow's promotion job was skipped, so the green result did not deploy or release Mumble.</li>
+  <li><span class="badge b-exist">duplicate run intentionally cancelled</span> Main-ref run <code>30667794975</code> targeted the identical already-green <code>babdc38d</code> SHA and was intentionally cancelled only to avoid repeating the same full matrix. It is not a product or CI-failure finding.</li>
+  <li><span class="badge b-done">authenticated synchronized-main restart</span> Mumble was gracefully closed through its authenticated command channel and restarted from synchronized main. The restarted controller reported Ready, idle, not recording, and warm transcription readiness.</li>
+  <li><span class="badge b-gated">evidence boundary</span> Review, source integration, exact-SHA CI, main synchronization, and the authenticated source-runtime restart do not prove installed-package or physical behaviour. Real providers; formal local-AI benchmark and adoption; physical Windows, macOS, and Linux use; microphone and endurance; real-target paste, clipboard, shortcuts, drag, search, accessibility, elevation, and keyboard checks; package install, update, removal, and residue; permissions; signing/notarisation; deployment; public release; rollback; issue closure; and owner acceptance remain open.</li>
+  <li><span class="badge b-exist">documentation-only follow-up</span> This Entry 72 truth update changes only the three approved authoritative documentation files. Application and product bytes remain exactly those of tested integrated commit <code>babdc38d2d3869540afb7bc1e7523151c5de4237</code>; no product source, test, workflow, package, asset, installer, runtime, GitHub issue, label, deployment, release, or owner data changed.</li>
+</ul>
+
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
 </div></body></html>
