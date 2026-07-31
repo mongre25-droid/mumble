@@ -199,10 +199,14 @@ def test_account_wiring_and_live_meeting_delete_source_are_present():
     assert 'history_hotkey: "ctrl+alt+h"' not in source
 
 
-def test_get_settings_preserves_current_false_defaults():
+def test_get_settings_projects_every_webui_state_including_false_defaults():
+    assert webui_shell.DEFAULTS["correction_learning_enabled"] is False
+    assert webui_shell.DEFAULTS["correction_learning_auto_detect"] is True
     projected = {
         "prompt_mode_enabled": False,
         "auto_format": False,
+        "correction_learning_enabled": False,
+        "correction_learning_auto_detect": False,
         "foreign_languages": ["arabic", "urdu"],
         "resource_saver": True,
         "deck_pinned": False,
@@ -219,6 +223,12 @@ def test_get_settings_preserves_current_false_defaults():
 
     result = api.get_settings()
 
+    html = (APP_DIR / "webui" / "index.html").read_text(encoding="utf-8")
+    bound = {
+        key.split(".", 1)[0]
+        for key in re.findall(r'data-setting="([^"]+)"', html)
+    }
+    assert bound <= result.keys()
     assert {key: result[key] for key in projected} == projected
     assert result["deck_pinned"] is False
 

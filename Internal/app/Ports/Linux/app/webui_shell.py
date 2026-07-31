@@ -1554,7 +1554,8 @@ class Api:
             "openrouter_transcription_model",
             "local_url", "local_model", "model", "language", "mic_device",
             "history_max", "clipboard_enabled", "clipboard_max", "autostart",
-            "vocabulary_terms", "vocabulary", "ui_effects", "resource_saver",
+            "vocabulary_terms", "vocabulary", "correction_learning_enabled",
+            "correction_learning_auto_detect", "ui_effects", "resource_saver",
             # ITEM 4: Foreign is an independent, opt-in island toggle (hidden by
             # default); island_modes lets the user pick which processing modes the
             # island can switch between (Prompt/Email).

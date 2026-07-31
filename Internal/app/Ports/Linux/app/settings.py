@@ -176,6 +176,8 @@ DEFAULTS = {
     # vocabulary (ADVANCED workflow): explicit mis-hearing → correction pairs
     # for stubborn cases, e.g. {"mambo": "Mumble"}. Applied first, verbatim.
     "vocabulary": {},
+    "correction_learning_enabled": False,
+    "correction_learning_auto_detect": True,
     # How hard the plain-text polisher edits: Light = smallest fixes (keep exact words),
     # Standard = also smooth grammar/awkward phrasing, Thorough = full cleanup.
     "polish_aggressiveness": "Light",

@@ -607,5 +607,14 @@
   <li><span class="badge b-gated">boundary</span> This single local direct-child correction is awaiting fresh independent review. Replacement exact-head GitHub CI is the broad gate; physical, installed-package, signing/notarisation, deployment, release, rollback, issue closure, and owner acceptance remain open.</li>
 </ul>
 
+<h2 data-evidence-boundary="issue-33-26-27-linux-settings-projection-correction"><span class="sec">68</span>31 July 2026 &mdash; rejected Linux Settings projection corrected locally</h2>
+<ul>
+  <li><span class="badge b-exist">rejection retained</span> Fresh independent review rejected exact candidate <code>7ddd115798f071b145948bbf4af86dbdac33b968</code>. Its reduced Linux Settings assertion hid a product defect while Entry 67 incorrectly reported that no production defect existed. Entry 67 remains byte-for-byte unchanged as rejected historical evidence; this is one direct-child correction.</li>
+  <li><span class="badge b-done">real Linux defect corrected</span> Linux exposes <code>correction_learning_enabled</code> and <code>correction_learning_auto_detect</code>, but its authoritative <code>get_settings()</code> bridge omitted both. Linux persistence now declares the existing Boolean defaults, and the bridge returns the stored values directly so a saved <code>false</code> remains <code>false</code> when Settings reloads.</li>
+  <li><span class="badge b-done">red first and focused green</span> The restored exhaustive visible-control projection test failed before the runtime correction because the two correction-learning keys were missing. The same test then passed and also proved both explicitly saved <code>false</code> values survive projection. Changed Python syntax and serious-static checks plus Core HTML, sequential-entry, append-only, whitespace, lineage, and clean-state checks are recorded at sign-off; no broad suite was run.</li>
+  <li><span class="badge b-exist">focused scope retained</span> The other ten stale-test corrections remain unchanged. No Windows or macOS product source, CI workflow, package, screenshot, installation, GitHub, owner-main, or release state changed.</li>
+  <li><span class="badge b-gated">candidate boundary</span> This local direct-child correction awaits fresh independent review and replacement exact-head CI. Physical platform use, package installation and lifecycle, signing/notarisation, merge/push, deployment, release/rollback, issue closure, and owner acceptance remain open.</li>
+</ul>
+
 <div class="doc-foot"><span>Mumble 0.95 · completed history</span><span class="gold">LOGS</span></div>
 </div></body></html>
