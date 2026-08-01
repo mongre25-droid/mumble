@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
 """Settings route projection, validation, and failure-path regressions."""
 import copy
-import sys
 import threading
-import types
-
-# The settings bridge imports the clipboard adapter at module import time. These
-# tests never touch the system clipboard, so a tiny dependency seam keeps the
-# route matrix offline and dependency-free.
-sys.modules.setdefault(
-    "pyperclip",
-    types.SimpleNamespace(copy=lambda _text: None, paste=lambda: ""),
-)
-_pil = types.ModuleType("PIL")
-_pil.Image = types.SimpleNamespace()
-_pil.ImageGrab = types.SimpleNamespace(grabclipboard=lambda: None)
-sys.modules.setdefault("PIL", _pil)
 
 import transcription
 import processing_route

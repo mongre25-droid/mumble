@@ -5,7 +5,9 @@ Standalone and offline: ``python test_service_platform_regressions.py``.
 """
 
 import json
+import inspect
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -42,6 +44,34 @@ def check(name, condition):
     else:
         failed += 1
         print(f"  [FAIL] {name}")
+
+
+def _process_scope_probe(script_text, section_marker):
+    """Execute only the pure process-matching function with sibling paths."""
+    function_start = script_text.index("function Test-MumbleProcessForApp")
+    function_text = script_text[function_start:].split(section_marker, 1)[0]
+    probe = function_text + r'''
+$root = Join-Path $env:TEMP 'Mumble Scope Fixture\Internal\app'
+$sibling = Join-Path $env:TEMP 'Mumble Scope Fixture Sibling\Internal\app'
+$inside = [pscustomobject]@{
+  Name = 'pythonw.exe'; CommandLine = '"pythonw.exe" "' + (Join-Path $root 'mumble.py') + '"'
+}
+$other = [pscustomobject]@{
+  Name = 'pythonw.exe'; CommandLine = '"pythonw.exe" "' + (Join-Path $sibling 'mumble.py') + '"'
+}
+$product = Split-Path (Split-Path $root -Parent) -Parent
+$launcher = [pscustomobject]@{
+  Name = 'Mumble.exe'; CommandLine = '"' + (Join-Path $product 'Mumble.exe') + '"'
+}
+if ((Test-MumbleProcessForApp $inside $root) -and
+    (Test-MumbleProcessForApp $launcher $root) -and
+    -not (Test-MumbleProcessForApp $other $root)) { exit 0 }
+exit 1
+'''
+    return subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", probe],
+        capture_output=True, text=True, timeout=15,
+    ).returncode == 0
 
 
 class FakeSettings:
@@ -581,14 +611,21 @@ def test_updater_installer_and_autostart():
         update.urllib.request.urlopen = old_urlopen
         update._verify_manifest_signature = old_verify
 
+    install_source = inspect.getsource(update.download_and_install)
+    check("update staging uses unique sibling directories",
+          install_source.count("tempfile.mkdtemp(") >= 2
+          and 'prefix=f"Mumble-{version}-extract-"' in install_source
+          and 'prefix=f"Mumble-{version}-product-"' in install_source)
+
     with tempfile.TemporaryDirectory() as td:
-        current = os.path.join(td, "app")
-        new = os.path.join(td, "new")
+        current = os.path.join(td, "Mumble")
+        new = os.path.join(td, "Mumble-new-product")
         update._write_swap_script(td, new, current)
         script = open(os.path.join(td, "apply_update.bat"), encoding="utf-8").read()
-        check("update relaunch targets the branded venv executable",
-              ".venv\\Scripts\\Mumble.exe" in script
-              and 'Mumble.exe" "' in script and "mumble.py" in script)
+        check("update retains the complete product launch boundary",
+              "Internal\\app\\.venv\\Scripts\\Mumble.exe" in script
+              and os.path.join(current, "Mumble.exe") in script
+              and "Internal\\app\\mumble.py" in script)
 
     install_text = open(os.path.join(os.path.dirname(__file__), "install.ps1"),
                         encoding="utf-8").read()
@@ -601,6 +638,14 @@ def test_updater_installer_and_autostart():
           "all(results)" in install_text and "$LASTEXITCODE -eq 0" in install_text)
     check("uninstaller refuses recursive deletion of a drive root",
           "$resolvedDist -eq $driveRoot" in uninstall_text)
+    check("installer stops only processes from its exact app root",
+          "Test-MumbleProcessForApp $_ $root" in install_text
+          and "[IO.Path]::GetFullPath($AppRoot)" in install_text
+          and _process_scope_probe(install_text, "# 0. Detect"))
+    check("uninstaller stops only processes from its exact app root",
+          "Test-MumbleProcessForApp $_ $app" in uninstall_text
+          and "[IO.Path]::GetFullPath($AppRoot)" in uninstall_text
+          and _process_scope_probe(uninstall_text, "# 1. Stop"))
 
     old_legacy_startup = autostart.LEGACY_FINALIZE_STARTUP
     old_legacy_script = autostart.LEGACY_FINALIZE_SCRIPT

@@ -55,20 +55,32 @@ payload = update._manifest_signed_payload(m)
 check("signed payload covers version/url/sha256",
       payload == b"5.0.0\nhttps://x/Mumble-5.0.0.zip\nab")
 
-# ---- full-product-zip → app-root detection -------------------------------
-print("\n== _find_app_root locates the runtime inside a full-product tree ==")
+# ---- full-product-zip -> product-root detection -----------------------------
+print("\n== _find_product_root retains the complete release tree ==")
 tmp = tempfile.mkdtemp(prefix="mumble_upd_")
 try:
-    appdir = os.path.join(tmp, "Mumble", "Internal", "app")
+    product = os.path.join(tmp, "Mumble")
+    appdir = os.path.join(product, "Internal", "app")
     os.makedirs(appdir)
-    for fn in ("mumble.py", "branding.py", "settings.py"):
+    for fn in ("Mumble.exe", "LICENSE"):
+        open(os.path.join(product, fn), "w").close()
+    for fn in ("mumble.py", "branding.py", "settings.py",
+               "install.ps1", "uninstall.ps1"):
         open(os.path.join(appdir, fn), "w").close()
-    found = update._find_app_root(tmp)
-    check("found the app/ subtree (holds mumble.py + branding.py)",
-          found is not None and os.path.normpath(found) == os.path.normpath(appdir))
+    found = update._find_product_root(tmp)
+    check("found the canonical product root, not only Internal/app",
+          found is not None and os.path.normpath(found) == os.path.normpath(product))
+    check("root launcher remains inside the staged update",
+          bool(found and os.path.isfile(os.path.join(found, "Mumble.exe"))))
+    check("installed app resolves to its complete product root",
+          os.path.normpath(update._installed_product_root(appdir))
+          == os.path.normpath(product))
+    check("pending update script lives outside the product being swapped",
+          os.path.normpath(update.pending_update_script(appdir))
+          == os.path.normpath(os.path.join(tmp, "apply_update.bat")))
 
     empty = tempfile.mkdtemp(prefix="mumble_upd_empty_")
-    check("no runtime → None", update._find_app_root(empty) is None)
+    check("no complete product -> None", update._find_product_root(empty) is None)
     os.rmdir(empty)
 finally:
     import shutil
@@ -79,15 +91,17 @@ print("\n== swap script carries the .venv + refreshes deps (the venv-gap fix) ==
 scriptdir = tempfile.mkdtemp(prefix="mumble_swap_")
 try:
     parent = scriptdir
-    current = os.path.join(parent, "app")
-    newd = os.path.join(parent, "Mumble-5.0.0-app")
+    current = os.path.join(parent, "Mumble")
+    newd = os.path.join(parent, "Mumble-5.0.0-product")
     update._write_swap_script(parent, newd, current)
     with open(os.path.join(parent, "apply_update.bat"), encoding="utf-8") as f:
         bat = f.read()
-    check("carries the .venv from the backup", ".venv" in bat and "xcopy" in bat)
+    check("carries the app .venv from the backup",
+          "Internal\\app\\.venv" in bat and "xcopy" in bat)
     check("pip-installs requirements after the swap",
           "pip install -r" in bat and "requirements.txt" in bat)
-    check("still relaunches", "mumble.py" in bat or "Mumble.exe" in bat)
+    check("relaunches from the updated complete product",
+          "Internal\\app\\mumble.py" in bat and "Mumble.exe" in bat)
     check("keeps the backup for rollback (no rmdir of Mumble-backup on success path)",
           'rmdir /s /q "' + os.path.join(parent, "Mumble-backup") + '"' in bat
           and bat.count("Mumble-backup") >= 2)  # backup created + referenced

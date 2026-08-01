@@ -9,6 +9,25 @@ Write-Host "  Installing Mumble" -ForegroundColor Cyan
 Write-Host "  =================" -ForegroundColor DarkGray
 Write-Host ""
 
+function Test-MumbleProcessForApp($Process, [string]$AppRoot) {
+    if ($Process.Name -notin @('pythonw.exe', 'Mumble.exe')) { return $false }
+    $commandLine = [string]$Process.CommandLine
+    if (-not $commandLine) { return $false }
+    $resolvedRoot = [IO.Path]::GetFullPath($AppRoot).TrimEnd('\')
+    $productRoot = Split-Path (Split-Path $resolvedRoot -Parent) -Parent
+    $entries = @(
+        (Join-Path $resolvedRoot 'mumble.py'),
+        (Join-Path $resolvedRoot 'webui_shell.py'),
+        (Join-Path $resolvedRoot '.venv\Scripts\Mumble.exe'),
+        (Join-Path $productRoot 'Mumble.exe')
+    )
+    foreach ($entry in $entries) {
+        $pattern = '(?i)(?:^|\s|")' + [regex]::Escape($entry) + '(?:"|\s|$)'
+        if ($commandLine -match $pattern) { return $true }
+    }
+    return $false
+}
+
 # 0. Detect a previous install and stop any running copy, so files aren't locked
 #    and the new version cleanly takes over. Settings + history are preserved
 #    (they live in %APPDATA%\Mumble, separate from the app folder).
@@ -18,8 +37,7 @@ if ((Test-Path $startupLnk) -or (Test-Path (Join-Path $env:APPDATA 'Mumble'))) {
 }
 try {
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object { ($_.Name -eq 'pythonw.exe' -or $_.Name -eq 'Mumble.exe') -and
-                       ($_.CommandLine -like '*mumble.py*' -or $_.CommandLine -like '*webui_shell.py*') } |
+        Where-Object { Test-MumbleProcessForApp $_ $root } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 } catch { }
 Start-Sleep -Milliseconds 500

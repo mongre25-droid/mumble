@@ -209,6 +209,9 @@ def download_and_install(manifest, install_dir, callback=None):
 
     def _run():
         tmp = None
+        extracted_dir = None
+        staged_product = None
+        keep_staged_product = False
         if not _INSTALL_LOCK.acquire(blocking=False):
             if callback:
                 callback("error", "Another update is already being installed.")
@@ -269,13 +272,20 @@ def download_and_install(manifest, install_dir, callback=None):
                 if callback:
                     callback("error", "Update refused — invalid version in manifest.")
                 return
-            parent = os.path.dirname(install_dir)
-            new_dir = os.path.join(parent, f"Mumble-{version}")
-            if os.path.exists(new_dir):
-                shutil.rmtree(new_dir)
-            os.makedirs(new_dir, exist_ok=True)
+            product_dir = _installed_product_root(install_dir)
+            if not product_dir:
+                if callback:
+                    callback(
+                        "error",
+                        "Update refused — the installed product layout is incomplete.")
+                return
+            parent = os.path.dirname(product_dir)
+            # Unique siblings cannot collide with another extracted/installed
+            # copy whose folder happens to contain the release version.
+            extracted_dir = tempfile.mkdtemp(
+                prefix=f"Mumble-{version}-extract-", dir=parent)
 
-            real_new = os.path.realpath(new_dir)
+            real_new = os.path.realpath(extracted_dir)
             with zipfile.ZipFile(tmp, "r") as zf:
                 for member in zf.namelist():
                     # Abort the ENTIRE extraction on any unsafe member — silently
@@ -284,32 +294,31 @@ def download_and_install(manifest, install_dir, callback=None):
                     norm = member.replace("\\", "/")
                     if os.path.isabs(member) or norm.startswith("/") or ".." in norm.split("/"):
                         raise RuntimeError(f"unsafe path in update archive: {member}")
-                    member_path = os.path.realpath(os.path.join(new_dir, member))
+                    member_path = os.path.realpath(os.path.join(extracted_dir, member))
                     if not (member_path == real_new
                             or member_path.startswith(real_new + os.sep)):
                         raise RuntimeError(f"zip-slip blocked: {member}")
-                    zf.extract(member, new_dir)
+                    zf.extract(member, extracted_dir)
 
-            # The release zip is the FULL product tree (Mumble/Internal/app/...),
-            # but the swap replaces install_dir (the app/ runtime dir). Locate the
-            # app/ subtree — the dir holding mumble.py — inside the extraction and
-            # flatten it next to install_dir so the same-dir rename swap works.
-            app_root = _find_app_root(new_dir)
-            if not app_root:
+            # The release zip is the complete product tree. Swap that complete
+            # root so package-level files cannot be silently discarded.
+            product_root = _find_product_root(extracted_dir)
+            if not product_root:
                 if callback:
                     callback(
                         "error",
-                        "Update archive layout unexpected (no runtime found) — aborted.")
+                        "Update archive layout unexpected (no complete product found) — aborted.")
                 return
-            flat_new = os.path.join(parent, f"Mumble-{version}-app")
-            if os.path.exists(flat_new):
-                shutil.rmtree(flat_new)
-            shutil.move(app_root, flat_new)
-            shutil.rmtree(new_dir, ignore_errors=True)  # drop the extraction wrapper
+            staged_product = tempfile.mkdtemp(
+                prefix=f"Mumble-{version}-product-", dir=parent)
+            os.rmdir(staged_product)
+            shutil.move(product_root, staged_product)
+            shutil.rmtree(extracted_dir, ignore_errors=True)
 
-            # Write update swap script (swaps install_dir <-> flat_new, carries the
-            # .venv over + refreshes deps — the zip ships no .venv).
-            _write_swap_script(parent, flat_new, install_dir)
+            # Swap the full product, carry the app environment, and preserve a
+            # complete rollback copy.
+            _write_swap_script(parent, staged_product, product_dir)
+            keep_staged_product = True
 
             if callback:
                 callback("ready", f"Update v{version} ready — restart to apply.")
@@ -328,24 +337,59 @@ def download_and_install(manifest, install_dir, callback=None):
                     os.remove(tmp)
                 except OSError:
                     pass
+            if not keep_staged_product:
+                for path in (extracted_dir, staged_product):
+                    if path:
+                        shutil.rmtree(path, ignore_errors=True)
             _INSTALL_LOCK.release()
 
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _find_app_root(base):
-    """Locate the runtime dir (the one holding mumble.py + branding.py) inside an
-    extracted release tree. The release zip is the full product
-    (Mumble/Internal/app/...); the updater swaps the app/ subtree, so find it.
-    Returns the path, or None. Also handles a bare-app zip (base itself is it)."""
+def _find_product_root(base):
+    """Locate exactly one canonical complete product root in an extraction."""
+    matches = []
     for root, _dirs, files in os.walk(base):
-        if "mumble.py" in files and "branding.py" in files:
-            return root
+        app_dir = os.path.join(root, "Internal", "app")
+        if (
+            "Mumble.exe" in files
+            and "LICENSE" in files
+            and os.path.isfile(os.path.join(app_dir, "mumble.py"))
+            and os.path.isfile(os.path.join(app_dir, "branding.py"))
+            and os.path.isfile(os.path.join(app_dir, "install.ps1"))
+            and os.path.isfile(os.path.join(app_dir, "uninstall.ps1"))
+        ):
+            matches.append(root)
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
+def _installed_product_root(install_dir):
+    """Resolve Internal/app to its complete product root, failing closed."""
+    app_dir = os.path.abspath(install_dir)
+    internal_dir = os.path.dirname(app_dir)
+    product_dir = os.path.dirname(internal_dir)
+    if (
+        os.path.basename(app_dir).casefold() != "app"
+        or os.path.basename(internal_dir).casefold() != "internal"
+        or not os.path.isfile(os.path.join(app_dir, "mumble.py"))
+        or not os.path.isfile(os.path.join(product_dir, "Mumble.exe"))
+    ):
+        return None
+    return product_dir
+
+
+def pending_update_script(install_dir):
+    """Return the swap script path for a canonical product layout."""
+    product_dir = _installed_product_root(install_dir)
+    if not product_dir:
+        return ""
+    return os.path.join(os.path.dirname(product_dir), "apply_update.bat")
+
+
 def _write_swap_script(parent_dir, new_dir, current_dir):
-    """Write a batch script that swaps the old and new install folders."""
+    """Write a batch script that swaps complete old and new product roots."""
     script = os.path.join(parent_dir, "apply_update.bat")
     pid = os.getpid()
     with open(script, "w") as f:
@@ -369,57 +413,77 @@ def _write_swap_script(parent_dir, new_dir, current_dir):
         f.write(":failed_restore\n")
         f.write(f'rename "{backup}" "{os.path.basename(current_dir)}"\n')
         f.write(":launch\n")
-        # The release zip ships NO .venv (it's excluded from the package), so the
-        # freshly swapped-in folder has no interpreter — relaunch would brick the
-        # install (the original auto-update blocker). Carry the venv over from the
-        # backup: the install path is unchanged (install_dir keeps its name), so
-        # the venv's baked absolute paths still resolve. Then refresh dependencies
-        # so a NEW requirement isn't missing. Best-effort: a pip failure (offline)
-        # still launches on the carried-over venv. On a failed swap (current_dir is
-        # the restored old install) the `if not exist .venv` guard skips the copy.
+        # The release excludes .venv. Carry the app environment from the complete
+        # backup, then refresh dependencies, branding, and canonical shortcuts.
+        app_rel = os.path.join("Internal", "app")
+        current_app = os.path.join(current_dir, app_rel)
+        backup_app = os.path.join(backup, app_rel)
         f.write(
-            f'if not exist "{current_dir}\\.venv" if exist "{backup}\\.venv" '
-            f'xcopy /e /i /q /y "{backup}\\.venv" "{current_dir}\\.venv" >nul\n'
+            f'if not exist "{current_app}\\.venv" if exist "{backup_app}\\.venv" '
+            f'xcopy /e /i /q /y "{backup_app}\\.venv" "{current_app}\\.venv" >nul\n'
         )
         f.write(
-            f'if exist "{current_dir}\\.venv\\Scripts\\python.exe" '
-            f'"{current_dir}\\.venv\\Scripts\\python.exe" -m pip install -r '
-            f'"{current_dir}\\requirements.txt" --quiet --disable-pip-version-check\n'
+            f'if exist "{current_app}\\.venv\\Scripts\\python.exe" '
+            f'"{current_app}\\.venv\\Scripts\\python.exe" -m pip install -r '
+            f'"{current_app}\\requirements.txt" --quiet --disable-pip-version-check\n'
         )
+        f.write(
+            f'if exist "{current_app}\\.venv\\Scripts\\python.exe" '
+            f'"{current_app}\\.venv\\Scripts\\python.exe" '
+            f'"{current_app}\\brand_exe.py" >nul 2>nul\n'
+        )
+        f.write(f'pushd "{current_app}"\n')
+        f.write(
+            'if exist ".venv\\Scripts\\python.exe" '
+            '".venv\\Scripts\\python.exe" -c '
+            '"import autostart; autostart.install_start_menu(); '
+            'autostart.install_desktop_shortcut(); '
+            'autostart.install_uninstall_start_menu(); autostart.enable()" '
+            '>nul 2>nul\n'
+        )
+        f.write("popd\n")
         # NOTE: Mumble-backup is intentionally KEPT for rollback() (the previous
         # version restore). It holds its own .venv copy — disk cost is the price of
         # a safe rollback.
         # Relaunch — prefer the branded Mumble.exe (Task Manager + branding), and
         # fall back to pythonw.exe only if it isn't present.
-        branded = os.path.join(current_dir, ".venv", "Scripts", "Mumble.exe")
+        root_launcher = os.path.join(current_dir, "Mumble.exe")
+        branded = os.path.join(current_app, ".venv", "Scripts", "Mumble.exe")
+        f.write(f'if exist "{root_launcher}" goto relaunch_root\n')
         f.write(f'if exist "{branded}" goto relaunch_exe\n')
         f.write(
-            f'start "" "{current_dir}\\.venv\\Scripts\\pythonw.exe" "{current_dir}\\mumble.py"\n'
+            f'start "" "{current_app}\\.venv\\Scripts\\pythonw.exe" "{current_app}\\mumble.py"\n'
         )
         f.write("goto done\n")
+        f.write(":relaunch_root\n")
+        f.write(f'start "" "{root_launcher}"\n')
+        f.write("goto done\n")
         f.write(":relaunch_exe\n")
-        f.write(f'start "" "{branded}" "{current_dir}\\mumble.py"\n')
+        f.write(f'start "" "{branded}" "{current_app}\\mumble.py"\n')
         f.write(":done\n")
         f.write("echo Update complete!\n")
 
 
 def rollback(install_dir):
     """Restore the previous version from backup."""
-    parent = os.path.dirname(install_dir)
+    product_dir = _installed_product_root(install_dir)
+    if not product_dir:
+        return False, "Installed product layout is incomplete."
+    parent = os.path.dirname(product_dir)
     backup = os.path.join(parent, "Mumble-backup")
     if not os.path.exists(backup):
         return False, "No backup found."
     try:
-        current_backup = install_dir + ".old"
+        current_backup = product_dir + ".old"
         if os.path.exists(current_backup):
             shutil.rmtree(current_backup)
-        shutil.move(install_dir, current_backup)
+        shutil.move(product_dir, current_backup)
         try:
-            shutil.move(backup, install_dir)
+            shutil.move(backup, product_dir)
         except Exception:
             # Second move failed — restore what we just set aside so we never
             # strand the user with NO install at all.
-            shutil.move(current_backup, install_dir)
+            shutil.move(current_backup, product_dir)
             raise
         return True, "Rolled back to previous version."
     except Exception as e:

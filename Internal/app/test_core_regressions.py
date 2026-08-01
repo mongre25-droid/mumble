@@ -481,6 +481,7 @@ def test_local_only_blocks_cloud_generation_even_with_a_key():
         prompt_prefs={},
         pro_mode=True,
         format_enabled=True,
+        local_only_mode=True,
     )
     app._ai_cfg = lambda: {
         "key": "csk-test", "provider": "cerebras", "model": "test",
@@ -503,7 +504,8 @@ def test_local_only_blocks_cloud_generation_even_with_a_key():
             "format_enabled": True,
             "local_only_mode": True,
         },
-        route_decision=SimpleNamespace(cloud_augmented=False),
+        route_decision=mumble.processing_route.snapshot(
+            app.settings, feature="dictation", lane="text"),
     )
 
     assert mode == "text"

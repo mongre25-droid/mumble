@@ -197,7 +197,8 @@ def main(argv=None):
         clipboard_value = _clipboard_text(root)
         expected_count = 1 if args.mode in {"normal", "delayed-focus",
                                             "delayed-read", "restore-failure",
-                                            "clipboard-mutation"} else 0
+                                            "clipboard-mutation",
+                                            "zero-count"} else 0
         expected_a = expected_count == 1
         expected_clipboard = (
             EXTERNAL_CLIPBOARD if args.mode == "clipboard-mutation" else
@@ -208,10 +209,10 @@ def main(argv=None):
             "swallowed-input": {InsertionOutcome.SENT_UNCONFIRMED},
             "clipboard-mutation": {InsertionOutcome.SENT_UNCONFIRMED},
             "delayed-read": {InsertionOutcome.SENT_UNCONFIRMED},
-            "zero-count": {InsertionOutcome.NOT_SENT},
+            "zero-count": {InsertionOutcome.SENT_UNCONFIRMED},
             "partial-count": {InsertionOutcome.UNCERTAIN},
             "restore-failure": {InsertionOutcome.SENT_UNCONFIRMED},
-            "privilege-higher": {InsertionOutcome.SAVED_ONLY},
+            "privilege-higher": {InsertionOutcome.NOT_SENT},
             "privilege-unknown": {InsertionOutcome.SAVED_ONLY},
             "unintended-field": {InsertionOutcome.SAVED_ONLY},
         }
@@ -225,7 +226,10 @@ def main(argv=None):
             "swallowed-input": (4, 4, 1),
             "clipboard-mutation": (4, 4, 1),
             "delayed-read": (4, 4, 1),
-            "zero-count": (4, 0, 1),
+            # Two proven-zero Ctrl+V attempts are followed by the text-only
+            # Unicode adapter. The payload is 32 UTF-16 code units, so the
+            # adapter requests and accepts 64 keyboard events.
+            "zero-count": (72, 64, 3),
             "partial-count": (4, 2, 1),
             "restore-failure": (4, 4, 1),
             "privilege-higher": (0, 0, 0),
@@ -236,8 +240,8 @@ def main(argv=None):
             "normal": "Sent", "delayed-focus": "Sent",
             "swallowed-input": "Sent", "clipboard-mutation": "Sent",
             "delayed-read": "Sent", "restore-failure": "Sent",
-            "zero-count": "Not sent", "partial-count": "not confirmed",
-            "privilege-higher": "Not sent", "privilege-unknown": "Not sent",
+            "zero-count": "Sent", "partial-count": "not confirmed",
+            "privilege-higher": "Permission needed", "privilege-unknown": "Not sent",
             "unintended-field": "Not sent",
         }
         expected_cleanup_warning = args.mode in {

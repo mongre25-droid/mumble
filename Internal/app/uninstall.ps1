@@ -1,5 +1,5 @@
 # Mumble uninstaller — removes everything Mumble installed:
-#   * stops every running instance (branded Mumble.exe, pythonw, python)
+#   * stops this exact installed copy (branded Mumble.exe, pythonw, python)
 #   * deletes the Desktop / Start-menu / Startup / Uninstall shortcuts
 #   * clears the legacy HKCU..\Run startup entry
 #   * optionally deletes your saved transcripts + settings (%APPDATA%\Mumble)
@@ -16,13 +16,29 @@ Write-Host "  Uninstalling Mumble" -ForegroundColor Cyan
 Write-Host "  ===================" -ForegroundColor DarkGray
 Write-Host ""
 
-# 1. Stop every running instance (branded exe included) -------------------------
-#    Match by command line so we only ever touch Mumble's own processes.
+function Test-MumbleProcessForApp($Process, [string]$AppRoot) {
+    if ($Process.Name -notin @('Mumble.exe', 'pythonw.exe', 'python.exe')) { return $false }
+    $commandLine = [string]$Process.CommandLine
+    if (-not $commandLine) { return $false }
+    $resolvedRoot = [IO.Path]::GetFullPath($AppRoot).TrimEnd('\')
+    $productRoot = Split-Path (Split-Path $resolvedRoot -Parent) -Parent
+    $entries = @(
+        (Join-Path $resolvedRoot 'mumble.py'),
+        (Join-Path $resolvedRoot 'webui_shell.py'),
+        (Join-Path $resolvedRoot '.venv\Scripts\Mumble.exe'),
+        (Join-Path $productRoot 'Mumble.exe')
+    )
+    foreach ($entry in $entries) {
+        $pattern = '(?i)(?:^|\s|")' + [regex]::Escape($entry) + '(?:"|\s|$)'
+        if ($commandLine -match $pattern) { return $true }
+    }
+    return $false
+}
+
+# 1. Stop this exact installed copy (branded exe included) ----------------------
+#    The canonical app path prevents one install from stopping a sibling copy.
 Get-CimInstance Win32_Process |
-    Where-Object {
-        ($_.Name -eq 'Mumble.exe' -or $_.Name -eq 'pythonw.exe' -or $_.Name -eq 'python.exe') -and
-        ($_.CommandLine -like '*mumble.py*' -or $_.CommandLine -like '*webui_shell.py*')
-    } |
+    Where-Object { Test-MumbleProcessForApp $_ $app } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Start-Sleep -Milliseconds 400
 Write-Host "  Stopped any running Mumble." -ForegroundColor DarkGray

@@ -8141,8 +8141,7 @@ class Mumble:
 
     def _restart(self):
         """Apply a pending update by running the swap script and exiting."""
-        parent = os.path.dirname(branding.INSTALL_DIR)
-        script = os.path.join(parent, "apply_update.bat")
+        script = update.pending_update_script(branding.INSTALL_DIR)
         if os.path.exists(script):
             os.startfile(script)
         else:
