@@ -926,3 +926,39 @@ def test_lean_comparison_receipt_is_bounded_content_free_and_non_statistical():
     duplicate_fixture["candidates"][0]["samples"][-1]["fixture_id"] = "prompt-001"
     with pytest.raises(benchmark.ContractError, match="fixture_set_mismatch"):
         benchmark.validate_lean_comparison_record(duplicate_fixture)
+
+
+def test_committed_lean_receipt_uses_hash_verified_immutable_input_snapshot(tmp_path):
+    benchmark = _load_tool()
+    receipt_path = (
+        ROOT
+        / "Development Files"
+        / "Research"
+        / "local-ai-benchmark"
+        / "runs"
+        / "2026-08-01-lean-windows-z1"
+        / "comparison.json"
+    )
+    snapshot_path = receipt_path.with_name("input-snapshot-v1.json")
+    record = json.loads(receipt_path.read_text(encoding="utf-8"))
+
+    assert benchmark.validate_lean_comparison_record(
+        record,
+        receipt_path=receipt_path,
+    ) is True
+
+    temporary_receipt = tmp_path / "comparison.json"
+    temporary_receipt.write_text(receipt_path.read_text(encoding="utf-8"), encoding="utf-8")
+    temporary_snapshot = tmp_path / "input-snapshot-v1.json"
+    temporary_snapshot.write_bytes(snapshot_path.read_bytes())
+    for encoded_path in snapshot_path.parent.glob("*.b64"):
+        (tmp_path / encoded_path.name).write_bytes(encoded_path.read_bytes())
+    snapshot = json.loads(temporary_snapshot.read_text(encoding="utf-8"))
+    candidates_snapshot = tmp_path / snapshot["input_records"]["candidates"]["data_file"]
+    candidates_snapshot.write_text("AAAA", encoding="ascii")
+
+    with pytest.raises(benchmark.ContractError, match="lean_input_snapshot_hash_mismatch:candidates"):
+        benchmark.validate_lean_comparison_record(
+            record,
+            receipt_path=temporary_receipt,
+        )

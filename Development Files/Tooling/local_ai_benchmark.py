@@ -10,6 +10,7 @@ text; content remains in the separately governed corpus.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import importlib.metadata
 import json
@@ -240,6 +241,7 @@ def validate_lean_comparison_record(record, *, receipt_path=None):
     input_records = record.get("input_records")
     if not isinstance(input_records, dict) or set(input_records) != set(expected_input_paths):
         raise ContractError("lean_comparison_input_records_mismatch")
+    input_snapshot = None
     for name, expected_path in expected_input_paths.items():
         item = input_records.get(name) or {}
         require_exact_keys(item, {"path", "sha256"})
@@ -249,8 +251,69 @@ def validate_lean_comparison_record(record, *, receipt_path=None):
             raise ContractError(f"lean_comparison_input_hash_required:{name}")
         if receipt_path is not None:
             actual_path = Path(__file__).resolve().parents[2] / Path(expected_path)
-            if not actual_path.is_file() or _sha256_file(actual_path) != item["sha256"]:
-                raise ContractError(f"lean_comparison_input_hash_mismatch:{name}")
+            if actual_path.is_file() and _sha256_file(actual_path) == item["sha256"]:
+                continue
+            if input_snapshot is None:
+                snapshot_path = receipt_path.with_name("input-snapshot-v1.json")
+                if not snapshot_path.is_file():
+                    raise ContractError(f"lean_comparison_input_hash_mismatch:{name}")
+                try:
+                    input_snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                    raise ContractError("invalid_lean_input_snapshot") from exc
+                require_exact_keys(input_snapshot, {"schema", "receipt", "input_records"})
+                if input_snapshot.get("schema") != "mumble.local-ai-lean-input-snapshot.v1":
+                    raise ContractError("unsupported_lean_input_snapshot_schema")
+                snapshot_receipt = input_snapshot.get("receipt") or {}
+                require_exact_keys(snapshot_receipt, {"path", "sha256", "data_file"})
+                if (
+                    snapshot_receipt.get("path") != "comparison.json"
+                    or snapshot_receipt.get("data_file") != "comparison.json.b64"
+                ):
+                    raise ContractError("lean_input_snapshot_receipt_path_mismatch")
+                try:
+                    snapshot_receipt_bytes = base64.b64decode(
+                        (snapshot_path.parent / snapshot_receipt["data_file"])
+                        .read_text(encoding="ascii")
+                        .strip(),
+                        validate=True,
+                    )
+                except (OSError, UnicodeError, ValueError, TypeError) as exc:
+                    raise ContractError("invalid_lean_input_snapshot_receipt_base64") from exc
+                if hashlib.sha256(snapshot_receipt_bytes).hexdigest() != snapshot_receipt.get("sha256"):
+                    raise ContractError("lean_input_snapshot_receipt_hash_mismatch")
+                try:
+                    snapshot_record = json.loads(snapshot_receipt_bytes.decode("utf-8-sig"))
+                except (UnicodeError, json.JSONDecodeError) as exc:
+                    raise ContractError("invalid_lean_input_snapshot_receipt_json") from exc
+                if snapshot_record != record:
+                    raise ContractError("lean_input_snapshot_receipt_content_mismatch")
+                snapshot_records = input_snapshot.get("input_records")
+                if not isinstance(snapshot_records, dict) or set(snapshot_records) != set(expected_input_paths):
+                    raise ContractError("lean_input_snapshot_records_mismatch")
+            snapshot_item = input_snapshot["input_records"].get(name) or {}
+            require_exact_keys(snapshot_item, {"path", "sha256", "data_file"})
+            if (
+                snapshot_item.get("path") != expected_path
+                or snapshot_item.get("sha256") != item["sha256"]
+                or snapshot_item.get("data_file") != f"input-{name}.json.b64"
+            ):
+                raise ContractError(f"lean_input_snapshot_identity_mismatch:{name}")
+            try:
+                snapshot_bytes = base64.b64decode(
+                    (snapshot_path.parent / snapshot_item["data_file"])
+                    .read_text(encoding="ascii")
+                    .strip(),
+                    validate=True,
+                )
+            except (OSError, UnicodeError, ValueError, TypeError) as exc:
+                raise ContractError(f"invalid_lean_input_snapshot_base64:{name}") from exc
+            if hashlib.sha256(snapshot_bytes).hexdigest() != item["sha256"]:
+                raise ContractError(f"lean_input_snapshot_hash_mismatch:{name}")
+            try:
+                json.loads(snapshot_bytes.decode("utf-8-sig"))
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise ContractError(f"invalid_lean_input_snapshot_json:{name}") from exc
     baseline = record.get("baseline") or {}
     require_exact_keys(
         baseline, {"candidate_id", "evidence", "passed", "sample_count"}
@@ -351,6 +414,29 @@ def validate_lean_comparison_record(record, *, receipt_path=None):
     ):
         raise ContractError("lean_comparison_decision_reason_mismatch")
     return True
+
+
+def _lean_receipt_sha256(receipt_path):
+    snapshot_path = receipt_path.with_name("input-snapshot-v1.json")
+    if not snapshot_path.is_file():
+        return _sha256_file(receipt_path)
+    try:
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        receipt = snapshot["receipt"]
+        if receipt.get("data_file") != "comparison.json.b64":
+            raise ContractError("invalid_lean_input_snapshot_receipt")
+        receipt_bytes = base64.b64decode(
+            (snapshot_path.parent / receipt["data_file"])
+            .read_text(encoding="ascii")
+            .strip(),
+            validate=True,
+        )
+    except (OSError, KeyError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ContractError("invalid_lean_input_snapshot_receipt") from exc
+    receipt_hash = hashlib.sha256(receipt_bytes).hexdigest()
+    if receipt.get("path") != "comparison.json" or receipt.get("sha256") != receipt_hash:
+        raise ContractError("lean_input_snapshot_receipt_identity_mismatch")
+    return receipt_hash
 
 
 def _decision_from_gate_results(*, candidate_id, baseline_id, gate_results):
@@ -1868,7 +1954,7 @@ def main(argv=None):
         output = {
             "ok": True,
             "schema": record["schema"],
-            "receipt_sha256": _sha256_file(receipt_path),
+            "receipt_sha256": _lean_receipt_sha256(receipt_path),
             "decision": record["decision"],
         }
     elif args.command == "run":
