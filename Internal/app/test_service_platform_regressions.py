@@ -56,6 +56,7 @@ $fixtureDrive = Get-PSDrive -Name 'D' -ErrorAction SilentlyContinue
 if (-not $fixtureDrive) {
   $fixtureDrive = New-PSDrive -Name 'D' -PSProvider FileSystem -Root $env:TEMP
 }
+$ErrorActionPreference = 'Stop'
 $root = 'D:\a\mumble\mumble\Internal\app'
 $commandRoot = 'D:\a\mumble\mumble\Internal\app\..\app'
 $sibling = 'D:\a\mumble\mumble-sibling\Internal\app'
@@ -76,6 +77,21 @@ $launcher = [pscustomobject]@{
   ExecutablePath = Join-Path $product 'Mumble.exe'
   CommandLine = '"' + (Join-Path $commandProduct 'Mumble.exe') + '"'
 }
+$python = [pscustomobject]@{
+  Name = 'python.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\python.exe'
+  CommandLine = '"' + (Join-Path $commandRoot '.venv\Scripts\python.exe') + '" "' + (Join-Path $commandRoot 'mumble.py') + '"'
+}
+$branded = [pscustomobject]@{
+  Name = 'Mumble.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\Mumble.exe'
+  CommandLine = '"' + (Join-Path $commandRoot '.venv\Scripts\Mumble.exe') + '" "' + (Join-Path $commandRoot 'mumble.py') + '"'
+}
+$webui = [pscustomobject]@{
+  Name = 'pythonw.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\pythonw.exe'
+  CommandLine = '"' + (Join-Path $commandRoot '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $commandRoot 'webui_shell.py') + '"'
+}
 $wrongExecutable = [pscustomobject]@{
   Name = 'pythonw.exe'
   ExecutablePath = Join-Path $sibling '.venv\Scripts\pythonw.exe'
@@ -91,13 +107,66 @@ $argumentOnly = [pscustomobject]@{
   ExecutablePath = Join-Path $root '.venv\Scripts\Mumble.exe'
   CommandLine = '"' + (Join-Path $root '.venv\Scripts\Mumble.exe') + '" --inspect "' + (Join-Path $root 'mumble.py') + '"'
 }
+$wrongName = [pscustomobject]@{
+  Name = 'python3.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\pythonw.exe'
+  CommandLine = '"' + (Join-Path $root '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $root 'mumble.py') + '"'
+}
+$launcherArgumentOnly = [pscustomobject]@{
+  Name = 'Mumble.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\Mumble.exe'
+  CommandLine = '"' + (Join-Path $root '.venv\Scripts\Mumble.exe') + '" --inspect "' + (Join-Path $product 'Mumble.exe') + '"'
+}
+$unknownEntry = [pscustomobject]@{
+  Name = 'pythonw.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\pythonw.exe'
+  CommandLine = '"' + (Join-Path $root '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $root 'other.py') + '"'
+}
+$executablePrefix = [pscustomobject]@{
+  Name = 'pythonw.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\pythonw.exe'
+  CommandLine = '"' + (Join-Path $root '.venv\Scripts\pythonw.exe') + '.bak" "' + (Join-Path $root 'mumble.py') + '"'
+}
+$badPath = 'bad' + [char]0 + 'path'
+$unresolvableDrive = @('Z', 'Y', 'X', 'W', 'V') |
+  Where-Object { -not (Get-PSDrive -Name $_ -ErrorAction SilentlyContinue) } |
+  Select-Object -First 1
+if (-not $unresolvableDrive) { throw 'No unavailable fixture drive was found.' }
+$unresolvableRoot = $unresolvableDrive + ':\a\mumble\mumble\Internal\app'
+$malformedExecutable = [pscustomobject]@{
+  Name = 'pythonw.exe'
+  ExecutablePath = $badPath
+  CommandLine = $inside.CommandLine
+}
+$malformedCommand = [pscustomobject]@{
+  Name = 'pythonw.exe'
+  ExecutablePath = $inside.ExecutablePath
+  CommandLine = '"' + $badPath + '" "' + (Join-Path $root 'mumble.py') + '"'
+}
+$missingCommand = [pscustomobject]@{
+  Name = 'pythonw.exe'
+  ExecutablePath = $inside.ExecutablePath
+  CommandLine = $null
+}
 $results = [ordered]@{
   inside = [bool](Test-MumbleProcessForApp $inside $root)
   launcher = [bool](Test-MumbleProcessForApp $launcher $root)
+  python = [bool](Test-MumbleProcessForApp $python $root)
+  branded = [bool](Test-MumbleProcessForApp $branded $root)
+  webui = [bool](Test-MumbleProcessForApp $webui $root)
   sibling_rejected = [bool](-not (Test-MumbleProcessForApp $other $root))
   wrong_executable_rejected = [bool](-not (Test-MumbleProcessForApp $wrongExecutable $root))
   wrong_entry_point_rejected = [bool](-not (Test-MumbleProcessForApp $wrongEntryPoint $root))
   argument_only_rejected = [bool](-not (Test-MumbleProcessForApp $argumentOnly $root))
+  wrong_name_rejected = [bool](-not (Test-MumbleProcessForApp $wrongName $root))
+  launcher_argument_only_rejected = [bool](-not (Test-MumbleProcessForApp $launcherArgumentOnly $root))
+  unknown_entry_rejected = [bool](-not (Test-MumbleProcessForApp $unknownEntry $root))
+  executable_prefix_rejected = [bool](-not (Test-MumbleProcessForApp $executablePrefix $root))
+  malformed_executable_rejected = [bool](-not (Test-MumbleProcessForApp $malformedExecutable $root))
+  malformed_command_rejected = [bool](-not (Test-MumbleProcessForApp $malformedCommand $root))
+  missing_command_rejected = [bool](-not (Test-MumbleProcessForApp $missingCommand $root))
+  unresolvable_root_rejected = [bool](-not (Test-MumbleProcessForApp $inside $unresolvableRoot))
+  shallow_root_rejected = [bool](-not (Test-MumbleProcessForApp $inside 'C:\foo'))
 }
 $results | ConvertTo-Json -Compress
 if ($results.Values -notcontains $false) { exit 0 }
@@ -687,11 +756,11 @@ def test_updater_installer_and_autostart():
           "$resolvedDist -eq $driveRoot" in uninstall_text)
     check("installer stops only processes from its exact app root",
           "Test-MumbleProcessForApp $_ $root" in install_text
-          and "[IO.Path]::GetFullPath($AppRoot)" in install_text
+          and "Resolve-MumblePath $AppRoot" in install_text
           and _process_scope_probe(install_text, "# 0. Detect"))
     check("uninstaller stops only processes from its exact app root",
           "Test-MumbleProcessForApp $_ $app" in uninstall_text
-          and "[IO.Path]::GetFullPath($AppRoot)" in uninstall_text
+          and "Resolve-MumblePath $AppRoot" in uninstall_text
           and _process_scope_probe(uninstall_text, "# 1. Stop"))
 
     old_legacy_startup = autostart.LEGACY_FINALIZE_STARTUP

@@ -21,13 +21,43 @@ function Test-MumbleProcessForApp($Process, [string]$AppRoot) {
     $commandLine = [string]$Process.CommandLine
     $executablePath = [string]$Process.ExecutablePath
     if (-not $commandLine -or -not $executablePath) { return $false }
-    $resolvedRoot = [IO.Path]::GetFullPath($AppRoot).TrimEnd('\')
-    $productRoot = Split-Path (Split-Path $resolvedRoot -Parent) -Parent
-    $resolvedExe = [IO.Path]::GetFullPath($executablePath)
+
+    function Resolve-MumblePath([string]$Value) {
+        if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+        try {
+            return [IO.Path]::GetFullPath($Value)
+        } catch {
+            return $null
+        }
+    }
+    function Test-MumblePathRoot([string]$Value) {
+        try {
+            $pathRoot = [IO.Path]::GetPathRoot($Value)
+            return $pathRoot -and
+                (Test-Path -LiteralPath $pathRoot -PathType Container)
+        } catch {
+            return $false
+        }
+    }
+
+    $resolvedRoot = Resolve-MumblePath $AppRoot
+    $resolvedExe = Resolve-MumblePath $executablePath
+    if (-not $resolvedRoot -or -not $resolvedExe -or
+            -not (Test-MumblePathRoot $resolvedRoot)) { return $false }
+    $resolvedRoot = $resolvedRoot.TrimEnd('\')
+    try {
+        $productRoot = Split-Path (Split-Path $resolvedRoot -Parent) -Parent
+    } catch {
+        return $false
+    }
+    if ([string]::IsNullOrWhiteSpace($productRoot)) { return $false }
 
     function Test-ExactPath([string]$Actual, [string]$Expected) {
+        $resolvedActual = Resolve-MumblePath $Actual
+        $resolvedExpected = Resolve-MumblePath $Expected
+        if (-not $resolvedActual -or -not $resolvedExpected) { return $false }
         return [string]::Equals(
-            [IO.Path]::GetFullPath($Actual), [IO.Path]::GetFullPath($Expected),
+            $resolvedActual, $resolvedExpected,
             [StringComparison]::OrdinalIgnoreCase)
     }
     function Get-LeadingCommandPaths([string]$Value) {
