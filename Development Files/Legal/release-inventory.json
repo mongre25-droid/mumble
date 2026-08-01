@@ -1,0 +1,61 @@
+{
+  "components": [
+    {"license": "MIT", "name": "faster-whisper", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/faster-whisper/1.2.1/", "version": "1.2.1"},
+    {"license": "MIT", "name": "sounddevice", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/sounddevice/0.5.5/", "version": "0.5.5"},
+    {"license": "BSD-3-Clause", "name": "numpy", "platforms": ["windows", "macos"], "source": "https://pypi.org/project/numpy/2.2.6/", "version": "2.2.6"},
+    {"license": "BSD-3-Clause", "name": "numpy", "platforms": ["linux"], "source": "https://pypi.org/project/numpy/2.2.6/", "version": "2.2.6"},
+    {"license": "MIT", "name": "keyboard", "platforms": ["windows", "linux"], "source": "https://pypi.org/project/keyboard/0.13.5/", "version": "0.13.5"},
+    {"license": "MIT", "name": "mouse", "platforms": ["windows", "linux"], "source": "https://pypi.org/project/mouse/0.7.1/", "version": "0.7.1"},
+    {"license": "LGPL-3.0-only", "name": "pynput", "platforms": ["macos"], "source": "https://pypi.org/project/pynput/1.8.2/", "version": "1.8.2"},
+    {"license": "BSD-3-Clause", "name": "pyperclip", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/pyperclip/1.11.0/", "version": "1.11.0"},
+    {"license": "LGPL-3.0-only", "name": "pystray", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/pystray/0.19.5/", "version": "0.19.5"},
+    {"license": "HPND", "name": "Pillow", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/Pillow/12.3.0/", "version": "12.3.0"},
+    {"license": "BSD-3-Clause", "name": "pywebview", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/pywebview/6.2.1/", "version": "6.2.1"},
+    {"license": "MIT", "license_files": ["licenses/computer_control/comtypes-MIT.txt"], "name": "comtypes", "platforms": ["windows"], "source": "https://pypi.org/project/comtypes/1.4.16/", "version": "1.4.16"},
+    {"license": "PSF-2.0", "license_files": ["licenses/computer_control/pywin32-BSD.txt"], "name": "pywin32", "platforms": ["windows"], "source": "https://pypi.org/project/pywin32/312/", "version": "312"},
+    {"license": "Apache-2.0", "license_files": ["licenses/computer_control/Apache-2.0.txt"], "name": "sherpa-onnx", "platforms": ["windows"], "source": "https://pypi.org/project/sherpa-onnx/1.13.4/", "version": "1.13.4"},
+    {"license": "BSD-3-Clause", "name": "soundfile", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/soundfile/0.14.0/", "version": "0.14.0"},
+    {"license": "BSD-3-Clause", "name": "scipy", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/scipy/1.18.0/", "version": "1.18.0"},
+    {"license": "AGPL-3.0-only OR LicenseRef-Artifex-Commercial", "name": "PyMuPDF", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/PyMuPDF/1.27.2.3/", "version": "1.27.2.3"},
+    {"license": "MIT", "name": "python-docx", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/python-docx/1.2.0/", "version": "1.2.0"},
+    {"license": "MIT", "name": "beautifulsoup4", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/beautifulsoup4/4.15.0/", "version": "4.15.0"},
+    {"license": "AGPL-3.0-only", "name": "EbookLib", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/EbookLib/0.20/", "version": "0.20"},
+    {"license": "MIT", "name": "openpyxl", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/openpyxl/3.1.5/", "version": "3.1.5"},
+    {"license": "MIT", "name": "python-pptx", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/python-pptx/1.0.2/", "version": "1.0.2"},
+    {"license": "Apache-2.0 AND GPL-2.0-or-later", "name": "odfpy", "platforms": ["windows", "macos", "linux"], "source": "https://pypi.org/project/odfpy/1.4.1/", "version": "1.4.1"}
+  ],
+  "dependency_boundary": "external installer with exact direct and transitive distribution pins; no wheels are bundled",
+  "downloadable_artifacts": {
+    "models": [
+      {"artifact_hash": {"reason": "Snapshot files are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-tiny.en", "revision": "0d3d19a32d3338f10357c0889762bd8d64bbdeba", "role": "speech-to-text", "source": "https://huggingface.co/Systran/faster-whisper-tiny.en"},
+      {"artifact_hash": {"reason": "Snapshot files are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-base.en", "revision": "3d3d5dee26484f91867d81cb899cfcf72b96be6c", "role": "speech-to-text", "source": "https://huggingface.co/Systran/faster-whisper-base.en"},
+      {"artifact_hash": {"reason": "Snapshot files are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-small.en", "revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f", "role": "speech-to-text", "source": "https://huggingface.co/Systran/faster-whisper-small.en"},
+      {"artifact_hash": {"reason": "Snapshot files are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-medium.en", "revision": "a29b04bd15381511a9af671baec01072039215e3", "role": "speech-to-text", "source": "https://huggingface.co/Systran/faster-whisper-medium.en"},
+      {"artifact_hash": {"reason": "Snapshot files are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-base", "revision": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66", "role": "speech-to-text", "source": "https://huggingface.co/Systran/faster-whisper-base"},
+      {"artifact_hash": {"reason": "Snapshot files are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-small", "revision": "536b0662742c02347bc0e980a01041f333bce120", "role": "speech-to-text", "source": "https://huggingface.co/Systran/faster-whisper-small"},
+      {"artifact_hash": {"reason": "Snapshot files are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-distil-whisper-large-v3", "revision": "c3058b475261292e64a0412df1d2681c06260fab", "role": "speech-to-text", "source": "https://huggingface.co/Systran/faster-distil-whisper-large-v3"},
+      {"artifact_hash": {"reason": "Snapshot files are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "dropbox-dash/faster-whisper-large-v3-turbo", "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf", "role": "speech-to-text", "source": "https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo"},
+      {"artifact_hash": {"reason": "No model is bundled or adopted; a user-selected download is outside this candidate.", "status": "unavailable", "value": null}, "bundled": false, "identity": "Qwen/Qwen2.5-1.5B-Instruct-GGUF", "revision": {"reason": "The optional registry currently names no immutable revision.", "status": "unavailable", "value": null}, "role": "optional local text shaping", "source": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF"},
+      {"artifact_hash": {"reason": "No model is bundled or adopted; a user-selected download is outside this candidate.", "status": "unavailable", "value": null}, "bundled": false, "identity": "Mumble/grmr-2b-instruct-GGUF", "revision": {"reason": "The optional registry currently names no immutable revision.", "status": "unavailable", "value": null}, "role": "optional local grammar shaping", "source": "https://huggingface.co/Mumble/grmr-2b-instruct-GGUF"}
+    ],
+    "redistribution": {"reason": "Candidates contain no model or tokenizer bytes; downloads are user-initiated from the named upstream repositories and remain subject to upstream terms.", "status": "not_applicable"},
+    "tokenizers": [
+      {"artifact_hash": {"reason": "Tokenizer bytes are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-tiny.en tokenizer", "revision": "0d3d19a32d3338f10357c0889762bd8d64bbdeba", "source": "https://huggingface.co/Systran/faster-whisper-tiny.en"},
+      {"artifact_hash": {"reason": "Tokenizer bytes are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-base.en tokenizer", "revision": "3d3d5dee26484f91867d81cb899cfcf72b96be6c", "source": "https://huggingface.co/Systran/faster-whisper-base.en"},
+      {"artifact_hash": {"reason": "Tokenizer bytes are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-small.en tokenizer", "revision": "d1d751a5f8271d482d14ca55d9e2deeebbae577f", "source": "https://huggingface.co/Systran/faster-whisper-small.en"},
+      {"artifact_hash": {"reason": "Tokenizer bytes are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-medium.en tokenizer", "revision": "a29b04bd15381511a9af671baec01072039215e3", "source": "https://huggingface.co/Systran/faster-whisper-medium.en"},
+      {"artifact_hash": {"reason": "Tokenizer bytes are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-base tokenizer", "revision": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66", "source": "https://huggingface.co/Systran/faster-whisper-base"},
+      {"artifact_hash": {"reason": "Tokenizer bytes are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-whisper-small tokenizer", "revision": "536b0662742c02347bc0e980a01041f333bce120", "source": "https://huggingface.co/Systran/faster-whisper-small"},
+      {"artifact_hash": {"reason": "Tokenizer bytes are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "Systran/faster-distil-whisper-large-v3 tokenizer", "revision": "c3058b475261292e64a0412df1d2681c06260fab", "source": "https://huggingface.co/Systran/faster-distil-whisper-large-v3"},
+      {"artifact_hash": {"reason": "Tokenizer bytes are not bundled, so no package-member hash applies.", "status": "not_applicable", "value": null}, "bundled": false, "identity": "dropbox-dash/faster-whisper-large-v3-turbo tokenizer", "revision": "0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf", "source": "https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo"}
+    ]
+  },
+  "runtime": {
+    "bundled": false,
+    "implementation": "CPython",
+    "install_resolution": "the platform installer creates a virtual environment with the profile's exact CPython minor version, installs its complete requirements-lock file, and rejects missing, extra, or version-drifted runtime distributions",
+    "python": {"implementation": "CPython", "provenance": "host interpreter selected and version-checked by the platform installer; interpreter bytes are not bundled"},
+    "version": {"reason": "Python itself is not bundled; the supported host version is checked by each platform installer.", "status": "unavailable", "value": null}
+  },
+  "schema": "mumble.release-inventory.v1"
+}

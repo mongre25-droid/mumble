@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCES = (
     ROOT / "Internal" / "app" / "processing_route.py",
     ROOT / "Internal" / "app" / "model_authority.py",
+    ROOT / "Internal" / "app" / "model_provenance.py",
+    ROOT / "Internal" / "app" / "verify_dependency_closure.py",
 )
 PORTS = ("macOS", "Linux")
 

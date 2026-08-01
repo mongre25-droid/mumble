@@ -34,3 +34,21 @@ def test_process_measurement_dependency_is_consistent_across_test_platforms():
     pins = [_pin(path, "psutil") for path in DEV_REQUIREMENTS]
 
     assert pins == ["7.2.2", "7.2.2", "7.2.2"]
+
+
+def test_installers_enforce_complete_hashed_runtime_profiles():
+    installers = [
+        APP / "install.ps1",
+        APP / "Ports" / "macOS" / "Install Mumble.command",
+        APP / "Ports" / "Linux" / "install.sh",
+    ]
+    assert all("--require-hashes" in path.read_text(encoding="utf-8") for path in installers)
+
+    locks = [APP / "requirements-lock-win-x86_64-cp313.txt"]
+    locks += list((APP / "Ports" / "macOS" / "app").glob("requirements-lock-macos-*.txt"))
+    locks += [APP / "Ports" / "Linux" / "app" / "requirements-lock-linux-x86_64-cp313.txt"]
+    assert len(locks) == 6
+    for path in locks:
+        text = path.read_text(encoding="utf-8")
+        assert "==" in text
+        assert "--hash=sha256:" in text

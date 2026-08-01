@@ -1,8 +1,28 @@
 # Mumble third-party notices
 
-Mumble itself is released under the repository's MIT licence. The complete
-dependency inventory and the PyMuPDF distribution analysis live in the Core
-licensing documentation.
+Mumble itself is released under the repository's MIT licence. The canonical
+machine-readable direct-dependency, runtime, model and tokenizer tracker is
+`RELEASE-INVENTORY.json` in every candidate package (sourced from
+`Development Files/Legal/release-inventory.json`). `RELEASE-PROVENANCE.json`
+hashes that tracker, this notice, applicable retained licence texts, the exact
+requirements lock and every other package member.
+
+The installers resolve the exact reviewed direct-and-transitive profile into a
+per-user virtual environment, then reject missing, extra, incompatible, or
+version-drifted distributions. `DEPENDENCY-CLOSURE.json` is the exhaustive
+machine-readable dependency licence/source and compatible-artifact hash tracker;
+its matching profile lock is also packaged. Dependency wheels are not bundled,
+so these facts are provenance rather than installed-machine evidence. The direct
+inventory covers faster-whisper, sounddevice, NumPy, the
+platform input-hook packages, pyperclip, pystray, Pillow, pywebview, the Windows
+comtypes/pywin32/sherpa-onnx additions, soundfile, SciPy, PyMuPDF, python-docx,
+Beautiful Soup, EbookLib, openpyxl, python-pptx and odfpy at their exact pins.
+
+PyMuPDF is recorded as AGPL-3.0-only or an Artifex commercial licence, and
+EbookLib as AGPL-3.0-only. Their inclusion in an installer lock is not an owner
+or legal redistribution approval. Public distribution remains gated on the
+explicit owner/legal decision and any required corresponding-source, notice or
+commercial-licence work.
 
 ## Mumble Find
 
@@ -74,5 +94,5 @@ keyword-spotting model notices are no longer distributed.
 
 When changing a pinned dependency, re-check its repository licence, separately
 distributed model/asset licences, NOTICE requirements and binary-distribution
-conditions. This inventory records engineering compliance work and is not legal
-advice.
+conditions, then update the canonical release inventory in the same change.
+This inventory records engineering compliance work and is not legal advice.

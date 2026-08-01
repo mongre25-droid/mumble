@@ -127,16 +127,13 @@ function Find-Python {
             $versionLine = $minor | Where-Object { $_ -match '^\d+\.\d+$' } |
                 Select-Object -Last 1
             if (-not $versionLine) { return $false }
-            $version = [Version]$versionLine
-            return $version -ge [Version]'3.11' -and $version -lt [Version]'3.14'
+            return $versionLine -eq '3.13'
         } catch {
             return $false
         }
     }
     $cands = @(
-        "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe",
-        "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
-        "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe")
+        "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe")
     foreach ($c in $cands) { if (Test-PythonCandidate $c) { return $c } }
     $cmd = Get-Command python -ErrorAction SilentlyContinue
     if ($cmd -and $cmd.Source -notlike "*WindowsApps*" -and
@@ -211,10 +208,23 @@ if ($LASTEXITCODE -ne 0) {
 }
 # $ErrorActionPreference doesn't see native exit codes — without this check a
 # failed dependency install still printed "All done!" and launched a dead app.
-& $vpy -m pip install -r (Join-Path $root "requirements.txt") --quiet --disable-pip-version-check
+$dependencyLock = Join-Path $root "requirements-lock-win-x86_64-cp313.txt"
+& $vpy -m pip install --require-hashes -r $dependencyLock --quiet --disable-pip-version-check
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Dependency install FAILED (see errors above). Mumble was not installed." -ForegroundColor Red
     Write-Host "  Check your internet connection and re-run Install Mumble.bat." -ForegroundColor Red
+    Read-Host "  Press Enter to close"
+    exit 1
+}
+& $vpy (Join-Path $root "verify_dependency_closure.py") $dependencyLock
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Dependency verification FAILED. Mumble was not installed." -ForegroundColor Red
+    Read-Host "  Press Enter to close"
+    exit 1
+}
+& $vpy -m pip check --disable-pip-version-check
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Dependency compatibility check FAILED. Mumble was not installed." -ForegroundColor Red
     Read-Host "  Press Enter to close"
     exit 1
 }
@@ -233,9 +243,9 @@ if ($LASTEXITCODE -ne 0) {
     } catch { Write-Host "  (Could not create Mumble.exe - shortcuts will use pythonw)" -ForegroundColor DarkGray }
 }
 
-# 4. Pre-download the speech model (~145 MB, one time) --------------------------
-Write-Host "  Downloading the speech model (~145 MB, one time)..." -ForegroundColor DarkGray
-& $vpy -c "import os; os.environ['HF_HUB_DISABLE_XET']='1'; os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING']='1'; from faster_whisper import WhisperModel; WhisperModel('base.en', device='cpu', compute_type='int8'); print('  model ready')"
+# 4. Pre-download the pinned default speech model (~470 MB, one time) -----------
+Write-Host "  Downloading the speech model (~470 MB, one time)..." -ForegroundColor DarkGray
+& $vpy -c "import os; os.environ['HF_HUB_DISABLE_XET']='1'; os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING']='1'; from faster_whisper import WhisperModel; from model_provenance import model_revision; WhisperModel('small.en', revision=model_revision('small.en'), device='cpu', compute_type='int8'); print('  model ready')"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  (Model will download on first use instead.)" -ForegroundColor DarkGray
 }

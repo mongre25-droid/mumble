@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Security regressions for the deterministic Linux release builder."""
 
+import hashlib
+import json
 from pathlib import Path
+import tarfile
 import tempfile
 import unittest
+import zipfile
 
 import build_release
 
@@ -16,9 +20,56 @@ def _symlink_or_skip(test, target, link, target_is_directory=False):
 
 
 class ReleaseBuilderSecurityTests(unittest.TestCase):
+    def test_supported_formats_are_deterministic_and_ship_complete_provenance(self):
+        with (
+            tempfile.TemporaryDirectory() as first_raw,
+            tempfile.TemporaryDirectory() as second_raw,
+        ):
+            first = Path(first_raw)
+            second = Path(second_raw)
+            first_outputs = build_release.build(first)
+            second_outputs = build_release.build(second)
+            expected = {
+                "Mumble-Linux-0.95.tar.gz",
+                "Mumble-Linux-0.95.zip",
+                "SHA256SUMS",
+            }
+            self.assertEqual({path.name for path in first_outputs}, expected)
+            for name in expected:
+                self.assertEqual(
+                    hashlib.sha256((first / name).read_bytes()).digest(),
+                    hashlib.sha256((second / name).read_bytes()).digest(),
+                )
+
+            root = "Mumble-Linux-0.95"
+            required = {
+                f"{root}/LICENSE",
+                f"{root}/THIRD_PARTY_NOTICES.md",
+                f"{root}/RELEASE-INVENTORY.json",
+                f"{root}/RELEASE-PROVENANCE.json",
+                f"{root}/app/cloud_schema.sql",
+                f"{root}/app/requirements.txt",
+            }
+            with zipfile.ZipFile(first / f"{root}.zip") as archive:
+                self.assertTrue(required.issubset(archive.namelist()))
+                zip_provenance = json.loads(
+                    archive.read(f"{root}/RELEASE-PROVENANCE.json"))
+            with tarfile.open(first / f"{root}.tar.gz", "r:gz") as archive:
+                self.assertTrue(required.issubset(
+                    member.name for member in archive.getmembers()))
+                handle = archive.extractfile(f"{root}/RELEASE-PROVENANCE.json")
+                self.assertIsNotNone(handle)
+                tar_provenance = json.loads(handle.read())
+            self.assertEqual(zip_provenance["package"]["platform"], "linux")
+            self.assertEqual(
+                zip_provenance["package"]["architecture"], "x86_64")
+            self.assertEqual(zip_provenance["package"]["format"], "zip")
+            self.assertEqual(tar_provenance["package"]["format"], "tar.gz")
+
     def test_runtime_closure_contains_live_webui_and_prompt_dependencies(self):
         names = {name for name, _data, _mode in build_release._runtime_files()}
         required = {
+            "app/model_provenance.py",
             "app/prompt_history.py",
             "app/prompt_template_registry.py",
             "app/webui/remaster.css",

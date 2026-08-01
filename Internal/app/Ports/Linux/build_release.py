@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -40,6 +41,8 @@ ZIP_EPOCH = 315532800  # 1980-01-01 00:00:00 UTC (ZIP's minimum timestamp).
 # import closure of mumble_linux.py and webui_shell.py.
 RUNTIME_PATHS = (
     "requirements.txt",
+    "requirements-lock-linux-x86_64-cp313.txt",
+    "verify_dependency_closure.py",
     "ai/__init__.py",
     "ai/base.py",
     "ai/constitution.py",
@@ -59,6 +62,7 @@ RUNTIME_PATHS = (
     "bindings.py",
     "branding.py",
     "clipboard.py",
+    "cloud_schema.sql",
     "cloud_sync.py",
     "context_store.py",
     "dictation_session.py",
@@ -85,6 +89,7 @@ RUNTIME_PATHS = (
     "meeting_store.py",
     "model_authority.py",
     "model_free.py",
+    "model_provenance.py",
     "models/__init__.py",
     "models/backend.py",
     "models/cache.py",
@@ -177,6 +182,22 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _provenance_module(repository_root: Path):
+    path = (
+        repository_root / "Development Files" / "Tooling" /
+        "release_provenance.py"
+    )
+    if not path.is_file():
+        raise RuntimeError(f"canonical provenance module is missing: {path}")
+    spec = importlib.util.spec_from_file_location(
+        "mumble_release_provenance", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load canonical provenance module: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _checked_source(path: Path, allowed_root: Path) -> Path:
     """Return a regular, non-symlinked source contained by ``allowed_root``.
 
@@ -222,12 +243,33 @@ def _runtime_files() -> list[tuple[str, bytes, int]]:
          "READ ME FIRST.txt", 0o644),
         (_checked_source(repository_root / "LICENSE", repository_root),
          "LICENSE", 0o644),
+        (_checked_source(
+            repository_root / "Internal" / "app" / "THIRD_PARTY_NOTICES.md",
+            repository_root), "THIRD_PARTY_NOTICES.md", 0o644),
+        (_checked_source(
+            repository_root / "Development Files" / "Legal" /
+            "release-inventory.json", repository_root),
+         "RELEASE-INVENTORY.json", 0o644),
+        (_checked_source(
+            repository_root / "Development Files" / "Legal" /
+            "dependency-lock.json", repository_root),
+         "DEPENDENCY-CLOSURE.json", 0o644),
     ]
     for source, name, mode in fixed:
         data = source.read_bytes()
         if name.endswith(".sh") and b"\r" in data:
             raise RuntimeError(f"{source} contains CR bytes; Linux scripts must use LF")
         rows.append((name, data, mode))
+
+    licence_root = repository_root / "Internal" / "app" / "licenses"
+    if not licence_root.is_dir():
+        raise RuntimeError(f"retained licence directory is missing: {licence_root}")
+    for source in sorted(licence_root.rglob("*")):
+        if not source.is_file():
+            continue
+        checked = _checked_source(source, repository_root)
+        relative = source.relative_to(licence_root).as_posix()
+        rows.append((f"licenses/{relative}", checked.read_bytes(), 0o644))
 
     for relative in RUNTIME_PATHS:
         source = _checked_source(APP_ROOT / relative, APP_ROOT)
@@ -243,7 +285,7 @@ def _runtime_files() -> list[tuple[str, bytes, int]]:
     return sorted(rows, key=lambda row: row[0])
 
 
-def _entries(version: str) -> list[tuple[str, bytes, int]]:
+def _entries(version: str, package_format: str) -> list[tuple[str, bytes, int]]:
     runtime = _runtime_files()
     manifest = {
         "schema": 1,
@@ -260,10 +302,59 @@ def _entries(version: str) -> list[tuple[str, bytes, int]]:
         ],
     }
     manifest_bytes = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
-    return sorted(
-        runtime + [("RELEASE-MANIFEST.json", manifest_bytes, 0o644)],
-        key=lambda row: row[0],
+    entries = runtime + [("RELEASE-MANIFEST.json", manifest_bytes, 0o644)]
+    repo_root = _repository_root()
+    provenance = _provenance_module(repo_root)
+    member_map = {name: (data, mode) for name, data, mode in entries}
+    document = provenance.generate_release_provenance(
+        repo_root=repo_root,
+        platform="linux",
+        architecture="x86_64",
+        package_format=package_format,
+        members=member_map,
+        entrypoint="app/mumble_linux.py",
+        installer="install.sh",
+        uninstaller="uninstall.sh",
+        assets=["app/assets/mumble.png", "app/webui/mumble.png"],
+        migrations_config=[
+            "app/cloud_schema.sql", "app/settings.py", "app/update.py",
+        ],
+        evidence={
+            "update": {
+                "status": "unavailable", "reference": None,
+                "reason": "No supported-distribution update matrix is available.",
+            },
+            "rollback": {
+                "status": "unavailable", "reference": None,
+                "reason": "No package rollback run is available.",
+            },
+            "smoke": {
+                "status": "passed",
+                "reference": (
+                    "https://github.com/mongre25-droid/mumble/"
+                    "actions/runs/30721075874"
+                ),
+                "reason": (
+                    "Automated package inspection only; not physical "
+                    "installation."
+                ),
+            },
+            "physical": {
+                "status": "unavailable", "reference": None,
+                "reason": (
+                    "No physical Linux desktop evidence is available in "
+                    "this build environment."
+                ),
+            },
+        },
     )
+    member_map["RELEASE-PROVENANCE.json"] = (document, 0o644)
+    provenance.validate_release_provenance(
+        document, repo_root=repo_root, members=member_map)
+    return [
+        (name, data, mode)
+        for name, (data, mode) in sorted(member_map.items())
+    ]
 
 
 def _tar_bytes(root_name: str, entries: list[tuple[str, bytes, int]], epoch: int,
@@ -365,19 +456,59 @@ def _verify_zip(path: Path, root_name: str,
                 raise RuntimeError(f"zip mode mismatch: {info.filename}")
 
 
+def _validate_written_tar_provenance(path: Path, root_name: str) -> None:
+    repo_root = _repository_root()
+    provenance = _provenance_module(repo_root)
+    members = {}
+    with tarfile.open(path, "r:gz") as archive:
+        for member in archive.getmembers():
+            if not member.name.startswith(root_name + "/"):
+                continue
+            handle = archive.extractfile(member)
+            if handle is None:
+                raise RuntimeError(f"tar member is not a file: {member.name}")
+            members[member.name.removeprefix(root_name + "/")] = (
+                handle.read(), member.mode & 0o7777)
+    provenance.validate_release_provenance(
+        members[provenance.PROVENANCE_NAME][0],
+        repo_root=repo_root,
+        members=members,
+    )
+
+
+def _validate_written_zip_provenance(path: Path, root_name: str) -> None:
+    repo_root = _repository_root()
+    provenance = _provenance_module(repo_root)
+    with zipfile.ZipFile(path) as archive:
+        members = {
+            info.filename.removeprefix(root_name + "/"): (
+                archive.read(info), (info.external_attr >> 16) & 0o7777)
+            for info in archive.infolist()
+            if info.filename.startswith(root_name + "/")
+        }
+    provenance.validate_release_provenance(
+        members[provenance.PROVENANCE_NAME][0],
+        repo_root=repo_root,
+        members=members,
+    )
+
+
 def build(output_dir: Path) -> list[Path]:
     version = _version()
     root_name = f"Mumble-Linux-{version}"
-    entries = _entries(version)
     epoch = _epoch()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     tar_path = output_dir / f"{root_name}.tar.gz"
     zip_path = output_dir / f"{root_name}.zip"
-    _tar_bytes(root_name, entries, epoch, tar_path)
-    _zip_bytes(root_name, entries, epoch, zip_path)
-    _verify_tar(tar_path, root_name, entries)
-    _verify_zip(zip_path, root_name, entries)
+    tar_entries = _entries(version, "tar.gz")
+    zip_entries = _entries(version, "zip")
+    _tar_bytes(root_name, tar_entries, epoch, tar_path)
+    _zip_bytes(root_name, zip_entries, epoch, zip_path)
+    _verify_tar(tar_path, root_name, tar_entries)
+    _verify_zip(zip_path, root_name, zip_entries)
+    _validate_written_tar_provenance(tar_path, root_name)
+    _validate_written_zip_provenance(zip_path, root_name)
 
     sums_path = output_dir / "SHA256SUMS"
     sums = "".join(

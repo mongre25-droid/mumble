@@ -226,15 +226,17 @@ jobs:
           bash -n "Install Mumble.command" "Uninstall Mumble.command" \
             "Launch Mumble.command" build_mac_release.sh
           bash build_mac_release.sh
-          shasum -a 256 -c Mumble-v*-macos.zip.sha256
+          for checksum in Mumble-v*-macos-*.zip.sha256; do
+            shasum -a 256 -c "$checksum"
+          done
       - name: Upload macOS candidate
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: candidate-macos-package
           path: |
-            Internal/app/Ports/macOS/Mumble-v*-macos.zip
-            Internal/app/Ports/macOS/Mumble-v*-macos.zip.sha256
+            Internal/app/Ports/macOS/Mumble-v*-macos-*.zip
+            Internal/app/Ports/macOS/Mumble-v*-macos-*.zip.sha256
           if-no-files-found: error
 
   linux-package:

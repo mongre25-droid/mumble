@@ -25,8 +25,10 @@ Run standalone:  python _rebuild_zip.py            (auto-detects the repo root)
 Exit code 0 = built + all layout checks pass; 2 = built but a check FAILED.
 """
 import os
+import importlib.util
 import re
 import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -50,6 +52,16 @@ TEXT_EXTENSIONS = {
 TEXT_NAMES = {"LICENSE", "NOTICE"}
 
 
+def _load_provenance(root):
+    path = Path(root) / "Development Files" / "Tooling" / "release_provenance.py"
+    spec = importlib.util.spec_from_file_location("mumble_release_provenance", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"release provenance authority is unavailable: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def packaged_bytes(source):
     """Return canonical package bytes while leaving binary files untouched."""
     with open(source, "rb") as handle:
@@ -68,6 +80,15 @@ def write_file(archive, source, archive_name):
     info.external_attr = (0o100644 & 0xFFFF) << 16
     info.compress_type = zipfile.ZIP_DEFLATED
     archive.writestr(info, packaged_bytes(source), compresslevel=9)
+
+
+def write_bytes(archive, data, archive_name):
+    """Write one deterministic generated member."""
+    info = zipfile.ZipInfo(archive_name.replace("\\", "/"), ZIP_EPOCH)
+    info.create_system = 3
+    info.external_attr = (0o100644 & 0xFFFF) << 16
+    info.compress_type = zipfile.ZIP_DEFLATED
+    archive.writestr(info, data, compresslevel=9)
 
 
 def find_repo_root(start):
@@ -91,6 +112,17 @@ def _skip_file(name):
 def release_sources(root):
     """Return the canonical ordered (source, archive-name) release manifest."""
     root = Path(root)
+    tracked = set(subprocess.run(
+        ["git", "ls-files", "-z"], cwd=root, check=True,
+        capture_output=True,
+    ).stdout.decode("utf-8").rstrip("\0").split("\0"))
+
+    def require_tracked(source):
+        relative = source.relative_to(root).as_posix()
+        if relative not in tracked:
+            raise RuntimeError(f"unexpected untracked release source: {relative}")
+        return source
+
     internal = root / "Internal"
     appdir = internal / "app"
     sources = []
@@ -98,12 +130,16 @@ def release_sources(root):
     for source, archive_name in (
         (root / "Mumble.exe", "Mumble/Mumble.exe"),
         (root / "LICENSE", "Mumble/LICENSE"),
+        (root / "Development Files" / "Legal" / "release-inventory.json",
+         "Mumble/RELEASE-INVENTORY.json"),
+        (root / "Development Files" / "Legal" / "dependency-lock.json",
+         "Mumble/DEPENDENCY-CLOSURE.json"),
     ):
         if source.is_file():
-            sources.append((source, archive_name))
+            sources.append((require_tracked(source), archive_name))
 
     for source in sorted(path for path in internal.iterdir() if path.is_file()):
-        sources.append((source, f"Mumble/Internal/{source.name}"))
+        sources.append((require_tracked(source), f"Mumble/Internal/{source.name}"))
 
     for current, dirs, files in os.walk(appdir):
         dirs[:] = sorted(directory for directory in dirs if directory not in EXCLUDE_DIRS)
@@ -112,7 +148,7 @@ def release_sources(root):
                 continue
             source = Path(current) / filename
             relative = source.relative_to(appdir).as_posix()
-            sources.append((source, f"Mumble/Internal/app/{relative}"))
+            sources.append((require_tracked(source), f"Mumble/Internal/app/{relative}"))
     return sources
 
 
@@ -159,6 +195,49 @@ def main():
     os.makedirs(os.path.dirname(out), exist_ok=True)
     tmp = out + ".new"
     sources = release_sources(root)
+    provenance = _load_provenance(root)
+    payload_members = {
+        archive_name.removeprefix("Mumble/"): (packaged_bytes(source), 0o644)
+        for source, archive_name in sources
+    }
+    provenance_bytes = provenance.generate_release_provenance(
+        repo_root=root,
+        platform="windows",
+        architecture="x86_64",
+        package_format="zip",
+        members=payload_members,
+        entrypoint="Mumble.exe",
+        installer="Internal/app/install.ps1",
+        uninstaller="Internal/app/uninstall.ps1",
+        assets=("Internal/app/assets/mumble.ico", "Internal/app/webui/mumble.png"),
+        migrations_config=(
+            "Internal/app/settings.py",
+            "Internal/app/cloud_schema.sql",
+            "Internal/app/update.py",
+        ),
+        evidence={
+            "update": {
+                "status": "passed",
+                "reference": "Internal/app/test_update.py",
+                "reason": "Focused source automation; not an installed-machine update.",
+            },
+            "rollback": {
+                "status": "passed",
+                "reference": "Internal/app/test_update.py",
+                "reason": "Focused source automation; not an installed-machine rollback.",
+            },
+            "smoke": {
+                "status": "passed",
+                "reference": "https://github.com/mongre25-droid/mumble/actions/runs/30721075874",
+                "reason": "Exact-base automated package and test evidence only.",
+            },
+            "physical": {
+                "status": "unavailable",
+                "reference": None,
+                "reason": "No disposable installed-machine or physical workflow pass is available.",
+            },
+        },
+    )
 
     counts = {}
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
@@ -169,6 +248,7 @@ def main():
             print("WARNING: root LICENSE missing — zip will lack Mumble's licence.")
         for source, archive_name in sources:
             write_file(z, source, archive_name)
+        write_bytes(z, provenance_bytes, "Mumble/RELEASE-PROVENANCE.json")
         counts["Mumble.exe"] = int("Mumble/Mumble.exe" in source_names)
         counts["LICENSE"] = int("Mumble/LICENSE" in source_names)
         counts["Internal launchers"] = sum(
@@ -184,6 +264,17 @@ def main():
     # ---- verify + report -------------------------------------------------
     z2 = zipfile.ZipFile(out)
     names = z2.namelist()
+    archive_members = {
+        info.filename.removeprefix("Mumble/"): (
+            z2.read(info), (info.external_attr >> 16) & 0o7777)
+        for info in z2.infolist()
+        if info.filename.startswith("Mumble/")
+    }
+    provenance.validate_release_provenance(
+        archive_members[provenance.PROVENANCE_NAME][0],
+        repo_root=root,
+        members=archive_members,
+    )
     ver = "?"
     try:
         m = re.search(
@@ -199,6 +290,8 @@ def main():
     checks = {
         "root Mumble.exe": "Mumble/Mumble.exe" in names,
         "root MIT LICENSE": "Mumble/LICENSE" in names,
+        "complete release provenance": "Mumble/RELEASE-PROVENANCE.json" in names,
+        "machine-readable licence tracker": "Mumble/RELEASE-INVENTORY.json" in names,
         "Internal/ launcher (Open Mumble.bat)": "Mumble/Internal/Open Mumble.bat" in names,
         "Internal/ hidden .vbs": "Mumble/Internal/Mumble (hidden).vbs" in names,
         "app runtime (mumble.py)": "Mumble/Internal/app/mumble.py" in names,
