@@ -274,9 +274,15 @@ except Exception as _sounddevice_error:
         def query_devices(self):
             return []
 
-        def InputStream(self, *_args, **_kwargs):
+        def _raise_unavailable(self):
             raise RuntimeError(
                 f"PortAudio is unavailable: {self._error}") from self._error
+
+        def query_hostapis(self):
+            self._raise_unavailable()
+
+        def InputStream(self, *_args, **_kwargs):
+            self._raise_unavailable()
 
     sd = _UnavailableSoundDevice(_sounddevice_error)
     print(f"[audio] sounddevice unavailable: {_sounddevice_error}", flush=True)
@@ -351,6 +357,7 @@ STREAM_DRAIN_TIMEOUT = 25.0
 STATUS_LABELS = {
     "loading": "Loading…",
     "idle": "Ready",
+    "degraded": "Degraded — microphone unavailable",
     "listening": "Listening…",
     "transcribing": "Transcribing…",
     "error": "Error",
@@ -562,6 +569,23 @@ class Mumble:
         if self.island:
             self._tk_schedule(self.island.set_state, "idle")
         self._set_state("idle")
+
+    def _finish_startup_readiness(self):
+        transcription_ready = self._transcription_ready()
+        if not transcription_ready:
+            self._set_state("error")
+            message = "Mumble open (no speech model yet)."
+        elif not _sounddevice_ready:
+            self._set_state("degraded")
+            message = (
+                "Mumble open in degraded mode "
+                "(transcription ready; audio host unavailable)."
+            )
+        else:
+            self._idle()
+            message = "Mumble ready."
+        print(message)
+        return transcription_ready
 
     def _tk_schedule(self, func, *args, **kwargs):
         """Schedule a callable on the Tkinter main thread via the dispatch queue.
@@ -6025,20 +6049,18 @@ class Mumble:
             print(f"[audio] portaudio init in {time.time() - t0:.2f}s")
         except Exception as e:
             print("[audio] portaudio warm skipped:", e)
-        if self._transcription_ready():
-            # Stay IDLE (the island is hidden) on startup. The old "brief gold
+        transcription_ready = self._finish_startup_readiness()
+        if transcription_ready:
+            # Keep the island hidden on startup. The old "brief gold
             # ready pulse" called island.flash("text") — which renders the DONE
             # state, so the island flashed "Pasted!" at boot with no paste having
             # happened (owner v5: the confusing startup bubble). Removed — the
             # island only ever appears for a real dictation now; the tray icon
-            # already signals "ready". Cloud mode is "ready" with no local model
+            # already signals the current startup state. Cloud mode is "ready" with no local model
             # loaded — that's the deliberate deferral, not an error.
-            self._idle()
             threading.Thread(
                 target=self._recover_durable_dictations,
                 name="mumble-linux-dictation-recovery", daemon=True).start()
-        else:
-            self._set_state("error")
         if self.settings.get("first_run", True):
             self.cmd_q.put("open")
         threading.Thread(target=self._check_pro_key, daemon=True).start()
@@ -6046,11 +6068,6 @@ class Mumble:
         update.start_auto_check(
             on_available=self._on_update_available,
             on_error=lambda m: None,  # silent on network failure
-        )
-        print(
-            "Mumble ready."
-            if self._transcription_ready()
-            else "Mumble open (no speech model yet)."
         )
 
     def run(self):

@@ -516,6 +516,7 @@ MODE_LABELS = {"text": "Text", "prompt": "Prompt", "email": "Email",
 STATE_COLORS = {
     "loading": "#8C7320",
     "idle": "#D4AF37",
+    "degraded": "#D98B33",
     "listening": "#EBCB65",
     "transcribing": "#E0A92E",
     "error": "#D9544D",

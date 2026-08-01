@@ -9,12 +9,20 @@ import tempfile
 import threading
 import types
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from unittest import mock
 
 from PIL import Image
 
 import mumble_linux as linux
 import processing_route
+
+
+def _write_keyboard_import_double(directory):
+    with open(os.path.join(directory, "keyboard.py"), "w",
+              encoding="utf-8") as handle:
+        handle.write("# Import-only double for the isolated subprocess.\n")
 
 
 def _processing_snapshot(feature, lane):
@@ -50,6 +58,7 @@ def _processing_snapshot(feature, lane):
 class LinuxRuntimeRegressions(unittest.TestCase):
     def test_controller_import_survives_unavailable_portaudio_host(self):
         with tempfile.TemporaryDirectory() as directory:
+            _write_keyboard_import_double(directory)
             with open(os.path.join(directory, "sounddevice.py"), "w",
                       encoding="utf-8") as handle:
                 handle.write(
@@ -66,11 +75,24 @@ class LinuxRuntimeRegressions(unittest.TestCase):
             result = subprocess.run(
                 [sys.executable, "-c",
                  "import mumble_linux\n"
+                 "assert mumble_linux._sounddevice_ready is False\n"
                  "assert mumble_linux.sd.query_devices() == []\n"
+                 "try:\n"
+                 "    mumble_linux.sd.query_hostapis()\n"
+                 "except RuntimeError as error:\n"
+                 "    assert 'PulseAudio unavailable' in str(error)\n"
+                 "    assert error.__cause__ is not None\n"
+                 "    assert error.__cause__.__class__.__module__ == 'sounddevice'\n"
+                 "    assert error.__cause__.__class__.__name__ == 'PortAudioError'\n"
+                 "else:\n"
+                 "    raise AssertionError('host API query did not fail closed')\n"
                  "try:\n"
                  "    mumble_linux.sd.InputStream()\n"
                  "except RuntimeError as error:\n"
                  "    assert 'PulseAudio unavailable' in str(error)\n"
+                 "    assert error.__cause__ is not None\n"
+                 "    assert error.__cause__.__class__.__module__ == 'sounddevice'\n"
+                 "    assert error.__cause__.__class__.__name__ == 'PortAudioError'\n"
                  "else:\n"
                  "    raise AssertionError('microphone open did not fail closed')\n"
                  "print('controller import ready')"],
@@ -85,6 +107,50 @@ class LinuxRuntimeRegressions(unittest.TestCase):
         self.assertIn("controller import ready", result.stdout)
         self.assertIn("audio host unavailable", result.stdout)
         self.assertNotIn("input/audio libs ok", result.stdout)
+
+    def test_unrelated_sounddevice_import_error_propagates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _write_keyboard_import_double(directory)
+            with open(os.path.join(directory, "sounddevice.py"), "w",
+                      encoding="utf-8") as handle:
+                handle.write("raise ValueError('unrelated import defect')\n")
+            env = os.environ.copy()
+            env["PYSTRAY_BACKEND"] = "dummy"
+            env["PYTHONPATH"] = os.pathsep.join((
+                directory,
+                os.path.dirname(linux.__file__),
+            ))
+            result = subprocess.run(
+                [sys.executable, "-c", "import mumble_linux"],
+                cwd=directory,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ValueError: unrelated import defect", result.stderr)
+        self.assertNotIn("all imports complete", result.stdout)
+
+    def test_audio_failure_keeps_transcription_ready_but_degrades_startup(self):
+        app = linux.Mumble.__new__(linux.Mumble)
+        app.model = object()
+        app.state = "loading"
+        app.icon = None
+        app.island = None
+
+        output = StringIO()
+        with mock.patch.object(linux, "_sounddevice_ready", False), \
+                redirect_stdout(output):
+            transcription_ready = app._finish_startup_readiness()
+
+        self.assertTrue(transcription_ready)
+        self.assertEqual(app.status(), (
+            "degraded", "Degraded — microphone unavailable"))
+        self.assertIn("Mumble open in degraded mode", output.getvalue())
+        self.assertIn("transcription ready", output.getvalue())
+        self.assertNotIn("Mumble ready.", output.getvalue())
 
     def test_high_confidence_second_opinion_forwards_frozen_email_authority(self):
         snapshot = _processing_snapshot("email", "email")
