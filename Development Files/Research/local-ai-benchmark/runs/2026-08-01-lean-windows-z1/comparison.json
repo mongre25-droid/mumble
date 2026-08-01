@@ -1,0 +1,161 @@
+{
+  "baseline": {
+    "candidate_id": "deterministic-text",
+    "evidence": "harness_smoke_only",
+    "passed": 5,
+    "sample_count": 5
+  },
+  "candidates": [
+    {
+      "candidate_id": "qwen3-0.6b-q8",
+      "recovery": {
+        "missing_model_failed_closed": true
+      },
+      "sample_count": 5,
+      "samples": [
+        {
+          "completion_ms": 5133.037,
+          "fixture_id": "prompt-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 908.641
+        },
+        {
+          "completion_ms": 5178.098,
+          "fixture_id": "email-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 909.383
+        },
+        {
+          "completion_ms": 5171.497,
+          "fixture_id": "reply-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 908.5
+        },
+        {
+          "completion_ms": 5140.304,
+          "fixture_id": "classification-command-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 920.801
+        },
+        {
+          "completion_ms": 5115.949,
+          "fixture_id": "classification-not-command-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 939.098
+        }
+      ],
+      "summary": {
+        "cold_model_residency_start_ms": 5133.037,
+        "model_size_bytes": 639446688,
+        "passed": 0,
+        "peak_working_set_mb": 939.098,
+        "warm_file_cache_p50_ms": 5155.9
+      }
+    },
+    {
+      "candidate_id": "qwen2.5-1.5b-q4-k-m",
+      "recovery": {
+        "missing_model_failed_closed": true
+      },
+      "sample_count": 5,
+      "samples": [
+        {
+          "completion_ms": 5264.668,
+          "fixture_id": "prompt-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 1673.258
+        },
+        {
+          "completion_ms": 5243.742,
+          "fixture_id": "email-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 1674.129
+        },
+        {
+          "completion_ms": 5197.962,
+          "fixture_id": "reply-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 1708.426
+        },
+        {
+          "completion_ms": 5204.932,
+          "fixture_id": "classification-command-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 1701.09
+        },
+        {
+          "completion_ms": 5241.3,
+          "fixture_id": "classification-not-command-001",
+          "output_chars": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "passed": false,
+          "peak_working_set_mb": 1696.426
+        }
+      ],
+      "summary": {
+        "cold_model_residency_start_ms": 5264.668,
+        "model_size_bytes": 1117320736,
+        "passed": 0,
+        "peak_working_set_mb": 1708.426,
+        "warm_file_cache_p50_ms": 5223.116
+      }
+    }
+  ],
+  "content_policy": "fixture_ids_metrics_and_output_hashes_only",
+  "decision": {
+    "adoption": "no_beneficial_adoption",
+    "retained_baseline": "deterministic-text"
+  },
+  "decision_reason": "The deterministic baseline is already correct on all five fixtures and no model can be materially better on this representative set; model latency, memory, runtime packaging, and installed-path gates remain additional costs.",
+  "hardware_id": "windows-z1-extreme-2026-08-01",
+  "input_records": {
+    "candidates": {
+      "path": "Development Files/Research/local-ai-benchmark/v1/candidates-v1.json",
+      "sha256": "aa60e53a746ca06d8ca7c9859cc7929758e5dfebd7d4bb715d1802e8404df5f3"
+    },
+    "corpus": {
+      "path": "Development Files/Research/local-ai-benchmark/v1/corpus-v1.json",
+      "sha256": "cacb9459de8f883361595ea9622d58643b0cfb12dd3df4640fab2f3780adc55f"
+    },
+    "gates": {
+      "path": "Development Files/Research/local-ai-benchmark/v1/gates-v1.json",
+      "sha256": "19af19591f4f3ff41caa09d81cbf1ec21d01ac22570106ffc7a923cdab04aa6d"
+    },
+    "hardware": {
+      "path": "Development Files/Research/local-ai-benchmark/runs/2026-08-01-lean-windows-z1/hardware.json",
+      "sha256": "039dfa9f01a96084d685e84751827ebcc347d5f9a2d89c9589524db275974e5e"
+    },
+    "provenance": {
+      "path": "Development Files/Research/local-ai-benchmark/runs/2026-08-01-lean-windows-z1/provenance.json",
+      "sha256": "3b2ef2e94f48c087a5e583f118ae725b727c8a24794c8b3514673d4a4205da53"
+    }
+  },
+  "owner_authorised_scope": "lean_representative_not_statistical",
+  "runtime": {
+    "archive_sha256": "52133a0a5a8f6035b1bdd2f89c3425ea8b742413d9bdb9a2dee30e3a1681b18c",
+    "archive_size_bytes": 18213827,
+    "component": "llama.cpp",
+    "release": "b10107",
+    "source_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "schema": "mumble.local-ai-lean-comparison.v1",
+  "source_parent": "22777a7e62fb5c0730b412fcd85334fbe82d1678"
+}

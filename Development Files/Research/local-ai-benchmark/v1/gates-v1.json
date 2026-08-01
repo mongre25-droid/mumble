@@ -1,6 +1,13 @@
 {
   "schema": "mumble.local-ai-gates.v1",
-  "version": "issue19-gates-v2-provenance",
+  "version": "issue19-gates-v3-lean-final-decision",
+  "owner_authorised_final_decision": {
+    "scope": "lean_representative_not_statistical",
+    "samples_per_candidate": "3_to_5",
+    "adoption_rule": "Adopt only a candidate that is clearly safe and materially better after privacy, licence, Windows, runtime, hardware, and package costs are included; otherwise retain the baseline.",
+    "legacy_matrix_status": "The earlier 30-run and 100-run thresholds remain as historical formal-eligibility controls, but they are superseded for Issue #19's final no-adoption decision and are not a prerequisite for completing that decision.",
+    "statistical_claims_allowed": false
+  },
   "decision_rule": "A candidate advances only when every required gate is pass. Fail, not_run, blocked, unknown, or missing retains the lane baseline.",
   "required_metrics": {
     "speech": ["wer", "first_stable_partial_ms", "stop_to_final_ms", "real_time_factor", "peak_ram_mb", "peak_vram_mb", "model_size_bytes", "idle_cpu_percent", "failure_recovery"],

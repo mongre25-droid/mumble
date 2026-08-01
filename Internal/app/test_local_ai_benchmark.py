@@ -799,3 +799,130 @@ def test_cached_baseline_identity_is_bound_to_exact_manifest(tmp_path):
             model_dir=model_dir,
             expected_snapshot=wrong,
         )
+
+
+def test_lean_comparison_receipt_is_bounded_content_free_and_non_statistical():
+    benchmark = _load_tool()
+
+    fixture_ids = [
+        "prompt-001",
+        "email-001",
+        "reply-001",
+        "classification-command-001",
+        "classification-not-command-001",
+    ]
+
+    def candidate(candidate_id, model_size_bytes):
+        samples = [
+            {
+                "fixture_id": fixture_id,
+                "passed": index < 4,
+                "completion_ms": 1000 + index,
+                "peak_working_set_mb": 700,
+                "output_sha256": "a" * 64,
+                "output_chars": 80,
+            }
+            for index, fixture_id in enumerate(fixture_ids)
+        ]
+        return {
+            "candidate_id": candidate_id,
+            "sample_count": 5,
+            "samples": samples,
+            "summary": {
+                "passed": 4,
+                "cold_model_residency_start_ms": 1000,
+                "warm_file_cache_p50_ms": 1002.5,
+                "peak_working_set_mb": 700,
+                "model_size_bytes": model_size_bytes,
+            },
+            "recovery": {"missing_model_failed_closed": True},
+        }
+
+    record = {
+        "schema": "mumble.local-ai-lean-comparison.v1",
+        "owner_authorised_scope": "lean_representative_not_statistical",
+        "source_parent": "22777a7e62fb5c0730b412fcd85334fbe82d1678",
+        "hardware_id": "windows-z1-extreme-2026-08-01",
+        "runtime": {
+            "archive_sha256": "52133a0a5a8f6035b1bdd2f89c3425ea8b742413d9bdb9a2dee30e3a1681b18c",
+            "archive_size_bytes": 18213827,
+            "component": "llama.cpp",
+            "release": "b10107",
+            "source_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+        },
+        "input_records": {
+            "candidates": {
+                "path": "Development Files/Research/local-ai-benchmark/v1/candidates-v1.json",
+                "sha256": "b" * 64,
+            },
+            "corpus": {
+                "path": "Development Files/Research/local-ai-benchmark/v1/corpus-v1.json",
+                "sha256": "b" * 64,
+            },
+            "gates": {
+                "path": "Development Files/Research/local-ai-benchmark/v1/gates-v1.json",
+                "sha256": "b" * 64,
+            },
+            "hardware": {
+                "path": "Development Files/Research/local-ai-benchmark/runs/2026-08-01-lean-windows-z1/hardware.json",
+                "sha256": "b" * 64,
+            },
+            "provenance": {
+                "path": "Development Files/Research/local-ai-benchmark/runs/2026-08-01-lean-windows-z1/provenance.json",
+                "sha256": "b" * 64,
+            },
+        },
+        "baseline": {
+            "candidate_id": "deterministic-text",
+            "sample_count": 5,
+            "passed": 5,
+            "evidence": "harness_smoke_only",
+        },
+        "candidates": [
+            candidate("qwen3-0.6b-q8", 639446688),
+            candidate("qwen2.5-1.5b-q4-k-m", 1117320736),
+        ],
+        "decision": {
+            "adoption": "no_beneficial_adoption",
+            "retained_baseline": "deterministic-text",
+        },
+        "decision_reason": "The deterministic baseline is already correct on all five fixtures and no model can be materially better on this representative set; model latency, memory, runtime packaging, and installed-path gates remain additional costs.",
+        "content_policy": "fixture_ids_metrics_and_output_hashes_only",
+    }
+
+    assert benchmark.validate_lean_comparison_record(record) is True
+
+    unsafe = copy.deepcopy(record)
+    unsafe["candidates"][0]["raw_output"] = "content must not be retained"
+    with pytest.raises(benchmark.ContractError, match="content_bearing_lean_field"):
+        benchmark.validate_lean_comparison_record(unsafe)
+
+    prohibited_extras = (
+        ("model_response", "raw candidate content"),
+        ("credentials", "secret-value"),
+        ("audio", "owner-audio-bytes"),
+        ("recording", "owner-recording"),
+        ("model_bytes", "embedded-model-data"),
+    )
+    for field, value in prohibited_extras:
+        unsafe = copy.deepcopy(record)
+        unsafe[field] = value
+        with pytest.raises(
+            benchmark.ContractError, match="content_bearing_lean_field"
+        ):
+            benchmark.validate_lean_comparison_record(unsafe)
+
+    nested_extra = copy.deepcopy(record)
+    nested_extra["candidates"][0]["summary"]["credentials"] = "secret-value"
+    with pytest.raises(benchmark.ContractError, match="content_bearing_lean_field"):
+        benchmark.validate_lean_comparison_record(nested_extra)
+
+    wrong_parent = copy.deepcopy(record)
+    wrong_parent["source_parent"] = "0" * 40
+    with pytest.raises(benchmark.ContractError, match="source_parent_mismatch"):
+        benchmark.validate_lean_comparison_record(wrong_parent)
+
+    duplicate_fixture = copy.deepcopy(record)
+    duplicate_fixture["candidates"][0]["samples"][-1]["fixture_id"] = "prompt-001"
+    with pytest.raises(benchmark.ContractError, match="fixture_set_mismatch"):
+        benchmark.validate_lean_comparison_record(duplicate_fixture)

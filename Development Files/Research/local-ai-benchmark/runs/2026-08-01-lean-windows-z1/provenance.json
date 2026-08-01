@@ -1,0 +1,61 @@
+{
+  "schema": "mumble.local-ai-lean-provenance.v1",
+  "accessed": "2026-08-01",
+  "source_parent": "22777a7e62fb5c0730b412fcd85334fbe82d1678",
+  "product_parent": "babdc38d2d3869540afb7bc1e7523151c5de4237",
+  "shortlist_reason": "The existing Windows product route already uses GGUF through llama.cpp. These two official Qwen files are the smallest realistic instruction-text comparison in the existing registry; no new Python package or speech stack is required.",
+  "runtime": {
+    "component": "llama.cpp",
+    "release": "b10107",
+    "source_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "release_source": "https://github.com/ggml-org/llama.cpp/releases/tag/b10107",
+    "archive_source": "https://github.com/ggml-org/llama.cpp/releases/download/b10107/llama-b10107-bin-win-cpu-x64.zip",
+    "archive_size_bytes": 18213827,
+    "archive_sha256": "52133a0a5a8f6035b1bdd2f89c3425ea8b742413d9bdb9a2dee30e3a1681b18c",
+    "licence": "MIT",
+    "licence_source": "https://github.com/ggml-org/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/LICENSE",
+    "windows_boundary": "The primary release publishes a Windows x64 CPU archive. Mumble's currently bundled llama-cli.exe instead exited 3221225781 before model load for both candidates; its SHA-256 is b8d2e4ad877b26d5f6f02842f446c47b84a051ede3238b570b17b8a5b9dcc31d. The verified official archive was used only from the isolated task directory.",
+    "package_manifest_verification": "The official Windows CPU archive contains executable and DLL bytes but no LICENSE, NOTICE, COPYING, or README file. Its release workflow explicitly adds libomp140.x86_64.dll from OpenMP.LLVM. The candidate therefore cannot be redistributed as downloaded: a Mumble package would need the llama.cpp MIT notice plus the LLVM Apache-2.0 WITH LLVM-exception notice, an exact shipped-file dependency inventory, and ordinary Windows system-library treatment before approval.",
+    "openmp_primary_source": "https://github.com/llvm/llvm-project/blob/991cfd1379f7d5184a3f6306ac10cabec742bbd2/LICENSE.TXT",
+    "release_workflow_primary_source": "https://github.com/ggml-org/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/.github/workflows/release.yml",
+    "obligations": "Preserve the llama.cpp MIT copyright and permission notice. Preserve the LLVM Apache-2.0 WITH LLVM-exception notice for the shipped libomp runtime. Do not redistribute until every shipped runtime dependency and notice is present and package installation, update, removal, signing, and residue checks pass."
+  },
+  "candidates": [
+    {
+      "candidate_id": "qwen3-0.6b-q8",
+      "repository": "Qwen/Qwen3-0.6B-GGUF",
+      "revision": "23749fefcc72300e3a2ad315e1317431b06b590a",
+      "model_card": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/tree/23749fefcc72300e3a2ad315e1317431b06b590a",
+      "licence_source": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/blob/23749fefcc72300e3a2ad315e1317431b06b590a/LICENSE",
+      "artifact_source": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/23749fefcc72300e3a2ad315e1317431b06b590a/Qwen3-0.6B-Q8_0.gguf",
+      "artifact_size_bytes": 639446688,
+      "artifact_sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+      "weights_licence": "Apache-2.0",
+      "tokenizer": "Embedded in the official GGUF and bound to the same revision and artifact hash. Local GGUF-v3 inspection confirmed tokenizer.ggml.model, tokenizer.ggml.pre, tokenizer.ggml.tokens, tokenizer.ggml.token_type, tokenizer.ggml.merges, special-token identifiers, and tokenizer.chat_template keys.",
+      "obligations": "Include the Apache-2.0 licence, preserve notices and attribution, identify changes if redistributed, and make only factual origin references without implying endorsement or broader trademark permission."
+    },
+    {
+      "candidate_id": "qwen2.5-1.5b-q4-k-m",
+      "repository": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+      "revision": "91cad51170dc346986eccefdc2dd33a9da36ead9",
+      "model_card": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/tree/91cad51170dc346986eccefdc2dd33a9da36ead9",
+      "licence_source": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/blob/91cad51170dc346986eccefdc2dd33a9da36ead9/LICENSE",
+      "artifact_source": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "artifact_size_bytes": 1117320736,
+      "artifact_sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+      "weights_licence": "Apache-2.0",
+      "tokenizer": "Embedded in the official GGUF and bound to the same revision and artifact hash. Local GGUF-v3 inspection confirmed tokenizer.ggml.model, tokenizer.ggml.pre, tokenizer.ggml.tokens, tokenizer.ggml.token_type, tokenizer.ggml.merges, special-token identifiers, and tokenizer.chat_template keys.",
+      "obligations": "Include the Apache-2.0 licence, preserve notices and attribution, identify changes if redistributed, and make only factual origin references without implying endorsement or broader trademark permission."
+    }
+  ],
+  "benchmark_execution": {
+    "samples_per_candidate": 5,
+    "first_sample_role": "Cold model-residency and process start: no candidate process or model mapping was resident. Mandatory full-file SHA-256 verification had already warmed an uncontrolled portion of the operating-system file cache, so this is not claimed as a storage-cold measurement.",
+    "remaining_sample_role": "subsequent process start with operating-system file cache warm; the current one-shot product boundary does not keep the model resident",
+    "accuracy_boundary": "A fixture counts as correct only when its required output is complete before the five-second usefulness deadline. Both candidates produced no completed output in all five samples, so accuracy is 0/5 at the usable boundary; this is not a claim about unbounded model capability.",
+    "retained_first_failure": "Before the bounded runner was corrected, the first Qwen3 sample remained alive beyond 79 seconds because the monitor did not enforce its declared timeout. That isolated process was stopped, the five-second fail-safe was added, and the complete ten-sample run was executed once.",
+    "recovery_boundary": "For each candidate, a missing model path failed closed with RuntimeError and no successful output."
+  },
+  "redistribution_decision": "Research execution is permitted from verified public files. Redistribution inside Mumble is not approved because the runtime dependency inventory, notices, approximately 0.64-1.12 GB model payload, package lifecycle, signing, and installed Windows path are not accepted.",
+  "privacy": "Only the five versioned synthetic fixtures in corpus-v1.json were used. No owner recording, credential, raw audio, or transcript content is present in the receipts."
+}

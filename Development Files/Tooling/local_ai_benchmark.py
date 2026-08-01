@@ -186,6 +186,173 @@ def validate_preliminary_speech_record(record):
     return record
 
 
+def validate_lean_comparison_record(record, *, receipt_path=None):
+    """Validate the owner-authorised five-sample comparison receipt.
+
+    This representative decision aid cannot be promoted into the formal v2
+    eligibility registry or described as a statistical benchmark.
+    """
+    def require_exact_keys(value, expected):
+        if not isinstance(value, dict) or set(value) != set(expected):
+            raise ContractError("content_bearing_lean_field")
+
+    require_exact_keys(
+        record,
+        {
+            "schema", "owner_authorised_scope", "source_parent", "hardware_id",
+            "runtime", "input_records", "baseline", "candidates", "decision",
+            "decision_reason", "content_policy",
+        },
+    )
+    if record.get("schema") != "mumble.local-ai-lean-comparison.v1":
+        raise ContractError("unsupported_lean_comparison_schema")
+    if record.get("owner_authorised_scope") != "lean_representative_not_statistical":
+        raise ContractError("lean_comparison_scope_required")
+    if record.get("content_policy") != "fixture_ids_metrics_and_output_hashes_only":
+        raise ContractError("lean_comparison_content_policy_required")
+    if record.get("source_parent") != "22777a7e62fb5c0730b412fcd85334fbe82d1678":
+        raise ContractError("lean_comparison_source_parent_mismatch")
+    if record.get("hardware_id") != "windows-z1-extreme-2026-08-01":
+        raise ContractError("lean_comparison_hardware_mismatch")
+    runtime = record.get("runtime") or {}
+    require_exact_keys(
+        runtime,
+        {
+            "archive_sha256", "archive_size_bytes", "component", "release",
+            "source_revision",
+        },
+    )
+    if runtime != {
+        "archive_sha256": "52133a0a5a8f6035b1bdd2f89c3425ea8b742413d9bdb9a2dee30e3a1681b18c",
+        "archive_size_bytes": 18213827,
+        "component": "llama.cpp",
+        "release": "b10107",
+        "source_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    }:
+        raise ContractError("lean_comparison_runtime_mismatch")
+    expected_input_paths = {
+        "candidates": "Development Files/Research/local-ai-benchmark/v1/candidates-v1.json",
+        "corpus": "Development Files/Research/local-ai-benchmark/v1/corpus-v1.json",
+        "gates": "Development Files/Research/local-ai-benchmark/v1/gates-v1.json",
+        "hardware": "Development Files/Research/local-ai-benchmark/runs/2026-08-01-lean-windows-z1/hardware.json",
+        "provenance": "Development Files/Research/local-ai-benchmark/runs/2026-08-01-lean-windows-z1/provenance.json",
+    }
+    input_records = record.get("input_records")
+    if not isinstance(input_records, dict) or set(input_records) != set(expected_input_paths):
+        raise ContractError("lean_comparison_input_records_mismatch")
+    for name, expected_path in expected_input_paths.items():
+        item = input_records.get(name) or {}
+        require_exact_keys(item, {"path", "sha256"})
+        if item.get("path") != expected_path:
+            raise ContractError(f"lean_comparison_input_path_mismatch:{name}")
+        if re.fullmatch(r"[0-9a-f]{64}", str(item.get("sha256", ""))) is None:
+            raise ContractError(f"lean_comparison_input_hash_required:{name}")
+        if receipt_path is not None:
+            actual_path = Path(__file__).resolve().parents[2] / Path(expected_path)
+            if not actual_path.is_file() or _sha256_file(actual_path) != item["sha256"]:
+                raise ContractError(f"lean_comparison_input_hash_mismatch:{name}")
+    baseline = record.get("baseline") or {}
+    require_exact_keys(
+        baseline, {"candidate_id", "evidence", "passed", "sample_count"}
+    )
+    if baseline != {
+        "candidate_id": "deterministic-text",
+        "evidence": "harness_smoke_only",
+        "passed": 5,
+        "sample_count": 5,
+    }:
+        raise ContractError("lean_comparison_baseline_mismatch")
+    candidates = record.get("candidates")
+    expected_candidates = {
+        "qwen3-0.6b-q8": 639446688,
+        "qwen2.5-1.5b-q4-k-m": 1117320736,
+    }
+    if (
+        not isinstance(candidates, list)
+        or len(candidates) != 2
+        or {candidate.get("candidate_id") for candidate in candidates}
+        != set(expected_candidates)
+    ):
+        raise ContractError("lean_comparison_candidate_set_mismatch")
+    expected_fixtures = {
+        "prompt-001", "email-001", "reply-001",
+        "classification-command-001", "classification-not-command-001",
+    }
+    for candidate in candidates:
+        require_exact_keys(
+            candidate,
+            {"candidate_id", "sample_count", "samples", "summary", "recovery"},
+        )
+        samples = candidate.get("samples")
+        if (
+            candidate.get("sample_count") != 5
+            or not isinstance(samples, list)
+            or len(samples) != 5
+        ):
+            raise ContractError("lean_comparison_requires_five_candidate_samples")
+        if {sample.get("fixture_id") for sample in samples} != expected_fixtures:
+            raise ContractError("lean_comparison_fixture_set_mismatch")
+        for sample in samples:
+            required = {
+                "fixture_id", "passed", "completion_ms", "peak_working_set_mb",
+                "output_sha256", "output_chars",
+            }
+            if set(sample) != required:
+                raise ContractError("invalid_lean_sample_fields")
+            if not isinstance(sample["passed"], bool):
+                raise ContractError("invalid_lean_sample_pass")
+            if not _is_nonnegative(sample["completion_ms"]):
+                raise ContractError("invalid_lean_sample_latency")
+            if not _is_nonnegative(sample["peak_working_set_mb"]):
+                raise ContractError("invalid_lean_sample_memory")
+            if re.fullmatch(r"[0-9a-f]{64}", str(sample["output_sha256"])) is None:
+                raise ContractError("invalid_lean_sample_output_hash")
+            if not _is_nonnegative_int(sample["output_chars"]):
+                raise ContractError("invalid_lean_sample_output_size")
+        recovery = candidate.get("recovery") or {}
+        require_exact_keys(recovery, {"missing_model_failed_closed"})
+        if recovery != {"missing_model_failed_closed": True}:
+            raise ContractError("lean_comparison_recovery_required")
+        summary = candidate.get("summary") or {}
+        require_exact_keys(
+            summary,
+            {
+                "passed", "cold_model_residency_start_ms",
+                "warm_file_cache_p50_ms", "peak_working_set_mb",
+                "model_size_bytes",
+            },
+        )
+        warm_values = sorted(sample["completion_ms"] for sample in samples[1:])
+        expected_summary = {
+            "passed": sum(sample["passed"] for sample in samples),
+            "cold_model_residency_start_ms": samples[0]["completion_ms"],
+            "warm_file_cache_p50_ms": round(
+                (warm_values[1] + warm_values[2]) / 2, 3
+            ),
+            "peak_working_set_mb": max(
+                sample["peak_working_set_mb"] for sample in samples
+            ),
+            "model_size_bytes": expected_candidates[candidate["candidate_id"]],
+        }
+        if summary != expected_summary:
+            raise ContractError("lean_comparison_summary_mismatch")
+    decision = record.get("decision") or {}
+    require_exact_keys(decision, {"adoption", "retained_baseline"})
+    if decision != {
+        "adoption": "no_beneficial_adoption",
+        "retained_baseline": "deterministic-text",
+    }:
+        raise ContractError("lean_comparison_must_retain_baseline")
+    if record.get("decision_reason") != (
+        "The deterministic baseline is already correct on all five fixtures and "
+        "no model can be materially better on this representative set; model "
+        "latency, memory, runtime packaging, and installed-path gates remain "
+        "additional costs."
+    ):
+        raise ContractError("lean_comparison_decision_reason_mismatch")
+    return True
+
+
 def _decision_from_gate_results(*, candidate_id, baseline_id, gate_results):
     """Retain the baseline unless all eight predeclared gates pass."""
     if set(gate_results) != REQUIRED_GATE_NAMES:
@@ -1662,6 +1829,10 @@ def main(argv=None):
     subparsers = parser.add_subparsers(dest="command", required=True)
     validate_parser = subparsers.add_parser("validate", help="validate versioned inputs")
     validate_parser.add_argument("contract_root", type=Path)
+    lean_parser = subparsers.add_parser(
+        "validate-lean", help="validate an owner-authorised lean comparison receipt"
+    )
+    lean_parser.add_argument("receipt", type=Path)
     run_parser = subparsers.add_parser("run", help="run safe baselines and record unavailable lanes")
     run_parser.add_argument("contract_root", type=Path)
     run_parser.add_argument("--app-dir", type=Path, required=True)
@@ -1682,15 +1853,26 @@ def main(argv=None):
     )
     preliminary_parser.add_argument("--voice-description", required=True)
     args = parser.parse_args(argv)
-    contract = load_contract(args.contract_root)
     if args.command == "validate":
+        contract = load_contract(args.contract_root)
         output = {
             "ok": True,
             "corpus_version": contract["corpus"]["version"],
             "fixtures": len(contract["corpus"]["items"]),
             "candidates": len(contract["candidates"]["candidates"]),
         }
+    elif args.command == "validate-lean":
+        receipt_path = args.receipt.resolve()
+        record = _read_json(receipt_path)
+        validate_lean_comparison_record(record, receipt_path=receipt_path)
+        output = {
+            "ok": True,
+            "schema": record["schema"],
+            "receipt_sha256": _sha256_file(receipt_path),
+            "decision": record["decision"],
+        }
     elif args.command == "run":
+        contract = load_contract(args.contract_root)
         hardware = _read_json(args.hardware.resolve())
         availability_record = _read_json(args.availability.resolve())
         if availability_record.get("schema") != "mumble.local-ai-availability.v1":
@@ -1704,6 +1886,7 @@ def main(argv=None):
             evidence_root=args.availability.resolve().parent,
         )
     else:
+        contract = load_contract(args.contract_root)
         output = run_preliminary_faster_whisper(
             contract=contract,
             model_dir=args.model_dir,

@@ -1,0 +1,16 @@
+{
+  "schema": "mumble.local-ai-hardware.v1",
+  "id": "windows-z1-extreme-2026-08-01",
+  "captured": "2026-08-01",
+  "platform": "Windows x64",
+  "manufacturer": "LENOVO",
+  "model": "83E1",
+  "cpu": "AMD Ryzen Z1 Extreme",
+  "physical_cores": 8,
+  "logical_processors": 16,
+  "physical_memory_bytes": 13628198912,
+  "graphics": "AMD Radeon Graphics",
+  "graphics_driver": "32.0.23017.1001",
+  "graphics_memory_boundary": "The operating-system AdapterRAM value was 3221225472 bytes for integrated graphics and is not treated as dedicated VRAM.",
+  "python": "3.12.10"
+}

@@ -1,7 +1,7 @@
 {
   "schema": "mumble.local-ai-candidates.v1",
   "version": "issue19-candidates-v1",
-  "accessed": "2026-07-26",
+  "accessed": "2026-08-01",
   "candidates": [
     {
       "id": "faster-whisper",
