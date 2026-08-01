@@ -292,16 +292,24 @@ else
   exit 1
 fi
 
-# Import sounddevice separately because pip can install its Python wheel even
-# when the required PortAudio shared library is absent. Without this gate the
-# installer can report success and the controller then fails on first launch.
+# Load the PortAudio shared library without importing sounddevice. Importing
+# sounddevice initializes the live PulseAudio/PipeWire host and can fail on a
+# headless install even though the required runtime library is correctly
+# installed. Device/server readiness belongs to the controller's recoverable
+# audio capability probe, not this package-integrity gate.
 if "$PY" - <<'PYEOF' >/dev/null 2>&1
-import sounddevice
+import ctypes
+import ctypes.util
+
+library = ctypes.util.find_library("portaudio")
+if not library:
+    raise SystemExit(1)
+ctypes.CDLL(library)
 PYEOF
 then
   ok "PortAudio reachable from the venv"
 else
-  err "Could not load PortAudio through sounddevice. Install your distro's PortAudio runtime and re-run."
+  err "Could not resolve and load the PortAudio shared library. Install your distro's PortAudio runtime and re-run."
   exit 1
 fi
 

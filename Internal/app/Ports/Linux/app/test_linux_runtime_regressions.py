@@ -3,6 +3,7 @@
 
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -47,6 +48,44 @@ def _processing_snapshot(feature, lane):
 
 
 class LinuxRuntimeRegressions(unittest.TestCase):
+    def test_controller_import_survives_unavailable_portaudio_host(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with open(os.path.join(directory, "sounddevice.py"), "w",
+                      encoding="utf-8") as handle:
+                handle.write(
+                    "class PortAudioError(RuntimeError):\n"
+                    "    pass\n"
+                    "raise PortAudioError('PulseAudio unavailable')\n"
+                )
+            env = os.environ.copy()
+            env["PYSTRAY_BACKEND"] = "dummy"
+            env["PYTHONPATH"] = os.pathsep.join((
+                directory,
+                os.path.dirname(linux.__file__),
+            ))
+            result = subprocess.run(
+                [sys.executable, "-c",
+                 "import mumble_linux\n"
+                 "assert mumble_linux.sd.query_devices() == []\n"
+                 "try:\n"
+                 "    mumble_linux.sd.InputStream()\n"
+                 "except RuntimeError as error:\n"
+                 "    assert 'PulseAudio unavailable' in str(error)\n"
+                 "else:\n"
+                 "    raise AssertionError('microphone open did not fail closed')\n"
+                 "print('controller import ready')"],
+                cwd=directory,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("controller import ready", result.stdout)
+        self.assertIn("audio host unavailable", result.stdout)
+        self.assertNotIn("input/audio libs ok", result.stdout)
+
     def test_high_confidence_second_opinion_forwards_frozen_email_authority(self):
         snapshot = _processing_snapshot("email", "email")
         app = linux.Mumble.__new__(linux.Mumble)

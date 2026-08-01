@@ -255,9 +255,38 @@ import bindings as keyboard
 import numpy as np
 import pyperclip
 import pystray
-import sounddevice as sd
+_sounddevice_ready = True
+try:
+    import sounddevice as sd
+except Exception as _sounddevice_error:
+    if (_sounddevice_error.__class__.__module__ != "sounddevice"
+            or _sounddevice_error.__class__.__name__ != "PortAudioError"):
+        raise
+    _sounddevice_ready = False
+    # PortAudio can fail during module import when a lean/headless Linux host has
+    # the library installed but its PulseAudio/PipeWire service is unavailable.
+    # Keep the controller alive so its existing degraded-audio UI and recovery
+    # paths can explain the problem; microphone operations still fail closed.
+    class _UnavailableSoundDevice:
+        def __init__(self, error):
+            self._error = error
+
+        def query_devices(self):
+            return []
+
+        def InputStream(self, *_args, **_kwargs):
+            raise RuntimeError(
+                f"PortAudio is unavailable: {self._error}") from self._error
+
+    sd = _UnavailableSoundDevice(_sounddevice_error)
+    print(f"[audio] sounddevice unavailable: {_sounddevice_error}", flush=True)
 from PIL import Image, ImageDraw
-print("[startup] input/audio libs ok", flush=True)
+print(
+    "[startup] input/audio libs ok"
+    if _sounddevice_ready
+    else "[startup] input libs ok; audio host unavailable",
+    flush=True,
+)
 
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
