@@ -4,6 +4,7 @@
 Standalone and offline: ``python test_service_platform_regressions.py``.
 """
 
+import base64
 import json
 import inspect
 import os
@@ -84,18 +85,34 @@ $argumentOnly = [pscustomobject]@{
   ExecutablePath = Join-Path $root '.venv\Scripts\Mumble.exe'
   CommandLine = '"' + (Join-Path $root '.venv\Scripts\Mumble.exe') + '" --inspect "' + (Join-Path $root 'mumble.py') + '"'
 }
-if ((Test-MumbleProcessForApp $inside $root) -and
-    (Test-MumbleProcessForApp $launcher $root) -and
-    -not (Test-MumbleProcessForApp $other $root) -and
-    -not (Test-MumbleProcessForApp $wrongExecutable $root) -and
-    -not (Test-MumbleProcessForApp $wrongEntryPoint $root) -and
-    -not (Test-MumbleProcessForApp $argumentOnly $root)) { exit 0 }
+$results = [ordered]@{
+  inside = [bool](Test-MumbleProcessForApp $inside $root)
+  launcher = [bool](Test-MumbleProcessForApp $launcher $root)
+  sibling_rejected = [bool](-not (Test-MumbleProcessForApp $other $root))
+  wrong_executable_rejected = [bool](-not (Test-MumbleProcessForApp $wrongExecutable $root))
+  wrong_entry_point_rejected = [bool](-not (Test-MumbleProcessForApp $wrongEntryPoint $root))
+  argument_only_rejected = [bool](-not (Test-MumbleProcessForApp $argumentOnly $root))
+}
+$results | ConvertTo-Json -Compress
+if ($results.Values -notcontains $false) { exit 0 }
 exit 1
 '''
-    return subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", probe],
+    encoded_probe = base64.b64encode(probe.encode("utf-16-le")).decode("ascii")
+    command = [
+        "powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+        encoded_probe,
+    ]
+    result = subprocess.run(
+        command,
         capture_output=True, text=True, timeout=15,
-    ).returncode == 0
+    )
+    if result.returncode != 0:
+        print("  PowerShell process-scope probe failed")
+        print(f"    command: {subprocess.list2cmdline(command)}")
+        print(f"    exit code: {result.returncode}")
+        print(f"    stdout: {result.stdout!r}")
+        print(f"    stderr: {result.stderr!r}")
+    return result.returncode == 0
 
 
 class FakeSettings:

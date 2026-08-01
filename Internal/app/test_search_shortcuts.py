@@ -930,14 +930,25 @@ class CoreCurrentTruthTests(unittest.TestCase):
         web_guidance = readme.split(
             "<strong>Current Web Search boundary:</strong>", 1
         )[1].split("</p>", 1)[0]
-        exact_refs = (
+        current_refs = (
+            "babdc38d2d3869540afb7bc1e7523151c5de4237",
+            "22777a7e62fb5c0730b412fcd85334fbe82d1678",
+            "6e984587",
+            "cb847d36",
+            "8bffc80c",
+            "a3f81d81",
+            "a7606cf5",
+            "6c69d676",
+        )
+        for current_ref in current_refs:
+            self.assertIn(current_ref, current_truth)
+        accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",
             "8e93c8139ab1a5e4bd3e84811fcccc4a2ae6d1b6",
             "e872cfdf6ace7be3cb60343a305904ca05ed52e9",
             "3d04e85d361446da58296a90aae508bb0185bf97",
         )
-        for exact_ref in exact_refs:
-            self.assertIn(exact_ref, current_truth)
+        for exact_ref in accepted_web_search_refs:
             self.assertIn(exact_ref, web_guidance)
         self.assertIn("correction", current_truth.lower())
         self.assertIn("correction", web_guidance.lower())
@@ -947,16 +958,12 @@ class CoreCurrentTruthTests(unittest.TestCase):
         )[1].split("</tr>", 1)[0]
         issue19_truth = issue19_row.lower()
         self.assertNotIn("all-gates adoption", issue19_truth)
-        self.assertIn("canonically approved run receipt", issue19_truth)
-        self.assertIn("eight opened gate-specific records", issue19_truth)
-        self.assertIn("same bytes", issue19_truth)
-        self.assertIn(
-            "manual/owner evidence cannot grant automated eligibility",
-            issue19_truth,
-        )
-        self.assertIn("approval registry is empty", issue19_truth)
-        self.assertIn("all nine current candidates remain non-eligible", issue19_truth)
-        self.assertIn("both baselines are retained", issue19_truth)
+        self.assertIn("approved immutable receipts", issue19_truth)
+        self.assertRegex(issue19_truth, r"approval registry[^.]{0,40}empty")
+        self.assertRegex(issue19_truth, r"all nine(?: current)? candidates remain non-eligible")
+        self.assertIn("both shortlisted qwen runtimes", issue19_truth)
+        self.assertIn("deterministic local-text baseline", issue19_truth)
+        self.assertIn("no beneficial adoption", issue19_truth)
 
 
 class SearchBrowserRoutingTests(unittest.TestCase):

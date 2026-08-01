@@ -587,7 +587,12 @@ def test_durable_records_keep_convergence_and_physical_validation_open():
         'data-evidence-boundary="integration-candidate-awaiting-review"'
         not in processing_row
     )
-    assert "Issues #12 and #14 through #30 remain open" in status
+    for open_gate in (
+        "Physical Windows/macOS/Linux use",
+        "remaining package lifecycle and permissions",
+        "owner acceptance remain open",
+    ):
+        assert open_gate in status
     assert 'data-evidence-boundary="integration-candidate"' in logs
     assert "No live provider request" in logs
     assert "physical Windows/macOS/Linux test" in logs
