@@ -30,24 +30,28 @@ function Test-MumbleProcessForApp($Process, [string]$AppRoot) {
             [IO.Path]::GetFullPath($Actual), [IO.Path]::GetFullPath($Expected),
             [StringComparison]::OrdinalIgnoreCase)
     }
-    function Test-CommandToken([string]$Value, [string]$Token, [bool]$First) {
-        $prefix = if ($First) { '^\s*' } else { '(?:^|\s)' }
-        $pattern = '(?i)' + $prefix + '(?:"' + [regex]::Escape($Token) +
-            '"|' + [regex]::Escape($Token) + ')(?=\s|$)'
-        return $Value -match $pattern
+    function Get-LeadingCommandPaths([string]$Value) {
+        $match = [regex]::Match(
+            $Value, '^\s*(?:"(?<first>[^"]+)"|(?<first>[^\s"]+))(?=\s|$)' +
+                '(?:\s+(?:"(?<second>[^"]+)"|(?<second>[^\s"]+))(?=\s|$))?')
+        if (-not $match.Success) { return $null }
+        return @($match.Groups['first'].Value, $match.Groups['second'].Value)
     }
-    function Test-CommandPair([string]$Value, [string]$Executable, [string]$Entry) {
-        $pattern = '(?i)^\s*(?:"' + [regex]::Escape($Executable) +
-            '"|' + [regex]::Escape($Executable) + ')\s+(?:"' +
-            [regex]::Escape($Entry) + '"|' + [regex]::Escape($Entry) +
-            ')(?=\s|$)'
-        return $Value -match $pattern
+    function Test-LeadingCommandPath([string]$Value, [string]$Expected) {
+        $paths = Get-LeadingCommandPaths $Value
+        return $paths -and (Test-ExactPath $paths[0] $Expected)
+    }
+    function Test-LeadingCommandPair([string]$Value, [string]$Executable, [string]$Entry) {
+        $paths = Get-LeadingCommandPaths $Value
+        return $paths -and $paths[1] -and
+            (Test-ExactPath $paths[0] $Executable) -and
+            (Test-ExactPath $paths[1] $Entry)
     }
 
     $rootLauncher = Join-Path $productRoot 'Mumble.exe'
     if ($Process.Name -eq 'Mumble.exe' -and
             (Test-ExactPath $resolvedExe $rootLauncher)) {
-        return Test-CommandToken $commandLine $rootLauncher $true
+        return Test-LeadingCommandPath $commandLine $rootLauncher
     }
 
     $allowedExecutables = @{
@@ -57,11 +61,11 @@ function Test-MumbleProcessForApp($Process, [string]$AppRoot) {
     }
     $expectedExe = $allowedExecutables[$Process.Name]
     if (-not $expectedExe -or -not (Test-ExactPath $resolvedExe $expectedExe) -or
-            -not (Test-CommandToken $commandLine $expectedExe $true)) {
+            -not (Test-LeadingCommandPath $commandLine $expectedExe)) {
         return $false
     }
     foreach ($entry in @('mumble.py', 'webui_shell.py')) {
-        if (Test-CommandPair $commandLine $expectedExe (Join-Path $resolvedRoot $entry)) {
+        if (Test-LeadingCommandPair $commandLine $expectedExe (Join-Path $resolvedRoot $entry)) {
             return $true
         }
     }

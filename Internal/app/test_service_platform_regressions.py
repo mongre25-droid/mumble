@@ -52,12 +52,17 @@ def _process_scope_probe(script_text, section_marker):
     function_start = script_text.index("function Test-MumbleProcessForApp")
     function_text = script_text[function_start:].split(section_marker, 1)[0]
     probe = function_text + r'''
-$root = Join-Path $env:TEMP 'Mumble Scope Fixture\Internal\app'
-$sibling = Join-Path $env:TEMP 'Mumble Scope Fixture Sibling\Internal\app'
+$fixtureDrive = Get-PSDrive -Name 'D' -ErrorAction SilentlyContinue
+if (-not $fixtureDrive) {
+  $fixtureDrive = New-PSDrive -Name 'D' -PSProvider FileSystem -Root $env:TEMP
+}
+$root = 'D:\a\mumble\mumble\Internal\app'
+$commandRoot = 'D:\a\mumble\mumble\Internal\app\..\app'
+$sibling = 'D:\a\mumble\mumble-sibling\Internal\app'
 $inside = [pscustomobject]@{
   Name = 'pythonw.exe'
   ExecutablePath = Join-Path $root '.venv\Scripts\pythonw.exe'
-  CommandLine = '"' + (Join-Path $root '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $root 'mumble.py') + '"'
+  CommandLine = '"' + (Join-Path $commandRoot '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $commandRoot 'mumble.py') + '"'
 }
 $other = [pscustomobject]@{
   Name = 'pythonw.exe'
@@ -65,10 +70,11 @@ $other = [pscustomobject]@{
   CommandLine = '"' + (Join-Path $sibling '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $sibling 'mumble.py') + '"'
 }
 $product = Split-Path (Split-Path $root -Parent) -Parent
+$commandProduct = Join-Path $product 'Internal\..'
 $launcher = [pscustomobject]@{
   Name = 'Mumble.exe'
   ExecutablePath = Join-Path $product 'Mumble.exe'
-  CommandLine = '"' + (Join-Path $product 'Mumble.exe') + '"'
+  CommandLine = '"' + (Join-Path $commandProduct 'Mumble.exe') + '"'
 }
 $wrongExecutable = [pscustomobject]@{
   Name = 'pythonw.exe'
