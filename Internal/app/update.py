@@ -29,11 +29,13 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 import zipfile
 
 # ---- Update manifest URL (owner sets this) ----
@@ -317,7 +319,9 @@ def download_and_install(manifest, install_dir, callback=None):
 
             # Swap the full product, carry the app environment, and preserve a
             # complete rollback copy.
-            _write_swap_script(parent, staged_product, product_dir)
+            _write_swap_script(
+                parent, staged_product, product_dir,
+                startup_enabled=_startup_enabled())
             keep_staged_product = True
 
             if callback:
@@ -380,20 +384,128 @@ def _installed_product_root(install_dir):
     return product_dir
 
 
+_PRIVATE_UPDATE_DIR = ".mumble-updates"
+_ROLLBACK_RECEIPT = "rollback.json"
+_ROLLBACK_OWNER = ".mumble-update-owner.json"
+
+
+def _canonical_path(path):
+    return os.path.normcase(os.path.realpath(os.path.abspath(path)))
+
+
+def _installation_identity(product_dir):
+    return hashlib.sha256(
+        _canonical_path(product_dir).encode("utf-8")
+    ).hexdigest()[:16]
+
+
+def _private_update_dir(product_dir):
+    parent = os.path.dirname(os.path.abspath(product_dir))
+    return os.path.join(
+        parent, _PRIVATE_UPDATE_DIR, _installation_identity(product_dir))
+
+
+def _rollback_receipt_path(product_dir):
+    return os.path.join(_private_update_dir(product_dir), _ROLLBACK_RECEIPT)
+
+
+def _startup_enabled():
+    try:
+        import autostart
+        return bool(autostart.is_enabled())
+    except Exception:
+        return None
+
+
+def _refresh_shortcuts(app_dir, startup_enabled):
+    python = os.path.join(app_dir, ".venv", "Scripts", "python.exe")
+    if not os.path.isfile(python):
+        return False
+    value = "True" if startup_enabled else "False"
+    command = (
+        "import autostart; results=(autostart.install_start_menu(), "
+        "autostart.install_desktop_shortcut(), "
+        "autostart.install_uninstall_start_menu(), "
+        f"autostart.set_enabled({value})); "
+        "raise SystemExit(0 if all(results) else 1)"
+    )
+    try:
+        return subprocess.run(
+            [python, "-c", command], cwd=app_dir, timeout=120,
+            check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _write_json(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    pending = path + ".tmp-" + uuid.uuid4().hex
+    try:
+        with open(pending, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(value, handle, sort_keys=True, separators=(",", ":"))
+            handle.write("\n")
+        os.replace(pending, path)
+    finally:
+        try:
+            os.remove(pending)
+        except OSError:
+            pass
+
+
+def _rollback_ownership(product_dir, backup, transaction_id):
+    return {
+        "installation_id": _installation_identity(product_dir),
+        "installation_root": _canonical_path(product_dir),
+        "backup_root": _canonical_path(backup),
+        "transaction_id": transaction_id,
+    }
+
+
+def _write_rollback_ownership(product_dir, backup, transaction_id):
+    ownership = _rollback_ownership(product_dir, backup, transaction_id)
+    _write_json(os.path.join(backup, _ROLLBACK_OWNER), ownership)
+    _write_json(_rollback_receipt_path(product_dir), ownership)
+    return ownership
+
+
 def pending_update_script(install_dir):
-    """Return the swap script path for a canonical product layout."""
+    """Return this installation's private pending swap-script path."""
     product_dir = _installed_product_root(install_dir)
     if not product_dir:
         return ""
-    return os.path.join(os.path.dirname(product_dir), "apply_update.bat")
+    return os.path.join(_private_update_dir(product_dir), "apply_update.bat")
 
 
-def _write_swap_script(parent_dir, new_dir, current_dir):
-    """Write a batch script that swaps complete old and new product roots."""
-    script = os.path.join(parent_dir, "apply_update.bat")
+def _write_swap_script(parent_dir, new_dir, current_dir, startup_enabled=None):
+    """Write an installation-private, collision-safe complete-product swap."""
+    current_dir = os.path.abspath(current_dir)
+    new_dir = os.path.abspath(new_dir)
+    expected_parent = os.path.dirname(current_dir)
+    if (_canonical_path(parent_dir) != _canonical_path(expected_parent)
+            or _canonical_path(os.path.dirname(new_dir))
+            != _canonical_path(expected_parent)):
+        raise ValueError("update transaction paths must be sibling product roots")
+    if startup_enabled is None:
+        startup_enabled = _startup_enabled()
+    if startup_enabled is None:
+        raise RuntimeError("run-at-login preference could not be captured")
+    private_dir = _private_update_dir(current_dir)
+    os.makedirs(private_dir, exist_ok=True)
+    script = os.path.join(private_dir, "apply_update.bat")
+    transaction_id = uuid.uuid4().hex
+    installation_id = _installation_identity(current_dir)
+    backup = os.path.join(
+        parent_dir, f"Mumble-backup-{installation_id}-{transaction_id}")
+    ownership = _rollback_ownership(current_dir, backup, transaction_id)
+    pending_receipt = os.path.join(private_dir, f"rollback-{transaction_id}.pending")
+    pending_owner = os.path.join(private_dir, f"owner-{transaction_id}.pending")
+    _write_json(pending_receipt, ownership)
+    _write_json(pending_owner, ownership)
+    receipt = _rollback_receipt_path(current_dir)
     pid = os.getpid()
-    with open(script, "w") as f:
-        f.write("@echo off\n")
+    with open(script, "w", encoding="utf-8", newline="\n") as f:
+        f.write("@echo off\nsetlocal\n")
         f.write("echo Applying Mumble update...\n")
         f.write("timeout /t 2 /nobreak >nul\n")
         # Kill only THIS Mumble instance by PID (not all Python processes).
@@ -401,18 +513,21 @@ def _write_swap_script(parent_dir, new_dir, current_dir):
         # string embedded unescaped backslashes — the PID kill is sufficient.)
         f.write(f"taskkill /f /pid {pid} 2>nul\n")
         f.write("timeout /t 1 /nobreak >nul\n")
-        # Rename current to backup
-        backup = os.path.join(parent_dir, "Mumble-backup")
-        f.write(f'if exist "{backup}" rmdir /s /q "{backup}"\n')
-        f.write(f'rename "{current_dir}" "Mumble-backup"\n')
-        f.write("if errorlevel 1 goto launch\n")
-        # Rename new to current
+        # Refuse missing/colliding inputs before moving the current product.
+        f.write(f'if not exist "{current_dir}" goto failed\n')
+        f.write(f'if not exist "{new_dir}" goto failed\n')
+        f.write(f'if exist "{backup}" goto failed\n')
+        f.write(f'rename "{current_dir}" "{os.path.basename(backup)}"\n')
+        f.write("if errorlevel 1 goto failed\n")
         f.write(f'rename "{new_dir}" "{os.path.basename(current_dir)}"\n')
         f.write("if errorlevel 1 goto failed_restore\n")
-        f.write("goto launch\n")
+        f.write(f'copy /y "{pending_owner}" "{backup}\\{_ROLLBACK_OWNER}" >nul\n')
+        f.write("if errorlevel 1 goto failed_after_swap\n")
+        f.write("goto refresh\n")
         f.write(":failed_restore\n")
         f.write(f'rename "{backup}" "{os.path.basename(current_dir)}"\n')
-        f.write(":launch\n")
+        f.write("goto failed\n")
+        f.write(":refresh\n")
         # The release excludes .venv. Carry the app environment from the complete
         # backup, then refresh dependencies, branding, and canonical shortcuts.
         app_rel = os.path.join("Internal", "app")
@@ -422,11 +537,13 @@ def _write_swap_script(parent_dir, new_dir, current_dir):
             f'if not exist "{current_app}\\.venv" if exist "{backup_app}\\.venv" '
             f'xcopy /e /i /q /y "{backup_app}\\.venv" "{current_app}\\.venv" >nul\n'
         )
+        f.write("if errorlevel 1 goto failed_after_swap\n")
         f.write(
             f'if exist "{current_app}\\.venv\\Scripts\\python.exe" '
             f'"{current_app}\\.venv\\Scripts\\python.exe" -m pip install -r '
             f'"{current_app}\\requirements.txt" --quiet --disable-pip-version-check\n'
         )
+        f.write("if errorlevel 1 goto failed_after_swap\n")
         f.write(
             f'if exist "{current_app}\\.venv\\Scripts\\python.exe" '
             f'"{current_app}\\.venv\\Scripts\\python.exe" '
@@ -436,12 +553,20 @@ def _write_swap_script(parent_dir, new_dir, current_dir):
         f.write(
             'if exist ".venv\\Scripts\\python.exe" '
             '".venv\\Scripts\\python.exe" -c '
-            '"import autostart; autostart.install_start_menu(); '
-            'autostart.install_desktop_shortcut(); '
-            'autostart.install_uninstall_start_menu(); autostart.enable()" '
+            '"import autostart; results=(autostart.install_start_menu(), '
+            'autostart.install_desktop_shortcut(), '
+            'autostart.install_uninstall_start_menu(), '
+            f'autostart.set_enabled({bool(startup_enabled)})); '
+            'raise SystemExit(0 if all(results) else 1)" '
             '>nul 2>nul\n'
         )
-        f.write("popd\n")
+        f.write("if errorlevel 1 goto shortcut_failed\n")
+        f.write("popd\ngoto shortcut_done\n")
+        f.write(":shortcut_failed\npopd\ngoto failed_after_swap\n")
+        f.write(":shortcut_done\n")
+        f.write(f'copy /y "{pending_receipt}" "{receipt}" >nul\n')
+        f.write("if errorlevel 1 goto failed_after_swap\n")
+        f.write(f'del /q "{pending_receipt}" "{pending_owner}" 2>nul\n')
         # NOTE: Mumble-backup is intentionally KEPT for rollback() (the previous
         # version restore). It holds its own .venv copy — disk cost is the price of
         # a safe rollback.
@@ -462,21 +587,66 @@ def _write_swap_script(parent_dir, new_dir, current_dir):
         f.write(f'start "" "{branded}" "{current_app}\\mumble.py"\n')
         f.write(":done\n")
         f.write("echo Update complete!\n")
+        f.write("exit /b 0\n")
+        f.write(":failed_after_swap\n")
+        f.write(f'rename "{current_dir}" "{os.path.basename(new_dir)}"\n')
+        f.write("if errorlevel 1 goto failed\n")
+        f.write(f'rename "{backup}" "{os.path.basename(current_dir)}"\n')
+        f.write("if errorlevel 1 goto failed\n")
+        f.write(f'del /q "{current_dir}\\{_ROLLBACK_OWNER}" 2>nul\n')
+        f.write(":failed\n")
+        f.write("echo Update failed; the existing installation was preserved.\n")
+        f.write("exit /b 1\n")
+    return script
+
+
+def _load_owned_rollback(product_dir):
+    try:
+        with open(_rollback_receipt_path(product_dir), encoding="utf-8") as handle:
+            receipt = json.load(handle)
+        transaction_id = receipt["transaction_id"]
+        backup = receipt["backup_root"]
+        if (not isinstance(transaction_id, str)
+                or len(transaction_id) != 32
+                or any(ch not in "0123456789abcdef" for ch in transaction_id)):
+            return None
+        expected = _rollback_ownership(product_dir, backup, transaction_id)
+        if receipt != expected:
+            return None
+        if (_canonical_path(os.path.dirname(backup))
+                != _canonical_path(os.path.dirname(product_dir))
+                or _canonical_path(backup) == _canonical_path(product_dir)
+                or not os.path.isdir(backup)):
+            return None
+        with open(os.path.join(backup, _ROLLBACK_OWNER), encoding="utf-8") as handle:
+            marker = json.load(handle)
+        backup_app = os.path.join(backup, "Internal", "app")
+        backup_root = _installed_product_root(backup_app)
+        if (marker != expected or not backup_root
+                or _canonical_path(backup_root) != _canonical_path(backup)):
+            return None
+        return expected
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
 
 
 def rollback(install_dir):
-    """Restore the previous version from backup."""
+    """Restore only the ownership-proven backup for this installation."""
     product_dir = _installed_product_root(install_dir)
     if not product_dir:
         return False, "Installed product layout is incomplete."
+    ownership = _load_owned_rollback(product_dir)
+    if not ownership:
+        return False, "No ownership-proven backup found."
     parent = os.path.dirname(product_dir)
-    backup = os.path.join(parent, "Mumble-backup")
-    if not os.path.exists(backup):
-        return False, "No backup found."
+    backup = ownership["backup_root"]
+    startup_enabled = _startup_enabled()
+    if startup_enabled is None:
+        return False, "Run-at-login preference could not be captured."
+    current_backup = tempfile.mkdtemp(
+        prefix=f"{os.path.basename(product_dir)}-rollback-current-", dir=parent)
+    os.rmdir(current_backup)
     try:
-        current_backup = product_dir + ".old"
-        if os.path.exists(current_backup):
-            shutil.rmtree(current_backup)
         shutil.move(product_dir, current_backup)
         try:
             shutil.move(backup, product_dir)
@@ -485,7 +655,20 @@ def rollback(install_dir):
             # strand the user with NO install at all.
             shutil.move(current_backup, product_dir)
             raise
-        return True, "Rolled back to previous version."
+        restored_app = os.path.join(product_dir, "Internal", "app")
+        if not _refresh_shortcuts(restored_app, startup_enabled):
+            shutil.move(product_dir, backup)
+            shutil.move(current_backup, product_dir)
+            return False, "Rollback could not safely refresh shortcuts."
+        try:
+            os.remove(os.path.join(product_dir, _ROLLBACK_OWNER))
+        except OSError:
+            pass
+        try:
+            os.remove(_rollback_receipt_path(product_dir))
+        except OSError:
+            pass
+        return True, "Rolled back safely; the replaced version was retained."
     except Exception as e:
         return False, str(e)
 

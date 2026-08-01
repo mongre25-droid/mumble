@@ -54,18 +54,42 @@ def _process_scope_probe(script_text, section_marker):
 $root = Join-Path $env:TEMP 'Mumble Scope Fixture\Internal\app'
 $sibling = Join-Path $env:TEMP 'Mumble Scope Fixture Sibling\Internal\app'
 $inside = [pscustomobject]@{
-  Name = 'pythonw.exe'; CommandLine = '"pythonw.exe" "' + (Join-Path $root 'mumble.py') + '"'
+  Name = 'pythonw.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\pythonw.exe'
+  CommandLine = '"' + (Join-Path $root '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $root 'mumble.py') + '"'
 }
 $other = [pscustomobject]@{
-  Name = 'pythonw.exe'; CommandLine = '"pythonw.exe" "' + (Join-Path $sibling 'mumble.py') + '"'
+  Name = 'pythonw.exe'
+  ExecutablePath = Join-Path $sibling '.venv\Scripts\pythonw.exe'
+  CommandLine = '"' + (Join-Path $sibling '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $sibling 'mumble.py') + '"'
 }
 $product = Split-Path (Split-Path $root -Parent) -Parent
 $launcher = [pscustomobject]@{
-  Name = 'Mumble.exe'; CommandLine = '"' + (Join-Path $product 'Mumble.exe') + '"'
+  Name = 'Mumble.exe'
+  ExecutablePath = Join-Path $product 'Mumble.exe'
+  CommandLine = '"' + (Join-Path $product 'Mumble.exe') + '"'
+}
+$wrongExecutable = [pscustomobject]@{
+  Name = 'pythonw.exe'
+  ExecutablePath = Join-Path $sibling '.venv\Scripts\pythonw.exe'
+  CommandLine = '"' + (Join-Path $sibling '.venv\Scripts\pythonw.exe') + '" "' + (Join-Path $root 'mumble.py') + '"'
+}
+$wrongEntryPoint = [pscustomobject]@{
+  Name = 'Mumble.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\Mumble.exe'
+  CommandLine = '"' + (Join-Path $root '.venv\Scripts\Mumble.exe') + '" "' + (Join-Path $sibling 'mumble.py') + '"'
+}
+$argumentOnly = [pscustomobject]@{
+  Name = 'Mumble.exe'
+  ExecutablePath = Join-Path $root '.venv\Scripts\Mumble.exe'
+  CommandLine = '"' + (Join-Path $root '.venv\Scripts\Mumble.exe') + '" --inspect "' + (Join-Path $root 'mumble.py') + '"'
 }
 if ((Test-MumbleProcessForApp $inside $root) -and
     (Test-MumbleProcessForApp $launcher $root) -and
-    -not (Test-MumbleProcessForApp $other $root)) { exit 0 }
+    -not (Test-MumbleProcessForApp $other $root) -and
+    -not (Test-MumbleProcessForApp $wrongExecutable $root) -and
+    -not (Test-MumbleProcessForApp $wrongEntryPoint $root) -and
+    -not (Test-MumbleProcessForApp $argumentOnly $root)) { exit 0 }
 exit 1
 '''
     return subprocess.run(
@@ -620,8 +644,8 @@ def test_updater_installer_and_autostart():
     with tempfile.TemporaryDirectory() as td:
         current = os.path.join(td, "Mumble")
         new = os.path.join(td, "Mumble-new-product")
-        update._write_swap_script(td, new, current)
-        script = open(os.path.join(td, "apply_update.bat"), encoding="utf-8").read()
+        script_path = update._write_swap_script(td, new, current)
+        script = open(script_path, encoding="utf-8").read()
         check("update retains the complete product launch boundary",
               "Internal\\app\\.venv\\Scripts\\Mumble.exe" in script
               and os.path.join(current, "Mumble.exe") in script

@@ -6,6 +6,8 @@ needs a published release + live install — owner-gated).
 Run:  .venv\\Scripts\\python.exe test_update.py
 """
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -23,6 +25,19 @@ def check(desc, cond):
     print(f"  [{'ok  ' if cond else 'FAIL'}] {desc}")
     if not cond:
         _fails.append(desc)
+
+
+def make_product(path, label):
+    """Create the smallest complete product tree accepted by the updater."""
+    app_dir = os.path.join(path, "Internal", "app")
+    os.makedirs(app_dir)
+    for filename in ("Mumble.exe", "LICENSE"):
+        with open(os.path.join(path, filename), "w", encoding="utf-8") as handle:
+            handle.write(label)
+    for filename in ("mumble.py", "branding.py", "install.ps1", "uninstall.ps1"):
+        with open(os.path.join(app_dir, filename), "w", encoding="utf-8") as handle:
+            handle.write(label)
+    return app_dir
 
 
 # ---- T7: manifest signature gate -----------------------------------------
@@ -75,9 +90,14 @@ try:
     check("installed app resolves to its complete product root",
           os.path.normpath(update._installed_product_root(appdir))
           == os.path.normpath(product))
-    check("pending update script lives outside the product being swapped",
-          os.path.normpath(update.pending_update_script(appdir))
-          == os.path.normpath(os.path.join(tmp, "apply_update.bat")))
+    sibling_product = os.path.join(tmp, "Mumble Sibling")
+    sibling_app = make_product(sibling_product, "sibling")
+    first_script = update.pending_update_script(appdir)
+    sibling_script = update.pending_update_script(sibling_app)
+    check("sibling installs have private pending-update scripts",
+          first_script and sibling_script and first_script != sibling_script
+          and os.path.commonpath([first_script, tmp]) == os.path.normpath(tmp)
+          and os.path.commonpath([sibling_script, tmp]) == os.path.normpath(tmp))
 
     empty = tempfile.mkdtemp(prefix="mumble_upd_empty_")
     check("no complete product -> None", update._find_product_root(empty) is None)
@@ -93,21 +113,126 @@ try:
     parent = scriptdir
     current = os.path.join(parent, "Mumble")
     newd = os.path.join(parent, "Mumble-5.0.0-product")
-    update._write_swap_script(parent, newd, current)
-    with open(os.path.join(parent, "apply_update.bat"), encoding="utf-8") as f:
+    make_product(current, "current")
+    make_product(newd, "new")
+    old_backup = os.path.join(parent, "Mumble-backup")
+    os.makedirs(old_backup)
+    sentinel = os.path.join(old_backup, "keep-me.txt")
+    open(sentinel, "w", encoding="utf-8").close()
+    script_path = update._write_swap_script(
+        parent, newd, current, startup_enabled=False)
+    with open(script_path, encoding="utf-8") as f:
         bat = f.read()
+    check("pending script is private to this installation",
+          os.path.normpath(script_path)
+          == os.path.normpath(update.pending_update_script(
+              os.path.join(current, "Internal", "app"))))
     check("carries the app .venv from the backup",
           "Internal\\app\\.venv" in bat and "xcopy" in bat)
     check("pip-installs requirements after the swap",
           "pip install -r" in bat and "requirements.txt" in bat)
     check("relaunches from the updated complete product",
           "Internal\\app\\mumble.py" in bat and "Mumble.exe" in bat)
-    check("keeps the backup for rollback (no rmdir of Mumble-backup on success path)",
-          'rmdir /s /q "' + os.path.join(parent, "Mumble-backup") + '"' in bat
-          and bat.count("Mumble-backup") >= 2)  # backup created + referenced
+    check("prior rollback sentinel is never selected for deletion",
+          os.path.exists(sentinel)
+          and ('rmdir /s /q "' + old_backup + '"') not in bat)
+    check("swap uses a collision-safe transaction-owned backup",
+          "Mumble-backup-" in bat and ".mumble-update-owner.json" in bat)
+    check("disabled run-at-login choice is preserved during update",
+          "autostart.set_enabled(False)" in bat
+          and "autostart.enable()" not in bat)
 finally:
-    import shutil
     shutil.rmtree(scriptdir, ignore_errors=True)
+
+# ---- rollback ownership, collision safety, and startup choice ------------
+print("\n== rollback touches only its owned transaction ==")
+rollback_dir = tempfile.mkdtemp(prefix="Mumble rollback path with spaces ")
+try:
+    current = os.path.join(rollback_dir, "Mumble")
+    backup = os.path.join(rollback_dir, "Mumble-backup")
+    make_product(current, "current")
+    make_product(backup, "unrelated")
+    sentinel_old = current + ".old"
+    os.makedirs(sentinel_old)
+    sentinel_file = os.path.join(sentinel_old, "unrelated-sentinel.txt")
+    open(sentinel_file, "w", encoding="utf-8").close()
+    ok, _message = update.rollback(os.path.join(current, "Internal", "app"))
+    check("rollback refuses an unowned sibling backup",
+          ok is False
+          and open(os.path.join(current, "LICENSE"), encoding="utf-8").read()
+          == "current")
+    check("rollback never deletes a pre-existing Mumble.old sibling",
+          os.path.exists(sentinel_file))
+
+    shutil.rmtree(backup)
+    owned_backup = os.path.join(rollback_dir, "Mumble-backup-owned")
+    make_product(owned_backup, "previous")
+    if hasattr(update, "_write_rollback_ownership"):
+        update._write_rollback_ownership(current, owned_backup, "a" * 32)
+    refreshed = []
+    old_refresh = getattr(update, "_refresh_shortcuts", None)
+    old_startup = getattr(update, "_startup_enabled", None)
+    if old_refresh is not None:
+        update._refresh_shortcuts = (
+            lambda _app, enabled: refreshed.append(enabled) or True)
+    if old_startup is not None:
+        update._startup_enabled = lambda: False
+    try:
+        ok, _message = update.rollback(os.path.join(current, "Internal", "app"))
+    finally:
+        if old_refresh is not None:
+            update._refresh_shortcuts = old_refresh
+        if old_startup is not None:
+            update._startup_enabled = old_startup
+    check("owned path-with-spaces rollback transaction succeeds",
+          ok is True
+          and open(os.path.join(current, "LICENSE"), encoding="utf-8").read()
+          == "previous")
+    check("rollback preserves the disabled run-at-login choice",
+          refreshed == [False])
+    check("owned rollback leaves unrelated sentinel folders untouched",
+          os.path.exists(sentinel_file))
+finally:
+    shutil.rmtree(rollback_dir, ignore_errors=True)
+
+# ---- one real quoted batch transaction in a path containing spaces -------
+print("\n== path-with-spaces update transaction smoke ==")
+transaction_dir = tempfile.mkdtemp(prefix="Mumble update transaction with spaces ")
+try:
+    current = os.path.join(transaction_dir, "Mumble Current")
+    staged = os.path.join(transaction_dir, "Mumble Staged Product")
+    sibling = os.path.join(transaction_dir, "Mumble Sibling")
+    make_product(current, "current")
+    make_product(staged, "staged")
+    make_product(sibling, "sibling")
+    launcher = os.path.join(os.environ["SystemRoot"], "System32", "where.exe")
+    shutil.copyfile(launcher, os.path.join(current, "Mumble.exe"))
+    shutil.copyfile(launcher, os.path.join(staged, "Mumble.exe"))
+    old_backup = os.path.join(transaction_dir, "Mumble-backup")
+    os.makedirs(old_backup)
+    old_sentinel = os.path.join(old_backup, "do-not-touch.txt")
+    open(old_sentinel, "w", encoding="utf-8").close()
+    original_getpid = update.os.getpid
+    update.os.getpid = lambda: 99999999
+    try:
+        script = update._write_swap_script(
+            transaction_dir, staged, current, startup_enabled=False)
+    finally:
+        update.os.getpid = original_getpid
+    result = subprocess.run(
+        ["cmd.exe", "/d", "/c", script], capture_output=True, text=True,
+        timeout=30)
+    check("quoted update transaction completes in a path with spaces",
+          result.returncode == 0
+          and open(os.path.join(current, "LICENSE"), encoding="utf-8").read()
+          == "staged")
+    check("transaction leaves sibling install and prior rollback sentinel intact",
+          open(os.path.join(sibling, "LICENSE"), encoding="utf-8").read()
+          == "sibling" and os.path.exists(old_sentinel))
+    check("successful transaction publishes ownership-proven rollback metadata",
+          update._load_owned_rollback(current) is not None)
+finally:
+    shutil.rmtree(transaction_dir, ignore_errors=True)
 
 # ===================================================================== final
 if _fails:

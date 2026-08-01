@@ -19,18 +19,51 @@ Write-Host ""
 function Test-MumbleProcessForApp($Process, [string]$AppRoot) {
     if ($Process.Name -notin @('Mumble.exe', 'pythonw.exe', 'python.exe')) { return $false }
     $commandLine = [string]$Process.CommandLine
-    if (-not $commandLine) { return $false }
+    $executablePath = [string]$Process.ExecutablePath
+    if (-not $commandLine -or -not $executablePath) { return $false }
     $resolvedRoot = [IO.Path]::GetFullPath($AppRoot).TrimEnd('\')
     $productRoot = Split-Path (Split-Path $resolvedRoot -Parent) -Parent
-    $entries = @(
-        (Join-Path $resolvedRoot 'mumble.py'),
-        (Join-Path $resolvedRoot 'webui_shell.py'),
-        (Join-Path $resolvedRoot '.venv\Scripts\Mumble.exe'),
-        (Join-Path $productRoot 'Mumble.exe')
-    )
-    foreach ($entry in $entries) {
-        $pattern = '(?i)(?:^|\s|")' + [regex]::Escape($entry) + '(?:"|\s|$)'
-        if ($commandLine -match $pattern) { return $true }
+    $resolvedExe = [IO.Path]::GetFullPath($executablePath)
+
+    function Test-ExactPath([string]$Actual, [string]$Expected) {
+        return [string]::Equals(
+            [IO.Path]::GetFullPath($Actual), [IO.Path]::GetFullPath($Expected),
+            [StringComparison]::OrdinalIgnoreCase)
+    }
+    function Test-CommandToken([string]$Value, [string]$Token, [bool]$First) {
+        $prefix = if ($First) { '^\s*' } else { '(?:^|\s)' }
+        $pattern = '(?i)' + $prefix + '(?:"' + [regex]::Escape($Token) +
+            '"|' + [regex]::Escape($Token) + ')(?=\s|$)'
+        return $Value -match $pattern
+    }
+    function Test-CommandPair([string]$Value, [string]$Executable, [string]$Entry) {
+        $pattern = '(?i)^\s*(?:"' + [regex]::Escape($Executable) +
+            '"|' + [regex]::Escape($Executable) + ')\s+(?:"' +
+            [regex]::Escape($Entry) + '"|' + [regex]::Escape($Entry) +
+            ')(?=\s|$)'
+        return $Value -match $pattern
+    }
+
+    $rootLauncher = Join-Path $productRoot 'Mumble.exe'
+    if ($Process.Name -eq 'Mumble.exe' -and
+            (Test-ExactPath $resolvedExe $rootLauncher)) {
+        return Test-CommandToken $commandLine $rootLauncher $true
+    }
+
+    $allowedExecutables = @{
+        'Mumble.exe'  = (Join-Path $resolvedRoot '.venv\Scripts\Mumble.exe')
+        'pythonw.exe' = (Join-Path $resolvedRoot '.venv\Scripts\pythonw.exe')
+        'python.exe'  = (Join-Path $resolvedRoot '.venv\Scripts\python.exe')
+    }
+    $expectedExe = $allowedExecutables[$Process.Name]
+    if (-not $expectedExe -or -not (Test-ExactPath $resolvedExe $expectedExe) -or
+            -not (Test-CommandToken $commandLine $expectedExe $true)) {
+        return $false
+    }
+    foreach ($entry in @('mumble.py', 'webui_shell.py')) {
+        if (Test-CommandPair $commandLine $expectedExe (Join-Path $resolvedRoot $entry)) {
+            return $true
+        }
     }
     return $false
 }
