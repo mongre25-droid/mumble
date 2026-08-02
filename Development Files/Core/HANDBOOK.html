@@ -129,15 +129,22 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Development Files\Tooli
 # Exercise the real packaged Focus Stage UI in a browser
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Development Files\Tooling\focus-stage\verify-production-ui.ps1" -Case all
 
-# Website checks
-Set-Location "Development Files\Marketing\Website"
-npm ci
-npm run build
-npx astro check
-npm audit --audit-level=moderate
+# Website source and release-contract checks
+Push-Location "Development Files\Marketing\Website"
+npm.cmd ci --ignore-scripts
+npm.cmd run test:release
+node scripts/check-release.mjs
+npm.cmd run build
+npm.cmd exec -- astro check
+npm.cmd run audit:dependencies
+$env:PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+npm.cmd run test:browser
+Pop-Location
 
 # From the repository root, reproduce the fresh Windows checkout boundary
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "Development Files\Marketing\Website\scripts\check-windows-cleanliness.ps1"</code></pre>
+<p>If Playwright reports a missing managed <code>chromium_headless_shell</code>, do not start a blind long browser download. Diagnose the installed Playwright and browser state first, then use the established route above with <code>PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH</code> pointing to a valid installed Chrome, or repair the managed installation deliberately.</p>
+<p>Astro diagnostics pass only with 0 errors, 0 warnings, and 0 hints. These commands verify the local website source and release contract only. Fresh-Windows cleanliness must remain green; the checks do not accept packages, publish source, promote artifacts, sign, deploy, or release anything.</p>
 <p>The runner discovers every matching module and chooses its execution protocol: pytest and unittest modules run through pytest so every collected case is counted; legacy procedural scripts run as one atomic module case because their internal checks do not expose a standard machine-readable count. A pytest/unittest module that collects zero cases fails. JSON records both module and case totals, while JUnit records each standard case for GitHub and other reporting tools.</p>
 <p>A full runner belongs at Level B or Level C unless a critical Level A risk cannot be tested safely any other way. Every result is evidence for the checked environment only; it does not prove physical hardware behaviour or a public release.</p>
 <p><code>test_foundation_convergence.py</code> is the narrow conflict regression for the Processing Truth and Reliable Paste foundations. It proves that the frozen route/input snapshot and the immutable Stop-time target lease/operation identity remain together through provider dispatch and delayed mode selection. It is Level A integration evidence, not a substitute for the serialized Level B runner or physical paste/provider checks.</p>
