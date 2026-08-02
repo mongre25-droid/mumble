@@ -22,6 +22,8 @@ export const acceptedReleaseContract = Object.freeze({
   },
   releaseNotes: {
     state: 'not-published',
+    label: 'Not published for this candidate',
+    summary: 'Public release notes will follow an accepted public release; this candidate has no published release notes.',
   },
   windows: {
     id: 'windows',
@@ -76,6 +78,8 @@ export function validateReleaseAuthority(authority, evidence) {
   requireString(authority.releaseNotes?.label, 'releaseNotes.label');
   requireString(authority.releaseNotes?.summary, 'releaseNotes.summary');
   requireExact(authority.releaseNotes.state, accepted.releaseNotes.state, 'releaseNotes.state');
+  requireExact(authority.releaseNotes.label, accepted.releaseNotes.label, 'releaseNotes.label');
+  requireExact(authority.releaseNotes.summary, accepted.releaseNotes.summary, 'releaseNotes.summary');
   requireString(authority.unavailableFacts?.artifactMetadata, 'unavailableFacts.artifactMetadata');
   requireString(authority.unavailableFacts?.integrity, 'unavailableFacts.integrity');
   requireString(authority.unavailableFacts?.download, 'unavailableFacts.download');

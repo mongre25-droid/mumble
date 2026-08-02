@@ -102,6 +102,16 @@ rejects(
   changed((candidate) => { candidate.platforms[0].integrity.publisherSignature.label = 'Accepted'; }),
   /windows\.integrity\.publisherSignature\.label must remain/,
 );
+for (const [field, contradictoryValue] of [
+  ['label', 'Published release notes'],
+  ['summary', 'The public release is available.'],
+]) {
+  rejects(
+    `release notes ${field} cannot contradict the unpublished state`,
+    changed((candidate) => { candidate.releaseNotes[field] = contradictoryValue; }),
+    new RegExp(`releaseNotes\\.${field} must remain`),
+  );
+}
 rejects(
   'coordinated artifact replacement cannot redefine accepted bytes',
   changed((candidate) => {
