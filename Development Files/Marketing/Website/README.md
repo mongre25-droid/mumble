@@ -25,13 +25,24 @@ Node 22.12 or later is required.
 
 ## Page structure
 
-The current tracer bullet exposes only complete destinations:
+The current maintained site exposes six complete outputs:
 
-1. Home introduces the local-first offer, one accepted product capture, the five
-   canonical jobs, privacy boundaries, and the current release position.
-2. Downloads presents the hash-bound Windows candidate and visible gated states
-   for macOS and Linux from one release authority.
-3. The not-found page returns visitors to Home or Downloads.
+1. Home (`/`) introduces the local-first offer, one accepted product capture,
+   the five canonical jobs, privacy boundaries, the current release position,
+   and the Write journey.
+2. Product (`/product/`) explains Write's deliberate command, visible Island
+   states, local transcription default, Stop-time intended-cursor return, and
+   Deck recovery.
+3. Use Cases (`/use-cases/`) applies the same Write model to everyday notes,
+   longer text, and cross-application work without changing to profession-first
+   navigation.
+4. Privacy (`/privacy/`) explains Local Transcription and Mumble Find as
+   separate local routes, keeps optional online routes distinct, and states the
+   static website's zero-CDN, no-analytics, and no-tracking boundary.
+5. Downloads (`/downloads/`) presents the hash-bound Windows candidate and
+   visible gated states for macOS and Linux from one release authority.
+6. The not-found recovery page (`/404.html`) returns visitors to Home or
+   Downloads.
 
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,
