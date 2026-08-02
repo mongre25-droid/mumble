@@ -7,8 +7,10 @@ import release from '../data/release.json';
 
 const windows = release.platforms.find((platform) => platform.id === 'windows');
 const write = jobs.find((job) => job.id === 'write');
+const shape = jobs.find((job) => job.id === 'shape');
 if (!windows) throw new Error('Windows release authority is missing');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!shape?.story) throw new Error('Shape story authority is missing');
 ---
 
 <BaseLayout
@@ -57,6 +59,16 @@ if (!write?.story) throw new Error('Write story authority is missing');
     </ol>
   </section>
 
+  <section class="shape-home-section" aria-labelledby="shape-home-title">
+    <div class="shell shape-home-layout">
+      <header class="section-intro">
+        <h2 id="shape-home-title">Finished text can take one more deliberate step.</h2>
+        <p>{shape.story.opening.summary}</p>
+      </header>
+      <JobStory job={shape} surface="home" />
+    </div>
+  </section>
+
   <section class="privacy-section" id="privacy" aria-labelledby="privacy-title">
     <div class="shell privacy-layout">
       <div class="privacy-copy">
@@ -94,7 +106,7 @@ if (!write?.story) throw new Error('Write story authority is missing');
       <div>
         <h2 id="trust-title">Free and MIT licensed. Honest about what is still gated.</h2>
         <p>
-          The local path needs no Mumble account or provider key. The current Windows candidate is hash-bound below; macOS, Linux, signing, deployment, and public release remain separate gates.
+          The local path needs no Mumble account or provider key, and no paid service. The current Windows candidate is hash-bound below; macOS, Linux, signing, deployment, and public release remain separate gates.
         </p>
       </div>
       <div class="trust-actions">

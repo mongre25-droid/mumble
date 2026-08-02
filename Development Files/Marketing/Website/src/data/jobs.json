@@ -10,6 +10,7 @@
         "summary": "Use Mumble’s deliberate Dictate command and speak while the Island shows what is happening. Keep or return focus to the intended field before you choose Stop. When Stop is requested, Mumble freezes that field as the destination. It then attempts one delivery."
       },
       "demonstration": {
+        "title": "See where your words return.",
         "spoken": "Move the design review to Thursday and send the notes before lunch.",
         "note": "Illustrative cursor close-up—not a live transcription. The Mumble workspace above is a genuine product capture.",
         "states": [
@@ -116,9 +117,171 @@
   {
     "id": "shape",
     "label": "Shape",
-    "summary": "Give finished text a deliberate job, including Prompt, Email, Reply, and Deck actions.",
+    "summary": "Give finished text a deliberate job: Prompt, Email, Reply, language assistance, presets, custom shaping, or analysis.",
     "proof": "Cloud text shaping is optional and sends finished text—not recorded audio—through the chosen route.",
-    "story": null
+    "story": {
+      "opening": {
+        "title": "Start local. Shape only when the words need another job.",
+        "summary": "Mumble’s default Text path already returns useful, punctuated dictation. Shape is an optional next layer for a prompt, email, reply, language-assisted text, or a chosen analysis preset."
+      },
+      "demonstration": {
+        "title": "See one finished thought become a structured prompt.",
+        "spoken": "Plan a design review for Thursday. Ask for the three highest-risk usability issues, evidence for each, and the next action.",
+        "note": "Illustrative Shape demonstration—not a live provider result. It shows the product’s real Prompt mode and privacy boundary without claiming a provider outcome.",
+        "states": [
+          {
+            "id": "finished",
+            "label": "Finished text",
+            "status": "Text · Local result",
+            "mode": "text",
+            "title": "Begin with text that is already useful.",
+            "body": "Default Text cleanup is deterministic and local. It needs no Mumble account, provider key, or paid service.",
+            "fieldLabel": "Illustrative finished dictation",
+            "field": "Plan a design review for Thursday. Ask for the three highest-risk usability issues, evidence for each, and the next action."
+          },
+          {
+            "id": "route",
+            "label": "Choose Prompt",
+            "status": "Prompt · Optional shaping",
+            "mode": "prompt",
+            "title": "Choose the job before the route runs.",
+            "body": "Prompt is a deliberate mode. If its effective route is hosted, Mumble sends this finished text—not recorded audio—using the configured provider and key. External providers may charge.",
+            "fieldLabel": "Finished text waiting for the chosen route",
+            "field": "Plan a design review for Thursday. Ask for the three highest-risk usability issues, evidence for each, and the next action."
+          },
+          {
+            "id": "shaped",
+            "label": "Shaped prompt",
+            "status": "Prompt · Illustrative result",
+            "mode": "prompt",
+            "title": "Review the shaped text before using it.",
+            "body": "This example illustrates the structured form Mumble’s Prompt mode requests. It does not promise a provider’s wording, quality, or speed.",
+            "fieldLabel": "Illustrative result",
+            "field": "Role: Act as a usability reviewer.\nTask: Review the design planned for Thursday.\nReturn: The three highest-risk usability issues, evidence for each, and one next action."
+          }
+        ]
+      },
+      "mechanism": {
+        "title": "Shape routes finished text with the choice frozen.",
+        "summary": "The mode, selected material, provider route, model, and privacy boundary are captured for one shaping action. A hosted route cannot silently become another provider or take the recorded audio with it.",
+        "steps": [
+          {
+            "id": "local-foundation",
+            "title": "Keep Text useful without AI",
+            "body": "Text is the everyday default: deterministic local cleanup produces punctuated text without an account or provider key. Foreign is a separate opt-in local term-assistance mode that prioritises the languages chosen in Settings rather than translating the whole result.",
+            "proof": "Local dictation remains useful with no Mumble account, provider key, or paid service."
+          },
+          {
+            "id": "modes",
+            "title": "Choose Prompt, Email, or Reply deliberately",
+            "body": "Prompt asks for a structured role, task, constraints, and output. Email requests a greeting, body, sign-off, and an optional subject. Reply uses selected context to draft a direct response. Each is a real shaping form, not a generic chat assistant.",
+            "proof": "Text, Prompt, Email, Reply, and Foreign remain distinct modes."
+          },
+          {
+            "id": "presets",
+            "title": "Apply a preset or custom shaping instruction",
+            "body": "The Deck offers 20 built-in presets for actions such as Improve, Make shorter, Deep Thinking, Summarise, and Extract facts, plus five custom shaping slots the user can define. A chosen mode can also control the final form.",
+            "proof": "Analysis is a chosen preset action over selected material—not an automatic claim about every dictation."
+          },
+          {
+            "id": "provider",
+            "title": "Freeze the effective configured route",
+            "body": "Cerebras and OpenRouter are the current supported hosted text choices in Settings. A user-supplied key and a confirmed model are required before the hosted route is ready. External providers may charge under their own terms.",
+            "proof": "Hosted shaping sends finished text—not recorded audio—and cannot swap to another provider silently."
+          },
+          {
+            "id": "local-capability",
+            "title": "Treat local shaping as configuration-dependent",
+            "body": "A compatible local model can be used only when the user separately supplies and enables it. No local model is bundled or adopted, so the website does not present local Prompt, Email, or Reply shaping as an out-of-box result.",
+            "proof": "Device-only remains a fail-closed privacy choice when hosted processing is unavailable or disabled."
+          },
+          {
+            "id": "result",
+            "title": "Review the saved result",
+            "body": "A completed Deck shaping job is saved before Mumble attempts the selected field. The visitor examples describe the sequence and form only; they do not promise a provider’s exact output, quality, or speed.",
+            "proof": "Illustrative text is labelled wherever it is not a genuine product capture."
+          }
+        ]
+      },
+      "modes": [
+        {
+          "id": "text",
+          "label": "Text",
+          "summary": "Clean, punctuated everyday dictation with deterministic local processing.",
+          "boundary": "Default · no AI needed"
+        },
+        {
+          "id": "prompt",
+          "label": "Prompt",
+          "summary": "Turns a rough request into a structured role, task, constraints, and expected output.",
+          "boundary": "Optional shaping · configured route"
+        },
+        {
+          "id": "email",
+          "label": "Email",
+          "summary": "Requests a complete email form with greeting, body, sign-off, and an optional subject.",
+          "boundary": "Optional shaping · configured route"
+        },
+        {
+          "id": "reply",
+          "label": "Reply",
+          "summary": "Drafts a direct response from the selected context and the user’s instruction.",
+          "boundary": "Optional shaping · selected context"
+        },
+        {
+          "id": "foreign",
+          "label": "Foreign",
+          "summary": "Prioritises chosen non-English terms locally and preserves them instead of anglicising them.",
+          "boundary": "Opt-in · local term assistance"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "ai-prompt",
+          "title": "AI prompt",
+          "summary": "Turn one finished thought into a structured prompt without presenting Mumble as an AI chat product.",
+          "steps": [
+            "Dictate the complete request with ordinary Text; default transcription and cleanup stay local.",
+            "Choose Prompt so the requested role, task, constraints, and output form are explicit.",
+            "Mumble freezes the effective configured route. A hosted route requires the user’s provider key and sends finished text—not recorded audio; external providers may charge.",
+            "Review the shaped prompt, then paste or recover the saved result from the Deck. Any example on this site is illustrative, not a provider-output promise."
+          ]
+        },
+        {
+          "id": "business-email",
+          "title": "Business email",
+          "summary": "Shape rough finished text into an email form while keeping the route visible.",
+          "steps": [
+            "Dictate the facts, recipient, and purpose in your own words using the useful local Text path.",
+            "Choose Email; include an optional recipient or subject only when the finished text supplies one.",
+            "Mumble uses the frozen effective route. If hosted, only the finished text leaves through the configured provider and key; external providers may charge.",
+            "Review the greeting, body, sign-off, and any subject before using the saved result. The website does not claim a provider’s quality or wording."
+          ]
+        },
+        {
+          "id": "contextual-reply",
+          "title": "Contextual reply",
+          "summary": "Use selected material and a spoken instruction to draft a direct response.",
+          "steps": [
+            "Select the relevant saved material in the Deck so the reply context is deliberate rather than ambient.",
+            "Choose Reply and state what the response should communicate.",
+            "Mumble freezes the selected context, instruction, and effective route for that job. Hosted processing sends that finished text context—not recorded audio—and external providers may charge.",
+            "Review the direct reply and its register before Mumble attempts the selected field; recover the saved result if delivery is blocked."
+          ]
+        },
+        {
+          "id": "language-assisted-text",
+          "title": "Language-assisted text",
+          "summary": "Preserve chosen non-English terms without implying automatic translation.",
+          "steps": [
+            "Choose the relevant Foreign languages in Settings and keep Foreign assistance opt-in.",
+            "Dictate normally; transcription stays local by default and the local term booster prioritises the selected languages.",
+            "Use the preserved finished text directly with no Mumble account, provider key, or paid service, or deliberately choose a separate shaping action afterward.",
+            "Review names and terms before using the text. Foreign assists preservation; this sequence does not promise translation or hosted-language quality."
+          ]
+        }
+      ]
+    }
   },
   {
     "id": "listen",

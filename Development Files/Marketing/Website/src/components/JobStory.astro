@@ -18,11 +18,16 @@ const mechanismTitleId = `${storyId}-mechanism-title`;
 const demonstrationTabId = (stateId: string) => `${storyId}-tab-${stateId}`;
 const demonstrationPanelId = (stateId: string) => `${storyId}-panel-${stateId}`;
 const taskId = (id: string) => `${storyId}-task-${id}`;
+type DemoState = (typeof story.demonstration.states)[number];
+const modeForState = (state: DemoState) => ('mode' in state ? state.mode : 'text');
+const fieldLabelForState = (state: DemoState) => (
+  'fieldLabel' in state ? state.fieldLabel : 'Unbranded writing field'
+);
 ---
 
 {surface === 'home' && (
   <section
-    class="product-stage write-product-stage"
+    class:list={['product-stage', 'job-product-stage', `${job.id}-product-stage`]}
     aria-labelledby={stageTitleId}
     data-job-story={job.id}
     data-story-surface="home"
@@ -30,27 +35,40 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   >
     <div class="stage-bar">
       <span class="stage-brand">Mumble / {job.label}</span>
-      <span class="stage-state"><i aria-hidden="true"></i>Local route by default</span>
+      <span class="stage-state">
+        <i aria-hidden="true"></i>
+        {job.id === 'shape' ? 'Optional shaping · route frozen per action' : 'Local route by default'}
+      </span>
     </div>
 
-    <figure class="write-capture">
-      <img
-        src="/product/home.webp"
-        width="1180"
-        height="820"
-        loading="eager"
-        fetchpriority="high"
-        alt="Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status"
-      />
-      <figcaption>
-        <strong>Genuine Mumble capture</strong>
-        <span>Current accepted Windows source surface</span>
-      </figcaption>
-    </figure>
+    {job.id === 'write' ? (
+      <figure class="write-capture">
+        <img
+          src="/product/home.webp"
+          width="1180"
+          height="820"
+          loading="eager"
+          fetchpriority="high"
+          alt="Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status"
+        />
+        <figcaption>
+          <strong>Genuine Mumble capture</strong>
+          <span>Current accepted Windows source surface</span>
+        </figcaption>
+      </figure>
+    ) : (
+      <div class="shape-route-summary" aria-label="Shape route overview">
+        <div><span>Input</span><strong>Finished text</strong></div>
+        <i aria-hidden="true"></i>
+        <div data-mode="prompt"><span>Chosen job</span><strong>Prompt</strong></div>
+        <i aria-hidden="true"></i>
+        <div><span>Control</span><strong>Effective route frozen</strong></div>
+      </div>
+    )}
 
     <div class="write-closeup">
       <header class="write-closeup-header">
-        <h2 id={stageTitleId}>See where your words return.</h2>
+        <h2 id={stageTitleId}>{story.demonstration.title}</h2>
         <p>{story.demonstration.note}</p>
       </header>
 
@@ -82,12 +100,12 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
             data-job-panel={job.id}
           >
             <div class="write-panel-copy">
-              <span class="write-state-label">{state.status}</span>
+              <span class="write-state-label" data-mode={modeForState(state)}>{state.status}</span>
               <h3>{state.title}</h3>
               <p>{state.body}</p>
             </div>
-            <div class="write-field" aria-label={`Illustrative writing field during ${state.label}`}>
-              <span>Unbranded writing field</span>
+            <div class="write-field" data-mode={modeForState(state)} aria-label={`Illustrative writing field during ${state.label}`}>
+              <span>{fieldLabelForState(state)}</span>
               <p>{state.field}<i aria-hidden="true"></i></p>
             </div>
             {state.id === 'speak' && (

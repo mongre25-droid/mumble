@@ -6,25 +6,30 @@ import jobs from '../data/jobs.json';
 import release from '../data/release.json';
 
 const write = jobs.find((job) => job.id === 'write');
+const shape = jobs.find((job) => job.id === 'shape');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!shape?.story) throw new Error('Shape story authority is missing');
 ---
 
 <BaseLayout
-  title="Use Cases — Complete Mumble Write tasks"
-  description="Follow complete Mumble Write sequences for everyday notes, longer text, and work across desktop applications without profession-first navigation."
+  title="Use Cases — Complete Mumble Write and Shape tasks"
+  description="Follow complete Mumble task sequences for local writing, AI prompts, business email, contextual replies, and language-assisted text without profession-first navigation."
   currentPath="/use-cases/"
 >
   <section class="page-hero use-cases-hero shell" aria-labelledby="use-cases-title">
     <div>
       <h1 id="use-cases-title">Start with the writing task, not a persona.</h1>
-      <p>Write is organised by tasks rather than professions. Each path uses the same cursor, command, visible state, local-default transcription, return, and recovery model.</p>
+      <p>Write and Shape are organised by tasks rather than professions. Local dictation stays useful with no Mumble account, provider key, or paid service. Optional hosted shaping sends finished text—not recorded audio—and external providers may charge.</p>
     </div>
-    <nav class="task-jump" aria-label="Write task sequences">
+    <nav class="task-jump" aria-label="Write and Shape task sequences">
       {write.story.tasks.map((task) => <a href={`#job-${write.id}-task-${task.id}`}>{task.title}</a>)}
+      {shape.story.tasks.map((task) => <a href={`#job-${shape.id}-task-${task.id}`}>{task.title}</a>)}
     </nav>
   </section>
 
   <JobStory job={write} surface="use-cases" />
+
+  <JobStory job={shape} surface="use-cases" />
 
   <section class="journey-next" aria-labelledby="use-cases-next-title">
     <div class="shell journey-next-layout">
@@ -33,7 +38,7 @@ if (!write?.story) throw new Error('Write story authority is missing');
         <p>{release.publication.label}. The current package wording and every unavailable platform state remain controlled by the shared release authority.</p>
       </div>
       <div class="journey-next-actions">
-        <a class="button button-quiet" href="/product/">How Write works</a>
+        <a class="button button-quiet" href="/product/">How Write and Shape work</a>
         <PlatformAction className="button button-primary" />
         <a class="text-link" href="/downloads/">Release details and all platforms</a>
       </div>
