@@ -199,6 +199,15 @@
   transition: color var(--transition-fast);
 }
 
+.help-category-status {
+  min-height: var(--control-size);
+  display: flex;
+  align-items: center;
+  border-bottom: var(--stroke) solid var(--rule);
+  color: var(--text-muted);
+  font-size: var(--type-body-small);
+}
+
 .help-category a:hover {
   color: var(--gold-strong);
 }

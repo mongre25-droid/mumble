@@ -7,6 +7,9 @@ import release from '../src/data/release.json' with { type: 'json' };
 
 const websiteRoot = resolve(import.meta.dirname, '..');
 const distRoot = resolve(websiteRoot, 'dist');
+const canonicalJobs = JSON.parse(
+  await readFile(resolve(websiteRoot, 'src', 'data', 'jobs.json'), 'utf8'),
+);
 const results = [];
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim() || undefined;
 
@@ -17,11 +20,7 @@ const helpArticleHeadings = [
   'Make your first dictation',
   'Recover a result from the Deck',
   'Use effective global commands',
-  'Write',
-  'Capture',
-  'Shape',
-  'Listen',
-  'Find',
+  ...canonicalJobs.map((job) => job.label),
   'Understand privacy routes',
   'Use Mumble accessibly',
   'Fix initial setup problems',
@@ -96,6 +95,42 @@ async function noHorizontalOverflow(page, name) {
   assert.ok(
     Math.max(dimensions.body, dimensions.document) <= dimensions.viewport,
     `${name} overflows horizontally: ${JSON.stringify(dimensions)}`,
+  );
+}
+
+async function assertAnchorVisibleBelowHeader(page, targetSelector, name) {
+  const activated = await page.evaluate((selector) => {
+    const target = document.querySelector(selector);
+    return Boolean(target?.matches(':target'));
+  }, targetSelector);
+  assert.equal(activated, true, `${name}: link activation did not select the requested target`);
+  await page.evaluate((selector) => {
+    document.querySelector(selector)?.scrollIntoView({ behavior: 'instant', block: 'start' });
+  }, targetSelector);
+  const geometry = await page.evaluate((selector) => {
+    const header = document.querySelector('[data-site-header]');
+    const target = document.querySelector(selector);
+    if (!header || !target) return null;
+    const headerRect = header.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const headerPosition = getComputedStyle(header).position;
+    const occludingHeaderBottom = ['fixed', 'sticky'].includes(headerPosition)
+      ? Math.max(0, headerRect.bottom)
+      : 0;
+    return {
+      headerPosition,
+      occludingHeaderBottom,
+      targetBottom: targetRect.bottom,
+      targetTop: targetRect.top,
+      viewportHeight: window.innerHeight,
+    };
+  }, targetSelector);
+  assert.ok(geometry, `${name}: target or header is missing`);
+  assert.ok(
+    geometry.targetTop >= geometry.occludingHeaderBottom - 1
+      && geometry.targetBottom > geometry.occludingHeaderBottom
+      && geometry.targetTop < geometry.viewportHeight,
+    `${name}: activated target is obscured or outside the viewport: ${JSON.stringify(geometry)}`,
   );
 }
 
@@ -489,6 +524,15 @@ async function helpJourney(browser) {
     await page.getByRole('heading', { level: 3, name: heading, exact: true }).waitFor();
   }
 
+  for (const job of canonicalJobs) {
+    const article = page.locator(`#${job.id}-guide`);
+    await article.getByRole('heading', { level: 3, name: job.label, exact: true }).waitFor();
+    assert.ok(
+      (await article.innerText()).includes(job.summary),
+      `${job.label} Help guidance does not render its canonical summary`,
+    );
+  }
+
   const platformLinks = [
     ['Read the Windows candidate path', '#install-windows'],
     ['Read macOS status', '#install-macos'],
@@ -512,12 +556,19 @@ async function helpJourney(browser) {
   assert.match(helpText, /Ctrl\s*\+\s*Windows/i);
   assert.match(helpText, /Ctrl\s*\+\s*Alt\s*\+\s*V/i);
   assert.match(helpText, /Ctrl\s*\+\s*Alt\s*\+\s*D/i);
-  assert.match(helpText, /Listening.+Transcribing.+Done/is);
+  assert.match(helpText, /Listening.+Transcribing.+Inserted.+Sent.+Not inserted.+Delivery uncertain/is);
   assert.match(helpText, /result remains in (?:the )?Deck and History/i);
   assert.match(helpText, /Public release remains gated/i);
   assert.match(helpText, /Publisher signature.+Not accepted/is);
   assert.match(helpText, /70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493/i);
   assert.doesNotMatch(helpText, /Mumble Search/i);
+  assert.doesNotMatch(helpText, /public issue tracker/i);
+  assert.match(helpText, /Issue reporting is not publicly available while the source repository remains private/i);
+  assert.equal(
+    await page.locator('a[href="https://github.com/mongre25-droid/mumble/issues"]').count(),
+    0,
+    'Help exposes a gated issue-reporting destination as an active link',
+  );
 
   const installText = await page.locator('#install-windows').innerText();
   assert.match(installText, /Install Mumble\.bat/i);
@@ -537,7 +588,6 @@ async function helpJourney(browser) {
     ['Product overview', '/#jobs'],
     ['Release notes', '/downloads/#release-notes-title'],
     ['Source repository', 'https://github.com/mongre25-droid/mumble'],
-    ['Report a problem', 'https://github.com/mongre25-droid/mumble/issues'],
   ]);
   for (const [name, href] of expectedDestinations) {
     assert.equal(
@@ -568,7 +618,7 @@ async function helpJourney(browser) {
   await noHorizontalOverflow(page, 'desktop Help');
   assertNoBrowserErrors(browserErrors, 'desktop Help browser errors');
   await context.close();
-  record('Help search enhancement, static task taxonomy, Windows truth, platform gates, shortcuts, recovery, cross-links, reduced motion, and keyboard focus');
+  record('Help search enhancement, canonical job authority, actual Island outcome labels, truthful gated issue reporting, platform gates, shortcuts, recovery, reduced motion, and keyboard focus');
 }
 
 async function mobileHelpJourney(browser) {
@@ -943,6 +993,15 @@ async function noJavaScriptPath(browser) {
       helpLink.click(),
     ]);
     await assertSharedShell(page, 'Help');
+    if (viewport.width === 390) {
+      const headerPosition = await page.locator('[data-site-header]').evaluate(
+        (header) => getComputedStyle(header).position,
+      );
+      assert.ok(
+        !['fixed', 'sticky'].includes(headerPosition),
+        `no-JavaScript mobile header can obscure fragment targets: ${headerPosition}`,
+      );
+    }
     for (const heading of helpArticleHeadings) {
       await page.getByRole('heading', { level: 3, name: heading, exact: true }).waitFor();
     }
@@ -964,22 +1023,46 @@ async function noJavaScriptPath(browser) {
     }
     const installPath = page.getByRole('navigation', { name: 'Browse Help topics' })
       .getByRole('link', { name: 'Install and verify', exact: true });
+    await installPath.focus();
     await Promise.all([
       page.waitForURL(`${origin}/help/#install-windows`),
-      installPath.click(),
+      page.keyboard.press('Enter'),
     ]);
     await page.getByRole('heading', { level: 3, name: 'Install the Windows candidate', exact: true }).waitFor();
+    await assertAnchorVisibleBelowHeader(
+      page,
+      '#install-windows',
+      `no-JavaScript Help install target ${viewport.width}px`,
+    );
+    const macosPath = page.getByRole('link', { name: 'Read macOS status', exact: true });
+    await macosPath.focus();
+    await Promise.all([
+      page.waitForURL(`${origin}/help/#install-macos`),
+      page.keyboard.press('Enter'),
+    ]);
+    await page.locator('#install-macos-title').waitFor();
+    await assertAnchorVisibleBelowHeader(
+      page,
+      '#install-macos',
+      `no-JavaScript Help macOS target ${viewport.width}px`,
+    );
     const linuxPath = page.getByRole('link', { name: 'Read Linux status', exact: true });
+    await linuxPath.focus();
     await Promise.all([
       page.waitForURL(`${origin}/help/#install-linux`),
-      linuxPath.click(),
+      page.keyboard.press('Enter'),
     ]);
     await page.locator('#install-linux-title').waitFor();
+    await assertAnchorVisibleBelowHeader(
+      page,
+      '#install-linux',
+      `no-JavaScript Help Linux target ${viewport.width}px`,
+    );
     await noHorizontalOverflow(page, `no-JavaScript Help ${viewport.width}px`);
     assertNoBrowserErrors(browserErrors, `no-JavaScript ${viewport.width}px browser errors`);
     await context.close();
   }
-  record('no-JavaScript desktop/mobile Home-to-Downloads-to-Help journeys retain core content, release facts, download access, complete semantic Help reachability, platform states, and horizontal fit');
+  record('no-JavaScript desktop/mobile Home-to-Downloads-to-Help journeys retain complete semantic Help reachability, non-sticky mobile navigation, visible activated article/platform targets, release truth, and horizontal fit');
 }
 
 let browser;

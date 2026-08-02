@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import jobs from '../data/jobs.json';
 import release from '../data/release.json';
 import '../styles/help.css';
 
@@ -9,6 +10,45 @@ const linux = release.platforms.find((platform) => platform.id === 'linux');
 if (!windows || !windows.integrity || !macos || !linux) {
   throw new Error('Help requires complete accepted platform authority');
 }
+
+const jobGuidance = {
+  write: {
+    keywords: 'write dictate cursor text insert deck first dictation',
+    guidance: 'Start with the first dictation, then use the terminal insertion outcome rather than assuming delivery landed.',
+    link: { href: '/#jobs', label: 'Product overview' },
+    linkNote: 'keeps Write beside the other four canonical jobs.',
+  },
+  capture: {
+    keywords: 'capture microphone meeting record transcript search export computer audio video import',
+    guidance: 'Computer-audio capture and direct video import are not accepted capabilities.',
+    link: null,
+    linkNote: null,
+  },
+  shape: {
+    keywords: 'shape prompt email reply deck local cloud provider key finished text',
+    guidance: 'Local formatting remains available without selecting a hosted shaping route.',
+    link: null,
+    linkNote: null,
+  },
+  listen: {
+    keywords: 'listen reader document speech provider cost online bookmark summary progress',
+    guidance: 'Voice playback is not required for local dictation.',
+    link: null,
+    linkNote: null,
+  },
+  find: {
+    keywords: 'find apps files local private web search provider consent google perplexity brave',
+    guidance: 'Provider-named Web Search choices are Google, Perplexity, and Brave; a local no-match never becomes an online search.',
+    link: null,
+    linkNote: null,
+  },
+} as const;
+
+const helpJobs = jobs.map((job) => {
+  const guidance = jobGuidance[job.id as keyof typeof jobGuidance];
+  if (!guidance) throw new Error(`Help guidance is missing for canonical job "${job.id}"`);
+  return { ...job, ...guidance };
+});
 ---
 
 <BaseLayout
@@ -73,11 +113,7 @@ if (!windows || !windows.integrity || !macos || !linux) {
         </div>
         <div class="help-category">
           <h3>Everyday jobs</h3>
-          <a href="#write-guide">Write</a>
-          <a href="#capture-guide">Capture</a>
-          <a href="#shape-guide">Shape</a>
-          <a href="#listen-guide">Listen</a>
-          <a href="#find-guide">Find</a>
+          {jobs.map((job) => <a href={`#${job.id}-guide`}>{job.label}</a>)}
         </div>
         <div class="help-category">
           <h3>Control and access</h3>
@@ -91,7 +127,7 @@ if (!windows || !windows.integrity || !macos || !linux) {
           <a href="#release-source">Release and source status</a>
           <a href="/downloads/#release-notes-title">Release notes</a>
           <a href="https://github.com/mongre25-droid/mumble">Source repository</a>
-          <a href="https://github.com/mongre25-droid/mumble/issues">Report a problem</a>
+          <span class="help-category-status">Issue reporting · not publicly available</span>
         </div>
       </nav>
     </div>
@@ -171,14 +207,14 @@ if (!windows || !windows.integrity || !macos || !linux) {
         </div>
       </article>
 
-      <article class="help-article" id="first-dictation" data-help-article data-help-keywords="write microphone island listening transcribing done insertion cursor first dictation ctrl windows">
+      <article class="help-article" id="first-dictation" data-help-article data-help-keywords="write microphone island listening transcribing inserted sent not inserted delivery uncertain cursor first dictation ctrl windows">
         <h3>Make your first dictation</h3>
         <div class="help-article-body">
           <ol class="help-instructions">
             <li><p>Open an ordinary editable text field and place the cursor where the result belongs. Keep that destination selected.</p></li>
             <li><p>Use the effective <strong>Start / stop dictation</strong> command shown on Home or in Settings. A fresh Windows setup defaults to <kbd>Ctrl + Windows</kbd>.</p></li>
             <li><p>Press once. The floating Island should read <strong>Listening</strong> while the microphone is active. Speak a short sentence.</p></li>
-            <li><p>Press the same command again. The Island moves through <strong>Transcribing</strong>; an optional shaping route may also show <strong>Building</strong>; completion shows <strong>Done</strong>.</p></li>
+            <li><p>Press the same command again. The Island moves through <strong>Transcribing</strong>; an optional shaping route may also show <strong>Building</strong>. Its completion label follows the delivery outcome: <strong>Inserted</strong>, <strong>Sent</strong>, <strong>Not inserted</strong>, or <strong>Delivery uncertain</strong>.</p></li>
             <li><p>Read the terminal outcome. A confirmed result is inserted at the selected field and also remains in Deck and History. An uncertain or blocked result is not described as inserted.</p></li>
           </ol>
           <p>If text does not appear, do not repeat blindly: the result remains in Deck and History. Use the recovery guide next.</p>
@@ -216,41 +252,22 @@ if (!windows || !windows.integrity || !macos || !linux) {
         </div>
       </article>
 
-      <article class="help-article" id="write-guide" data-help-article data-help-keywords="write dictate cursor text insert deck first dictation">
-        <h3>Write</h3>
-        <div class="help-article-body">
-          <p>Write is the direct path from speech to clean text at the cursor you chose. Start with the <a href="#first-dictation">first dictation</a>, then use the terminal insertion outcome rather than assuming a paste chord landed.</p>
-          <p><a href="/#jobs">Product overview</a> keeps Write beside the other four canonical jobs.</p>
-        </div>
-      </article>
-
-      <article class="help-article" id="capture-guide" data-help-article data-help-keywords="capture microphone meeting record transcript search export computer audio video import">
-        <h3>Capture</h3>
-        <div class="help-article-body">
-          <p>Capture currently means microphone meeting recording into a local, searchable working record with transcription, review, and export paths. Do not treat computer-audio capture or direct video import as accepted capability.</p>
-        </div>
-      </article>
-
-      <article class="help-article" id="shape-guide" data-help-article data-help-keywords="shape prompt email reply deck local cloud provider key finished text">
-        <h3>Shape</h3>
-        <div class="help-article-body">
-          <p>Shape gives finished text a named job such as Prompt, Email, Reply, or a Deck action. Local formatting remains available; optional hosted shaping sends finished text—not recorded audio—only through the selected provider route.</p>
-        </div>
-      </article>
-
-      <article class="help-article" id="listen-guide" data-help-article data-help-keywords="listen reader document speech provider cost online bookmark summary progress">
-        <h3>Listen</h3>
-        <div class="help-article-body">
-          <p>Reader keeps a library, progress, find, bookmarks, and summaries. Voice playback is a separate online provider choice and can carry that provider's own cost; it is not required for local dictation.</p>
-        </div>
-      </article>
-
-      <article class="help-article" id="find-guide" data-help-article data-help-keywords="find apps files local private web search provider consent google perplexity brave">
-        <h3>Find</h3>
-        <div class="help-article-body">
-          <p><strong>Mumble Find</strong> searches local apps and files. <strong>Web Search</strong> is a separate command: selected words remain local until one provider-named confirmation sends them to Google, Perplexity, or Brave. A local no-match never becomes an online search.</p>
-        </div>
-      </article>
+      {helpJobs.map((job) => (
+        <article
+          class="help-article"
+          id={`${job.id}-guide`}
+          data-help-article
+          data-help-keywords={job.keywords}
+        >
+          <h3>{job.label}</h3>
+          <div class="help-article-body">
+            <p>{job.summary}</p>
+            <p>{job.proof}</p>
+            <p>{job.guidance}</p>
+            {job.link && <p><a href={job.link.href}>{job.link.label}</a> {job.linkNote}</p>}
+          </div>
+        </article>
+      ))}
     </section>
 
     <section class="help-group" aria-labelledby="control-guides" data-help-group>
@@ -267,7 +284,7 @@ if (!windows || !windows.integrity || !macos || !linux) {
             <li><strong>Mumble Find:</strong> apps-and-files results stay local.</li>
             <li><strong>Web Search:</strong> selected words go online only after provider-named confirmation.</li>
           </ul>
-          <p>Never paste provider keys into a public issue or help search. Review <a href="/#privacy">Privacy boundaries</a> before enabling an online route.</p>
+          <p>Never paste provider keys into Help search, an issue report, or any shared message. Review <a href="/#privacy">Privacy boundaries</a> before enabling an online route.</p>
         </div>
       </article>
 
@@ -306,7 +323,7 @@ if (!windows || !windows.integrity || !macos || !linux) {
             </details>
             <details>
               <summary>Optional provider</summary>
-              <p>Local dictation needs no provider key. For a deliberately selected cloud route, confirm the named provider and configure your own key only in Mumble Settings. Never include credentials, dictated text, or private settings in a public report.</p>
+              <p>Local dictation needs no provider key. For a deliberately selected cloud route, confirm the named provider and configure your own key only in Mumble Settings. Never include credentials, dictated text, or private settings in a report.</p>
             </details>
           </div>
         </div>
@@ -320,7 +337,7 @@ if (!windows || !windows.integrity || !macos || !linux) {
             <li><a href="/downloads/#release-notes-title">Release notes</a> reports that this candidate has no published public-release notes.</li>
             <li><a href="https://github.com/mongre25-droid/mumble">Source repository</a> is the technical project path; public availability must still be read from the current repository state.</li>
             <li><a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE">MIT licence</a> defines the project licence.</li>
-            <li><a href="https://github.com/mongre25-droid/mumble/issues">Report a problem</a> through the public issue tracker without including secrets or private content.</li>
+            <li><strong>Issue reporting is not publicly available while the source repository remains private.</strong> No public support or defect-reporting route is currently claimed.</li>
           </ul>
         </div>
       </article>
@@ -328,7 +345,7 @@ if (!windows || !windows.integrity || !macos || !linux) {
 
     <section class="help-empty" data-help-search-empty hidden aria-labelledby="help-empty-title">
       <h2 id="help-empty-title">No help topic matched that search.</h2>
-      <p>Clear the search to browse every category, or report missing public guidance without including private content or credentials.</p>
+      <p>Clear the search to browse every category. Issue reporting is not publicly available while the source repository remains private.</p>
     </section>
   </section>
 

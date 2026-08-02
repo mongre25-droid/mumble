@@ -2023,6 +2023,10 @@ code {
     min-height: 52px;
   }
 
+  .no-js .site-header {
+    position: static;
+  }
+
   .no-js .header-shell {
     display: flex;
     flex-wrap: wrap;
