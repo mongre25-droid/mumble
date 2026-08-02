@@ -377,7 +377,7 @@ code {
 }
 
 .header-action {
-  min-height: 42px;
+  min-height: 44px;
   padding: 8px 14px;
   border-color: var(--rule-strong);
   background: rgba(214, 180, 79, 0.07);

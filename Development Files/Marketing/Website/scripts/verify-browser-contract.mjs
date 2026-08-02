@@ -170,7 +170,7 @@ async function desktopJourney(browser) {
 
   await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
   await assertSharedShell(page, 'Home');
-  await page.getByRole('heading', { level: 1, name: /cursor you chose/i }).waitFor();
+  await page.getByRole('heading', { level: 1, name: /field where your words belong/i }).waitFor();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Downloads' }).waitFor();
   await page.getByRole('heading', { level: 3, name: 'Write' }).waitFor();
   await page.getByRole('heading', { level: 3, name: 'Find' }).waitFor();
@@ -259,6 +259,40 @@ async function followPrimaryNavigation(page, label, href, mobile) {
   ]);
 }
 
+function stopTimeDestinationFindings(text, surface, label) {
+  const requiredBySurface = {
+    home: [
+      /Keep or return focus to the intended field before you choose Stop\./,
+      /When Stop is requested, Mumble freezes that field as the destination\./,
+    ],
+    product: [
+      /Keep or return focus to the intended field before you choose Stop\./,
+      /The destination is frozen when Stop is requested—not when recording starts\./,
+    ],
+    'use-cases': [
+      /keep or return focus to (?:that|the intended) field before you choose Stop/i,
+      /field frozen at Stop/i,
+    ],
+  };
+  const findings = [];
+  for (const requirement of requiredBySurface[surface]) {
+    if (!requirement.test(text)) {
+      findings.push(`${label} omits truthful Stop-time guidance (${requirement})`);
+    }
+  }
+  for (const staleWording of [
+    /Write keeps the starting field/i,
+    /The destination is chosen before recording begins/i,
+    /The destination comes first/i,
+  ]) {
+    if (staleWording.test(text)) {
+      findings.push(`${label} retains stale start-time destination wording (${staleWording})`);
+    }
+  }
+  return findings;
+}
+
+
 async function correctionConstraints(browser) {
   const context = await browser.newContext({
     viewport: { width: 1365, height: 900 },
@@ -269,6 +303,11 @@ async function correctionConstraints(browser) {
   const findings = [];
 
   await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
+  findings.push(...stopTimeDestinationFindings(
+    await page.locator('main').innerText(),
+    'home',
+    'desktop JavaScript Home',
+  ));
   const stage = page.locator('[data-job-story="write"][data-story-surface="home"]');
   const storyId = await stage.getAttribute('data-job-story');
   const expectedTitleId = `job-${storyId}-stage-title`;
@@ -329,21 +368,63 @@ async function correctionConstraints(browser) {
     || !['content type', 'Starred', 'Pin', 'Unpin', 'More'].every((term) => deckFacts.alt.includes(term))) {
     findings.push(`Product uses stale or inaccurately described Deck proof (${JSON.stringify(deckFacts)})`);
   }
+  findings.push(...stopTimeDestinationFindings(
+    await page.locator('main').innerText(),
+    'product',
+    'desktop JavaScript Product',
+  ));
   const mechanismContrast = await markerContrast(page, '.job-sequence-index');
   if (mechanismContrast < 4.5) {
     findings.push(`Product sequence contrast is ${mechanismContrast.toFixed(2)}:1`);
   }
 
   await page.goto(`${origin}/use-cases/`, { waitUntil: 'networkidle' });
+  findings.push(...stopTimeDestinationFindings(
+    await page.locator('main').innerText(),
+    'use-cases',
+    'desktop JavaScript Use Cases',
+  ));
   const taskContrast = await markerContrast(page, '.task-ledger li > span');
   if (taskContrast < 4.5) {
     findings.push(`Use Cases sequence contrast is ${taskContrast.toFixed(2)}:1`);
   }
 
   await context.close();
-  assert.deepEqual(findings, [], `Issue #37 correction constraints:\n- ${findings.join('\n- ')}`);
-  console.log(`Correction measurements: controls ${controlHeights.map((box) => box.height).join('px, ')}px; contrast ${mechanismContrast.toFixed(2)}:1 / ${taskContrast.toFixed(2)}:1`);
-  record('Issue #37 reusable job story, current Deck proof, 44px controls, and 4.5:1 sequence markers');
+
+  const noJavaScriptContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    javaScriptEnabled: false,
+  });
+  const noJavaScriptPage = await noJavaScriptContext.newPage();
+  await noJavaScriptPage.goto(`${origin}/`, { waitUntil: 'load' });
+  const noJavaScriptHeaderAction = await noJavaScriptPage.locator('.site-header .header-action').boundingBox();
+  if (!noJavaScriptHeaderAction
+    || noJavaScriptHeaderAction.width < 44
+    || noJavaScriptHeaderAction.height < 44) {
+    findings.push(`no-JavaScript mobile header action is below 44x44px (${noJavaScriptHeaderAction?.width ?? 0}x${noJavaScriptHeaderAction?.height ?? 0}px)`);
+  }
+  findings.push(...stopTimeDestinationFindings(
+    await noJavaScriptPage.locator('main').innerText(),
+    'home',
+    'mobile no-JavaScript Home',
+  ));
+  await followPrimaryNavigation(noJavaScriptPage, 'Product', '/product/', false);
+  findings.push(...stopTimeDestinationFindings(
+    await noJavaScriptPage.locator('main').innerText(),
+    'product',
+    'mobile no-JavaScript Product',
+  ));
+  await followPrimaryNavigation(noJavaScriptPage, 'Use Cases', '/use-cases/', false);
+  findings.push(...stopTimeDestinationFindings(
+    await noJavaScriptPage.locator('main').innerText(),
+    'use-cases',
+    'mobile no-JavaScript Use Cases',
+  ));
+  await noJavaScriptContext.close();
+
+  assert.deepEqual(findings, [], `Issue #37 integration correction constraints:\n- ${findings.join('\n- ')}`);
+  console.log(`Correction measurements: controls ${controlHeights.map((box) => box.height).join('px, ')}px; contrast ${mechanismContrast.toFixed(2)}:1 / ${taskContrast.toFixed(2)}:1; no-JavaScript mobile header action ${noJavaScriptHeaderAction?.width ?? 0}x${noJavaScriptHeaderAction?.height ?? 0}px`);
+  record('Issue #37 reusable job story, current Deck proof, 44px controls, 4.5:1 sequence markers, Stop-time destination truth, and no-JavaScript mobile target geometry');
 }
 
 async function assertWriteStage(page, viewportName) {
@@ -351,7 +432,8 @@ async function assertWriteStage(page, viewportName) {
   await stage.getByRole('heading', { level: 2, name: /where your words return/i }).waitFor();
   assert.match(await stage.innerText(), /Genuine Mumble capture/i);
   assert.match(await stage.innerText(), /Illustrative cursor close-up—not a live transcription/i);
-  assert.match(await stage.innerText(), /destination comes first/i);
+  assert.match(await stage.innerText(), /Keep the intended field ready for Stop/i);
+  assert.match(await stage.innerText(), /Keep it focused, or return to it, before choosing Stop/i);
 
   const tabs = stage.getByRole('tab');
   assert.equal(await tabs.count(), 3, `${viewportName} Write stage does not expose three direct steps`);
@@ -368,7 +450,7 @@ async function assertWriteStage(page, viewportName) {
   assert.equal(await returned.evaluate((element) => document.activeElement === element), true);
   const returnedPanel = stage.getByRole('tabpanel', { name: /Text returned/i });
   await returnedPanel.waitFor();
-  assert.match(await returnedPanel.innerText(), /intended cursor/i);
+  assert.match(await returnedPanel.innerText(), /freezes the focused field/i);
   assert.match(await returnedPanel.innerText(), /recoverable in the Deck/i);
 
   await page.waitForTimeout(550);
@@ -409,20 +491,28 @@ async function writeJourney(browser) {
 
     await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
     await assertSharedShell(page, 'Home');
-    await page.getByRole('heading', { level: 1, name: /cursor you chose/i }).waitFor();
+    await page.getByRole('heading', { level: 1, name: /field where your words belong/i }).waitFor();
     await assertWriteStage(page, item.name);
     assert.equal(await page.evaluate(() => window.__mumbleMicrophoneRequests), 0);
     const homeText = await page.locator('body').innerText();
+    assert.deepEqual(
+      stopTimeDestinationFindings(homeText, 'home', `${item.name} JavaScript Home`),
+      [],
+    );
     assert.doesNotMatch(homeText, /\b[0-9]+(?:\.[0-9]+)?[×x]\s*(?:faster|speed)/i);
     await noHorizontalOverflow(page, `${item.name} Write Home`);
 
     await followPrimaryNavigation(page, 'Product', '/product/', item.mobile);
     await assertSharedShell(page, 'Product');
     const productText = await page.locator('main').innerText();
+    assert.deepEqual(
+      stopTimeDestinationFindings(productText, 'product', `${item.name} JavaScript Product`),
+      [],
+    );
     assert.match(productText, /deliberate global Dictate command/i);
     assert.match(productText, /Island shows Listening, then Transcribing/i);
     assert.match(productText, /Local transcription is the default/i);
-    assert.match(productText, /intended cursor/i);
+    assert.match(productText, /field frozen when Stop was requested/i);
     assert.match(productText, /saved in the Deck/i);
     await page.locator('.journey-next [data-platform-action]').waitFor();
     await noHorizontalOverflow(page, `${item.name} Product`);
@@ -437,6 +527,10 @@ async function writeJourney(browser) {
       assert.ok(await taskRegion.getByRole('listitem').count() >= 4, `${task} is not a complete task sequence`);
     }
     const useCasesText = await page.locator('main').innerText();
+    assert.deepEqual(
+      stopTimeDestinationFindings(useCasesText, 'use-cases', `${item.name} JavaScript Use Cases`),
+      [],
+    );
     assert.match(useCasesText, /tasks rather than professions/i);
     await page.locator('.journey-next [data-platform-action]').waitFor();
     await noHorizontalOverflow(page, `${item.name} Use Cases`);
@@ -895,7 +989,7 @@ async function noJavaScriptPath(browser) {
     const browserErrors = browserErrorsFor(page);
     await page.goto(`${origin}/`, { waitUntil: 'load' });
     await assertSharedShell(page, 'Home');
-    await page.getByRole('heading', { level: 1, name: /cursor you chose/i }).waitFor();
+    await page.getByRole('heading', { level: 1, name: /field where your words belong/i }).waitFor();
     for (const job of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
       await page.getByRole('heading', { level: 3, name: job }).waitFor();
     }
@@ -903,6 +997,21 @@ async function noJavaScriptPath(browser) {
     assert.equal(await stage.getByRole('tabpanel').count(), 3, 'no-JavaScript Write states are incomplete');
     for (const panel of ['Choose cursor', 'Speak', 'Text returned']) {
       await stage.getByRole('tabpanel', { name: new RegExp(panel, 'i') }).waitFor();
+    }
+    assert.deepEqual(
+      stopTimeDestinationFindings(
+        await page.locator('main').innerText(),
+        'home',
+        `no-JavaScript Home ${viewport.width}px`,
+      ),
+      [],
+    );
+    if (viewport.width === 390) {
+      const headerActionBox = await page.locator('.site-header .header-action').boundingBox();
+      assert.ok(
+        headerActionBox && headerActionBox.width >= 44 && headerActionBox.height >= 44,
+        `no-JavaScript mobile header action is below 44x44px (${headerActionBox?.width ?? 0}x${headerActionBox?.height ?? 0}px)`,
+      );
     }
     await noHorizontalOverflow(page, `no-JavaScript Home ${viewport.width}px`);
 
@@ -917,6 +1026,10 @@ async function noJavaScriptPath(browser) {
     assert.match(productText, /deliberate global Dictate command/i);
     assert.match(productText, /Local transcription is the default/i);
     assert.match(productText, /saved in the Deck/i);
+    assert.deepEqual(
+      stopTimeDestinationFindings(productText, 'product', `no-JavaScript Product ${viewport.width}px`),
+      [],
+    );
     await noHorizontalOverflow(page, `no-JavaScript Product ${viewport.width}px`);
 
     const useCasesLink = page.getByRole('navigation', { name: 'Primary' })
@@ -929,6 +1042,14 @@ async function noJavaScriptPath(browser) {
     for (const task of ['Everyday notes', 'Longer text', 'Across applications']) {
       await page.getByRole('heading', { level: 2, name: task }).waitFor();
     }
+    assert.deepEqual(
+      stopTimeDestinationFindings(
+        await page.locator('main').innerText(),
+        'use-cases',
+        `no-JavaScript Use Cases ${viewport.width}px`,
+      ),
+      [],
+    );
     await noHorizontalOverflow(page, `no-JavaScript Use Cases ${viewport.width}px`);
 
     const privacyLink = page.getByRole('navigation', { name: 'Primary' })
@@ -1003,7 +1124,7 @@ async function noJavaScriptPath(browser) {
     assertNoBrowserErrors(browserErrors, `no-JavaScript ${viewport.width}px browser errors`);
     await context.close();
   }
-  record('no-JavaScript desktop/mobile Home-to-Product-to-Use-Cases-to-Downloads journeys retain complete Write states, mechanisms, task sequences, release facts, platform states, download access, and horizontal fit');
+  record('no-JavaScript desktop/mobile Home-to-Product-to-Use-Cases-to-Downloads journeys retain complete Write states, truthful Stop-time destination guidance, ≥44px mobile header action geometry, mechanisms, task sequences, release facts, platform states, download access, and horizontal fit');
 }
 
 let browser;

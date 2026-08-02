@@ -2,12 +2,12 @@
   {
     "id": "write",
     "label": "Write",
-    "summary": "Turn speech into clean text for the cursor you chose, with a saved recovery path when delivery is blocked.",
+    "summary": "Turn speech into clean text for the field focused when you choose Stop, with a saved recovery path when delivery is blocked.",
     "proof": "Local transcription is the default; optional shaping is a separate decision.",
     "story": {
       "opening": {
-        "title": "Speak once. Return to the cursor you chose.",
-        "summary": "Choose a writing field, use Mumble’s deliberate Dictate command, and speak while the Island shows what is happening. Mumble then attempts to return the finished text to that same field."
+        "title": "Speak once. Stop at the field where your words belong.",
+        "summary": "Use Mumble’s deliberate Dictate command and speak while the Island shows what is happening. Keep or return focus to the intended field before you choose Stop. When Stop is requested, Mumble freezes that field as the destination. It then attempts one delivery."
       },
       "demonstration": {
         "spoken": "Move the design review to Thursday and send the notes before lunch.",
@@ -17,8 +17,8 @@
             "id": "cursor",
             "label": "Choose cursor",
             "status": "Before command",
-            "title": "The destination comes first.",
-            "body": "Place the cursor in the writing field that should receive the finished text.",
+            "title": "Keep the intended field ready for Stop.",
+            "body": "Place the cursor in the writing field where you want the finished text. Keep it focused, or return to it, before choosing Stop.",
             "field": "Project note —"
           },
           {
@@ -26,28 +26,28 @@
             "label": "Speak",
             "status": "Island · Listening",
             "title": "Mumble makes its state visible.",
-            "body": "Use the global Dictate command and speak. The Island shows Listening, then Transcribing after you stop.",
+            "body": "Use the global Dictate command and speak. Before choosing Stop, keep or return focus to the intended field. The Island shows Listening, then Transcribing.",
             "field": "Project note —"
           },
           {
             "id": "returned",
             "label": "Text returned",
             "status": "Island · Done",
-            "title": "Finished text returns to the intended cursor.",
-            "body": "Mumble attempts one target-bound insertion. If it cannot complete, the result remains recoverable in the Deck.",
+            "title": "Stop freezes the intended destination.",
+            "body": "When Stop is requested, Mumble freezes the focused field for one target-bound insertion. If delivery cannot complete, the result remains recoverable in the Deck.",
             "field": "Project note — Move the design review to Thursday and send the notes before lunch."
           }
         ]
       },
       "mechanism": {
         "title": "One deliberate command. One visible route back.",
-        "summary": "Write keeps the starting field, processing state, privacy route, delivery attempt, and recovery path in one understandable sequence.",
+        "summary": "Write keeps the Stop-time destination, processing state, privacy route, delivery attempt, and recovery path in one understandable sequence.",
         "steps": [
           {
             "id": "destination",
-            "title": "Choose where the words belong",
-            "body": "Place the cursor in a writable field. Mumble keeps the intended destination with this dictation instead of asking you to move into a separate editor.",
-            "proof": "The destination is chosen before recording begins."
+            "title": "Keep the intended field focused for Stop",
+            "body": "Place the cursor in a writable field. Keep or return focus to the intended field before you choose Stop. Mumble then uses the field focused at Stop instead of asking you to move into a separate editor.",
+            "proof": "The destination is frozen when Stop is requested—not when recording starts."
           },
           {
             "id": "command",
@@ -64,8 +64,8 @@
           {
             "id": "recovery",
             "title": "Return once, or recover safely",
-            "body": "Mumble attempts to insert the finished text at the intended cursor. If insertion cannot complete, the result is saved in the Deck and History for Copy or Paste latest instead of being sent again automatically.",
-            "proof": "A changed or unavailable target does not authorize a second blind insertion."
+            "body": "Mumble attempts to insert the finished text at the field frozen when Stop was requested. If insertion cannot complete, the result is saved in the Deck and History for Copy or Paste latest instead of being sent again automatically.",
+            "proof": "Later focus changes do not authorize a new destination or a second blind insertion."
           }
         ]
       },
@@ -77,7 +77,7 @@
           "steps": [
             "Place the cursor at the point where the note should continue.",
             "Use the global Dictate command and speak the thought in ordinary language.",
-            "Stop the dictation and use the Island state to follow transcription.",
+            "Keep or return focus to that field before you choose Stop; the Island then shows the transition into transcription.",
             "Continue from the inserted text, or use the saved Deck result if delivery could not complete."
           ]
         },
@@ -88,7 +88,7 @@
           "steps": [
             "Place the cursor in the draft where the next passage belongs.",
             "Start Dictate and speak the passage at a comfortable pace.",
-            "Stop when the passage is complete; the Island shows the transition into transcription.",
+            "Keep or return focus to that field before you choose Stop; the Island then shows the transition into transcription.",
             "Review the returned text in the draft, or recover the finished result from the Deck if insertion was blocked."
           ]
         },
@@ -99,8 +99,8 @@
           "steps": [
             "Open the destination application and place its cursor in the intended field.",
             "Invoke the global Dictate command without leaving that application.",
-            "Speak, then stop while the Island identifies the active state.",
-            "Mumble attempts the same target-bound return; if the destination changed, it keeps the text in the Deck rather than inserting elsewhere."
+            "Speak, then keep or return focus to the intended field before you choose Stop.",
+            "Mumble attempts one return to the field frozen at Stop; if that field is unavailable at delivery, it keeps the text in the Deck rather than inserting elsewhere."
           ]
         }
       ]
