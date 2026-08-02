@@ -24,7 +24,7 @@ hdr()  { printf '\n%s%s%s\n' "$BLD" "$*" "$RST"; }
 # older distro Python so the user gets an actionable error instead of a long,
 # doomed dependency build.
 MIN_PYTHON_MAJOR=3
-MIN_PYTHON_MINOR=12
+MIN_PYTHON_MINOR=13
 
 # Per the XDG Base Directory specification, relative XDG paths are invalid and
 # must be ignored. Keeping this logic in the installer also prevents a launch
@@ -197,11 +197,11 @@ say "Using interpreter: $PYBIN ($("$PYBIN" --version 2>&1))"
 if ! "$PYBIN" - "$MIN_PYTHON_MAJOR" "$MIN_PYTHON_MINOR" <<'PYEOF'
 import sys
 required = tuple(map(int, sys.argv[1:3]))
-raise SystemExit(0 if sys.version_info[:2] >= required else 1)
+raise SystemExit(0 if sys.version_info[:2] == required else 1)
 PYEOF
 then
-  err "Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} or newer is required by the locked runtime dependencies."
-  err "Install a newer Python, ensure python3 resolves to it, then re-run."
+  err "Exact Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} is required by the reviewed dependency profile."
+  err "Install Python 3.13, ensure python3 resolves to that exact version, then re-run."
   exit 1
 fi
 
@@ -223,7 +223,7 @@ PYEOF
   elif ! "$PY" - "$MIN_PYTHON_MAJOR" "$MIN_PYTHON_MINOR" <<'PYEOF'
 import sys
 required = tuple(map(int, sys.argv[1:3]))
-raise SystemExit(0 if sys.version_info[:2] >= required else 1)
+raise SystemExit(0 if sys.version_info[:2] == required else 1)
 PYEOF
   then
     _venv_rebuild="its Python is older than ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR}"
@@ -257,6 +257,7 @@ hdr "3/6  Directory integrity check"
 
 MISSING_FILES=""
 for _f in "mumble_linux.py" "overlay_linux.py" "branding.py" "requirements.txt" \
+          "requirements-lock-linux-x86_64-cp313.txt" "verify_dependency_closure.py" \
           "assets/mumble.png" "webui/index.html"; do
   if [ ! -f "$APP/$_f" ]; then
     MISSING_FILES="$MISSING_FILES  $APP/$_f\n"
@@ -274,11 +275,20 @@ ok "Essential app files present"
 # 4. Python dependencies.
 # ---------------------------------------------------------------------------
 hdr "4/6  Python dependencies"
-if "$PY" -m pip install -r "$APP/requirements.txt"; then
+DEPENDENCY_LOCK="$APP/requirements-lock-linux-x86_64-cp313.txt"
+if "$PY" -m pip install --require-hashes -r "$DEPENDENCY_LOCK"; then
   ok "Python dependencies installed"
 else
   err "pip install reported errors."
   err "If an input package failed to build, install your distro's python3 headers + gcc and re-run."
+  exit 1
+fi
+if ! "$PY" "$APP/verify_dependency_closure.py" "$DEPENDENCY_LOCK"; then
+  err "Installed distributions do not match the reviewed dependency closure."
+  exit 1
+fi
+if ! "$PY" -m pip check; then
+  err "Installed distributions report an incompatible dependency graph."
   exit 1
 fi
 # Sanity-check that the GTK stack is actually importable in this venv.
@@ -330,7 +340,10 @@ elif "$PY" - <<'PYEOF'
 import sys
 try:
     from faster_whisper import WhisperModel
-    WhisperModel("small.en", device="cpu", compute_type="int8")
+    from model_provenance import model_revision
+    WhisperModel(
+        "small.en", revision=model_revision("small.en"),
+        device="cpu", compute_type="int8")
     print("model ready")
 except Exception as e:
     print("defer:", e); sys.exit(3)

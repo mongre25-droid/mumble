@@ -88,6 +88,11 @@ jobs:
       HF_HUB_OFFLINE: "1"
     steps:
       - uses: actions/checkout@v4
+        if: matrix.platform == 'windows'
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        if: matrix.platform != 'windows'
       - name: Install Linux desktop test dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -226,15 +231,17 @@ jobs:
           bash -n "Install Mumble.command" "Uninstall Mumble.command" \
             "Launch Mumble.command" build_mac_release.sh
           bash build_mac_release.sh
-          shasum -a 256 -c Mumble-v*-macos.zip.sha256
+          for checksum in Mumble-v*-macos-*.zip.sha256; do
+            shasum -a 256 -c "$checksum"
+          done
       - name: Upload macOS candidate
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: candidate-macos-package
           path: |
-            Internal/app/Ports/macOS/Mumble-v*-macos.zip
-            Internal/app/Ports/macOS/Mumble-v*-macos.zip.sha256
+            Internal/app/Ports/macOS/Mumble-v*-macos-*.zip
+            Internal/app/Ports/macOS/Mumble-v*-macos-*.zip.sha256
           if-no-files-found: error
 
   linux-package:
@@ -280,19 +287,23 @@ jobs:
     name: Lifecycle / Linux package
     needs: linux-package
     runs-on: ubuntu-latest
+    container: debian:13
     timeout-minutes: 30
     steps:
+      - name: Provision exact Python 3.13 lifecycle environment
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ca-certificates git python3.13 python3.13-venv python3-pip \
+            desktop-file-utils gir1.2-ayatanaappindicator3-0.1 \
+            gir1.2-gtk-3.0 gir1.2-webkit2-4.1 libportaudio2 \
+            python3-gi python3-gi-cairo xdg-utils xvfb
+          python3 -c 'import sys; assert sys.version_info[:2] == (3, 13), sys.version'
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: candidate-linux-package
           path: ${{ runner.temp }}/linux-release
-      - name: Install lifecycle dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y desktop-file-utils \
-            gir1.2-ayatanaappindicator3-0.1 gir1.2-gtk-3.0 \
-            gir1.2-webkit2-4.1 libportaudio2 python3-gi python3-gi-cairo xvfb
       - name: Exercise archive install, smoke import, and uninstall
         shell: bash
         run: |

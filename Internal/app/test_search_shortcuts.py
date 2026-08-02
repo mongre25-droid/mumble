@@ -14,6 +14,8 @@ import types
 import unittest
 from unittest.mock import patch
 
+from test_core_status_support import parse_current_status
+
 
 # The remote audit environment intentionally lacks the global-hook dependency.
 # These tests exercise parsing/collision logic only; provide the smallest parser
@@ -920,28 +922,36 @@ class WebSearchPrivacyCommandTests(unittest.TestCase):
 
 
 class CoreCurrentTruthTests(unittest.TestCase):
-    def test_opening_core_truth_names_convergence_candidates_and_correction(self):
+    def test_structured_core_truth_names_current_source_ci_and_open_gates(self):
         core = Path(__file__).resolve().parents[2] / "Development Files" / "Core"
         status = (core / "STATUS.html").read_text(encoding="utf-8")
         readme = (core / "README.html").read_text(encoding="utf-8")
-        current_truth = status.split(
-            '<div class="plain"><div class="tag">Current truth</div>', 1
-        )[1].split("</p>", 1)[0]
+        logs = (core / "LOGS.html").read_text(encoding="utf-8")
+        current = parse_current_status(status)
         web_guidance = readme.split(
             "<strong>Current Web Search boundary:</strong>", 1
         )[1].split("</p>", 1)[0]
-        current_refs = (
-            "babdc38d2d3869540afb7bc1e7523151c5de4237",
-            "22777a7e62fb5c0730b412fcd85334fbe82d1678",
-            "6e984587",
-            "cb847d36",
-            "8bffc80c",
-            "a3f81d81",
-            "a7606cf5",
-            "6c69d676",
+        self.assertEqual(current.main, "2f000b43daced675fcbfa53c8e7c75862124906b")
+        self.assertEqual(
+            current.accepted_source, "c86e48f770083490e4621ef9770e654ab0d38b1e"
         )
-        for current_ref in current_refs:
-            self.assertIn(current_ref, current_truth)
+        self.assertEqual(
+            current.correction_parent, "2f22153e97388c33f8517f89e2af04095389c4d1"
+        )
+        self.assertEqual(
+            current.published_pr_head, "936659747c351d7a6980a5ce8b377638d07f7a13"
+        )
+        self.assertEqual(current.review_status, "rejected")
+        self.assertEqual(current.pr_number, "49")
+        self.assertEqual(current.pr_status, "open")
+        self.assertEqual(current.merge_status, "unmerged")
+        self.assertEqual(current.promotion_status, "not-promoted")
+        self.assertEqual(current.open_issues, "12,25,28,29,30")
+        self.assertEqual(current.current_record, "Entry 93")
+        self.assertIn('id="entry-93"', logs)
+        self.assertIn(
+            'data-evidence-boundary="current-state-authority-correction"', logs
+        )
         accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",
             "8e93c8139ab1a5e4bd3e84811fcccc4a2ae6d1b6",
@@ -950,9 +960,6 @@ class CoreCurrentTruthTests(unittest.TestCase):
         )
         for exact_ref in accepted_web_search_refs:
             self.assertIn(exact_ref, web_guidance)
-        self.assertIn("correction", current_truth.lower())
-        self.assertIn("correction", web_guidance.lower())
-
         issue19_row = status.split(
             'href="https://github.com/mongre25-droid/mumble/issues/19"', 1
         )[1].split("</tr>", 1)[0]

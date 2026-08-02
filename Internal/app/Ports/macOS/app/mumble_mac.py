@@ -73,6 +73,7 @@ os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 import ai
 import model_authority
+from model_provenance import model_revision
 import processing_route
 import copy
 import autostart
@@ -3533,6 +3534,7 @@ class Mumble:
             try:
                 new_model = WhisperModel(
                     name,
+                    revision=model_revision(name),
                     device=device,
                     compute_type=compute,
                     cpu_threads=int(threads),
@@ -3544,6 +3546,7 @@ class Mumble:
                     print(f"GPU load failed ({e}) — falling back to CPU")
                     new_model = WhisperModel(
                         name,
+                        revision=model_revision(name),
                         device="cpu",
                         compute_type=self.settings.get("compute_type", "int8"),
                         cpu_threads=int(threads),

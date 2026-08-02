@@ -78,6 +78,40 @@ def test_linux_lifecycle_smoke_import_runs_from_the_installed_app_directory():
     assert "./.venv/bin/python" in lifecycle
 
 
+def test_windows_tests_checkout_the_history_required_by_provenance():
+    source = _source()
+    tests = source.split("  python-tests:", 1)[1].split(
+        "  website-security:", 1
+    )[0]
+
+    assert re.search(
+        r"uses: actions/checkout@v4\s+"
+        r"if: matrix\.platform == 'windows'\s+"
+        r"with:\s+fetch-depth: 0",
+        tests,
+    )
+    assert re.search(
+        r"uses: actions/checkout@v4\s+"
+        r"if: matrix\.platform != 'windows'",
+        tests,
+    )
+
+
+def test_linux_lifecycle_provisions_the_exact_packaged_python_minor():
+    source = _source()
+    lifecycle = source.split("  linux-lifecycle:", 1)[1].split(
+        "  ci-result:", 1
+    )[0]
+
+    assert "container: debian:13" in lifecycle
+    assert "python3.13" in lifecycle
+    assert "python3.13-venv" in lifecycle
+    assert "sys.version_info[:2] == (3, 13)" in lifecycle
+    assert lifecycle.index("sys.version_info[:2] == (3, 13)") < lifecycle.index(
+        'bash "$RELEASE_ROOT/install.sh"'
+    )
+
+
 def test_security_matrix_audits_the_complete_development_lock():
     source = _source()
 

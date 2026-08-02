@@ -2,9 +2,8 @@
 # the clean-environment import gate before changing versions.
 faster-whisper==1.2.1
 sounddevice==0.5.5
-# 2.5.x publishes CPython 3.14 Linux wheels; 2.2.6 did not, which broke the
-# installer on current Fedora despite its otherwise-supported dnf/Python stack.
-numpy==2.5.1
+# The reviewed Linux closure targets exact CPython 3.13 on x86_64 hosts.
+numpy==2.2.6
 keyboard==0.13.5
 mouse==0.7.1
 pyperclip==1.11.0

@@ -2,6 +2,7 @@
 
 import hashlib
 import importlib.util
+import subprocess
 import zipfile
 from pathlib import Path
 
@@ -9,8 +10,12 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).parents[2]
+PACKAGE_PROVENANCE_BASE = "9d583ec31432b975e3a8955d2ebecf9c3ca87080"
 BUILDER_PATH = (
     REPO_ROOT / "Development Files" / "Tooling" / "_rebuild_zip.py"
+)
+PROVENANCE_PATH = (
+    REPO_ROOT / "Development Files" / "Tooling" / "release_provenance.py"
 )
 
 
@@ -22,6 +27,44 @@ def _load_builder():
     assert spec.loader is not None
     spec.loader.exec_module(builder)
     return builder
+
+
+def _load_provenance():
+    spec = importlib.util.spec_from_file_location(
+        "mumble_release_provenance_regression", PROVENANCE_PATH
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_windows_candidate_embeds_and_validates_complete_provenance():
+    provenance = _load_provenance()
+    archive_path = REPO_ROOT / "Internal" / "Releases" / "Mumble.zip"
+    with zipfile.ZipFile(archive_path) as archive:
+        prefix = "Mumble/"
+        members = {
+            info.filename[len(prefix):]: (
+                archive.read(info),
+                (info.external_attr >> 16) & 0o7777,
+            )
+            for info in archive.infolist()
+            if info.filename.startswith(prefix)
+        }
+    payload = members[provenance.PROVENANCE_NAME][0]
+    decoded = provenance.validate_release_provenance(
+        payload,
+        repo_root=REPO_ROOT,
+        members=members,
+        expected_source_commit=PACKAGE_PROVENANCE_BASE,
+    )
+    assert decoded["package"] == {
+        "architecture": "x86_64",
+        "format": "zip",
+        "platform": "windows",
+    }
+    assert decoded["entrypoint"] == "Mumble.exe"
 
 
 def test_website_release_sync_uses_required_maintained_destination(tmp_path):
@@ -48,6 +91,19 @@ def test_website_release_sync_uses_required_maintained_destination(tmp_path):
     assert expected.read_bytes() == canonical.read_bytes()
 
 
+def test_release_source_discovery_rejects_untracked_runtime_members(tmp_path):
+    builder = _load_builder()
+    app = tmp_path / "Internal" / "app"
+    app.mkdir(parents=True)
+    (app / "mumble.py").write_text("# tracked runtime\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "Internal/app/mumble.py"], cwd=tmp_path, check=True)
+    (app / "surprise.py").write_text("# local injection\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="unexpected untracked release source"):
+        builder.release_sources(tmp_path)
+
+
 @pytest.mark.parametrize(
     "archive_path",
     (
@@ -68,10 +124,10 @@ def test_tracked_release_matches_canonical_runtime_membership_and_content(
         names = archive.namelist()
         assert archive.testzip() is None
         assert len(names) == len(set(names))
-        assert set(names) == set(expected)
+        assert set(names) == set(expected) | {"Mumble/RELEASE-PROVENANCE.json"}
         assert all(
             archive.read(name) == expected[name]
-            for name in names
+            for name in expected
         )
 
 

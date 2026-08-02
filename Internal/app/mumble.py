@@ -92,6 +92,7 @@ import formatting
 import islamic_terms  # Foreign mode: slash-candidate annotation for Arabic/Islamic terms
 import local_engine  # cloud-dominance routing gate (cloud-primary-when-key, local degrade)
 import model_authority
+from model_provenance import model_revision
 import processing_route  # immutable, privacy-enforcing text-shaping decisions
 import recording_limits
 import transcription  # optional cloud STT (advanced); local faster-whisper is default
@@ -6052,6 +6053,7 @@ class Mumble:
             try:
                 new_model = WhisperModel(
                     name,
+                    revision=model_revision(name),
                     device=device,
                     compute_type=compute,
                     cpu_threads=int(threads),
@@ -6065,6 +6067,7 @@ class Mumble:
                     compute = self.settings.get("compute_type", "int8")
                     new_model = WhisperModel(
                         name,
+                        revision=model_revision(name),
                         device=device,
                         compute_type=compute,
                         cpu_threads=int(threads),

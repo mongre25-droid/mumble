@@ -18,8 +18,7 @@ echo ""
 # menu-bar app and launchers won't re-trigger the "unidentified developer" prompt.
 xattr -dr com.apple.quarantine "$HERE" 2>/dev/null || true
 
-# 1. Find a supported Python runtime. scipy 1.18 and the locked wheel set require
-# Python 3.12–3.13, and the app's Tk UI requires a matching tkinter framework.
+# 1. Find a supported Python runtime with its own reviewed dependency profile.
 PY=""
 for CANDIDATE in python3 python3.13 python3.12 \
     /opt/homebrew/bin/python3.13 /usr/local/bin/python3.13 \
@@ -31,9 +30,9 @@ for CANDIDATE in python3 python3.13 python3.12 \
   fi
 done
 if [ -z "$PY" ]; then
-  echo "  Mumble requires Python 3.12–3.13; a compatible Python was not found."
+  echo "  Mumble requires Python 3.12 or 3.13; a compatible Python was not found."
   echo ""
-  echo "  Recommended: install current Python from python.org (its macOS package"
+  echo "  Recommended: install Python 3.12 or 3.13 from python.org (its package"
   echo "  includes Tk), then run this installer again."
   echo "  Homebrew alternative: brew install python@3.12 python-tk@3.12"
   open "https://www.python.org/downloads/macos/" 2>/dev/null || true
@@ -122,7 +121,16 @@ cd "$STAGE"
 echo "  Installing components (a few minutes the first time, needs internet)…"
 "$PY" -m venv .venv
 "./.venv/bin/python" -m pip install --upgrade pip -q
-"./.venv/bin/python" -m pip install -r requirements.txt -q
+ARCH=$(uname -m)
+PY_TAG=$("$PY" -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')
+case "$ARCH" in
+  arm64) DEPENDENCY_LOCK="requirements-lock-macos-arm64-${PY_TAG}.txt" ;;
+  x86_64) DEPENDENCY_LOCK="requirements-lock-macos-x86_64-${PY_TAG}.txt" ;;
+  *) echo "  Unsupported macOS architecture: $ARCH"; exit 1 ;;
+esac
+"./.venv/bin/python" -m pip install --require-hashes -r "$DEPENDENCY_LOCK" -q
+"./.venv/bin/python" verify_dependency_closure.py "$DEPENDENCY_LOCK"
+"./.venv/bin/python" -m pip check -q
 if ! "./.venv/bin/python" - <<'PY'
 import tkinter
 import AppKit
@@ -133,7 +141,7 @@ assert tkinter.TkVersion >= 8.6
 PY
 then
   echo "  The macOS UI/input frameworks failed their install check."
-  echo "  Confirm Python 3.12–3.13 includes Tk, then run this installer again."
+  echo "  Confirm Python 3.12 or 3.13 includes Tk, then run this installer again."
   exit 1
 fi
 VERSION=$("./.venv/bin/python" -c "from branding import VERSION; print(VERSION)" 2>/dev/null || echo "0.9")
@@ -142,7 +150,7 @@ VERSION=$("./.venv/bin/python" -c "from branding import VERSION; print(VERSION)"
 # (settings.py -> "small.en"); pre-fetching base.en here just made the app
 # re-download small.en on first real use. ~470 MB.
 echo "  Downloading the speech model (~470 MB, one time)…"
-HF_HUB_DISABLE_XET=1 "./.venv/bin/python" -c "from faster_whisper import WhisperModel; WhisperModel('small.en', device='cpu', compute_type='int8')" || true
+HF_HUB_DISABLE_XET=1 "./.venv/bin/python" -c "from faster_whisper import WhisperModel; from model_provenance import model_revision; WhisperModel('small.en', revision=model_revision('small.en'), device='cpu', compute_type='int8')" || true
 
 # Stop a verified running copy only after the replacement is fully prepared.
 if [ -f "$PID_FILE" ]; then
