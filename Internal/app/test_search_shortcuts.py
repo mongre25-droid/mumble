@@ -931,7 +931,11 @@ class CoreCurrentTruthTests(unittest.TestCase):
         web_guidance = readme.split(
             "<strong>Current Web Search boundary:</strong>", 1
         )[1].split("</p>", 1)[0]
-        self.assertEqual(current.main, "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f")
+        self.assertEqual(
+            current.authority_scope, "valid-when-read-from-refs/heads/main"
+        )
+        self.assertEqual(current.target_ref, "refs/heads/main")
+        self.assertEqual(current.containing_commit, "@self")
         self.assertEqual(
             current.source_merge,
             "66a3564ab2e7354f0b1c5b0649686611c758f8bc",
@@ -945,6 +949,9 @@ class CoreCurrentTruthTests(unittest.TestCase):
         self.assertEqual(
             current.published_pr_head, "b6fe674f6332a5cfb20bf35568152fe22798f55e"
         )
+        self.assertEqual(
+            current.review_subject, "704921eb61014ac4d5b0f01a0399defab3028882"
+        )
         self.assertEqual(current.review_status, "accepted")
         self.assertEqual(current.pr_number, "49")
         self.assertEqual(current.pr_status, "merged")
@@ -952,16 +959,22 @@ class CoreCurrentTruthTests(unittest.TestCase):
         self.assertEqual(current.promotion_status, "source-merged")
         self.assertEqual(current.open_issues, "12,25,28,29,30")
         self.assertEqual(
-            current.published_records_head,
+            current.predecessor_published_records_head,
             "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f",
         )
-        self.assertEqual(current.records_ci_run, "30730441394")
-        self.assertEqual(current.records_ci_status, "passed")
-        self.assertEqual(current.records_review_status, "rejected")
-        self.assertEqual(current.record_candidate_status, "awaiting-review")
+        self.assertEqual(current.predecessor_records_ci_run, "30730441394")
+        self.assertEqual(current.predecessor_records_ci_status, "passed")
+        self.assertEqual(current.predecessor_records_review_status, "rejected")
         self.assertEqual(
-            current.rejected_records_candidate,
+            current.rejected_records_candidates,
+            "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,"
+            "21c21567029b1232e07ba85ca4d196820f3cfed9,"
             "7a2e239d6c152413b9404844b681634436c79061",
+        )
+        self.assertEqual(current.publication_action_at_commit, "not-yet-pushed")
+        self.assertEqual(current.final_receipt_ci_at_commit, "not-run")
+        self.assertEqual(
+            current.final_receipt_ci_live_authority, "github-checks-for-@self"
         )
         self.assertEqual(current.package_build_status, "passed")
         self.assertEqual(current.package_install_status, "not-run")
@@ -969,10 +982,10 @@ class CoreCurrentTruthTests(unittest.TestCase):
         self.assertEqual(current.signing_status, "not-run")
         self.assertEqual(current.public_release_status, "not-run")
         self.assertEqual(current.owner_acceptance_status, "not-run")
-        self.assertEqual(current.current_record, "Entry 98")
-        self.assertIn('id="entry-96"', logs)
+        self.assertEqual(current.current_record, "Entry 99")
+        self.assertIn('id="entry-99"', logs)
         self.assertIn(
-            'data-evidence-boundary="exact-current-projection-correction"', logs
+            'data-evidence-boundary="stable-symbolic-publication-receipt"', logs
         )
         accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",

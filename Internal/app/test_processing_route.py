@@ -598,15 +598,24 @@ def test_durable_records_separate_green_ci_from_physical_and_release_gates():
     assert current.promotion_status == "source-merged"
     assert current.acceptance_gates == "open"
 
-    assert current.published_records_head == "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f"
-    assert current.published_records_head == current.main
-    assert current.published_records_parent == current.source_merge
-    assert current.records_ci_run == "30730441394"
-    assert current.records_ci_status == "passed"
-    assert current.records_review_status == "rejected"
-    assert current.record_candidate_status == "awaiting-review"
-    assert current.rejected_records_candidate == "7a2e239d6c152413b9404844b681634436c79061"
-    assert current.records_correction_parent == current.rejected_records_candidate
+    assert current.authority_scope == "valid-when-read-from-refs/heads/main"
+    assert current.target_ref == "refs/heads/main"
+    assert current.containing_commit == "@self"
+    assert current.review_subject == "704921eb61014ac4d5b0f01a0399defab3028882"
+    assert current.review_status == "accepted"
+    assert current.predecessor_published_records_head == "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f"
+    assert current.predecessor_published_records_parent == current.source_merge
+    assert current.predecessor_records_ci_run == "30730441394"
+    assert current.predecessor_records_ci_status == "passed"
+    assert current.predecessor_records_review_status == "rejected"
+    assert current.rejected_records_candidates == (
+        "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,"
+        "21c21567029b1232e07ba85ca4d196820f3cfed9,"
+        "7a2e239d6c152413b9404844b681634436c79061"
+    )
+    assert current.publication_action_at_commit == "not-yet-pushed"
+    assert current.final_receipt_ci_at_commit == "not-run"
+    assert current.final_receipt_ci_live_authority == "github-checks-for-@self"
     assert current.package_build_status == "passed"
     assert current.package_install_status == "not-run"
     assert current.physical_status == "not-run"
@@ -614,8 +623,8 @@ def test_durable_records_separate_green_ci_from_physical_and_release_gates():
     assert current.artifact_promotion_status == "not-run"
     assert current.public_release_status == "not-run"
     assert current.owner_acceptance_status == "not-run"
-    assert 'id="entry-96"' in logs
-    assert 'data-evidence-boundary="exact-current-projection-correction"' in logs
+    assert 'id="entry-99"' in logs
+    assert 'data-evidence-boundary="stable-symbolic-publication-receipt"' in logs
     assert current.review_task in logs
     assert current.review_subject in logs
     assert "PR #49" in logs

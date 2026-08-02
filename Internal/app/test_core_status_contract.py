@@ -3,6 +3,7 @@ import re
 
 import pytest
 
+import test_core_status_support as status_support
 from test_core_status_support import CurrentStatusContractError, parse_current_status
 
 
@@ -37,10 +38,15 @@ def _projection_element(status_html: str, key: str) -> str:
     return match.group(0)
 
 
-def test_current_status_rejects_two_current_main_identities() -> None:
-    mutated = _duplicate_json_field(_status_html(), "main", "1111111111111111111111111111111111111111")
+def test_current_status_rejects_two_containing_commit_identities() -> None:
+    mutated = _duplicate_json_field(
+        _status_html(), "containing_commit", "1111111111111111111111111111111111111111"
+    )
 
-    with pytest.raises(CurrentStatusContractError, match="field 'main' appears more than once"):
+    with pytest.raises(
+        CurrentStatusContractError,
+        match="field 'containing_commit' appears more than once",
+    ):
         parse_current_status(mutated)
 
 
@@ -85,19 +91,19 @@ def test_current_status_rejects_a_second_current_authority() -> None:
     ("current_fragment", "contradictory_fragment"),
     (
         (
-            "Published records head <code>ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f</code>",
-            "Published records head <code>1111111111111111111111111111111111111111</code>",
+            "Predecessor published records head ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f",
+            "Predecessor published records head 1111111111111111111111111111111111111111",
         ),
         (
-            "Accepted source <code>b6fe674f6332a5cfb20bf35568152fe22798f55e</code>",
-            "Accepted source <code>c86e48f770083490e4621ef9770e654ab0d38b1e</code>",
+            "Accepted source b6fe674f6332a5cfb20bf35568152fe22798f55e",
+            "Accepted source c86e48f770083490e4621ef9770e654ab0d38b1e",
         ),
         (
-            "Acceptance gates are open. Accepted source <code>b6fe674f6332a5cfb20bf35568152fe22798f55e</code>",
-            "Acceptance gates are open. Accepted local source <code>c86e48f770083490e4621ef9770e654ab0d38b1e</code>",
+            "Acceptance gates are open. Accepted source b6fe674f6332a5cfb20bf35568152fe22798f55e",
+            "Acceptance gates are open. Accepted local source c86e48f770083490e4621ef9770e654ab0d38b1e",
         ),
         (
-            "Remote <code>main</code> is <code>ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f</code>",
+            "Symbolic containing commit @self resolves to the Git commit containing this STATUS file",
             "Unchanged main 2f000b43; no push, PR, merge",
         ),
     ),
@@ -117,7 +123,7 @@ def test_current_status_rejects_each_contradictory_prose_authority(
     ("anchor", "additive_conflict"),
     (
         (
-            "Exact-source CI run <code>30730116960</code> status is passed.",
+            "Exact-source CI run 30730116960 status is passed;",
             " PR #49 remains open and unmerged.",
         ),
         (
@@ -129,7 +135,7 @@ def test_current_status_rejects_each_contradictory_prose_authority(
             " Nothing has been merged.",
         ),
         (
-            "<code>30730292106</code> are not evidence.",
+            "30730292106 are not evidence.",
             " Replacement CI has not run.",
         ),
         (
@@ -204,7 +210,7 @@ def test_current_status_rejects_unmarked_human_visible_current_claims() -> None:
 
 def test_current_status_rejects_additive_visible_attribute_inside_projection() -> None:
     status_html = _status_html()
-    anchor = "Exact-source CI run <code>30730116960</code> status is passed."
+    anchor = "Exact-source CI run 30730116960 status is passed;"
     contradiction = (
         '<input value="PR #49 remains open and unmerged; exact-source CI failed" />'
     )
@@ -240,7 +246,7 @@ def test_current_status_rejects_reported_accessibility_attacks_inside_projection
     attack: str,
 ) -> None:
     status_html = _status_html()
-    anchor = "Exact-source CI run <code>30730116960</code> status is passed."
+    anchor = "Exact-source CI run 30730116960 status is passed;"
     mutated = status_html.replace(anchor, anchor + attack, 1)
 
     with pytest.raises(CurrentStatusContractError):
@@ -280,8 +286,8 @@ def test_current_status_rejects_duplicate_projection_attributes() -> None:
 
 def test_current_status_rejects_duplicate_attributes_on_nested_elements() -> None:
     mutated = _status_html().replace(
-        "<code>30730116960</code>",
-        '<code class="first" class="second">30730116960</code>',
+        '<div class="tag">Current truth</div>',
+        '<div class="tag" class="other">Current truth</div>',
         1,
     )
 
@@ -439,3 +445,57 @@ def test_current_status_rejects_marked_and_unknown_declarations(attack: str) -> 
 
     with pytest.raises(CurrentStatusContractError, match="marked or unknown declaration"):
         parse_current_status(mutated)
+
+
+@pytest.mark.parametrize("attack", ("<![x", "<![]]>"))
+def test_current_status_normalizes_malformed_declaration_assertions(attack: str) -> None:
+    status_html = _status_html()
+    anchor = '<h2><span class="sec">4</span>Programme dependency board</h2>'
+    mutated = status_html.replace(anchor, attack + anchor, 1)
+
+    with pytest.raises(CurrentStatusContractError, match="malformed HTML declaration"):
+        parse_current_status(mutated)
+
+
+def test_current_status_does_not_normalize_unrelated_programming_assertions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_with_unrelated_assertion(_parser: object, _status_html: str) -> None:
+        raise AssertionError("unrelated programming error")
+
+    monkeypatch.setattr(
+        status_support._AuthorityHTMLParser,
+        "feed",
+        fail_with_unrelated_assertion,
+    )
+
+    with pytest.raises(AssertionError, match="unrelated programming error") as caught:
+        status_support.parse_current_status(_status_html())
+
+    assert type(caught.value) is AssertionError
+
+
+def test_current_status_uses_stable_symbolic_publication_semantics() -> None:
+    current = parse_current_status(_status_html())
+
+    assert current.containing_commit == "@self"
+    assert current.authority_scope == "valid-when-read-from-refs/heads/main"
+    assert current.target_ref == "refs/heads/main"
+    assert current.review_subject == "704921eb61014ac4d5b0f01a0399defab3028882"
+    assert current.review_status == "accepted"
+    assert current.review_task == "019fc013-3ab9-7bc0-9c39-f63385bb8359"
+    assert current.rejected_records_candidates == (
+        "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,"
+        "21c21567029b1232e07ba85ca4d196820f3cfed9,"
+        "7a2e239d6c152413b9404844b681634436c79061"
+    )
+    assert current.predecessor_published_records_head == (
+        "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f"
+    )
+    assert current.predecessor_records_ci_run == "30730441394"
+    assert current.predecessor_records_ci_status == "passed"
+    assert current.predecessor_records_review_status == "rejected"
+    assert current.publication_action_at_commit == "not-yet-pushed"
+    assert current.final_receipt_ci_at_commit == "not-run"
+    assert current.final_receipt_ci_live_authority == "github-checks-for-@self"
+    assert current.current_record == "Entry 99"

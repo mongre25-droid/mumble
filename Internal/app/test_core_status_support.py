@@ -17,7 +17,9 @@ PROJECTION_SCHEMA = "mumble.current-state-projection.v1"
 _EXPECTED_FIELDS = {
     "schema": AUTHORITY_SCHEMA,
     "product_version": "0.95",
-    "main": "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f",
+    "authority_scope": "valid-when-read-from-refs/heads/main",
+    "target_ref": "refs/heads/main",
+    "containing_commit": "@self",
     "source_merge": "66a3564ab2e7354f0b1c5b0649686611c758f8bc",
     "accepted_source": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
     "correction_parent": "2f22153e97388c33f8517f89e2af04095389c4d1",
@@ -25,19 +27,22 @@ _EXPECTED_FIELDS = {
     "ci_subject": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
     "ci_run": "30730116960",
     "ci_status": "passed",
-    "review_subject": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
+    "accepted_source_review_subject": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
+    "accepted_source_review_status": "accepted",
+    "accepted_source_review_task": "019fc013-3ab9-7bc0-9c39-f63385bb8359",
+    "review_subject": "704921eb61014ac4d5b0f01a0399defab3028882",
     "review_status": "accepted",
     "review_task": "019fc013-3ab9-7bc0-9c39-f63385bb8359",
-    "published_records_head": "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f",
-    "published_records_parent": "66a3564ab2e7354f0b1c5b0649686611c758f8bc",
-    "records_ci_run": "30730441394",
-    "records_ci_status": "passed",
-    "records_review_status": "rejected",
-    "record_candidate_status": "awaiting-review",
-    "rejected_records_candidate": "7a2e239d6c152413b9404844b681634436c79061",
-    "rejected_records_candidate_status": "rejected",
-    "records_correction_parent": "7a2e239d6c152413b9404844b681634436c79061",
-    "records_review_task": "019fc013-3ab9-7bc0-9c39-f63385bb8359",
+    "predecessor_published_records_head": "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f",
+    "predecessor_published_records_parent": "66a3564ab2e7354f0b1c5b0649686611c758f8bc",
+    "predecessor_records_ci_run": "30730441394",
+    "predecessor_records_ci_status": "passed",
+    "predecessor_records_review_status": "rejected",
+    "rejected_records_candidates": "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,21c21567029b1232e07ba85ca4d196820f3cfed9,7a2e239d6c152413b9404844b681634436c79061",
+    "rejected_records_candidates_status": "rejected",
+    "publication_action_at_commit": "not-yet-pushed",
+    "final_receipt_ci_at_commit": "not-run",
+    "final_receipt_ci_live_authority": "github-checks-for-@self",
     "package_build_status": "passed",
     "package_install_status": "not-run",
     "runtime_restart_status": "not-run",
@@ -55,15 +60,14 @@ _EXPECTED_FIELDS = {
     "workflow_status": "unchanged",
     "installer_status": "unchanged",
     "saved_checkout_status": "unchanged",
-    "correction_self_sha_status": "omitted",
     "windows_package_members": "147",
     "windows_package_bytes": "1207711",
     "windows_package_sha256": "70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493",
     "failed_ci_run": "30728545428",
     "cancelled_ci_runs": "30728750267,30730118039,30730292106",
-    "document_structure_sha256": "E5B16B344F55E1A6EC436F58CD6EC4BEA6A23A53D8BCE5922E7031626E1C9D1C",
+    "document_structure_sha256": "B2EAD57D2CDB598F5F56D6D85ABCBB589EA0A96808AFD56235CAFEF002A13835",
     "non_projection_text_sha256": "7DF73E89BE7E3FD9F36B8CE8426E2FB60E96E2A8052D7C9A8BDB68CB85AEB07B",
-    "current_record": "Entry 98",
+    "current_record": "Entry 99",
     "pr_number": "49",
     "pr_status": "merged",
     "merge_status": "merged",
@@ -82,7 +86,9 @@ class CurrentStatusContractError(AssertionError):
 class CurrentStatus:
     schema: str
     product_version: str
-    main: str
+    authority_scope: str
+    target_ref: str
+    containing_commit: str
     source_merge: str
     accepted_source: str
     correction_parent: str
@@ -90,19 +96,22 @@ class CurrentStatus:
     ci_subject: str
     ci_run: str
     ci_status: str
+    accepted_source_review_subject: str
+    accepted_source_review_status: str
+    accepted_source_review_task: str
     review_subject: str
     review_status: str
     review_task: str
-    published_records_head: str
-    published_records_parent: str
-    records_ci_run: str
-    records_ci_status: str
-    records_review_status: str
-    record_candidate_status: str
-    rejected_records_candidate: str
-    rejected_records_candidate_status: str
-    records_correction_parent: str
-    records_review_task: str
+    predecessor_published_records_head: str
+    predecessor_published_records_parent: str
+    predecessor_records_ci_run: str
+    predecessor_records_ci_status: str
+    predecessor_records_review_status: str
+    rejected_records_candidates: str
+    rejected_records_candidates_status: str
+    publication_action_at_commit: str
+    final_receipt_ci_at_commit: str
+    final_receipt_ci_live_authority: str
     package_build_status: str
     package_install_status: str
     runtime_restart_status: str
@@ -120,7 +129,6 @@ class CurrentStatus:
     workflow_status: str
     installer_status: str
     saved_checkout_status: str
-    correction_self_sha_status: str
     windows_package_members: str
     windows_package_bytes: str
     windows_package_sha256: str
@@ -167,16 +175,19 @@ def _state_attributes(**fields: str) -> dict[str, str]:
 
 _PROJECTION_FIELDS = {
     "opening": (
-        "product_version", "pr_number", "pr_status", "main", "source_merge", "merge_status",
-        "accepted_source", "ci_run", "ci_status", "published_records_head",
-        "published_records_parent", "records_ci_run", "records_ci_status",
-        "records_review_status", "rejected_records_candidate",
-        "rejected_records_candidate_status", "current_record", "record_candidate_status",
+        "product_version", "authority_scope", "target_ref", "containing_commit",
+        "pr_number", "pr_status", "source_merge", "merge_status", "accepted_source",
+        "ci_run", "ci_status", "accepted_source_review_status",
+        "predecessor_published_records_head", "predecessor_published_records_parent",
+        "predecessor_records_ci_run", "predecessor_records_ci_status",
+        "predecessor_records_review_status", "rejected_records_candidates",
+        "rejected_records_candidates_status", "review_subject", "review_status",
+        "review_task", "current_record", "publication_action_at_commit",
+        "final_receipt_ci_at_commit", "final_receipt_ci_live_authority",
         "package_build_status", "package_install_status", "runtime_restart_status",
         "physical_status", "permissions_status", "signing_status", "notarisation_status",
         "artifact_promotion_status", "deployment_status", "public_release_status",
         "rollback_acceptance_status", "owner_acceptance_status", "open_issues",
-        "correction_self_sha_status",
     ),
     "package": (
         "source_merge", "ci_run", "package_build_status", "package_install_status",
@@ -187,12 +198,15 @@ _PROJECTION_FIELDS = {
     ),
     "tracker": ("open_issues", "acceptance_gates"),
     "source-records": (
-        "pr_number", "pr_status", "merge_status", "main", "source_merge", "accepted_source",
-        "published_records_head", "published_records_parent", "records_ci_status",
-        "records_review_status", "rejected_records_candidate",
-        "rejected_records_candidate_status", "current_record", "record_candidate_status",
+        "authority_scope", "target_ref", "containing_commit", "pr_number", "pr_status",
+        "merge_status", "source_merge", "accepted_source",
+        "predecessor_published_records_head", "predecessor_published_records_parent",
+        "predecessor_records_ci_status", "predecessor_records_review_status",
+        "rejected_records_candidates", "rejected_records_candidates_status",
+        "review_subject", "review_status", "review_task", "current_record",
+        "publication_action_at_commit", "final_receipt_ci_at_commit",
+        "final_receipt_ci_live_authority",
         "product_tree_status", "package_tree_status", "workflow_status", "installer_status",
-        "correction_self_sha_status",
     ),
     "packages": (
         "package_build_status", "package_install_status", "artifact_promotion_status",
@@ -200,8 +214,11 @@ _PROJECTION_FIELDS = {
         "physical_status", "owner_acceptance_status",
     ),
     "ci": (
-        "ci_subject", "ci_run", "ci_status", "published_records_head", "records_ci_run",
-        "records_ci_status", "records_review_status", "failed_ci_run", "cancelled_ci_runs",
+        "ci_subject", "ci_run", "ci_status", "predecessor_published_records_head",
+        "predecessor_records_ci_run", "predecessor_records_ci_status",
+        "predecessor_records_review_status", "containing_commit",
+        "final_receipt_ci_at_commit", "final_receipt_ci_live_authority",
+        "failed_ci_run", "cancelled_ci_runs",
     ),
     "runtime": ("runtime_restart_status", "saved_checkout_status"),
     "physical-release-owner": (
@@ -210,27 +227,36 @@ _PROJECTION_FIELDS = {
         "rollback_acceptance_status", "owner_acceptance_status", "acceptance_gates",
     ),
     "verification": (
-        "accepted_source", "source_merge", "ci_run", "ci_status", "main",
-        "published_records_head", "records_ci_run", "records_ci_status",
-        "records_review_status", "package_install_status", "physical_status",
+        "accepted_source", "source_merge", "ci_run", "ci_status", "authority_scope",
+        "target_ref", "containing_commit", "predecessor_published_records_head",
+        "predecessor_records_ci_run", "predecessor_records_ci_status",
+        "predecessor_records_review_status", "review_subject", "review_status",
+        "publication_action_at_commit", "final_receipt_ci_at_commit",
+        "final_receipt_ci_live_authority", "package_install_status", "physical_status",
         "permissions_status", "signing_status", "notarisation_status", "deployment_status",
         "public_release_status", "rollback_acceptance_status", "owner_acceptance_status",
         "acceptance_gates",
     ),
     "issue-30": (
         "accepted_source", "source_merge", "pr_number", "pr_status", "merge_status", "ci_run",
-        "ci_status", "artifact_promotion_status", "published_records_head", "records_ci_run",
-        "records_ci_status", "records_review_status", "record_candidate_status",
+        "ci_status", "artifact_promotion_status", "target_ref", "containing_commit",
+        "predecessor_published_records_head", "predecessor_records_ci_run",
+        "predecessor_records_ci_status", "predecessor_records_review_status",
+        "review_subject", "review_status", "publication_action_at_commit",
+        "final_receipt_ci_at_commit", "final_receipt_ci_live_authority",
         "physical_status", "package_install_status", "signing_status", "public_release_status",
         "rollback_acceptance_status", "owner_acceptance_status", "acceptance_gates",
     ),
     "published-integration": (
-        "main", "published_records_head", "published_records_parent", "source_merge",
-        "accepted_source", "pr_number", "pr_status", "merge_status", "ci_run", "ci_status",
-        "records_ci_run", "records_ci_status", "records_review_status",
-        "rejected_records_candidate", "rejected_records_candidate_status", "current_record",
-        "record_candidate_status", "correction_self_sha_status", "package_install_status",
-        "runtime_restart_status",
+        "authority_scope", "target_ref", "containing_commit",
+        "predecessor_published_records_head", "predecessor_published_records_parent",
+        "source_merge", "accepted_source", "pr_number", "pr_status", "merge_status",
+        "ci_run", "ci_status", "predecessor_records_ci_run",
+        "predecessor_records_ci_status", "predecessor_records_review_status",
+        "rejected_records_candidates", "rejected_records_candidates_status",
+        "review_subject", "review_status", "review_task", "current_record",
+        "publication_action_at_commit", "final_receipt_ci_at_commit",
+        "final_receipt_ci_live_authority", "package_install_status", "runtime_restart_status",
         "physical_status", "permissions_status", "signing_status", "notarisation_status",
         "artifact_promotion_status", "deployment_status", "public_release_status",
         "rollback_acceptance_status", "owner_acceptance_status",
@@ -352,6 +378,7 @@ def _expected_projection_attributes(current: CurrentStatus) -> dict[str, dict[st
 def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
     open_issues = ", ".join(f"#{issue}" for issue in current.open_issues.split(","))
     cancelled_runs = ", ".join(current.cancelled_ci_runs.split(","))
+    rejected_records = ", ".join(current.rejected_records_candidates.split(","))
     gate_statuses = (
         f"package install={current.package_install_status}; runtime restart="
         f"{current.runtime_restart_status}; physical={current.physical_status}; permissions="
@@ -361,31 +388,48 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
         f"rollback acceptance={current.rollback_acceptance_status}; owner acceptance="
         f"{current.owner_acceptance_status}"
     )
+    scope_text = (
+        f"Authority scope is {current.authority_scope}. Target ref is {current.target_ref}. "
+        f"Symbolic containing commit {current.containing_commit} resolves to the Git commit "
+        f"containing this STATUS file; this authority is current only when read from "
+        f"{current.target_ref}."
+    )
+    receipt_ci_text = (
+        f"At commit time, publication action was {current.publication_action_at_commit} and "
+        f"final receipt CI status was {current.final_receipt_ci_at_commit}. Later live CI "
+        f"authority is {current.final_receipt_ci_live_authority}; later push and CI outcomes "
+        f"come from {current.target_ref} and GitHub checks, not a rewritten Core claim."
+    )
     return {
         "opening": (
-            f"Current truth Mumble {current.product_version} publication truth. Remote main is "
-            f"{current.main}. PR #{current.pr_number} status is {current.pr_status}; merge status is "
-            f"{current.merge_status} at source merge {current.source_merge}, containing independently "
-            f"accepted source {current.accepted_source}. Exact-source CI run {current.ci_run} status is "
-            f"{current.ci_status}. Published records head {current.published_records_head}, parent "
-            f"{current.published_records_parent}, has records CI run {current.records_ci_run} status "
-            f"{current.records_ci_status} and review status {current.records_review_status}. Local "
-            f"records candidate {current.rejected_records_candidate} has review status "
-            f"{current.rejected_records_candidate_status}; {current.current_record} documents its "
-            f"direct-child correction with candidate status {current.record_candidate_status}; "
-            f"correction self-SHA status is {current.correction_self_sha_status}. Package build status "
-            f"is {current.package_build_status}; {gate_statuses}. Issues "
-            f"{open_issues} remain open."
+            f"Current truth Mumble {current.product_version} publication receipt. {scope_text} "
+            f"PR #{current.pr_number} status is {current.pr_status}; merge status is "
+            f"{current.merge_status} at source merge {current.source_merge}, containing "
+            f"independently accepted source {current.accepted_source}. Exact-source CI run "
+            f"{current.ci_run} status is {current.ci_status}; accepted-source review status is "
+            f"{current.accepted_source_review_status}. Predecessor published records head "
+            f"{current.predecessor_published_records_head}, parent "
+            f"{current.predecessor_published_records_parent}, has records CI run "
+            f"{current.predecessor_records_ci_run} status "
+            f"{current.predecessor_records_ci_status} and independent semantic review status "
+            f"{current.predecessor_records_review_status}. Records correction chain "
+            f"{rejected_records} has status {current.rejected_records_candidates_status}. "
+            f"Receipt predecessor {current.review_subject} has review status "
+            f"{current.review_status} under task {current.review_task}. "
+            f"{current.current_record} records the symbolic non-self-referential receipt. "
+            f"{receipt_ci_text} Package build status is {current.package_build_status}; "
+            f"{gate_statuses}. Issues {open_issues} remain open."
         ),
         "package": (
-            f"Published package distinction: Source merge {current.source_merge[:8]} retains two tracked "
-            f"byte-identical {current.windows_package_members}-member Windows ZIPs, "
+            f"Published package distinction: Source merge {current.source_merge[:8]} retains two "
+            f"tracked byte-identical {current.windows_package_members}-member Windows ZIPs, "
             f"{int(current.windows_package_bytes):,} bytes each, SHA-256 "
             f"{current.windows_package_sha256}. CI run {current.ci_run} package build status is "
-            f"{current.package_build_status}. Package install={current.package_install_status}; signing="
-            f"{current.signing_status}; notarisation={current.notarisation_status}; artifact promotion="
-            f"{current.artifact_promotion_status}; deployment={current.deployment_status}; public release="
-            f"{current.public_release_status}; physical={current.physical_status}; owner acceptance="
+            f"{current.package_build_status}. Package install={current.package_install_status}; "
+            f"signing={current.signing_status}; notarisation={current.notarisation_status}; "
+            f"artifact promotion={current.artifact_promotion_status}; deployment="
+            f"{current.deployment_status}; public release={current.public_release_status}; "
+            f"physical={current.physical_status}; owner acceptance="
             f"{current.owner_acceptance_status}."
         ),
         "tracker": (
@@ -393,85 +437,107 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
             f"Acceptance gates are {current.acceptance_gates}; source completion does not close them."
         ),
         "source-records": (
-            f"Source and records Remote main is {current.main}. PR #{current.pr_number} status is "
+            f"Source and records {scope_text} PR #{current.pr_number} status is "
             f"{current.pr_status}; merge status is {current.merge_status}. Accepted source "
-            f"{current.accepted_source} is contained by source merge {current.source_merge}. Published "
-            f"records head {current.published_records_head}, parent {current.published_records_parent}, "
-            f"has CI status {current.records_ci_status} and review status "
-            f"{current.records_review_status}. Local records candidate "
-            f"{current.rejected_records_candidate} has review status "
-            f"{current.rejected_records_candidate_status}. {current.current_record} records one "
-            f"direct-child correction with candidate status {current.record_candidate_status}; correction "
-            f"self-SHA status is {current.correction_self_sha_status}. Product tree="
-            f"{current.product_tree_status}; package tree={current.package_tree_status}; workflow="
-            f"{current.workflow_status}; installers={current.installer_status}."
+            f"{current.accepted_source} is contained by source merge {current.source_merge}. "
+            f"Predecessor published records head {current.predecessor_published_records_head}, "
+            f"parent {current.predecessor_published_records_parent}, has CI status "
+            f"{current.predecessor_records_ci_status} and review status "
+            f"{current.predecessor_records_review_status}. Records correction chain "
+            f"{rejected_records} has status {current.rejected_records_candidates_status}. "
+            f"Receipt predecessor {current.review_subject} has review status "
+            f"{current.review_status} under task {current.review_task}. "
+            f"{current.current_record} records the symbolic containing-commit receipt. "
+            f"{receipt_ci_text} Product tree={current.product_tree_status}; package tree="
+            f"{current.package_tree_status}; workflow={current.workflow_status}; installers="
+            f"{current.installer_status}."
         ),
         "packages": (
             f"Packages Package build={current.package_build_status}; install="
-            f"{current.package_install_status}; artifact promotion={current.artifact_promotion_status}; "
-            f"signing={current.signing_status}; notarisation={current.notarisation_status}; deployment="
-            f"{current.deployment_status}; public release={current.public_release_status}; physical="
-            f"{current.physical_status}; owner acceptance={current.owner_acceptance_status}."
+            f"{current.package_install_status}; artifact promotion="
+            f"{current.artifact_promotion_status}; signing={current.signing_status}; "
+            f"notarisation={current.notarisation_status}; deployment="
+            f"{current.deployment_status}; public release={current.public_release_status}; "
+            f"physical={current.physical_status}; owner acceptance="
+            f"{current.owner_acceptance_status}."
         ),
         "ci": (
             f"CI Exact-source run {current.ci_run} status is {current.ci_status} for subject "
-            f"{current.ci_subject}. Records-head run {current.records_ci_run} status is "
-            f"{current.records_ci_status} for {current.published_records_head}; records review status is "
-            f"{current.records_review_status}. Failed run {current.failed_ci_run} remains red evidence. "
-            f"Cancelled runs {cancelled_runs} are not evidence."
+            f"{current.ci_subject}. Predecessor records-head run "
+            f"{current.predecessor_records_ci_run} status is "
+            f"{current.predecessor_records_ci_status} for "
+            f"{current.predecessor_published_records_head}; predecessor semantic review status "
+            f"is {current.predecessor_records_review_status}. For symbolic containing commit "
+            f"{current.containing_commit}, final receipt CI at commit time was "
+            f"{current.final_receipt_ci_at_commit}; later live authority is "
+            f"{current.final_receipt_ci_live_authority}. Failed run {current.failed_ci_run} "
+            f"remains red evidence. Cancelled runs {cancelled_runs} are not evidence."
         ),
         "runtime": (
-            f"Runtime Runtime restart status is {current.runtime_restart_status}; publication and both "
-            f"records corrections leave saved checkout status {current.saved_checkout_status}."
+            f"Runtime Runtime restart status is {current.runtime_restart_status}; this Core-only "
+            f"receipt leaves saved checkout status {current.saved_checkout_status}."
         ),
         "physical-release-owner": (
-            f"Physical, release, and owner Package install={current.package_install_status}; physical="
-            f"{current.physical_status}; permissions={current.permissions_status}; signing="
-            f"{current.signing_status}; notarisation={current.notarisation_status}; deployment="
-            f"{current.deployment_status}; public release={current.public_release_status}; rollback "
-            f"acceptance={current.rollback_acceptance_status}; owner acceptance="
-            f"{current.owner_acceptance_status}. Acceptance gates are {current.acceptance_gates}."
+            f"Physical, release, and owner Package install={current.package_install_status}; "
+            f"physical={current.physical_status}; permissions={current.permissions_status}; "
+            f"signing={current.signing_status}; notarisation={current.notarisation_status}; "
+            f"deployment={current.deployment_status}; public release="
+            f"{current.public_release_status}; rollback acceptance="
+            f"{current.rollback_acceptance_status}; owner acceptance="
+            f"{current.owner_acceptance_status}. Acceptance gates are "
+            f"{current.acceptance_gates}."
         ),
         "verification": (
             f"Accepted source {current.accepted_source}, contained by source merge "
             f"{current.source_merge}, has exact-source run {current.ci_run} status "
-            f"{current.ci_status}. Remote main {current.main} is published records head "
-            f"{current.published_records_head}; records run {current.records_ci_run} status is "
-            f"{current.records_ci_status} and review status is {current.records_review_status}. "
-            f"{gate_statuses}. Acceptance gates are {current.acceptance_gates}."
+            f"{current.ci_status}. {scope_text} Predecessor published records head "
+            f"{current.predecessor_published_records_head} has run "
+            f"{current.predecessor_records_ci_run} status "
+            f"{current.predecessor_records_ci_status} and review status "
+            f"{current.predecessor_records_review_status}. Receipt predecessor "
+            f"{current.review_subject} has review status {current.review_status}. "
+            f"{receipt_ci_text} {gate_statuses}. Acceptance gates are "
+            f"{current.acceptance_gates}."
         ),
         "issue-30": (
-            f"#30 final parity and promotion Acceptance gates are {current.acceptance_gates}. Accepted "
-            f"source {current.accepted_source} is contained by source merge {current.source_merge}; PR "
-            f"#{current.pr_number} status is {current.pr_status} and merge status is "
-            f"{current.merge_status}. Exact-source run {current.ci_run} status is {current.ci_status}; "
-            f"artifact promotion status is {current.artifact_promotion_status}. Published records head "
-            f"{current.published_records_head} has run {current.records_ci_run} status "
-            f"{current.records_ci_status} and review status {current.records_review_status}. Local "
-            f"correction status is {current.record_candidate_status}. Package install="
+            f"#30 final parity and promotion Acceptance gates are {current.acceptance_gates}. "
+            f"Accepted source {current.accepted_source} is contained by source merge "
+            f"{current.source_merge}; PR #{current.pr_number} status is {current.pr_status} and "
+            f"merge status is {current.merge_status}. Exact-source run {current.ci_run} status "
+            f"is {current.ci_status}; artifact promotion status is "
+            f"{current.artifact_promotion_status}. Target ref {current.target_ref} resolves "
+            f"symbolic containing commit {current.containing_commit}. Predecessor published "
+            f"records head {current.predecessor_published_records_head} has run "
+            f"{current.predecessor_records_ci_run} status "
+            f"{current.predecessor_records_ci_status} and review status "
+            f"{current.predecessor_records_review_status}. Receipt predecessor "
+            f"{current.review_subject} review status is {current.review_status}. "
+            f"At commit time, publication action was {current.publication_action_at_commit} and "
+            f"final receipt CI was {current.final_receipt_ci_at_commit}; later CI authority is "
+            f"{current.final_receipt_ci_live_authority}. Package install="
             f"{current.package_install_status}; physical={current.physical_status}; signing="
-            f"{current.signing_status}; public release={current.public_release_status}; rollback "
-            f"acceptance={current.rollback_acceptance_status}; owner acceptance="
+            f"{current.signing_status}; public release={current.public_release_status}; "
+            f"rollback acceptance={current.rollback_acceptance_status}; owner acceptance="
             f"{current.owner_acceptance_status}."
         ),
         "published-integration": (
-            f"Current published integration state Remote main is {current.main}, the published records "
-            f"head {current.published_records_head}; its parent is source merge "
-            f"{current.published_records_parent}, which equals source-merge authority "
-            f"{current.source_merge} and contains accepted source {current.accepted_source}. PR "
-            f"#{current.pr_number} status is {current.pr_status}; merge status is "
-            f"{current.merge_status}; exact-source run {current.ci_run} status is {current.ci_status}; "
-            f"records run {current.records_ci_run} status is {current.records_ci_status}; records review "
-            f"status is {current.records_review_status}. Local child "
-            f"{current.rejected_records_candidate} review status is "
-            f"{current.rejected_records_candidate_status}; {current.current_record} documents its "
-            f"direct-child correction with status {current.record_candidate_status}; correction self-SHA "
-            f"status is {current.correction_self_sha_status}. "
+            f"Current published integration receipt {scope_text} Predecessor published records "
+            f"head {current.predecessor_published_records_head}, parent "
+            f"{current.predecessor_published_records_parent}, is the prior published record. "
+            f"Source merge {current.source_merge} contains accepted source "
+            f"{current.accepted_source}. PR #{current.pr_number} status is "
+            f"{current.pr_status}; merge status is {current.merge_status}; exact-source run "
+            f"{current.ci_run} status is {current.ci_status}; predecessor records run "
+            f"{current.predecessor_records_ci_run} status is "
+            f"{current.predecessor_records_ci_status}; predecessor review status is "
+            f"{current.predecessor_records_review_status}. Records correction chain "
+            f"{rejected_records} has status {current.rejected_records_candidates_status}. "
+            f"Receipt predecessor {current.review_subject} review status is "
+            f"{current.review_status} under task {current.review_task}. "
+            f"{current.current_record} records the symbolic receipt. {receipt_ci_text} "
             f"{gate_statuses}."
         ),
     }
-
-
 def _validate_projections(
     projections: dict[str, _Projection], current: CurrentStatus
 ) -> None:
@@ -669,8 +735,21 @@ def parse_current_status(status_html: str) -> CurrentStatus:
     """Parse and strictly validate the sole authoritative current-state record."""
 
     parser = _AuthorityHTMLParser()
-    parser.feed(status_html)
-    parser.close()
+    try:
+        parser.feed(status_html)
+        parser.close()
+    except CurrentStatusContractError:
+        raise
+    except AssertionError as exc:
+        message = str(exc)
+        if not (
+            re.fullmatch(r"unknown status keyword '.+' in marked section", message)
+            or message.startswith("expected name token at '")
+        ):
+            raise
+        raise CurrentStatusContractError(
+            "STATUS contains a malformed HTML declaration"
+        ) from exc
     if parser._doctype_count != 1:
         raise CurrentStatusContractError("STATUS must have one exact HTML doctype")
     if parser._capturing:
@@ -710,8 +789,10 @@ def parse_current_status(status_html: str) -> CurrentStatus:
 
     if fields["ci_subject"] != fields["published_pr_head"]:
         raise CurrentStatusContractError("the CI subject must be the published PR head")
-    if fields["review_subject"] != fields["published_pr_head"]:
-        raise CurrentStatusContractError("the accepted review subject must be the published PR head")
+    if fields["accepted_source_review_subject"] != fields["accepted_source"]:
+        raise CurrentStatusContractError(
+            "the accepted source review subject must be the accepted source"
+        )
     if fields["pr_status"] == "open" and fields["merge_status"] != "unmerged":
         raise CurrentStatusContractError("an open PR cannot be recorded as merged")
     if fields["merge_status"] == "unmerged" and fields["promotion_status"] != "not-promoted":
@@ -722,19 +803,31 @@ def parse_current_status(status_html: str) -> CurrentStatus:
         raise CurrentStatusContractError("a merged correction must record source merge truth")
     if fields["ci_status"] == "passed" and fields["replacement_ci_status"] != "passed":
         raise CurrentStatusContractError("passed replacement CI must remain current")
-    if fields["published_records_head"] != fields["main"]:
-        raise CurrentStatusContractError("the published records head must be remote main")
-    if fields["published_records_parent"] != fields["source_merge"]:
-        raise CurrentStatusContractError("the published records parent must be the source merge")
-    if fields["records_review_status"] == "rejected" and fields["record_candidate_status"] != "awaiting-review":
-        raise CurrentStatusContractError("a rejected records head requires a fresh review candidate")
+    if fields["predecessor_published_records_parent"] != fields["source_merge"]:
+        raise CurrentStatusContractError(
+            "the predecessor published records parent must be the source merge"
+        )
+    rejected_candidates = fields["rejected_records_candidates"].split(",")
+    if len(rejected_candidates) != 3 or any(
+        not re.fullmatch(r"[0-9a-f]{40}", candidate)
+        for candidate in rejected_candidates
+    ):
+        raise CurrentStatusContractError(
+            "the rejected records correction chain must contain three exact commit identities"
+        )
+    if fields["review_subject"] in rejected_candidates:
+        raise CurrentStatusContractError(
+            "the accepted receipt predecessor cannot also be in the rejected correction chain"
+        )
     allowed_values = {
         "ci_status": {"passed", "failed", "not-run", "cancelled"},
-        "records_ci_status": {"passed", "failed", "not-run", "cancelled"},
+        "accepted_source_review_status": {"accepted", "rejected"},
         "review_status": {"accepted", "rejected"},
-        "records_review_status": {"accepted", "rejected"},
-        "record_candidate_status": {"awaiting-review", "accepted", "rejected"},
-        "rejected_records_candidate_status": {"accepted", "rejected"},
+        "predecessor_records_ci_status": {"passed", "failed", "not-run", "cancelled"},
+        "predecessor_records_review_status": {"accepted", "rejected"},
+        "rejected_records_candidates_status": {"accepted", "rejected"},
+        "publication_action_at_commit": {"not-yet-pushed"},
+        "final_receipt_ci_at_commit": {"not-run"},
         "pr_status": {"open", "merged"},
         "merge_status": {"unmerged", "merged"},
         "promotion_status": {"not-promoted", "source-merged"},
@@ -756,17 +849,12 @@ def parse_current_status(status_html: str) -> CurrentStatus:
         "workflow_status": {"unchanged", "changed"},
         "installer_status": {"unchanged", "changed"},
         "saved_checkout_status": {"unchanged", "changed"},
-        "correction_self_sha_status": {"omitted", "present"},
     }
     for field, allowed in allowed_values.items():
         if fields[field] not in allowed:
             raise CurrentStatusContractError(
                 f"current-state field {field!r} has unsupported value {fields[field]!r}"
             )
-    if fields["records_correction_parent"] != fields["rejected_records_candidate"]:
-        raise CurrentStatusContractError(
-            "the local records correction must directly follow the rejected records candidate"
-        )
     if not fields["windows_package_members"].isdigit():
         raise CurrentStatusContractError("Windows package member count must be numeric")
     if not fields["windows_package_bytes"].isdigit():
@@ -796,7 +884,7 @@ def test_current_status_contract_accepts_the_canonical_authority() -> None:
 
     current = parse_current_status(status_path.read_text(encoding="utf-8"))
 
-    assert current.current_record == "Entry 98"
+    assert current.current_record == "Entry 99"
 
 
 def test_every_present_state_row_agrees_with_the_canonical_authority() -> None:
