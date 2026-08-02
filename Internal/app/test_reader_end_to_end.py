@@ -17,6 +17,24 @@ import webui_shell
 
 
 APP_JS = Path(__file__).with_name("webui") / "app.js"
+APP_DIR = Path(__file__).parent
+MAINTAINED_APP_DIRS = (
+    APP_DIR,
+    APP_DIR / "Ports" / "macOS" / "app",
+    APP_DIR / "Ports" / "Linux" / "app",
+)
+READER_SPEECH_CONTRACT_FILES = tuple(
+    platform_dir / relative
+    for platform_dir in MAINTAINED_APP_DIRS
+    for relative in (
+        Path("webui/app.js"),
+        Path("webui_shell.py"),
+        Path("ai/tts_providers.py"),
+        Path("ai/__init__.py"),
+        Path("test_tts_providers.py"),
+        Path("test_reader.py"),
+    )
+)
 
 
 @pytest.fixture
@@ -328,12 +346,57 @@ def test_reader_ui_has_real_cancellation_failure_and_collection_paths():
     assert 'await call("reader_list_collections")' in source
 
 
-def test_reader_sync_is_opt_in_and_disclosure_names_cloud_paths():
+def test_reader_sync_is_opt_in_and_disclosure_names_exact_speech_attempt():
     assert settings.DEFAULTS["sync_reader"] is False
     source = APP_JS.read_text(encoding="utf-8")
     disclosure = source[source.index("async function confirmReaderCloudUse"):
                         source.index("function readerBuildPane")]
-    assert "another compatible model from that same provider may be tried" in disclosure
+    assert (
+        "Mumble freezes that provider and the selected model for this request, "
+        "makes one synthesis attempt with that exact pair, and fails closed "
+        "without a local, sibling-model, or cross-provider fallback"
+    ) in disclosure
+    assert (
+        "another compatible model from that same provider "
+        "may be tried"
+    ) not in disclosure
     assert "Reader Sync, when enabled" in disclosure
     cloud = Path(__file__).with_name("cloud_sync.py").read_text(encoding="utf-8")
     assert 'payload.pop("source_path", None)' in cloud
+
+
+def test_reader_speech_docs_match_frozen_attempt_on_maintained_platforms():
+    stale_fragments = (
+        "another compatible model from that same provider " + "may be tried",
+        "On failure, may try a compatible model " + "from the same provider",
+        "Same-provider model fallback via " + "synthesize_with_fallback()",
+        "and same-provider model " + "fallback.",
+        "It may fall back to a " + "sibling model",
+        "a sibling model " + "must use",
+    )
+    offenders = {}
+    for path in READER_SPEECH_CONTRACT_FILES:
+        source = path.read_text(encoding="utf-8")
+        found = [fragment for fragment in stale_fragments if fragment in source]
+        if found:
+            offenders[str(path.relative_to(APP_DIR))] = found
+    assert offenders == {}
+
+    for platform_dir in MAINTAINED_APP_DIRS:
+        bridge = (platform_dir / "webui_shell.py").read_text(encoding="utf-8")
+        bridge_words = " ".join(bridge.split())
+        assert (
+            "The frozen decision authorizes exactly one synthesis attempt "
+            "with the selected provider and model."
+        ) in bridge_words
+
+        provider_docs = (platform_dir / "ai" / "tts_providers.py").read_text(
+            encoding="utf-8")
+        assert (
+            "One exact frozen Reader provider/model attempt via "
+            "synthesize_with_fallback()"
+        ) in provider_docs
+
+        provider_tests = (platform_dir / "test_tts_providers.py").read_text(
+            encoding="utf-8")
+        assert "one exact frozen Reader provider/model attempt." in provider_tests

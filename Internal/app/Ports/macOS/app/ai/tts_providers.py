@@ -6,7 +6,7 @@ Extracted from the monolithic ai.py. Provides:
   - OpenRouterTTSProvider (wraps OpenRouter's /audio/speech endpoint)
   - OpenAITTSProvider (OpenAI's native /v1/audio/speech endpoint)
   - Voice catalogue with quality/gender/persona metadata
-  - Same-provider model fallback via synthesize_with_fallback()
+  - One exact frozen Reader provider/model attempt via synthesize_with_fallback()
   - PCM-to-WAV framing for Gemini-class TTS
   - Male-first voice sorting for the Reader UI
 """

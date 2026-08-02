@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for ai/tts_providers.py — TTS provider abstraction, voice catalogue,
-and same-provider model fallback.
+and one exact frozen Reader provider/model attempt.
 
 Usage:
     python test_tts_providers.py

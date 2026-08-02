@@ -2426,9 +2426,9 @@ def synthesize_with_fallback(text, voice_id=None, model=None,
             ordered = [model or route_decision.model]
             for j, m in enumerate(ordered):
                 primary = (i == 0 and j == 0)
-                # Only the very first attempt carries the caller's voice — a
-                # voice is provider/model-specific, so a sibling model must use
-                # its own default (openrouter_tts resolves it or skips).
+                # The frozen route builds only this primary attempt, so the
+                # caller's selected voice remains bound to the exact provider
+                # and model authorized for the invocation.
                 attempts.append((pid, m, voice_id if primary else None, primary))
         else:
             primary = (i == 0)

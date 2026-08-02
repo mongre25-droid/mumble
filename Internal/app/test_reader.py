@@ -375,8 +375,8 @@ _fake_map = {
 ai.get_tts_provider = lambda pid: _fake_map.get(pid, _fake_map["openrouter"])
 
 try:
-    # One frozen route authorizes exactly one provider. It may fall back to a
-    # sibling model, but it must never cross to OpenAI.
+    # One frozen route authorizes exactly one provider/model attempt. It never
+    # tries a sibling model or crosses to OpenAI.
     audio, ctype, meta = ai.synthesize_with_fallback(
         "hello", voice_id="Kore", provider_id="openrouter",
         route_decision=_openrouter_route())
