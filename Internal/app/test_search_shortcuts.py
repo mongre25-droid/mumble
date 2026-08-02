@@ -931,26 +931,26 @@ class CoreCurrentTruthTests(unittest.TestCase):
         web_guidance = readme.split(
             "<strong>Current Web Search boundary:</strong>", 1
         )[1].split("</p>", 1)[0]
-        self.assertEqual(current.main, "2f000b43daced675fcbfa53c8e7c75862124906b")
+        self.assertEqual(current.main, "66a3564ab2e7354f0b1c5b0649686611c758f8bc")
         self.assertEqual(
-            current.accepted_source, "c86e48f770083490e4621ef9770e654ab0d38b1e"
+            current.accepted_source, "b6fe674f6332a5cfb20bf35568152fe22798f55e"
         )
         self.assertEqual(
             current.correction_parent, "2f22153e97388c33f8517f89e2af04095389c4d1"
         )
         self.assertEqual(
-            current.published_pr_head, "936659747c351d7a6980a5ce8b377638d07f7a13"
+            current.published_pr_head, "b6fe674f6332a5cfb20bf35568152fe22798f55e"
         )
-        self.assertEqual(current.review_status, "rejected")
+        self.assertEqual(current.review_status, "accepted")
         self.assertEqual(current.pr_number, "49")
-        self.assertEqual(current.pr_status, "open")
-        self.assertEqual(current.merge_status, "unmerged")
-        self.assertEqual(current.promotion_status, "not-promoted")
+        self.assertEqual(current.pr_status, "merged")
+        self.assertEqual(current.merge_status, "merged")
+        self.assertEqual(current.promotion_status, "source-merged")
         self.assertEqual(current.open_issues, "12,25,28,29,30")
-        self.assertEqual(current.current_record, "Entry 93")
-        self.assertIn('id="entry-93"', logs)
+        self.assertEqual(current.current_record, "Entry 94")
+        self.assertIn('id="entry-94"', logs)
         self.assertIn(
-            'data-evidence-boundary="current-state-authority-correction"', logs
+            'data-evidence-boundary="accepted-correction-publication"', logs
         )
         accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",

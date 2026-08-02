@@ -571,7 +571,7 @@ def test_settings_uses_truthful_stage_effect_and_route_disclosure_language():
     assert 'setSettingsHydrationState("ready")' in js
 
 
-def test_durable_records_separate_failed_ci_from_physical_and_release_gates():
+def test_durable_records_separate_green_ci_from_physical_and_release_gates():
     status = (
         APP_DIR.parent.parent / "Development Files" / "Core" / "STATUS.html"
     ).read_text(encoding="utf-8")
@@ -589,17 +589,17 @@ def test_durable_records_separate_failed_ci_from_physical_and_release_gates():
         'data-evidence-boundary="integration-candidate-awaiting-review"'
         not in processing_row
     )
-    assert current.ci_subject == "936659747c351d7a6980a5ce8b377638d07f7a13"
-    assert current.ci_run == "30728545428"
-    assert current.ci_status == "failed"
-    assert current.replacement_ci_status == "not-run"
-    assert current.pr_status == "open"
-    assert current.merge_status == "unmerged"
-    assert current.promotion_status == "not-promoted"
+    assert current.ci_subject == "b6fe674f6332a5cfb20bf35568152fe22798f55e"
+    assert current.ci_run == "30730116960"
+    assert current.ci_status == "passed"
+    assert current.replacement_ci_status == "passed"
+    assert current.pr_status == "merged"
+    assert current.merge_status == "merged"
+    assert current.promotion_status == "source-merged"
     assert current.acceptance_gates == "open"
 
-    assert 'id="entry-93"' in logs
-    assert 'data-evidence-boundary="current-state-authority-correction"' in logs
+    assert 'id="entry-94"' in logs
+    assert 'data-evidence-boundary="accepted-correction-publication"' in logs
     assert current.review_task in logs
     assert current.review_subject in logs
     assert "PR #49" in logs

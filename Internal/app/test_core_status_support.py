@@ -12,22 +12,22 @@ AUTHORITY_SCHEMA = "mumble.current-state.v1"
 
 _EXPECTED_FIELDS = {
     "schema": AUTHORITY_SCHEMA,
-    "main": "2f000b43daced675fcbfa53c8e7c75862124906b",
-    "accepted_source": "c86e48f770083490e4621ef9770e654ab0d38b1e",
+    "main": "66a3564ab2e7354f0b1c5b0649686611c758f8bc",
+    "accepted_source": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
     "correction_parent": "2f22153e97388c33f8517f89e2af04095389c4d1",
-    "published_pr_head": "936659747c351d7a6980a5ce8b377638d07f7a13",
-    "ci_subject": "936659747c351d7a6980a5ce8b377638d07f7a13",
-    "ci_run": "30728545428",
-    "ci_status": "failed",
-    "review_subject": "2f22153e97388c33f8517f89e2af04095389c4d1",
-    "review_status": "rejected",
+    "published_pr_head": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
+    "ci_subject": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
+    "ci_run": "30730116960",
+    "ci_status": "passed",
+    "review_subject": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
+    "review_status": "accepted",
     "review_task": "019fc013-3ab9-7bc0-9c39-f63385bb8359",
-    "current_record": "Entry 93",
+    "current_record": "Entry 94",
     "pr_number": "49",
-    "pr_status": "open",
-    "merge_status": "unmerged",
-    "promotion_status": "not-promoted",
-    "replacement_ci_status": "not-run",
+    "pr_status": "merged",
+    "merge_status": "merged",
+    "promotion_status": "source-merged",
+    "replacement_ci_status": "passed",
     "open_issues": "12,25,28,29,30",
     "acceptance_gates": "open",
 }
@@ -155,14 +155,18 @@ def parse_current_status(status_html: str) -> CurrentStatus:
 
     if fields["ci_subject"] != fields["published_pr_head"]:
         raise CurrentStatusContractError("the failed CI subject must be the published PR head")
-    if fields["review_subject"] != fields["correction_parent"]:
-        raise CurrentStatusContractError("the rejected review subject must be the correction parent")
+    if fields["review_subject"] != fields["published_pr_head"]:
+        raise CurrentStatusContractError("the accepted review subject must be the published PR head")
     if fields["pr_status"] == "open" and fields["merge_status"] != "unmerged":
         raise CurrentStatusContractError("an open PR cannot be recorded as merged")
     if fields["merge_status"] == "unmerged" and fields["promotion_status"] != "not-promoted":
         raise CurrentStatusContractError("an unmerged correction cannot be recorded as promoted")
-    if fields["ci_status"] == "failed" and fields["replacement_ci_status"] != "not-run":
-        raise CurrentStatusContractError("failed CI remains current until replacement CI runs")
+    if fields["pr_status"] == "merged" and fields["merge_status"] != "merged":
+        raise CurrentStatusContractError("a merged PR must be recorded as merged")
+    if fields["merge_status"] == "merged" and fields["promotion_status"] != "source-merged":
+        raise CurrentStatusContractError("a merged correction must record source merge truth")
+    if fields["ci_status"] == "passed" and fields["replacement_ci_status"] != "passed":
+        raise CurrentStatusContractError("passed replacement CI must remain current")
 
     return CurrentStatus(**fields)
 
@@ -177,4 +181,4 @@ def test_current_status_contract_accepts_the_canonical_authority() -> None:
 
     current = parse_current_status(status_path.read_text(encoding="utf-8"))
 
-    assert current.current_record == "Entry 93"
+    assert current.current_record == "Entry 94"

@@ -16,37 +16,37 @@
 <script id="mumble-current-state" type="application/json" data-current-state-authority="mumble.current-state.v1">
 {
   "schema": "mumble.current-state.v1",
-  "main": "2f000b43daced675fcbfa53c8e7c75862124906b",
-  "accepted_source": "c86e48f770083490e4621ef9770e654ab0d38b1e",
+  "main": "66a3564ab2e7354f0b1c5b0649686611c758f8bc",
+  "accepted_source": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
   "correction_parent": "2f22153e97388c33f8517f89e2af04095389c4d1",
-  "published_pr_head": "936659747c351d7a6980a5ce8b377638d07f7a13",
-  "ci_subject": "936659747c351d7a6980a5ce8b377638d07f7a13",
-  "ci_run": "30728545428",
-  "ci_status": "failed",
-  "review_subject": "2f22153e97388c33f8517f89e2af04095389c4d1",
-  "review_status": "rejected",
+  "published_pr_head": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
+  "ci_subject": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
+  "ci_run": "30730116960",
+  "ci_status": "passed",
+  "review_subject": "b6fe674f6332a5cfb20bf35568152fe22798f55e",
+  "review_status": "accepted",
   "review_task": "019fc013-3ab9-7bc0-9c39-f63385bb8359",
-  "current_record": "Entry 93",
+  "current_record": "Entry 94",
   "pr_number": "49",
-  "pr_status": "open",
-  "merge_status": "unmerged",
-  "promotion_status": "not-promoted",
-  "replacement_ci_status": "not-run",
+  "pr_status": "merged",
+  "merge_status": "merged",
+  "promotion_status": "source-merged",
+  "replacement_ci_status": "passed",
   "open_issues": "12,25,28,29,30",
   "acceptance_gates": "open"
 }
 </script>
 
-<div class="plain"><div class="tag">Current truth</div><div><p>Mumble is being treated as version <strong>0.95</strong>. Exact local and GitHub <code>main</code> remains <code>2f000b43daced675fcbfa53c8e7c75862124906b</code>, and exact-head GitHub Actions run <a href="https://github.com/mongre25-droid/mumble/actions/runs/30721075874"><code>30721075874</code></a> passed every required job at that exact commit only. The accepted product/source chain above that baseline ends at independently accepted <code>c86e48f770083490e4621ef9770e654ab0d38b1e</code>. Records-only candidates <code>a64c955501ede4f76e5995ae516362e013c0ff14</code>, <code>d820d307c5fac41b326e37079a1119d55c37bb06</code>, <code>3c0f6bcc3a32c20d183f0c87672ea209ede0d13f</code>, and <code>528ba3fd27d26b1574d28f671503c1c15c2b78e9</code> retain their four REJECT verdicts in review task <code>019fc013-3ab9-7bc0-9c39-f63385bb8359</code>. The reviewed four-record truth candidate <code>936659747c351d7a6980a5ce8b377638d07f7a13</code> is published in open <a href="https://github.com/mongre25-droid/mumble/pull/49">PR #49</a> and retains its accepted independent source review, but exact-source run <a href="https://github.com/mongre25-droid/mumble/actions/runs/30728545428"><code>30728545428</code></a> failed because two Core tests were stale, two provenance tests received a single-commit checkout, and the Linux package lifecycle selected Python 3.12.3 instead of exact Python 3.13. Entry 92 records the rejected CI-environment correction <code>2f22153e97388c33f8517f89e2af04095389c4d1</code>; review task <code>019fc013-3ab9-7bc0-9c39-f63385bb8359</code> rejected it because two Core tests could still accept contradictory present-state claims. This direct child, documented without a self-SHA by Entry 93, adds one authoritative machine-readable present-state record and a shared strict parser while leaving the Entry 92 workflow corrections unchanged. GitHub Issues #14&ndash;#24, #26, #27, and #33 are closed from immutable evidence; umbrella #12 and acceptance Issues #25, #28, #29, and #30 remain open. Replacement exact-head CI and independent review remain open. PR #49 remains open and unmerged; no correction is promoted. Physical Windows/macOS/Linux use, real providers and devices, installed-package lifecycle beyond CI, real-target interactions, permissions, signing/notarisation, deployment, public release, rollback, and owner acceptance remain open.</p></div></div>
+<div class="plain"><div class="tag">Current truth</div><div><p>Mumble is being treated as version <strong>0.95</strong>. GitHub product/source <code>main</code> is history-preserving PR #49 merge commit <code>66a3564ab2e7354f0b1c5b0649686611c758f8bc</code>, containing independently accepted correction <code>b6fe674f6332a5cfb20bf35568152fe22798f55e</code>. Review task <code>019fc013-3ab9-7bc0-9c39-f63385bb8359</code> returned ACCEPT with no P0&ndash;P3 findings, Standards PASS, and Specification PASS. Authoritative exact-source run <a href="https://github.com/mongre25-droid/mumble/actions/runs/30730116960"><code>30730116960</code></a> passed every required Windows, macOS, Linux, security, website, package, Linux lifecycle, and aggregate job for exact <code>b6fe674f</code>. Failed exact-source run <a href="https://github.com/mongre25-droid/mumble/actions/runs/30728545428"><code>30728545428</code></a> at <code>936659747c351d7a6980a5ce8b377638d07f7a13</code>, rejected correction <code>2f22153e97388c33f8517f89e2af04095389c4d1</code>, all earlier rejected records candidates and reviews, and append-only Entries 1&ndash;93 remain preserved. Cancelled duplicates <code>30728750267</code>, <code>30730118039</code>, and <code>30730292106</code> are not evidence. This Entry 94 records the publication without a self-SHA; its narrow child changes only Core truth and the strict Core-status test contract, leaving production and package files byte-identical to tested <code>b6fe674f</code>. GitHub Issues #14&ndash;#24, #26, #27, and #33 remain closed from immutable evidence; umbrella #12 and acceptance Issues #25, #28, #29, and #30 remain open. Hosted CI proves automated source, package build, and injected Linux lifecycle evidence only. Physical Windows/macOS/Linux use, real providers and devices, installed lifecycle outside CI, real targets, permissions, signing/notarisation, deployment, public release, rollback, and owner acceptance remain open.</p></div></div>
 
-<div class="callout"><strong>Candidate package distinction:</strong> accepted <code>main</code> retains its historical 141-member Windows package identity. The accepted local source head <code>c86e48f7</code> contains two byte-identical 147-member Windows ZIPs, 1,207,711 bytes each, at SHA-256 <code>70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493</code>. The candidate also retains the corrected inspected macOS and Linux package identities from LOGS Entry 85. These are source-bound automated package facts, not installation, physical use, promotion, signing, release, rollback, or owner acceptance.</div>
+<div class="callout"><strong>Published package distinction:</strong> published product/source merge <code>66a3564a</code> retains the two tracked byte-identical 147-member Windows ZIPs, 1,207,711 bytes each, at SHA-256 <code>70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493</code>, plus the inspected macOS and Linux source-package identities from LOGS Entry 85. CI run <code>30730116960</code> built candidate artifacts successfully, but no artifact was owner-installed, signed, notarised, deployed, publicly released, or accepted physically.</div>
 
 <table><thead><tr><th>Evidence boundary</th><th>Current truth</th></tr></thead><tbody>
   <tr><td>Planning and GitHub tracker</td><td>#14&ndash;#24, #26, #27, and #33 are closed from immutable evidence. #12, #25, #28, #29, and #30 remain open; only #25 criterion 1, #28 criterion 1, #29 criterion 1, and #30 criteria 1 and 6 are satisfied by this source/documentation chain.</td></tr>
-  <tr><td>Source and records</td><td>Exact accepted product/source head is <code>c86e48f770083490e4621ef9770e654ab0d38b1e</code> above unchanged <code>main</code> <code>2f000b43daced675fcbfa53c8e7c75862124906b</code>. Records-only <code>a64c9555</code> (Entry 87), <code>d820d307</code> (Entry 88), <code>3c0f6bcc</code> (Entry 89), and <code>528ba3fd</code> (Entry 90) retain their REJECT verdicts. Published reviewed candidate <a href="https://github.com/mongre25-droid/mumble/pull/49"><code>936659747c351d7a6980a5ce8b377638d07f7a13</code> in open PR #49</a> (Entry 91) remains the published PR head. Entry 92 preserves rejected correction <code>2f22153e97388c33f8517f89e2af04095389c4d1</code>; its direct child is documented without a self-SHA by Entry 93. No product or package source changed.</td></tr>
+  <tr><td>Source and records</td><td>PR #49 merged exact accepted correction <code>b6fe674f6332a5cfb20bf35568152fe22798f55e</code> to product/source <code>main</code> through merge commit <code>66a3564ab2e7354f0b1c5b0649686611c758f8bc</code>. Records-only <code>a64c9555</code> (Entry 87), <code>d820d307</code> (Entry 88), <code>3c0f6bcc</code> (Entry 89), and <code>528ba3fd</code> (Entry 90), plus rejected CI correction <code>2f22153e</code> (Entry 92), retain their REJECT verdicts. Entry 93 records the accepted direct child; Entry 94 records publication without a self-SHA. This narrow receipt changes no production or package file.</td></tr>
   <tr><td>Packages</td><td>Deterministic candidate archives and provenance are inspected automated evidence only. No candidate was installed, promoted, signed, notarised, or released.</td></tr>
-  <tr><td>CI</td><td>Run <code>30721075874</code> is green evidence for exact <code>main</code> only. Exact-source run <code>30728545428</code> failed for published candidate <code>936659747c351d7a6980a5ce8b377638d07f7a13</code>; the failure remains preserved, and replacement exact-head CI for this correction has not run.</td></tr>
-  <tr><td>Runtime</td><td>The earlier synchronized <code>main</code> source runtime receipt remains historical evidence. This candidate did not restart or alter any runtime.</td></tr>
+  <tr><td>CI</td><td>Failed run <code>30728545428</code> remains red evidence for <code>93665974</code>. Replacement run <a href="https://github.com/mongre25-droid/mumble/actions/runs/30730116960"><code>30730116960</code></a> passed every required job for exact accepted source <code>b6fe674f6332a5cfb20bf35568152fe22798f55e</code>. Cancelled same-source and merge-ref duplicates are not evidence.</td></tr>
+  <tr><td>Runtime</td><td>The earlier synchronized <code>main</code> source runtime receipt remains historical evidence. Publication did not restart or alter the saved checkout or product runtime.</td></tr>
   <tr><td>Physical, release, and owner</td><td>Physical devices/desktops, installed lifecycle, permissions, signing/notarisation, deployment, public release, rollback acceptance, and owner acceptance remain explicitly open.</td></tr>
 </tbody></table>
 
