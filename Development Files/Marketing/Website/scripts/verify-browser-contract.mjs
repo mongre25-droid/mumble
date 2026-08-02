@@ -567,13 +567,13 @@ const routeContracts = [
       Input: /current text passage.*Reader document.*built-in phrase.*test a voice/is,
       'Local stage': /extracts and chunks document text locally.*Reader library.*bookmarks.*provider choice/is,
       Egress: /passage text.*speech model and voice request.*document file and microphone audio are not sent/is,
-      Provider: /OpenRouter or OpenAI.*only within the same provider/is,
+      Provider: /configured OpenRouter or OpenAI.*selected model.*frozen.*one synthesis attempt.*exact pair/is,
       Network: /internet connection.*each text-to-speech request/is,
       'Key or account': /own OpenRouter or OpenAI account.*matching API key.*no speech-provider key/is,
       'External cost': /speech consumes provider credits.*does not include or absorb/is,
       Output: /provider-generated audio.*playback.*progress and bookmarks.*locally/is,
       'User control': /choose provider, model, voice, speed.*device-only mode.*unavailable/is,
-      'Failure boundary': /exhausted credits.*stops speech.*no local speech fallback.*no switch/is,
+      'Failure boundary': /exhausted credits.*stops speech after that one attempt.*no local speech fallback.*no sibling-model fallback.*no switch/is,
     },
   },
   {
@@ -722,7 +722,8 @@ async function privacyRoutes(browser) {
   assert.match(textShapingText, /offline cleanup and mode inference/i);
   assert.match(textShapingText, /missing key|device-only/i);
   assert.match(readerSpeechText, /not local playback/i);
-  assert.match(readerSpeechText, /same provider/i);
+  assert.match(readerSpeechText, /one synthesis attempt with that exact pair/i);
+  assert.match(readerSpeechText, /no sibling-model fallback/i);
   assert.match(findText, /versioned application catalogue/i);
   assert.doesNotMatch(findText, /Google|Perplexity|Brave|Search online/i);
   assert.match(webSearchText, /provider-named confirmation/i);
