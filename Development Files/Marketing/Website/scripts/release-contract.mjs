@@ -155,8 +155,8 @@ export const acceptedReleaseContract = Object.freeze({
     {
       id: 'support',
       label: 'Issue reporting',
-      availability: 'gated',
-      statusLabel: 'Issue reporting is not publicly available while the source repository remains private.',
+      availability: 'available',
+      href: 'https://github.com/mongre25-droid/mumble/issues',
     },
   ],
   integrityGuide: {

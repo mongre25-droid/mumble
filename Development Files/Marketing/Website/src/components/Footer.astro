@@ -2,9 +2,13 @@
 import Logo from './Logo.astro';
 import release from '../data/release.json';
 
+const sourceResource = release.resources.find((resource) => resource.id === 'source');
 const supportResource = release.resources.find((resource) => resource.id === 'support');
-if (!supportResource || !('statusLabel' in supportResource)) {
-  throw new Error('Footer requires the canonical gated support resource');
+if (
+  !sourceResource || !('href' in sourceResource)
+  || !supportResource || supportResource.availability !== 'available' || !('href' in supportResource)
+) {
+  throw new Error('Footer requires canonical public source and support resources');
 }
 ---
 
@@ -33,8 +37,8 @@ if (!supportResource || !('statusLabel' in supportResource)) {
       </div>
       <div>
         <h2>Project</h2>
-        <a href="https://github.com/mongre25-droid/mumble">Repository</a>
-        <span>{supportResource.statusLabel}</span>
+        <a href={sourceResource.href}>Repository</a>
+        <a href={supportResource.href}>{supportResource.label}</a>
         <span>{release.channel.label}</span>
       </div>
     </nav>

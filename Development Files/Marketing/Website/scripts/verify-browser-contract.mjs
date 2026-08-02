@@ -12,6 +12,14 @@ const canonicalJobs = JSON.parse(
 );
 const results = [];
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim() || undefined;
+const publicRepositoryUrl = 'https://github.com/mongre25-droid/mumble';
+const publicIssuesUrl = 'https://github.com/mongre25-droid/mumble/issues';
+const expectedPublicSupport = {
+  id: 'support',
+  label: 'Issue reporting',
+  availability: 'available',
+  href: publicIssuesUrl,
+};
 
 const helpArticleHeadings = [
   'Choose the accepted package',
@@ -175,12 +183,15 @@ async function assertReducedMotion(page, name) {
   }
 }
 
-async function assertPrivateSupportGate(browser) {
+async function assertPublicProjectDestinations(browser) {
   const supportResource = release.resources.find((resource) => resource.id === 'support');
-  assert.equal(supportResource?.availability, 'gated', 'release support resource is not gated');
-  assert.ok(supportResource?.statusLabel, 'release support resource is missing its gated status');
+  assert.deepEqual(
+    supportResource,
+    expectedPublicSupport,
+    'release support resource does not match the independently expected public destination',
+  );
 
-  const routes = ['/', '/privacy/', '/downloads/', '/help/', '/missing-private-support-probe'];
+  const routes = ['/', '/privacy/', '/downloads/', '/help/', '/missing-public-support-probe'];
   for (const javaScriptEnabled of [true, false]) {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
@@ -200,14 +211,43 @@ async function assertPrivateSupportGate(browser) {
             );
           }),
       );
-      assert.deepEqual(
-        issueLinks,
-        [],
-        `${route} exposes private issue reporting with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
+      assert.ok(
+        issueLinks.length >= 1,
+        `${route} omits public issue reporting with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
       );
       assert.ok(
-        await page.getByText(supportResource.statusLabel, { exact: true }).count(),
-        `${route} omits the canonical private-support status with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
+        issueLinks.every((href) => href === publicIssuesUrl),
+        `${route} exposes a non-canonical issue-reporting destination`,
+      );
+      assert.equal(
+        await page.locator(`footer a[href="${publicIssuesUrl}"]`).count(),
+        1,
+        `${route} footer omits canonical issue reporting with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
+      );
+      assert.equal(
+        await page.locator(`footer a[href="${publicRepositoryUrl}"]`).count(),
+        1,
+        `${route} footer omits public source inspection with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
+      );
+      if (route === '/downloads/') {
+        assert.equal(
+          await page.locator(`.release-resources a[href="${publicIssuesUrl}"]`).count(),
+          1,
+          `Downloads resources omit canonical issue reporting with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
+        );
+      }
+      if (route === '/missing-public-support-probe') {
+        assert.equal(
+          await page.locator(`.not-found a[href="${publicIssuesUrl}"]`).count(),
+          1,
+          `404 recovery omits canonical issue reporting with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
+        );
+      }
+      assert.equal(await page.locator('a[href^="mailto:"]').count(), 0, `${route} invents a support email`);
+      assert.doesNotMatch(
+        await page.locator('body').innerText(),
+        /source repository remains private|issue reporting is not publicly available|no public support or defect-reporting route/i,
+        `${route} retains stale private-repository support copy`,
       );
     }
     await context.close();
@@ -707,12 +747,25 @@ async function helpJourney(browser) {
   assert.match(helpText, /Publisher signature.+Not accepted/is);
   assert.match(helpText, /70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493/i);
   assert.doesNotMatch(helpText, /Mumble Search/i);
-  assert.doesNotMatch(helpText, /public issue tracker/i);
-  assert.match(helpText, /Issue reporting is not publicly available while the source repository remains private/i);
+  assert.match(helpText, /public GitHub tracker for support and defect reports/i);
+  assert.doesNotMatch(
+    helpText,
+    /source repository remains private|issue reporting is not publicly available|no public support or defect-reporting route/i,
+  );
   assert.equal(
-    await page.locator('a[href="https://github.com/mongre25-droid/mumble/issues"]').count(),
-    0,
-    'Help exposes a gated issue-reporting destination as an active link',
+    await page.locator(`#release-source a[href="${publicIssuesUrl}"]`).count(),
+    1,
+    'Help release/source guidance omits point-of-need public issue reporting',
+  );
+  assert.equal(
+    await page.locator(`.help-category-grid a[href="${publicIssuesUrl}"]`).count(),
+    1,
+    'Help project taxonomy omits public issue reporting',
+  );
+  assert.equal(
+    await page.locator(`.help-empty a[href="${publicIssuesUrl}"]`).count(),
+    1,
+    'Help empty-search recovery omits public issue reporting',
   );
 
   const installText = await page.locator('#install-windows').innerText();
@@ -763,7 +816,7 @@ async function helpJourney(browser) {
   await noHorizontalOverflow(page, 'desktop Help');
   assertNoBrowserErrors(browserErrors, 'desktop Help browser errors');
   await context.close();
-  record('Help search enhancement, canonical job authority, actual Island outcome labels, truthful gated issue reporting, platform gates, shortcuts, recovery, reduced motion, and keyboard focus');
+  record('Help search enhancement, canonical job authority, actual Island outcome labels, public source and issue reporting, platform gates, shortcuts, recovery, reduced motion, and keyboard focus');
 }
 
 async function mobileHelpJourney(browser) {
@@ -1215,7 +1268,7 @@ try {
   console.log(`Browser executable route: ${executablePath ?? 'Playwright-managed Chromium'}`);
   browser = await chromium.launch({ headless: true, executablePath });
   console.log(`Browser version: ${browser.version()}`);
-  await assertPrivateSupportGate(browser);
+  await assertPublicProjectDestinations(browser);
   await assertAcceptedPageGeometry(browser);
   await desktopJourney(browser);
   await helpJourney(browser);

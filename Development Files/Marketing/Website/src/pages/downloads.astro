@@ -66,15 +66,8 @@ const formatSize = (sizeBytes: number | null) => (
       <span>Release resources</span>
       <ul>
         {release.resources.map((resource) => (
-          <li class:list={{ 'release-resource-gated': !('href' in resource) }}>
-            {'href' in resource ? (
-              <a href={resource.href}>{resource.label}</a>
-            ) : (
-              <span class="release-resource-status">
-                <strong>{resource.label}</strong>
-                <small>{resource.statusLabel}</small>
-              </span>
-            )}
+          <li>
+            <a href={resource.href}>{resource.label}</a>
           </li>
         ))}
       </ul>

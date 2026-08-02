@@ -1,5 +1,11 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import release from '../data/release.json';
+
+const supportResource = release.resources.find((resource) => resource.id === 'support');
+if (!supportResource || supportResource.availability !== 'available' || !('href' in supportResource)) {
+  throw new Error('Not-found recovery requires the canonical public support resource');
+}
 ---
 
 <BaseLayout
@@ -11,10 +17,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   <section class="not-found shell" aria-labelledby="not-found-title">
     <span>404</span>
     <h1 id="not-found-title">That path is not part of the current site.</h1>
-    <p>Continue with the product overview or inspect the complete current desktop download status.</p>
+    <p>Continue with the product overview, inspect the current desktop download status, or report a missing public route.</p>
     <div>
       <a class="button button-primary" href="/">Go to Home</a>
       <a class="button button-quiet" href="/downloads/">View Downloads</a>
+      <a class="button button-quiet" href={supportResource.href}>{supportResource.label}</a>
     </div>
   </section>
 </BaseLayout>

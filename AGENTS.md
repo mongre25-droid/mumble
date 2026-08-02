@@ -8,7 +8,7 @@ This small root file exists because agent tools discover `AGENTS.md` from the re
 
 ### Issue tracker
 
-Substantial work, specifications, and decisions are tracked in this repository's private GitHub Issues. See `docs/agents/issue-tracker.md`.
+Substantial work, specifications, and decisions are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

@@ -12,9 +12,13 @@ if (!windows || !windowsVariant?.integrity || !macos || !linux) {
   throw new Error('Help requires complete accepted platform authority');
 }
 
+const sourceResource = release.resources.find((resource) => resource.id === 'source');
 const supportResource = release.resources.find((resource) => resource.id === 'support');
-if (!supportResource || !('statusLabel' in supportResource)) {
-  throw new Error('Help requires the canonical gated support resource');
+if (
+  !sourceResource || !('href' in sourceResource)
+  || !supportResource || supportResource.availability !== 'available' || !('href' in supportResource)
+) {
+  throw new Error('Help requires canonical public source and support resources');
 }
 
 const jobGuidance = {
@@ -132,8 +136,8 @@ const helpJobs = jobs.map((job) => {
           <h3>Project truth</h3>
           <a href="#release-source">Release and source status</a>
           <a href="/downloads/#release-notes-title">Release notes</a>
-          <a href="https://github.com/mongre25-droid/mumble">Source repository</a>
-          <span class="help-category-status">{supportResource.statusLabel}</span>
+          <a href={sourceResource.href}>Source repository</a>
+          <a href={supportResource.href}>{supportResource.label}</a>
         </div>
       </nav>
     </div>
@@ -341,9 +345,9 @@ const helpJobs = jobs.map((job) => {
           <p><strong>{release.publication.label}.</strong> {release.publication.reason}</p>
           <ul>
             <li><a href="/downloads/#release-notes-title">Release notes</a> reports that this candidate has no published public-release notes.</li>
-            <li><a href="https://github.com/mongre25-droid/mumble">Source repository</a> is the technical project path; public availability must still be read from the current repository state.</li>
+            <li><a href={sourceResource.href}>Source repository</a> is the public technical project path.</li>
             <li><a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE">MIT licence</a> defines the project licence.</li>
-            <li><strong>{supportResource.statusLabel}</strong> No public support or defect-reporting route is currently claimed.</li>
+            <li><a href={supportResource.href}>{supportResource.label}</a> opens the public GitHub tracker for support and defect reports.</li>
           </ul>
         </div>
       </article>
@@ -351,7 +355,7 @@ const helpJobs = jobs.map((job) => {
 
     <section class="help-empty" data-help-search-empty hidden aria-labelledby="help-empty-title">
       <h2 id="help-empty-title">No help topic matched that search.</h2>
-      <p>Clear the search to browse every category. {supportResource.statusLabel}</p>
+      <p>Clear the search to browse every category. If a maintained guide is missing, <a href={supportResource.href}>report it through the public issue tracker</a>.</p>
     </section>
   </section>
 

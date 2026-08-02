@@ -35,11 +35,11 @@ The current tracer bullet exposes only complete destinations:
    for macOS and Linux from one release authority.
 4. Help provides a searchable, task-led Getting Started path, accepted platform
    status, shortcut and insertion recovery, and complete static topic browsing.
-5. The not-found page returns visitors to Home or Downloads.
+5. The not-found page returns visitors to Home, Downloads, or public issue reporting.
 
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,
-release notes, visitor resources, gated support status, and recommendation labels
+release notes, visitor resources, public source and issue-reporting destinations, and recommendation labels
 are in `src/data/release.json`.
 `npm.cmd run build` fails closed when that authority drifts from source version or
 the canonical and public Windows artifact bytes.

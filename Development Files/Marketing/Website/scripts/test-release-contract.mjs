@@ -76,12 +76,12 @@ assert.deepEqual(
   {
     id: 'support',
     label: 'Issue reporting',
-    availability: 'gated',
-    statusLabel: 'Issue reporting is not publicly available while the source repository remains private.',
+    availability: 'available',
+    href: 'https://github.com/mongre25-droid/mumble/issues',
   },
-  'private support must remain a gated release resource without a visitor link',
+  'public issue reporting must remain an active exact release resource',
 );
-console.log('PASS private support release resource is gated');
+console.log('PASS public issue-reporting resource is active');
 passCount += 1;
 
 passes(
@@ -263,19 +263,19 @@ rejects(
   /must be a safe Mumble destination/,
 );
 rejects(
-  'private support cannot become an available visitor resource',
-  changed((candidate) => {
-    candidate.resources.find((resource) => resource.id === 'support').availability = 'available';
-  }),
-  /resources\[5\]\.availability must remain "gated"/,
-);
-rejects(
-  'private support cannot acquire an active issue-tracker destination',
+  'active public support cannot lose its exact issue-tracker destination',
   changed((candidate) => {
     candidate.resources.find((resource) => resource.id === 'support').href =
-      'https://github.com/mongre25-droid/mumble/issues';
+      'https://github.com/mongre25-droid/mumble';
   }),
-  /resources\[5\] keys must remain/,
+  /resources\[5\]\.href must remain "https:\/\/github\.com\/mongre25-droid\/mumble\/issues"/,
+);
+rejects(
+  'a gated support resource cannot retain an active visitor destination',
+  changed((candidate) => {
+    candidate.resources.find((resource) => resource.id === 'support').availability = 'gated';
+  }),
+  /resources\[5\]\.availability must remain "available"/,
 );
 rejects(
   'integrity guidance cannot silently lose a verification step',
