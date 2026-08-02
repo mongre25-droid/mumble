@@ -9,10 +9,17 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
+import pytest
+
 
 AUTHORITY_ID = "mumble-current-state"
 AUTHORITY_SCHEMA = "mumble.current-state.v1"
 PROJECTION_SCHEMA = "mumble.current-state-projection.v1"
+_RAW_MARKED_DECLARATION = re.compile(r"<!\s*\[")
+_MARKED_DECLARATION = re.compile(r"<!\s*\[\s*[A-Za-z][A-Za-z0-9_.:-]*\s*\[")
+_MARKED_DECLARATION_ERROR = (
+    "marked or unknown declarations are not allowed in canonical STATUS"
+)
 
 _EXPECTED_FIELDS = {
     "schema": AUTHORITY_SCHEMA,
@@ -621,9 +628,7 @@ class _AuthorityHTMLParser(HTMLParser):
         )
 
     def unknown_decl(self, data: str) -> None:
-        raise CurrentStatusContractError(
-            "marked or unknown declarations are not allowed in canonical STATUS"
-        )
+        raise CurrentStatusContractError(_MARKED_DECLARATION_ERROR)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attribute_names = [name for name, _value in attrs]
@@ -737,6 +742,11 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def parse_current_status(status_html: str) -> CurrentStatus:
     """Parse and strictly validate the sole authoritative current-state record."""
+
+    if _RAW_MARKED_DECLARATION.search(status_html):
+        if _MARKED_DECLARATION.search(status_html):
+            raise CurrentStatusContractError(_MARKED_DECLARATION_ERROR)
+        raise CurrentStatusContractError("STATUS contains a malformed HTML declaration")
 
     parser = _AuthorityHTMLParser()
     try:
@@ -906,3 +916,36 @@ def test_every_present_state_row_agrees_with_the_canonical_authority() -> None:
 
     assert set(parser.projections) == set(_PROJECTION_TAGS)
     _validate_projections(parser.projections, current)
+
+
+@pytest.mark.parametrize("dispatch_method", ("unknown_decl", "handle_comment"))
+@pytest.mark.parametrize(
+    "attack",
+    (
+        "<![CDATA[conflicting current status]]>",
+        "<! [bOgUs[conflicting current status]]>",
+    ),
+)
+def test_marked_declaration_error_is_stable_across_parser_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    dispatch_method: str,
+    attack: str,
+) -> None:
+    status_path = (
+        Path(__file__).resolve().parents[2]
+        / "Development Files"
+        / "Core"
+        / "STATUS.html"
+    )
+    status = status_path.read_text(encoding="utf-8")
+    mutated = status.replace("<body>", f"<body>{attack}", 1)
+    simulated_dispatch = getattr(_AuthorityHTMLParser, dispatch_method)
+    monkeypatch.setattr(_AuthorityHTMLParser, "unknown_decl", simulated_dispatch)
+
+    with pytest.raises(
+        CurrentStatusContractError,
+        match="marked or unknown declarations are not allowed in canonical STATUS",
+    ) as caught:
+        parse_current_status(mutated)
+
+    assert type(caught.value) is CurrentStatusContractError
