@@ -611,7 +611,8 @@ def test_durable_records_separate_green_ci_from_physical_and_release_gates():
     assert current.rejected_records_candidates == (
         "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,"
         "21c21567029b1232e07ba85ca4d196820f3cfed9,"
-        "7a2e239d6c152413b9404844b681634436c79061"
+        "7a2e239d6c152413b9404844b681634436c79061,"
+        "befe0529533944300a323728f93d38d6dd8a59cd"
     )
     assert current.publication_action_at_commit == "not-yet-pushed"
     assert current.final_receipt_ci_at_commit == "not-run"
@@ -623,8 +624,8 @@ def test_durable_records_separate_green_ci_from_physical_and_release_gates():
     assert current.artifact_promotion_status == "not-run"
     assert current.public_release_status == "not-run"
     assert current.owner_acceptance_status == "not-run"
-    assert 'id="entry-99"' in logs
-    assert 'data-evidence-boundary="stable-symbolic-publication-receipt"' in logs
+    assert 'id="entry-100"' in logs
+    assert 'data-evidence-boundary="accepted-review-history-correction"' in logs
     assert current.review_task in logs
     assert current.review_subject in logs
     assert "PR #49" in logs

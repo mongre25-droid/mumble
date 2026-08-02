@@ -38,7 +38,7 @@ _EXPECTED_FIELDS = {
     "predecessor_records_ci_run": "30730441394",
     "predecessor_records_ci_status": "passed",
     "predecessor_records_review_status": "rejected",
-    "rejected_records_candidates": "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,21c21567029b1232e07ba85ca4d196820f3cfed9,7a2e239d6c152413b9404844b681634436c79061",
+    "rejected_records_candidates": "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,21c21567029b1232e07ba85ca4d196820f3cfed9,7a2e239d6c152413b9404844b681634436c79061,befe0529533944300a323728f93d38d6dd8a59cd",
     "rejected_records_candidates_status": "rejected",
     "publication_action_at_commit": "not-yet-pushed",
     "final_receipt_ci_at_commit": "not-run",
@@ -65,9 +65,9 @@ _EXPECTED_FIELDS = {
     "windows_package_sha256": "70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493",
     "failed_ci_run": "30728545428",
     "cancelled_ci_runs": "30728750267,30730118039,30730292106",
-    "document_structure_sha256": "B2EAD57D2CDB598F5F56D6D85ABCBB589EA0A96808AFD56235CAFEF002A13835",
+    "document_structure_sha256": "6917609244202E3C118A4602E1DDEDD50E177458B8A010C39C193D6A05B79D1F",
     "non_projection_text_sha256": "7DF73E89BE7E3FD9F36B8CE8426E2FB60E96E2A8052D7C9A8BDB68CB85AEB07B",
-    "current_record": "Entry 99",
+    "current_record": "Entry 100",
     "pr_number": "49",
     "pr_status": "merged",
     "merge_status": "merged",
@@ -378,7 +378,9 @@ def _expected_projection_attributes(current: CurrentStatus) -> dict[str, dict[st
 def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
     open_issues = ", ".join(f"#{issue}" for issue in current.open_issues.split(","))
     cancelled_runs = ", ".join(current.cancelled_ci_runs.split(","))
-    rejected_records = ", ".join(current.rejected_records_candidates.split(","))
+    rejected_candidates = current.rejected_records_candidates.split(",")
+    rejected_records = ", ".join(rejected_candidates)
+    rejected_receipt = rejected_candidates[-1]
     gate_statuses = (
         f"package install={current.package_install_status}; runtime restart="
         f"{current.runtime_restart_status}; physical={current.physical_status}; permissions="
@@ -400,6 +402,13 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
         f"authority is {current.final_receipt_ci_live_authority}; later push and CI outcomes "
         f"come from {current.target_ref} and GitHub checks, not a rewritten Core claim."
     )
+    review_history_text = (
+        f"Receipt predecessor {current.review_subject} has review status "
+        f"{current.review_status} under task {current.review_task}: no P0–P2 findings and "
+        f"one non-blocking P3 for raw AssertionError leakage. Rejected receipt "
+        f"{rejected_receipt} corrected that P3 and is rejected solely for misreporting "
+        f"the predecessor review."
+    )
     return {
         "opening": (
             f"Current truth Mumble {current.product_version} publication receipt. {scope_text} "
@@ -414,8 +423,7 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
             f"{current.predecessor_records_ci_status} and independent semantic review status "
             f"{current.predecessor_records_review_status}. Records correction chain "
             f"{rejected_records} has status {current.rejected_records_candidates_status}. "
-            f"Receipt predecessor {current.review_subject} has review status "
-            f"{current.review_status} under task {current.review_task}. "
+            f"{review_history_text} "
             f"{current.current_record} records the symbolic non-self-referential receipt. "
             f"{receipt_ci_text} Package build status is {current.package_build_status}; "
             f"{gate_statuses}. Issues {open_issues} remain open."
@@ -445,8 +453,7 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
             f"{current.predecessor_records_ci_status} and review status "
             f"{current.predecessor_records_review_status}. Records correction chain "
             f"{rejected_records} has status {current.rejected_records_candidates_status}. "
-            f"Receipt predecessor {current.review_subject} has review status "
-            f"{current.review_status} under task {current.review_task}. "
+            f"{review_history_text} "
             f"{current.current_record} records the symbolic containing-commit receipt. "
             f"{receipt_ci_text} Product tree={current.product_tree_status}; package tree="
             f"{current.package_tree_status}; workflow={current.workflow_status}; installers="
@@ -494,8 +501,7 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
             f"{current.predecessor_published_records_head} has run "
             f"{current.predecessor_records_ci_run} status "
             f"{current.predecessor_records_ci_status} and review status "
-            f"{current.predecessor_records_review_status}. Receipt predecessor "
-            f"{current.review_subject} has review status {current.review_status}. "
+            f"{current.predecessor_records_review_status}. {review_history_text} "
             f"{receipt_ci_text} {gate_statuses}. Acceptance gates are "
             f"{current.acceptance_gates}."
         ),
@@ -510,8 +516,7 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
             f"records head {current.predecessor_published_records_head} has run "
             f"{current.predecessor_records_ci_run} status "
             f"{current.predecessor_records_ci_status} and review status "
-            f"{current.predecessor_records_review_status}. Receipt predecessor "
-            f"{current.review_subject} review status is {current.review_status}. "
+            f"{current.predecessor_records_review_status}. {review_history_text} "
             f"At commit time, publication action was {current.publication_action_at_commit} and "
             f"final receipt CI was {current.final_receipt_ci_at_commit}; later CI authority is "
             f"{current.final_receipt_ci_live_authority}. Package install="
@@ -532,8 +537,7 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
             f"{current.predecessor_records_ci_status}; predecessor review status is "
             f"{current.predecessor_records_review_status}. Records correction chain "
             f"{rejected_records} has status {current.rejected_records_candidates_status}. "
-            f"Receipt predecessor {current.review_subject} review status is "
-            f"{current.review_status} under task {current.review_task}. "
+            f"{review_history_text} "
             f"{current.current_record} records the symbolic receipt. {receipt_ci_text} "
             f"{gate_statuses}."
         ),
@@ -808,12 +812,12 @@ def parse_current_status(status_html: str) -> CurrentStatus:
             "the predecessor published records parent must be the source merge"
         )
     rejected_candidates = fields["rejected_records_candidates"].split(",")
-    if len(rejected_candidates) != 3 or any(
+    if len(rejected_candidates) != 4 or any(
         not re.fullmatch(r"[0-9a-f]{40}", candidate)
         for candidate in rejected_candidates
     ):
         raise CurrentStatusContractError(
-            "the rejected records correction chain must contain three exact commit identities"
+            "the rejected records correction chain must contain four exact commit identities"
         )
     if fields["review_subject"] in rejected_candidates:
         raise CurrentStatusContractError(
@@ -884,7 +888,7 @@ def test_current_status_contract_accepts_the_canonical_authority() -> None:
 
     current = parse_current_status(status_path.read_text(encoding="utf-8"))
 
-    assert current.current_record == "Entry 99"
+    assert current.current_record == "Entry 100"
 
 
 def test_every_present_state_row_agrees_with_the_canonical_authority() -> None:

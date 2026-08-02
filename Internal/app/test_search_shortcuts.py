@@ -969,7 +969,8 @@ class CoreCurrentTruthTests(unittest.TestCase):
             current.rejected_records_candidates,
             "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,"
             "21c21567029b1232e07ba85ca4d196820f3cfed9,"
-            "7a2e239d6c152413b9404844b681634436c79061",
+            "7a2e239d6c152413b9404844b681634436c79061,"
+            "befe0529533944300a323728f93d38d6dd8a59cd",
         )
         self.assertEqual(current.publication_action_at_commit, "not-yet-pushed")
         self.assertEqual(current.final_receipt_ci_at_commit, "not-run")
@@ -982,10 +983,10 @@ class CoreCurrentTruthTests(unittest.TestCase):
         self.assertEqual(current.signing_status, "not-run")
         self.assertEqual(current.public_release_status, "not-run")
         self.assertEqual(current.owner_acceptance_status, "not-run")
-        self.assertEqual(current.current_record, "Entry 99")
-        self.assertIn('id="entry-99"', logs)
+        self.assertEqual(current.current_record, "Entry 100")
+        self.assertIn('id="entry-100"', logs)
         self.assertIn(
-            'data-evidence-boundary="stable-symbolic-publication-receipt"', logs
+            'data-evidence-boundary="accepted-review-history-correction"', logs
         )
         accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",

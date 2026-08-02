@@ -9,6 +9,7 @@ from test_core_status_support import CurrentStatusContractError, parse_current_s
 
 ROOT = Path(__file__).resolve().parents[2]
 STATUS_PATH = ROOT / "Development Files" / "Core" / "STATUS.html"
+LOGS_PATH = ROOT / "Development Files" / "Core" / "LOGS.html"
 
 
 def _status_html() -> str:
@@ -487,7 +488,8 @@ def test_current_status_uses_stable_symbolic_publication_semantics() -> None:
     assert current.rejected_records_candidates == (
         "bf778c698064023bd3fe8e33abb8a1093c1dd8a0,"
         "21c21567029b1232e07ba85ca4d196820f3cfed9,"
-        "7a2e239d6c152413b9404844b681634436c79061"
+        "7a2e239d6c152413b9404844b681634436c79061,"
+        "befe0529533944300a323728f93d38d6dd8a59cd"
     )
     assert current.predecessor_published_records_head == (
         "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f"
@@ -498,4 +500,21 @@ def test_current_status_uses_stable_symbolic_publication_semantics() -> None:
     assert current.publication_action_at_commit == "not-yet-pushed"
     assert current.final_receipt_ci_at_commit == "not-run"
     assert current.final_receipt_ci_live_authority == "github-checks-for-@self"
-    assert current.current_record == "Entry 99"
+    assert current.current_record == "Entry 100"
+
+
+def test_current_receipt_preserves_the_accepted_predecessor_p3_history() -> None:
+    current = parse_current_status(_status_html())
+    logs = LOGS_PATH.read_text(encoding="utf-8")
+
+    assert current.review_subject == "704921eb61014ac4d5b0f01a0399defab3028882"
+    assert current.review_status == "accepted"
+    assert current.rejected_records_candidates.endswith(
+        ",befe0529533944300a323728f93d38d6dd8a59cd"
+    )
+    assert current.current_record == "Entry 100"
+    entry_100 = logs.split('id="entry-100"', 1)[1].split("</ul>", 1)[0]
+    assert "no P0&ndash;P2 findings and one non-blocking P3" in entry_100
+    assert "raw <code>AssertionError</code> leakage" in entry_100
+    assert "befe0529533944300a323728f93d38d6dd8a59cd" in entry_100
+    assert "rejected solely for misreporting the predecessor review" in entry_100
