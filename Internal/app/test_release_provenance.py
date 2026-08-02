@@ -24,18 +24,21 @@ def _load_module():
     return module
 
 
-def _windows_members():
+def _windows_members(profile_lock_path=None):
     app = ROOT / "Internal" / "app"
     legal = ROOT / "Development Files" / "Legal"
     prefix = "Internal/app/"
+    profile_lock = profile_lock_path or (
+        app / "requirements-lock-win-x86_64-cp313.txt"
+    )
     return {
         "Mumble.exe": (b"launcher", 0o644),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
         "RELEASE-INVENTORY.json": _packaged_text(legal / "release-inventory.json"),
         "DEPENDENCY-CLOSURE.json": _packaged_text(legal / "dependency-lock.json"),
-        prefix + "requirements-lock-win-x86_64-cp313.txt": (
-            app / "requirements-lock-win-x86_64-cp313.txt"
-        ).read_bytes(),
+        prefix + "requirements-lock-win-x86_64-cp313.txt": _packaged_text(
+            profile_lock
+        ),
         prefix + "THIRD_PARTY_NOTICES.md": (app / "THIRD_PARTY_NOTICES.md").read_bytes(),
         prefix + "licenses/computer_control/Apache-2.0.txt": (
             app / "licenses" / "computer_control" / "Apache-2.0.txt"
@@ -142,6 +145,33 @@ def test_generate_and_validate_complete_canonical_provenance():
     assert decoded["downloadable_artifacts"]["models"]
     assert decoded["downloadable_artifacts"]["tokenizers"]
     assert decoded["evidence"]["physical"]["status"] == "unavailable"
+
+
+def test_lf_and_crlf_profile_lock_checkouts_generate_identical_provenance(tmp_path):
+    module = _load_module()
+    canonical = subprocess.run(
+        [
+            "git",
+            "show",
+            "HEAD:Internal/app/requirements-lock-win-x86_64-cp313.txt",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout
+    assert canonical.endswith(b"\n")
+    assert b"\r" not in canonical
+    lf_lock = tmp_path / "lf-lock.txt"
+    crlf_lock = tmp_path / "crlf-lock.txt"
+    lf_lock.write_bytes(canonical)
+    crlf_lock.write_bytes(canonical.replace(b"\n", b"\r\n"))
+
+    lf_members = _windows_members(lf_lock)
+    crlf_members = _windows_members(crlf_lock)
+    lock_name = "Internal/app/requirements-lock-win-x86_64-cp313.txt"
+    assert lf_members[lock_name] == canonical
+    assert crlf_members[lock_name] == canonical
+    assert _generate(module, lf_members) == _generate(module, crlf_members)
 
 
 def test_validation_rejects_stale_source_and_member_hash():
