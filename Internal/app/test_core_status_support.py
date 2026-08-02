@@ -21,6 +21,7 @@ _MARKED_DECLARATION_ERROR = (
     "marked or unknown declarations are not allowed in canonical STATUS"
 )
 _RAW_TEXT_ELEMENTS = frozenset({"script", "style", "title", "textarea"})
+_HTML_SPACE = frozenset(" \t\n\f\r")
 
 _EXPECTED_FIELDS = {
     "schema": AUTHORITY_SCHEMA,
@@ -104,6 +105,28 @@ def _tag_token_end(status_html: str, start: int) -> int | None:
     return None
 
 
+def _appropriate_raw_text_end_tag_end(
+    status_html: str,
+    start: int,
+    element: str,
+) -> int | None:
+    search_from = start
+    while True:
+        opening = status_html.find("</", search_from)
+        if opening < 0:
+            return None
+        name_start = opening + 2
+        name_end = name_start + len(element)
+        if (
+            status_html[name_start:name_end].lower() != element
+            or name_end >= len(status_html)
+            or status_html[name_end] not in _HTML_SPACE | {"/", ">"}
+        ):
+            search_from = name_start
+            continue
+        return _tag_token_end(status_html, opening)
+
+
 def _markup_data_marked_declaration_kind(status_html: str) -> str | None:
     """Return the marked-declaration kind found in ordinary markup data only."""
 
@@ -146,17 +169,15 @@ def _markup_data_marked_declaration_kind(status_html: str) -> str | None:
 
         is_end_tag = bool(tag_match.group(1))
         tag = tag_match.group(2).lower()
-        token = status_html[opening : token_end - 1]
-        is_self_closing = token.rstrip().endswith("/")
-        if not is_end_tag and not is_self_closing and tag in _RAW_TEXT_ELEMENTS:
-            closing = re.search(
-                rf"</\s*{re.escape(tag)}\s*>",
-                status_html[token_end:],
-                flags=re.IGNORECASE,
+        if not is_end_tag and tag in _RAW_TEXT_ELEMENTS:
+            raw_end = _appropriate_raw_text_end_tag_end(
+                status_html,
+                token_end,
+                tag,
             )
-            if closing is None:
+            if raw_end is None:
                 return None
-            index = token_end + closing.end()
+            index = raw_end
             continue
 
         index = token_end
@@ -1180,3 +1201,63 @@ def test_non_marked_declarations_remain_owned_by_the_html_contract(
 
     with pytest.raises(CurrentStatusContractError, match=re.escape(expected_error)):
         parse_current_status(mutated)
+
+
+@pytest.mark.parametrize("element", ("script", "style", "title", "textarea"))
+def test_raw_text_elements_ignore_an_apparent_self_closing_start_tag(
+    element: str,
+) -> None:
+    status = (
+        f"<{element}/>literal <![CDATA[still raw text]]>"
+        f"</{element}><p>ordinary data</p>"
+    )
+
+    assert _markup_data_marked_declaration_kind(status) is None
+
+
+@pytest.mark.parametrize("element", ("script", "style", "title", "textarea"))
+@pytest.mark.parametrize(
+    "end_suffix",
+    (
+        ">",
+        "/>",
+        " ignored>",
+        " data-note='ignored > value'>",
+        '\tdata-note="ignored">',
+    ),
+)
+def test_appropriate_raw_end_tag_forms_resume_markup_data(
+    element: str,
+    end_suffix: str,
+) -> None:
+    status = (
+        f"<{element}>literal <![CDATA[still raw text]]>"
+        f"</{element.upper()}{end_suffix}"
+        "<![IGNORE[real declaration]]>"
+    )
+
+    assert _markup_data_marked_declaration_kind(status) == "marked"
+
+
+@pytest.mark.parametrize("element", ("script", "style", "title", "textarea"))
+@pytest.mark.parametrize("invalid_suffix", ("x>", "!>", "-other>", "\u00a0>"))
+def test_near_miss_raw_end_tags_do_not_leave_raw_text(
+    element: str,
+    invalid_suffix: str,
+) -> None:
+    status = (
+        f"<{element}>literal</{element}{invalid_suffix}"
+        f"<![CDATA[still raw text]]></{element}>"
+    )
+
+    assert _markup_data_marked_declaration_kind(status) is None
+
+
+@pytest.mark.parametrize("element", ("script", "style", "title", "textarea"))
+def test_unclosed_appropriate_raw_end_tag_remains_raw_text(element: str) -> None:
+    status = (
+        f"<{element}>literal</{element.upper()} data-note='unterminated "
+        "<![CDATA[still raw text]]>"
+    )
+
+    assert _markup_data_marked_declaration_kind(status) is None
