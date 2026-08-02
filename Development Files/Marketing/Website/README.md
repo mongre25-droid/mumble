@@ -29,11 +29,13 @@ The current tracer bullet exposes only complete destinations:
 
 1. Home introduces the local-first offer, one accepted product capture, the five
    canonical jobs, privacy boundaries, and the current release position.
-2. Downloads presents the hash-bound Windows candidate and visible gated states
+2. Privacy explains Local Transcription and Mumble Find through complete semantic
+   routes while keeping optional provider-named Web Search visibly separate.
+3. Downloads presents the hash-bound Windows candidate and visible gated states
    for macOS and Linux from one release authority.
-3. Help provides a searchable, task-led Getting Started path, accepted platform
+4. Help provides a searchable, task-led Getting Started path, accepted platform
    status, shortcut and insertion recovery, and complete static topic browsing.
-4. The not-found page returns visitors to Home or Downloads.
+5. The not-found page returns visitors to Home or Downloads.
 
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,

@@ -504,6 +504,8 @@ async function downloadsContract(browser) {
   await reducedContext.close();
 
   record('Downloads full platform matrix, authority facts, gated variants, resources, history, no-mobile-app promise, focus, reduced motion, JavaScript/no-JavaScript, and horizontal fit');
+}
+
 async function helpJourney(browser) {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
@@ -584,7 +586,7 @@ async function helpJourney(browser) {
 
   const expectedDestinations = new Map([
     ['Downloads', '/downloads/'],
-    ['Privacy boundaries', '/#privacy'],
+    ['Privacy boundaries', '/privacy/'],
     ['Product overview', '/#jobs'],
     ['Release notes', '/downloads/#release-notes-title'],
     ['Source repository', 'https://github.com/mongre25-droid/mumble'],

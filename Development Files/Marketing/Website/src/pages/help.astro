@@ -7,7 +7,8 @@ import '../styles/help.css';
 const windows = release.platforms.find((platform) => platform.id === 'windows');
 const macos = release.platforms.find((platform) => platform.id === 'macos');
 const linux = release.platforms.find((platform) => platform.id === 'linux');
-if (!windows || !windows.integrity || !macos || !linux) {
+const windowsVariant = windows?.variants.find((variant) => variant.availability === 'candidate');
+if (!windows || !windowsVariant?.integrity || !macos || !linux) {
   throw new Error('Help requires complete accepted platform authority');
 }
 
@@ -146,7 +147,7 @@ const helpJobs = jobs.map((job) => {
         <h3>Choose the accepted package</h3>
         <div class="help-article-body">
           <p>
-            The current website authority exposes one hash-bound <strong>{windows.label}</strong> {windows.format} candidate for <strong>{windows.architecture}</strong>. It is inspectable here, but {windows.gate.toLowerCase()}
+            The current website authority exposes one hash-bound <strong>{windows.label}</strong> {windowsVariant.format} candidate for <strong>{windowsVariant.architecture}</strong>. It is inspectable here, but {windows.gate.toLowerCase()}
           </p>
           <p>
             macOS and Linux have no accepted website artifact. Their source and packaging work does not create an installation path, signed package, or public release.
@@ -159,7 +160,7 @@ const helpJobs = jobs.map((job) => {
           <div>
             <strong>Requirements before you continue</strong>
             <ul>
-              {windows.requirements.map((requirement) => <li>{requirement}</li>)}
+              {windowsVariant.requirements.map((requirement) => <li>{requirement}</li>)}
             </ul>
           </div>
           <p><a href="/downloads/">Downloads</a> keeps the exact size, format, requirements, integrity value, and every gated platform state together.</p>
@@ -171,14 +172,14 @@ const helpJobs = jobs.map((job) => {
         <div class="help-article-body">
           <p class="help-notice"><strong>{release.publication.label}.</strong> These steps describe the repository candidate's tracked procedure. They do not claim a clean installed-machine pass, signing, deployment, or public-release acceptance.</p>
           <ol class="help-instructions">
-            <li><p><strong>Verify the download.</strong> Compare its SHA-256 with <code>{windows.integrity.value}</code>. If it differs, stop and download the candidate again from <a href="/downloads/#windows">Downloads</a>.</p></li>
-            <li><p><strong>Extract the complete {windows.format}.</strong> Do not run Mumble inside the archive. Move the whole extracted Mumble folder to a permanent location before setup; moving it later can break its shortcuts.</p></li>
+            <li><p><strong>Verify the download.</strong> Compare its SHA-256 with <code>{windowsVariant.integrity.value}</code>. If it differs, stop and download the candidate again from <a href="/downloads/#windows">Downloads</a>.</p></li>
+            <li><p><strong>Extract the complete {windowsVariant.format}.</strong> Do not run Mumble inside the archive. Move the whole extracted Mumble folder to a permanent location before setup; moving it later can break its shortcuts.</p></li>
             <li><p><strong>Start the tracked installer.</strong> In the extracted folder, double-click <kbd>Install Mumble.bat</kbd>. The packaged procedure is designed to locate its installer, prepare the pinned Python/dependency environment, create shortcuts, and start Mumble.</p></li>
             <li><p><strong>Wait for model readiness.</strong> Setup attempts the pinned <kbd>small.en</kbd> speech-model download and prints <kbd>model ready</kbd>. If it reports that the model will download on first use instead, keep the first-time internet requirement available and let that download finish before judging dictation.</p></li>
             <li><p><strong>Look for completion, not assumption.</strong> Continue only after setup reports <kbd>All done</kbd> and Mumble appears in the Windows system tray. If Windows presents an unverified-publisher or security warning you cannot independently validate, stop rather than weakening system protections.</p></li>
           </ol>
           <dl class="help-truth-list">
-            <div><dt>Publisher signature</dt><dd>{windows.integrity.publisherSignature.label}</dd></div>
+            <div><dt>Publisher signature</dt><dd>{windowsVariant.integrity.publisherSignature.label}</dd></div>
             <div><dt>Installed lifecycle</dt><dd>Not physically accepted</dd></div>
             <div><dt>Public release</dt><dd>{release.publication.statusLabel}</dd></div>
           </dl>
@@ -203,7 +204,7 @@ const helpJobs = jobs.map((job) => {
             <li>Leave optional cloud transcription, text-shaping providers, and their keys unconfigured unless you deliberately want those named online routes.</li>
             <li>Wait for the Home status to read <strong>Ready</strong> before starting the first recording.</li>
           </ul>
-          <p>The local path needs no Mumble account or provider key. <a href="/#privacy">Privacy boundaries</a> explains what leaves the computer only after an optional route is chosen.</p>
+          <p>The local path needs no Mumble account or provider key. <a href="/privacy/">Privacy boundaries</a> explains what leaves the computer only after an optional route is chosen.</p>
         </div>
       </article>
 
@@ -284,7 +285,7 @@ const helpJobs = jobs.map((job) => {
             <li><strong>Mumble Find:</strong> apps-and-files results stay local.</li>
             <li><strong>Web Search:</strong> selected words go online only after provider-named confirmation.</li>
           </ul>
-          <p>Never paste provider keys into Help search, an issue report, or any shared message. Review <a href="/#privacy">Privacy boundaries</a> before enabling an online route.</p>
+          <p>Never paste provider keys into Help search, an issue report, or any shared message. Review <a href="/privacy/">Privacy boundaries</a> before enabling an online route.</p>
         </div>
       </article>
 
