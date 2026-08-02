@@ -174,11 +174,11 @@ async function desktopJourney(browser) {
   assert.match(await windowsPanel.innerText(), /Public release remains gated/i);
   const windowsDownload = windowsPanel.getByRole('link', { name: /Download candidate for Windows/i });
   assert.equal(await windowsDownload.getAttribute('href'), '/Mumble.zip');
-  assert.match(await windowsPanel.innerText(), /29235fdcbd2e11560dd549b53c81bab1f202c568a9c7b2f550fe4cd94d3fe0f5/i);
+  assert.match(await windowsPanel.innerText(), /70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493/i);
   const windowsText = await windowsPanel.innerText();
   assert.match(windowsText, /x86_64/i);
   assert.match(windowsText, /\bZIP\b/);
-  assert.match(windowsText, /1,098,061 bytes/);
+  assert.match(windowsText, /1,207,711 bytes/);
   assert.match(windowsText, /Internet access for first-time setup/i);
   assert.match(windowsText, /Windows 10 or 11 \(64-bit\)/i);
   assert.match(windowsText, /Publisher signature\s+Not accepted/i);
@@ -357,7 +357,7 @@ async function noJavaScriptPath(browser) {
     await page.getByRole('heading', { level: 2, name: 'macOS' }).waitFor();
     await page.getByRole('heading', { level: 2, name: 'Linux' }).waitFor();
     const pageText = await page.locator('body').innerText();
-    assert.match(pageText, /29235fdcbd2e11560dd549b53c81bab1f202c568a9c7b2f550fe4cd94d3fe0f5/i);
+    assert.match(pageText, /70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493/i);
     assert.match(pageText, /Public release remains gated/i);
     assert.match(pageText, /No accepted artifact/i);
     await noHorizontalOverflow(page, `no-JavaScript Downloads ${viewport.width}px`);

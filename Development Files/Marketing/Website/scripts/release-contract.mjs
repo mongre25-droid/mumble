@@ -25,10 +25,10 @@ export const acceptedReleaseContract = Object.freeze({
     architecture: 'x86_64',
     format: 'ZIP',
     artifactLocation: '/Mumble.zip',
-    sizeBytes: 1098061,
+    sizeBytes: 1207711,
     integrity: {
       algorithm: 'SHA-256',
-      value: '29235fdcbd2e11560dd549b53c81bab1f202c568a9c7b2f550fe4cd94d3fe0f5',
+      value: '70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493',
       publisherSignature: 'not-accepted',
     },
   },
