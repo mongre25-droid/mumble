@@ -8,6 +8,7 @@ import pytest
 import meeting
 import mumble
 import processing_route
+from test_core_status_support import parse_current_status
 import webui_shell
 
 
@@ -574,6 +575,7 @@ def test_durable_records_separate_failed_ci_from_physical_and_release_gates():
     status = (
         APP_DIR.parent.parent / "Development Files" / "Core" / "STATUS.html"
     ).read_text(encoding="utf-8")
+    current = parse_current_status(status)
     logs = (
         APP_DIR.parent.parent / "Development Files" / "Core" / "LOGS.html"
     ).read_text(encoding="utf-8")
@@ -587,42 +589,17 @@ def test_durable_records_separate_failed_ci_from_physical_and_release_gates():
         'data-evidence-boundary="integration-candidate-awaiting-review"'
         not in processing_row
     )
-    source_row = status.split("<tr><td>Source and records</td>", 1)[1].split(
-        "</tr>", 1
-    )[0]
-    for current_identity in (
-        "2f000b43daced675fcbfa53c8e7c75862124906b",
-        "c86e48f770083490e4621ef9770e654ab0d38b1e",
-        "936659747c351d7a6980a5ce8b377638d07f7a13",
-    ):
-        assert current_identity in source_row
-    assert "/pull/49" in source_row
-    assert "Entry 92" in source_row
-    assert "no product or package source changed" in source_row
+    assert current.ci_subject == "936659747c351d7a6980a5ce8b377638d07f7a13"
+    assert current.ci_run == "30728545428"
+    assert current.ci_status == "failed"
+    assert current.replacement_ci_status == "not-run"
+    assert current.pr_status == "open"
+    assert current.merge_status == "unmerged"
+    assert current.promotion_status == "not-promoted"
+    assert current.acceptance_gates == "open"
 
-    ci_row = status.split("<tr><td>CI</td>", 1)[1].split("</tr>", 1)[0]
-    assert "30728545428" in ci_row
-    assert "936659747c351d7a6980a5ce8b377638d07f7a13" in ci_row
-    assert "failed" in ci_row.lower()
-    assert "failure remains preserved" in ci_row.lower()
-    assert "replacement exact-head CI" in ci_row
-    assert "has not run" in ci_row
-
-    physical_row = status.split(
-        "<tr><td>Physical, release, and owner</td>", 1
-    )[1].split("</tr>", 1)[0].lower()
-    for separate_gate in (
-        "physical devices/desktops",
-        "installed lifecycle",
-        "permissions",
-        "signing/notarisation",
-        "public release",
-        "owner acceptance",
-    ):
-        assert separate_gate in physical_row
-
-    assert 'id="entry-92"' in logs
-    assert 'data-evidence-boundary="published-candidate-ci-correction"' in logs
-    assert "30728545428" in logs
-    assert "936659747c351d7a6980a5ce8b377638d07f7a13" in logs
+    assert 'id="entry-93"' in logs
+    assert 'data-evidence-boundary="current-state-authority-correction"' in logs
+    assert current.review_task in logs
+    assert current.review_subject in logs
     assert "PR #49" in logs

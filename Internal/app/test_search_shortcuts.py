@@ -14,6 +14,8 @@ import types
 import unittest
 from unittest.mock import patch
 
+from test_core_status_support import parse_current_status
+
 
 # The remote audit environment intentionally lacks the global-hook dependency.
 # These tests exercise parsing/collision logic only; provide the smallest parser
@@ -925,29 +927,30 @@ class CoreCurrentTruthTests(unittest.TestCase):
         status = (core / "STATUS.html").read_text(encoding="utf-8")
         readme = (core / "README.html").read_text(encoding="utf-8")
         logs = (core / "LOGS.html").read_text(encoding="utf-8")
-        source_row = status.split("<tr><td>Source and records</td>", 1)[1].split(
-            "</tr>", 1
-        )[0]
-        ci_row = status.split("<tr><td>CI</td>", 1)[1].split("</tr>", 1)[0]
+        current = parse_current_status(status)
         web_guidance = readme.split(
             "<strong>Current Web Search boundary:</strong>", 1
         )[1].split("</p>", 1)[0]
-        source_refs = (
-            "2f000b43daced675fcbfa53c8e7c75862124906b",
-            "c86e48f770083490e4621ef9770e654ab0d38b1e",
-            "936659747c351d7a6980a5ce8b377638d07f7a13",
+        self.assertEqual(current.main, "2f000b43daced675fcbfa53c8e7c75862124906b")
+        self.assertEqual(
+            current.accepted_source, "c86e48f770083490e4621ef9770e654ab0d38b1e"
         )
-        for source_ref in source_refs:
-            self.assertIn(source_ref, source_row)
-        self.assertIn("/pull/49", source_row)
-        self.assertIn("Entry 92", source_row)
-        self.assertIn("30728545428", ci_row)
-        self.assertIn("936659747c351d7a6980a5ce8b377638d07f7a13", ci_row)
-        self.assertIn("failure remains preserved", ci_row.lower())
-        self.assertIn("replacement exact-head CI", ci_row)
-        self.assertIn('id="entry-92"', logs)
+        self.assertEqual(
+            current.correction_parent, "2f22153e97388c33f8517f89e2af04095389c4d1"
+        )
+        self.assertEqual(
+            current.published_pr_head, "936659747c351d7a6980a5ce8b377638d07f7a13"
+        )
+        self.assertEqual(current.review_status, "rejected")
+        self.assertEqual(current.pr_number, "49")
+        self.assertEqual(current.pr_status, "open")
+        self.assertEqual(current.merge_status, "unmerged")
+        self.assertEqual(current.promotion_status, "not-promoted")
+        self.assertEqual(current.open_issues, "12,25,28,29,30")
+        self.assertEqual(current.current_record, "Entry 93")
+        self.assertIn('id="entry-93"', logs)
         self.assertIn(
-            'data-evidence-boundary="published-candidate-ci-correction"', logs
+            'data-evidence-boundary="current-state-authority-correction"', logs
         )
         accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",

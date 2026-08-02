@@ -87,7 +87,7 @@
   <li>untested gates and the next required evidence level; and</li>
   <li>whether the candidate is isolated, accepted for convergence, merged to <code>main</code>, green in exact-head CI, physically accepted, deployed, or released.</li>
 </ul>
-<p>Detailed per-issue receipts belong in GitHub issue comments. <a href="STATUS.html">STATUS</a> is the compact programme ledger. <a href="LOGS.html">LOGS</a> records only meaningful completed milestones, not each test session.</p>
+<p>Detailed per-issue receipts belong in GitHub issue comments. <a href="STATUS.html">STATUS</a> is the compact programme ledger. Its sole <code>mumble.current-state.v1</code> JSON authority is the machine-readable present state: tests must parse that complete record through the shared strict Core-status seam, require every field exactly once, reject additional authorities and contradictory status values, and leave historical prose outside present-state parsing. <a href="LOGS.html">LOGS</a> records only meaningful completed milestones, not each test session.</p>
 
 <h3>Shared-resource scheduling</h3>
 <ul>
