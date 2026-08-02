@@ -1,0 +1,338 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import release from '../data/release.json';
+import '../styles/help.css';
+
+const windows = release.platforms.find((platform) => platform.id === 'windows');
+const macos = release.platforms.find((platform) => platform.id === 'macos');
+const linux = release.platforms.find((platform) => platform.id === 'linux');
+if (!windows || !windows.integrity || !macos || !linux) {
+  throw new Error('Help requires complete accepted platform authority');
+}
+---
+
+<BaseLayout
+  title={`Help and Getting Started — Mumble ${release.version}`}
+  description="Choose Mumble's accepted package, follow truthful setup guidance, make a first local dictation, and recover safely when setup or insertion is blocked."
+  currentPath="/help/"
+>
+  <section class="help-hero shell" aria-labelledby="help-title">
+    <div class="help-intro">
+      <h1 id="help-title">From package choice to first successful dictation.</h1>
+      <p>
+        Start with the only current candidate the release authority accepts, keep the local route visible, and know where your words remain if insertion cannot be confirmed.
+      </p>
+    </div>
+
+    <form class="help-search" role="search" aria-label="Search Mumble Help" data-help-search hidden>
+      <label for="help-query">Search Mumble Help</label>
+      <div class="help-search-row">
+        <input
+          id="help-query"
+          type="search"
+          inputmode="search"
+          autocomplete="off"
+          placeholder="Try “microphone”, “shortcut”, or “model”"
+          aria-controls="help-library"
+          aria-describedby="help-search-note help-search-status"
+        />
+        <button type="button" data-help-search-clear disabled>Clear search</button>
+      </div>
+      <p class="help-search-note" id="help-search-note">Search filters the complete task guides below. Press Escape to clear it.</p>
+      <p class="help-search-status" id="help-search-status" role="status" aria-live="polite" data-help-search-status></p>
+    </form>
+
+    <noscript>
+      <p class="help-noscript">Search enhancement needs JavaScript; browse all topics below. Every guide and platform status remains available here.</p>
+    </noscript>
+
+    <nav class="help-popular" aria-label="Popular help tasks">
+      <span>Popular tasks</span>
+      <a href="#choose-package">Choose a package</a>
+      <a href="#install-windows">Install the Windows candidate</a>
+      <a href="#first-dictation">Make a first dictation</a>
+      <a href="#troubleshooting">Fix initial setup</a>
+    </nav>
+  </section>
+
+  <section class="help-categories" aria-labelledby="help-categories-title">
+    <div class="shell">
+      <header>
+        <h2 id="help-categories-title">Browse by the work in front of you.</h2>
+        <p>Search is optional. These semantic links reach every maintained guide directly and remain complete without JavaScript.</p>
+      </header>
+
+      <nav class="help-category-grid" aria-label="Browse Help topics">
+        <div class="help-category">
+          <h3>Getting started</h3>
+          <a href="#choose-package">Choose a package</a>
+          <a href="#install-windows">Install and verify</a>
+          <a href="#first-launch">Complete first launch</a>
+          <a href="#first-dictation">Make a first dictation</a>
+          <a href="#deck-recovery">Recover with the Deck</a>
+        </div>
+        <div class="help-category">
+          <h3>Everyday jobs</h3>
+          <a href="#write-guide">Write</a>
+          <a href="#capture-guide">Capture</a>
+          <a href="#shape-guide">Shape</a>
+          <a href="#listen-guide">Listen</a>
+          <a href="#find-guide">Find</a>
+        </div>
+        <div class="help-category">
+          <h3>Control and access</h3>
+          <a href="#commands">Global commands</a>
+          <a href="#privacy-routes">Privacy routes</a>
+          <a href="#accessibility">Accessibility</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+        </div>
+        <div class="help-category">
+          <h3>Project truth</h3>
+          <a href="#release-source">Release and source status</a>
+          <a href="/downloads/#release-notes-title">Release notes</a>
+          <a href="https://github.com/mongre25-droid/mumble">Source repository</a>
+          <a href="https://github.com/mongre25-droid/mumble/issues">Report a problem</a>
+        </div>
+      </nav>
+    </div>
+  </section>
+
+  <section class="help-library shell" id="help-library" aria-labelledby="help-library-title">
+    <header>
+      <h2 id="help-library-title">Follow the first-success path, then branch by task.</h2>
+      <p>Package facts come from the website release authority. Product behaviour comes from the accepted Windows implementation; unverified physical and platform gates stay named.</p>
+    </header>
+
+    <section class="help-group" aria-labelledby="getting-started-guides" data-help-group>
+      <h2 id="getting-started-guides">Getting Started</h2>
+
+      <article class="help-article" id="choose-package" data-help-article data-help-keywords="download requirements windows macos linux architecture package status">
+        <h3>Choose the accepted package</h3>
+        <div class="help-article-body">
+          <p>
+            The current website authority exposes one hash-bound <strong>{windows.label}</strong> {windows.format} candidate for <strong>{windows.architecture}</strong>. It is inspectable here, but {windows.gate.toLowerCase()}
+          </p>
+          <p>
+            macOS and Linux have no accepted website artifact. Their source and packaging work does not create an installation path, signed package, or public release.
+          </p>
+          <nav class="help-paths" aria-label="Choose Getting Started platform">
+            <a href="#install-windows" aria-label="Read the Windows candidate path"><span>Read the Windows candidate path</span><small>{windows.availabilityLabel}</small></a>
+            <a href="#install-macos" aria-label="Read macOS status"><span>Read macOS status</span><small>{macos.availabilityLabel}</small></a>
+            <a href="#install-linux" aria-label="Read Linux status"><span>Read Linux status</span><small>{linux.availabilityLabel}</small></a>
+          </nav>
+          <div>
+            <strong>Requirements before you continue</strong>
+            <ul>
+              {windows.requirements.map((requirement) => <li>{requirement}</li>)}
+            </ul>
+          </div>
+          <p><a href="/downloads/">Downloads</a> keeps the exact size, format, requirements, integrity value, and every gated platform state together.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="install-windows" data-help-article data-help-keywords="install setup extract zip sha checksum python speech model signature windows macos linux">
+        <h3>Install the Windows candidate</h3>
+        <div class="help-article-body">
+          <p class="help-notice"><strong>{release.publication.label}.</strong> These steps describe the repository candidate's tracked procedure. They do not claim a clean installed-machine pass, signing, deployment, or public-release acceptance.</p>
+          <ol class="help-instructions">
+            <li><p><strong>Verify the download.</strong> Compare its SHA-256 with <code>{windows.integrity.value}</code>. If it differs, stop and download the candidate again from <a href="/downloads/#windows">Downloads</a>.</p></li>
+            <li><p><strong>Extract the complete {windows.format}.</strong> Do not run Mumble inside the archive. Move the whole extracted Mumble folder to a permanent location before setup; moving it later can break its shortcuts.</p></li>
+            <li><p><strong>Start the tracked installer.</strong> In the extracted folder, double-click <kbd>Install Mumble.bat</kbd>. The packaged procedure is designed to locate its installer, prepare the pinned Python/dependency environment, create shortcuts, and start Mumble.</p></li>
+            <li><p><strong>Wait for model readiness.</strong> Setup attempts the pinned <kbd>small.en</kbd> speech-model download and prints <kbd>model ready</kbd>. If it reports that the model will download on first use instead, keep the first-time internet requirement available and let that download finish before judging dictation.</p></li>
+            <li><p><strong>Look for completion, not assumption.</strong> Continue only after setup reports <kbd>All done</kbd> and Mumble appears in the Windows system tray. If Windows presents an unverified-publisher or security warning you cannot independently validate, stop rather than weakening system protections.</p></li>
+          </ol>
+          <dl class="help-truth-list">
+            <div><dt>Publisher signature</dt><dd>{windows.integrity.publisherSignature.label}</dd></div>
+            <div><dt>Installed lifecycle</dt><dd>Not physically accepted</dd></div>
+            <div><dt>Public release</dt><dd>{release.publication.statusLabel}</dd></div>
+          </dl>
+          <section class="help-platform-state" id="install-macos" aria-labelledby="install-macos-title">
+            <h4 id="install-macos-title">macOS · <strong>{macos.availabilityLabel}</strong></h4>
+            <p>{macos.gate} There is no website installation procedure to follow.</p>
+          </section>
+          <section class="help-platform-state" id="install-linux" aria-labelledby="install-linux-title">
+            <h4 id="install-linux-title">Linux · <strong>{linux.availabilityLabel}</strong></h4>
+            <p>{linux.gate} There is no website installation procedure to follow.</p>
+          </section>
+        </div>
+      </article>
+
+      <article class="help-article" id="first-launch" data-help-article data-help-keywords="welcome onboarding local transcription microphone settings speech ready tray first launch">
+        <h3>Complete first launch</h3>
+        <div class="help-article-body">
+          <p>Open Mumble from its tray icon if the main window is not already visible. The accepted Windows source presents a first-run welcome tour and Home reports its current state.</p>
+          <ul>
+            <li>Keep <strong>Local transcription</strong> selected for the account-free default path.</li>
+            <li>Choose the microphone you intend to use under <strong>Settings → Speech to text</strong> if the system default is not correct.</li>
+            <li>Leave optional cloud transcription, text-shaping providers, and their keys unconfigured unless you deliberately want those named online routes.</li>
+            <li>Wait for the Home status to read <strong>Ready</strong> before starting the first recording.</li>
+          </ul>
+          <p>The local path needs no Mumble account or provider key. <a href="/#privacy">Privacy boundaries</a> explains what leaves the computer only after an optional route is chosen.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="first-dictation" data-help-article data-help-keywords="write microphone island listening transcribing done insertion cursor first dictation ctrl windows">
+        <h3>Make your first dictation</h3>
+        <div class="help-article-body">
+          <ol class="help-instructions">
+            <li><p>Open an ordinary editable text field and place the cursor where the result belongs. Keep that destination selected.</p></li>
+            <li><p>Use the effective <strong>Start / stop dictation</strong> command shown on Home or in Settings. A fresh Windows setup defaults to <kbd>Ctrl + Windows</kbd>.</p></li>
+            <li><p>Press once. The floating Island should read <strong>Listening</strong> while the microphone is active. Speak a short sentence.</p></li>
+            <li><p>Press the same command again. The Island moves through <strong>Transcribing</strong>; an optional shaping route may also show <strong>Building</strong>; completion shows <strong>Done</strong>.</p></li>
+            <li><p>Read the terminal outcome. A confirmed result is inserted at the selected field and also remains in Deck and History. An uncertain or blocked result is not described as inserted.</p></li>
+          </ol>
+          <p>If text does not appear, do not repeat blindly: the result remains in Deck and History. Use the recovery guide next.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="deck-recovery" data-help-article data-help-keywords="deck history recover saved copy paste latest insertion focus destination ctrl alt d v">
+        <h3>Recover a result from the Deck</h3>
+        <div class="help-article-body">
+          <p>Mumble preserves the finished result when the destination is missing, changed, read-only, protected, higher-privilege, unsafe for clipboard preservation, or otherwise uncertain.</p>
+          <ul>
+            <li>Open the Deck with the effective command shown in Home or Settings; the fresh Windows default is <kbd>Ctrl + Alt + D</kbd>.</li>
+            <li>Select the saved result and use Copy, or focus a verified writable destination and use <strong>Paste latest</strong>; the fresh Windows default is <kbd>Ctrl + Alt + V</kbd>.</li>
+            <li>If the outcome says delivery is uncertain, inspect the selected destination before trying again. This avoids duplicate text.</li>
+          </ul>
+        </div>
+      </article>
+    </section>
+
+    <section class="help-group" aria-labelledby="commands-guide" data-help-group>
+      <h2 id="commands-guide">Commands and everyday jobs</h2>
+
+      <article class="help-article" id="commands" data-help-article data-help-keywords="keyboard shortcut conflict settings effective command dictate paste deck find web search ctrl alt windows">
+        <h3>Use effective global commands</h3>
+        <div class="help-article-body">
+          <p>These are fresh Windows defaults, not a promise that a user's saved command still matches them. Home and Settings show the effective commands for that installation.</p>
+          <dl class="help-shortcut-list">
+            <div><dt>Start / stop dictation</dt><dd><kbd>Ctrl + Windows</kbd></dd></div>
+            <div><dt>Paste latest</dt><dd><kbd>Ctrl + Alt + V</kbd></dd></div>
+            <div><dt>Open Deck</dt><dd><kbd>Ctrl + Alt + D</kbd></dd></div>
+            <div><dt>Open Mumble Find</dt><dd><kbd>Ctrl + Alt + F</kbd></dd></div>
+            <div><dt>Web Search</dt><dd><kbd>Ctrl + Alt + S</kbd></dd></div>
+          </dl>
+          <p>Mumble rejects overlapping live commands. If a new shortcut cannot register or another app already owns it, the accepted Windows path preserves the previous binding and asks for a free combination in Settings. Web Search may remain unregistered rather than steal an existing command.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="write-guide" data-help-article data-help-keywords="write dictate cursor text insert deck first dictation">
+        <h3>Write</h3>
+        <div class="help-article-body">
+          <p>Write is the direct path from speech to clean text at the cursor you chose. Start with the <a href="#first-dictation">first dictation</a>, then use the terminal insertion outcome rather than assuming a paste chord landed.</p>
+          <p><a href="/#jobs">Product overview</a> keeps Write beside the other four canonical jobs.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="capture-guide" data-help-article data-help-keywords="capture microphone meeting record transcript search export computer audio video import">
+        <h3>Capture</h3>
+        <div class="help-article-body">
+          <p>Capture currently means microphone meeting recording into a local, searchable working record with transcription, review, and export paths. Do not treat computer-audio capture or direct video import as accepted capability.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="shape-guide" data-help-article data-help-keywords="shape prompt email reply deck local cloud provider key finished text">
+        <h3>Shape</h3>
+        <div class="help-article-body">
+          <p>Shape gives finished text a named job such as Prompt, Email, Reply, or a Deck action. Local formatting remains available; optional hosted shaping sends finished text—not recorded audio—only through the selected provider route.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="listen-guide" data-help-article data-help-keywords="listen reader document speech provider cost online bookmark summary progress">
+        <h3>Listen</h3>
+        <div class="help-article-body">
+          <p>Reader keeps a library, progress, find, bookmarks, and summaries. Voice playback is a separate online provider choice and can carry that provider's own cost; it is not required for local dictation.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="find-guide" data-help-article data-help-keywords="find apps files local private web search provider consent google perplexity brave">
+        <h3>Find</h3>
+        <div class="help-article-body">
+          <p><strong>Mumble Find</strong> searches local apps and files. <strong>Web Search</strong> is a separate command: selected words remain local until one provider-named confirmation sends them to Google, Perplexity, or Brave. A local no-match never becomes an online search.</p>
+        </div>
+      </article>
+    </section>
+
+    <section class="help-group" aria-labelledby="control-guides" data-help-group>
+      <h2 id="control-guides">Control, access, and recovery</h2>
+
+      <article class="help-article" id="privacy-routes" data-help-article data-help-keywords="privacy local audio text cloud provider consent reader web search mumble find secrets keys">
+        <h3>Understand privacy routes</h3>
+        <div class="help-article-body">
+          <ul>
+            <li><strong>Local transcription:</strong> recorded audio stays on this computer by default.</li>
+            <li><strong>Cloud transcription:</strong> the recorded clip leaves only after the user selects a configured cloud transcription provider.</li>
+            <li><strong>Text shaping:</strong> finished text, not recorded audio, can leave through the deliberately selected route.</li>
+            <li><strong>Reader speech:</strong> document text reaches the selected online speech provider only when that optional voice path is used.</li>
+            <li><strong>Mumble Find:</strong> apps-and-files results stay local.</li>
+            <li><strong>Web Search:</strong> selected words go online only after provider-named confirmation.</li>
+          </ul>
+          <p>Never paste provider keys into a public issue or help search. Review <a href="/#privacy">Privacy boundaries</a> before enabling an online route.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="accessibility" data-help-article data-help-keywords="accessibility keyboard focus reduced motion narrow screen zoom disclosure search microphone permission">
+        <h3>Use Mumble accessibly</h3>
+        <div class="help-article-body">
+          <p>This Help page keeps landmarks, headings, native disclosures, labelled search, visible focus, and all static links available by keyboard. At narrow widths it follows the same reading order, and reduced-motion preference removes search and navigation transitions.</p>
+          <p>For product setup, use the effective command labels shown in Home and Settings. Automated source and browser evidence does not prove physical screen-reader output, microphone permission dialogs, hardware shortcuts, or installed-product behaviour.</p>
+        </div>
+      </article>
+
+      <article class="help-article" id="troubleshooting" data-help-article data-help-keywords="troubleshoot package runtime model microphone shortcut focus insertion provider secrets privacy setup repair">
+        <h3>Fix initial setup problems</h3>
+        <div class="help-article-body">
+          <p>Choose the track that names the failure: package, runtime/model, microphone, shortcut, focus/insertion, or provider. Keep privacy and system security boundaries intact while recovering.</p>
+          <div class="help-troubleshooting">
+            <details open>
+              <summary>Package or installer</summary>
+              <p>Confirm Windows 10 or 11 (64-bit), compare the SHA-256, extract every file, and keep the folder in a permanent location. A missing <kbd>install.ps1</kbd> usually means the ZIP was not fully extracted. Do not bypass an unverified warning you cannot validate.</p>
+            </details>
+            <details>
+              <summary>Runtime or speech model</summary>
+              <p>First-time setup needs internet access. Wait for <kbd>model ready</kbd>; if setup says the speech model will download on first use, allow that tracked path to finish. Do not sideload an unknown runtime or model to make the warning disappear.</p>
+            </details>
+            <details>
+              <summary>Microphone</summary>
+              <p>Open Settings → Speech to text, select an available microphone, and use the product's microphone test. Review the normal Windows microphone permission rather than disabling security tools.</p>
+            </details>
+            <details>
+              <summary>Shortcut</summary>
+              <p>Read the effective command in Home or Settings. Choose a free combination when Mumble reports an overlap or registration failure; the previous live binding is preserved where the accepted Windows path can reconcile it.</p>
+            </details>
+            <details>
+              <summary>Focus or insertion</summary>
+              <p>Focus a writable field before recording and keep that destination selected through Stop. If Mumble reports uncertain or not inserted, inspect the destination, then recover the saved result from Deck instead of repeating blindly.</p>
+            </details>
+            <details>
+              <summary>Optional provider</summary>
+              <p>Local dictation needs no provider key. For a deliberately selected cloud route, confirm the named provider and configure your own key only in Mumble Settings. Never include credentials, dictated text, or private settings in a public report.</p>
+            </details>
+          </div>
+        </div>
+      </article>
+
+      <article class="help-article" id="release-source" data-help-article data-help-keywords="release notes source github issue report technical contribution license mit public gated status">
+        <h3>Follow release and source status</h3>
+        <div class="help-article-body">
+          <p><strong>{release.publication.label}.</strong> {release.publication.reason}</p>
+          <ul>
+            <li><a href="/downloads/#release-notes-title">Release notes</a> reports that this candidate has no published public-release notes.</li>
+            <li><a href="https://github.com/mongre25-droid/mumble">Source repository</a> is the technical project path; public availability must still be read from the current repository state.</li>
+            <li><a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE">MIT licence</a> defines the project licence.</li>
+            <li><a href="https://github.com/mongre25-droid/mumble/issues">Report a problem</a> through the public issue tracker without including secrets or private content.</li>
+          </ul>
+        </div>
+      </article>
+    </section>
+
+    <section class="help-empty" data-help-search-empty hidden aria-labelledby="help-empty-title">
+      <h2 id="help-empty-title">No help topic matched that search.</h2>
+      <p>Clear the search to browse every category, or report missing public guidance without including private content or credentials.</p>
+    </section>
+  </section>
+
+  <script>
+    import '../scripts/help.js';
+  </script>
+</BaseLayout>

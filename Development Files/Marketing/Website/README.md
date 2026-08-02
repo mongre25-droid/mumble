@@ -31,7 +31,9 @@ The current tracer bullet exposes only complete destinations:
    canonical jobs, privacy boundaries, and the current release position.
 2. Downloads presents the hash-bound Windows candidate and visible gated states
    for macOS and Linux from one release authority.
-3. The not-found page returns visitors to Home or Downloads.
+3. Help provides a searchable, task-led Getting Started path, accepted platform
+   status, shortcut and insertion recovery, and complete static topic browsing.
+4. The not-found page returns visitors to Home or Downloads.
 
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,
@@ -41,8 +43,10 @@ the canonical and public Windows artifact bytes.
 
 ## Interaction and accessibility
 
-- Core Home, navigation, release facts, and download access remain available
-  without JavaScript.
+- Core Home, Help, navigation, release facts, and download access remain
+  available without JavaScript.
+- Help search filters the maintained static article set; semantic category,
+  popular-task, and platform links remain the complete no-JavaScript path.
 - Operating-system detection changes only the recommended action; complete
   Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.
