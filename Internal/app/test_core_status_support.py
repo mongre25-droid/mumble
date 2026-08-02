@@ -15,13 +15,11 @@ import pytest
 AUTHORITY_ID = "mumble-current-state"
 AUTHORITY_SCHEMA = "mumble.current-state.v1"
 PROJECTION_SCHEMA = "mumble.current-state-projection.v1"
-_RAW_MARKED_DECLARATION = re.compile(r"<!\s*\[")
-_MARKED_DECLARATION = re.compile(r"<!\s*\[\s*[A-Za-z][A-Za-z0-9_.:-]*\s*\[")
-_MARKED_DECLARATION_ERROR = (
-    "marked or unknown declarations are not allowed in canonical STATUS"
+_FORBIDDEN_MARKUP_ERROR = (
+    "STATUS contains forbidden non-canonical markup: comments, processing "
+    "instructions, invalid doctypes, marked or unknown declarations, and "
+    "malformed HTML declarations are not allowed"
 )
-_RAW_TEXT_ELEMENTS = frozenset({"script", "style", "title", "textarea"})
-_HTML_SPACE = frozenset(" \t\n\f\r")
 
 _EXPECTED_FIELDS = {
     "schema": AUTHORITY_SCHEMA,
@@ -89,98 +87,6 @@ _EXPECTED_FIELDS = {
 
 class CurrentStatusContractError(AssertionError):
     """Raised when STATUS.html has ambiguous or invalid present-state authority."""
-
-
-def _tag_token_end(status_html: str, start: int) -> int | None:
-    quote: str | None = None
-    for index in range(start + 1, len(status_html)):
-        character = status_html[index]
-        if quote is not None:
-            if character == quote:
-                quote = None
-        elif character in {'"', "'"}:
-            quote = character
-        elif character == ">":
-            return index + 1
-    return None
-
-
-def _appropriate_raw_text_end_tag_end(
-    status_html: str,
-    start: int,
-    element: str,
-) -> int | None:
-    search_from = start
-    while True:
-        opening = status_html.find("</", search_from)
-        if opening < 0:
-            return None
-        name_start = opening + 2
-        name_end = name_start + len(element)
-        if (
-            status_html[name_start:name_end].lower() != element
-            or name_end >= len(status_html)
-            or status_html[name_end] not in _HTML_SPACE | {"/", ">"}
-        ):
-            search_from = name_start
-            continue
-        return _tag_token_end(status_html, opening)
-
-
-def _markup_data_marked_declaration_kind(status_html: str) -> str | None:
-    """Return the marked-declaration kind found in ordinary markup data only."""
-
-    index = 0
-    while True:
-        opening = status_html.find("<", index)
-        if opening < 0:
-            return None
-
-        if status_html.startswith("<!--", opening):
-            closing = status_html.find("-->", opening + 4)
-            if closing < 0:
-                return None
-            index = closing + 3
-            continue
-
-        if _RAW_MARKED_DECLARATION.match(status_html, opening):
-            if _MARKED_DECLARATION.match(status_html, opening):
-                return "marked"
-            return "malformed"
-
-        if status_html.startswith(("<!", "<?"), opening):
-            token_end = _tag_token_end(status_html, opening)
-            if token_end is None:
-                return None
-            index = token_end
-            continue
-
-        tag_match = re.match(
-            r"<(/?)([A-Za-z][A-Za-z0-9:._-]*)",
-            status_html[opening:],
-        )
-        if tag_match is None:
-            index = opening + 1
-            continue
-
-        token_end = _tag_token_end(status_html, opening)
-        if token_end is None:
-            return None
-
-        is_end_tag = bool(tag_match.group(1))
-        tag = tag_match.group(2).lower()
-        if not is_end_tag and tag in _RAW_TEXT_ELEMENTS:
-            raw_end = _appropriate_raw_text_end_tag_end(
-                status_html,
-                token_end,
-                tag,
-            )
-            if raw_end is None:
-                return None
-            index = raw_end
-            continue
-
-        index = token_end
 
 
 @dataclass(frozen=True)
@@ -709,20 +615,18 @@ class _AuthorityHTMLParser(HTMLParser):
 
     def handle_decl(self, decl: str) -> None:
         if decl != "DOCTYPE html" or self._doctype_count:
-            raise CurrentStatusContractError("STATUS must have one exact HTML doctype")
+            raise CurrentStatusContractError(_FORBIDDEN_MARKUP_ERROR)
         self._doctype_count += 1
         self._document_tokens.append("D:DOCTYPE html")
 
     def handle_comment(self, data: str) -> None:
-        raise CurrentStatusContractError("HTML comments are not allowed in canonical STATUS")
+        raise CurrentStatusContractError(_FORBIDDEN_MARKUP_ERROR)
 
     def handle_pi(self, data: str) -> None:
-        raise CurrentStatusContractError(
-            "processing instructions are not allowed in canonical STATUS"
-        )
+        raise CurrentStatusContractError(_FORBIDDEN_MARKUP_ERROR)
 
     def unknown_decl(self, data: str) -> None:
-        raise CurrentStatusContractError(_MARKED_DECLARATION_ERROR)
+        raise CurrentStatusContractError(_FORBIDDEN_MARKUP_ERROR)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attribute_names = [name for name, _value in attrs]
@@ -837,12 +741,6 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def parse_current_status(status_html: str) -> CurrentStatus:
     """Parse and strictly validate the sole authoritative current-state record."""
 
-    marked_declaration = _markup_data_marked_declaration_kind(status_html)
-    if marked_declaration is not None:
-        if marked_declaration == "marked":
-            raise CurrentStatusContractError(_MARKED_DECLARATION_ERROR)
-        raise CurrentStatusContractError("STATUS contains a malformed HTML declaration")
-
     parser = _AuthorityHTMLParser()
     try:
         parser.feed(status_html)
@@ -856,9 +754,7 @@ def parse_current_status(status_html: str) -> CurrentStatus:
             or message.startswith("expected name token at '")
         ):
             raise
-        raise CurrentStatusContractError(
-            "STATUS contains a malformed HTML declaration"
-        ) from exc
+        raise CurrentStatusContractError(_FORBIDDEN_MARKUP_ERROR) from exc
     if parser._doctype_count != 1:
         raise CurrentStatusContractError("STATUS must have one exact HTML doctype")
     if parser._capturing:
@@ -1009,7 +905,10 @@ def test_every_present_state_row_agrees_with_the_canonical_authority() -> None:
     _validate_projections(parser.projections, current)
 
 
-@pytest.mark.parametrize("dispatch_method", ("unknown_decl", "handle_comment"))
+@pytest.mark.parametrize(
+    "dispatch_method",
+    ("unknown_decl", "handle_comment", "assertion"),
+)
 @pytest.mark.parametrize(
     "attack",
     (
@@ -1021,7 +920,6 @@ def test_every_present_state_row_agrees_with_the_canonical_authority() -> None:
         ),
         "<![cDaTa[PR #49 is open and CI failed]]>",
         "<![ignore[PR #49 is open]]>",
-        "<! [bOgUs[conflicting current status]]>",
     ),
 )
 def test_marked_declaration_error_is_stable_across_parser_dispatch(
@@ -1031,16 +929,56 @@ def test_marked_declaration_error_is_stable_across_parser_dispatch(
 ) -> None:
     status = _canonical_status_html()
     mutated = status.replace("<body>", f"<body>{attack}", 1)
-    simulated_dispatch = getattr(_AuthorityHTMLParser, dispatch_method)
+    if dispatch_method == "assertion":
+        def simulated_dispatch(_parser: object, _data: str) -> None:
+            raise AssertionError("unknown status keyword 'CDATA' in marked section")
+    else:
+        simulated_dispatch = getattr(_AuthorityHTMLParser, dispatch_method)
     monkeypatch.setattr(_AuthorityHTMLParser, "unknown_decl", simulated_dispatch)
+    monkeypatch.setattr(_AuthorityHTMLParser, "handle_comment", simulated_dispatch)
 
-    with pytest.raises(
-        CurrentStatusContractError,
-        match="marked or unknown declarations are not allowed in canonical STATUS",
-    ) as caught:
+    with pytest.raises(CurrentStatusContractError) as caught:
         parse_current_status(mutated)
 
     assert type(caught.value) is CurrentStatusContractError
+    assert str(caught.value) == _FORBIDDEN_MARKUP_ERROR
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        "<!-- forbidden comment -->",
+        "<?forbidden processing instruction?>",
+        "<![BOGUS[forbidden declaration]]>",
+        "<!DOCTYPE html>",
+        "<!doctype html>",
+        "<![x",
+    ),
+)
+def test_forbidden_markup_routes_share_one_exact_domain_error(attack: str) -> None:
+    status = _canonical_status_html()
+    mutated = status.replace("<body>", f"<body>{attack}", 1)
+
+    with pytest.raises(CurrentStatusContractError) as caught:
+        parse_current_status(mutated)
+
+    assert type(caught.value) is CurrentStatusContractError
+    assert str(caught.value) == _FORBIDDEN_MARKUP_ERROR
+
+
+def test_malformed_declaration_assertion_from_close_uses_forbidden_markup_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_with_declaration_assertion(_parser: object) -> None:
+        raise AssertionError("expected name token at '![x'")
+
+    monkeypatch.setattr(_AuthorityHTMLParser, "close", fail_with_declaration_assertion)
+
+    with pytest.raises(CurrentStatusContractError) as caught:
+        parse_current_status(_canonical_status_html())
+
+    assert type(caught.value) is CurrentStatusContractError
+    assert str(caught.value) == _FORBIDDEN_MARKUP_ERROR
 
 
 @pytest.mark.parametrize(
@@ -1049,17 +987,17 @@ def test_marked_declaration_error_is_stable_across_parser_dispatch(
         (
             "<body>",
             "<body><!-- literal <![CDATA[not markup]]> -->",
-            "HTML comments are not allowed in canonical STATUS",
+            _FORBIDDEN_MARKUP_ERROR,
         ),
         (
             '"product_version": "0.95"',
             '"product_version": "0.95 <![CDATA[not markup]]>"',
-            "current-state field 'product_version' must be '0.95'",
+            "current-state field 'product_version' must be '0.95', got '0.95 <![CDATA[not markup]]>'",
         ),
         (
             "<body>",
             "<body data-probe='literal <![CDATA[not > markup]]>'>",
-            "HTML element 'body' has unexpected attributes",
+            "HTML element 'body' has unexpected attributes ['data-probe']",
         ),
         (
             "<body>",
@@ -1071,6 +1009,16 @@ def test_marked_declaration_error_is_stable_across_parser_dispatch(
             '<body><style>.probe::after { content: "<![CDATA[not markup]]>"; }</style>',
             "HTML element 'style' is not allowed in STATUS",
         ),
+        (
+            "<body>",
+            "<body><title>literal &lt;![CDATA[not markup]]&gt;</title>",
+            "human-visible text outside current-state projections differs from the contract",
+        ),
+        (
+            "<body>",
+            "<body><textarea>literal &lt;![CDATA[not markup]]&gt;</textarea>",
+            "HTML element 'textarea' is not allowed in STATUS",
+        ),
     ),
 )
 def test_marked_literals_reach_their_context_specific_contract_error(
@@ -1081,183 +1029,8 @@ def test_marked_literals_reach_their_context_specific_contract_error(
     status = _canonical_status_html()
     mutated = status.replace(anchor, replacement, 1)
 
-    with pytest.raises(CurrentStatusContractError, match=re.escape(expected_error)):
+    with pytest.raises(CurrentStatusContractError) as caught:
         parse_current_status(mutated)
 
-
-def test_markup_data_scanner_finds_a_declaration_after_literal_less_than() -> None:
-    status = "<p>one < two <![cDaTa[conflicting status]]></p>"
-
-    assert _markup_data_marked_declaration_kind(status) == "marked"
-
-
-def test_markup_data_scanner_resumes_after_case_insensitive_raw_end_tag() -> None:
-    status = (
-        "<ScRiPt>literal <![CDATA[not markup]]></sCrIpT >"
-        "<p><![IGNORE[conflicting status]]></p>"
-    )
-
-    assert _markup_data_marked_declaration_kind(status) == "marked"
-
-
-@pytest.mark.parametrize(
-    "status",
-    (
-        "<!-- literal <![CDATA[not markup]]> -->",
-        "<p title='single <![CDATA[not > markup]]>'>safe</p>",
-        '<p title="double <![CDATA[not > markup]]>">safe</p>',
-        "<p>&lt;![CDATA[escaped entity]]&gt;</p>",
-        "<SCRIPT>literal <![CDATA[not markup]]></sCrIpT>",
-        "<style>literal <![CDATA[not markup]]></STYLE >",
-        "<TiTlE>literal <![CDATA[not markup]]></title>",
-        "<textarea>literal <![CDATA[not markup]]></TEXTAREA>",
-        "</div data-probe='literal <![CDATA[not markup]]>'>",
-        "<?probe value='literal <![CDATA[not > markup]]>'?>",
-        "<!BOGUS value='literal <![CDATA[not > markup]]>'>",
-        "<!-- unclosed literal <![CDATA[not markup]]>",
-        "<p title='unclosed literal <![CDATA[not markup]]>",
-        "<script>unclosed literal <![CDATA[not markup]]>",
-    ),
-)
-def test_markup_data_scanner_skips_non_data_and_malformed_contexts(status: str) -> None:
-    assert _markup_data_marked_declaration_kind(status) is None
-
-
-@pytest.mark.parametrize(
-    ("status", "expected"),
-    (
-        ("<![BOGUS[value]]>", "marked"),
-        ("<! [iGnOrE[value]]>", "marked"),
-        ("<![x", "malformed"),
-        ("<![]]>", "malformed"),
-    ),
-)
-def test_markup_data_scanner_classifies_case_spacing_and_malformed_delimiters(
-    status: str,
-    expected: str,
-) -> None:
-    assert _markup_data_marked_declaration_kind(status) == expected
-
-
-def test_markup_data_scanner_accepts_the_canonical_status() -> None:
-    assert _markup_data_marked_declaration_kind(_canonical_status_html()) is None
-
-
-@pytest.mark.parametrize(
-    ("replacement", "expected_error"),
-    (
-        (
-            "<body><!-- unclosed literal <![CDATA[not markup]]>",
-            "human-visible text outside current-state projections differs from the contract",
-        ),
-        (
-            "<body data-probe='unclosed literal <![CDATA[not markup]]>",
-            "HTML element 'body' has unexpected attributes",
-        ),
-        (
-            "<body><script>unclosed literal <![CDATA[not markup]]>",
-            "only the canonical current-state script is allowed",
-        ),
-        (
-            "<body></div data-probe='unclosed <![CDATA[not markup]]>",
-            "canonical STATUS document structure or attribute values differ from the contract",
-        ),
-    ),
-)
-def test_malformed_scanner_states_reach_existing_fail_closed_boundaries(
-    replacement: str,
-    expected_error: str,
-) -> None:
-    status = _canonical_status_html()
-    mutated = status.replace("<body>", replacement, 1)
-
-    with pytest.raises(CurrentStatusContractError, match=re.escape(expected_error)):
-        parse_current_status(mutated)
-
-
-@pytest.mark.parametrize(
-    ("attack", "expected_error"),
-    (
-        (
-            "<?probe value='literal <![CDATA[not markup]]>'?>",
-            "processing instructions are not allowed in canonical STATUS",
-        ),
-        (
-            "<!BOGUS value='literal <![CDATA[not markup]]>'>",
-            "HTML comments are not allowed in canonical STATUS",
-        ),
-        (
-            "<!DOCTYPE html>",
-            "STATUS must have one exact HTML doctype",
-        ),
-    ),
-)
-def test_non_marked_declarations_remain_owned_by_the_html_contract(
-    attack: str,
-    expected_error: str,
-) -> None:
-    status = _canonical_status_html()
-    mutated = status.replace("<body>", f"<body>{attack}", 1)
-
-    with pytest.raises(CurrentStatusContractError, match=re.escape(expected_error)):
-        parse_current_status(mutated)
-
-
-@pytest.mark.parametrize("element", ("script", "style", "title", "textarea"))
-def test_raw_text_elements_ignore_an_apparent_self_closing_start_tag(
-    element: str,
-) -> None:
-    status = (
-        f"<{element}/>literal <![CDATA[still raw text]]>"
-        f"</{element}><p>ordinary data</p>"
-    )
-
-    assert _markup_data_marked_declaration_kind(status) is None
-
-
-@pytest.mark.parametrize("element", ("script", "style", "title", "textarea"))
-@pytest.mark.parametrize(
-    "end_suffix",
-    (
-        ">",
-        "/>",
-        " ignored>",
-        " data-note='ignored > value'>",
-        '\tdata-note="ignored">',
-    ),
-)
-def test_appropriate_raw_end_tag_forms_resume_markup_data(
-    element: str,
-    end_suffix: str,
-) -> None:
-    status = (
-        f"<{element}>literal <![CDATA[still raw text]]>"
-        f"</{element.upper()}{end_suffix}"
-        "<![IGNORE[real declaration]]>"
-    )
-
-    assert _markup_data_marked_declaration_kind(status) == "marked"
-
-
-@pytest.mark.parametrize("element", ("script", "style", "title", "textarea"))
-@pytest.mark.parametrize("invalid_suffix", ("x>", "!>", "-other>", "\u00a0>"))
-def test_near_miss_raw_end_tags_do_not_leave_raw_text(
-    element: str,
-    invalid_suffix: str,
-) -> None:
-    status = (
-        f"<{element}>literal</{element}{invalid_suffix}"
-        f"<![CDATA[still raw text]]></{element}>"
-    )
-
-    assert _markup_data_marked_declaration_kind(status) is None
-
-
-@pytest.mark.parametrize("element", ("script", "style", "title", "textarea"))
-def test_unclosed_appropriate_raw_end_tag_remains_raw_text(element: str) -> None:
-    status = (
-        f"<{element}>literal</{element.upper()} data-note='unterminated "
-        "<![CDATA[still raw text]]>"
-    )
-
-    assert _markup_data_marked_declaration_kind(status) is None
+    assert type(caught.value) is CurrentStatusContractError
+    assert str(caught.value) == expected_error
