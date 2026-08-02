@@ -23,32 +23,87 @@ if (
 
 const jobGuidance = {
   write: {
-    keywords: 'write dictate cursor text insert deck first dictation',
-    guidance: 'Start with the first dictation, then use the terminal insertion outcome rather than assuming delivery landed.',
+    context: 'Everyday jobs · Write',
+    keywords: 'write dictate cursor text insert deck first dictation listening transcribing delivery',
+    steps: [
+      'Place the cursor in an ordinary editable field and keep that destination selected.',
+      'Use the effective Start / stop dictation command shown on Home or in Settings, then speak while the Island says Listening.',
+      'Use the same command to stop. Read the Island through Transcribing and any optional Building state.',
+      'Treat only Inserted or Sent as a delivery attempt. Not inserted and Delivery uncertain mean you should inspect the destination and recover the saved result.',
+    ],
+    privacy: 'Local transcription is the default. Optional shaping is a separate later decision; a hosted shaping route receives finished text, not the recorded audio.',
+    recovery: [
+      'Confirm the selected microphone and effective command in Settings.',
+      'If focus changed or delivery is uncertain, do not dictate the same text again. Open Deck and use Copy or Paste latest after selecting a verified writable field.',
+    ],
     link: { href: '/#jobs', label: 'Product overview' },
     linkNote: 'keeps Write beside the other four canonical jobs.',
   },
   capture: {
-    keywords: 'capture microphone meeting record transcript search export computer audio video import',
-    guidance: 'Computer-audio capture and direct video import are not accepted capabilities.',
+    context: 'Everyday jobs · Capture',
+    keywords: 'capture microphone meeting record pause resume transcript search export wav mp3 flac ogg audio import video recovery',
+    steps: [
+      'Open Meetings. For a live capture, choose the intended microphone, start recording, and use Pause or Resume when needed.',
+      'Choose Stop and save when the meeting is finished. Mumble writes the private recording locally before transcription and later analysis.',
+      'For an existing recording, choose Import audio and select WAV, MP3, FLAC, or OGG. Computer-audio capture and direct video import are not accepted capabilities.',
+      'Open the saved meeting to search, review, and export its transcript. Run optional analysis only after checking its effective route.',
+    ],
+    privacy: 'The recording is saved locally. Its transcription route and the separate later analysis route remain visible choices; neither is permission for the other.',
+    recovery: [
+      'If microphone capture fails, keep the selected input visible and retry only after the product returns to a non-recording state.',
+      'If import is refused, use one of the four accepted audio formats. An interrupted item keeps its private recording and recovery state instead of pretending processing finished.',
+    ],
     link: null,
     linkNote: null,
   },
   shape: {
-    keywords: 'shape prompt email reply deck local cloud provider key finished text',
-    guidance: 'Local formatting remains available without selecting a hosted shaping route.',
+    context: 'Everyday jobs · Shape',
+    keywords: 'shape prompt email reply deck preset mode local cloud provider key cost finished text building',
+    steps: [
+      'Start from a dictation or select saved Deck material, then choose the Prompt, Email, Reply, or Deck action that matches the result you need.',
+      'Choose a preset or mode before running the job so the intended instruction is visible.',
+      'Check the effective route in Settings. Offline cleanup and mode inference run first; local or hosted processing is a separate route decision.',
+      'Read the terminal delivery outcome and keep the finished result in Deck when insertion is blocked or uncertain.',
+    ],
+    privacy: 'Local formatting needs no provider key. If a hosted text-processing route is deliberately selected, finished text—not microphone audio—goes to the configured provider and that provider may charge.',
+    recovery: [
+      'If the route is not ready, check the selected provider and its key only in Mumble Settings. Mumble does not supply a provider key.',
+      'If delivery fails after shaping, recover the finished text from Deck rather than rerunning the provider job blindly.',
+    ],
     link: null,
     linkNote: null,
   },
   listen: {
-    keywords: 'listen reader document speech provider cost online bookmark summary progress',
-    guidance: 'Voice playback is not required for local dictation.',
+    context: 'Everyday jobs · Listen',
+    keywords: 'listen reader document import library speech provider key cost credit online bookmark summary progress find pause resume',
+    steps: [
+      'Open Reader and import a document through its supported-file picker, or reopen one from the library to resume its saved position.',
+      'Use Find, bookmarks, summary, speed, and reading-position controls to prepare the reading session.',
+      'For voice playback, choose the provider, model, and voice shown in Reader, then press Play. Pause or Stop preserves progress.',
+      'Voice is optional: document browsing, find, bookmarks, and saved progress do not require speech playback.',
+    ],
+    privacy: 'Reader speech is an explicit online route. Document text needed for playback is sent to the selected speech provider and requires network access, the matching key, and provider credits or billing.',
+    recovery: [
+      'If import fails, choose a format offered by the Reader picker and make sure the file is readable and not empty.',
+      'If speech fails, check the selected provider, key, network access, and credits. Mumble may try a compatible model only within that same frozen provider; it does not cross to another provider silently.',
+    ],
     link: null,
     linkNote: null,
   },
   find: {
-    keywords: 'find apps files local private web search provider consent google perplexity brave',
-    guidance: 'Provider-named Web Search choices are Google, Perplexity, and Brave; a local no-match never becomes an online search.',
+    context: 'Everyday jobs · Find',
+    keywords: 'find apps files local private arrows open show folder refresh index web search provider consent google perplexity brave',
+    steps: [
+      'Use the effective Open Mumble Find command and type an app or file query in the centred local overlay.',
+      'Use category filters or the Up and Down arrow keys, then choose Open or Show in folder for the selected local result.',
+      'Use Refresh local index when the operating-system catalogue is stale. Loading, no-match, partial, and failure states stay local.',
+      'For the separate Web Search job, select words, use its effective command, confirm the named Google, Perplexity, or Brave destination, then choose Search online.',
+    ],
+    privacy: 'Mumble Find keeps its query and results on the computer. Web Search holds selected words in a bounded local request and sends them online only after provider-named confirmation.',
+    recovery: [
+      'A local no-match never becomes an online search. Refresh the local index or change the local query.',
+      'If Web Search is unregistered, expired, or the browser could not open, resolve the command conflict or browser problem, select the words again, and start a new one-shot request.',
+    ],
     link: null,
     linkNote: null,
   },
@@ -62,15 +117,15 @@ const helpJobs = jobs.map((job) => {
 ---
 
 <BaseLayout
-  title={`Help and Getting Started — Mumble ${release.version}`}
-  description="Choose Mumble's accepted package, follow truthful setup guidance, make a first local dictation, and recover safely when setup or insertion is blocked."
+  title={`Help and Documentation — Mumble ${release.version}`}
+  description="Complete task guidance for Mumble's five jobs, privacy routes, accessibility, troubleshooting, releases, source, and contribution."
   currentPath="/help/"
 >
   <section class="help-hero shell" aria-labelledby="help-title">
     <div class="help-intro">
-      <h1 id="help-title">From package choice to first successful dictation.</h1>
+      <h1 id="help-title">Solve the task in front of you.</h1>
       <p>
-        Start with the only current candidate the release authority accepts, keep the local route visible, and know where your words remain if insertion cannot be confirmed.
+        Start, Write, Capture, Shape, Listen, or Find. Every maintained path keeps the effective route, recovery boundary, and current release limits visible.
       </p>
     </div>
 
@@ -82,7 +137,7 @@ const helpJobs = jobs.map((job) => {
           type="search"
           inputmode="search"
           autocomplete="off"
-          placeholder="Try “microphone”, “shortcut”, or “model”"
+          placeholder="Try “meeting import”, “Reader speech”, or “uninstall”"
           aria-controls="help-library"
           aria-describedby="help-search-note help-search-status"
         />
@@ -100,8 +155,9 @@ const helpJobs = jobs.map((job) => {
       <span>Popular tasks</span>
       <a href="#choose-package">Choose a package</a>
       <a href="#install-windows">Install the Windows candidate</a>
-      <a href="#first-dictation">Make a first dictation</a>
-      <a href="#troubleshooting">Fix initial setup</a>
+      <a href="#capture-guide">Import a meeting</a>
+      <a href="#deck-recovery">Recover saved text</a>
+      <a href="#troubleshooting">Troubleshoot by symptom</a>
     </nav>
   </section>
 
@@ -126,18 +182,28 @@ const helpJobs = jobs.map((job) => {
           {jobs.map((job) => <a href={`#${job.id}-guide`}>{job.label}</a>)}
         </div>
         <div class="help-category">
-          <h3>Control and access</h3>
+          <h3>Privacy and access</h3>
           <a href="#commands">Global commands</a>
           <a href="#privacy-routes">Privacy routes</a>
           <a href="#accessibility">Accessibility</a>
-          <a href="#troubleshooting">Troubleshooting</a>
         </div>
         <div class="help-category">
-          <h3>Project truth</h3>
-          <a href="#release-source">Release and source status</a>
+          <h3>Troubleshooting</h3>
+          <a href="#troubleshooting">All troubleshooting</a>
+          <a href="#capture-troubleshooting">Capture or import</a>
+          <a href="#route-troubleshooting">Routes and provider keys</a>
+          <a href="#reader-troubleshooting">Reader</a>
+          <a href="#uninstall-troubleshooting">Uninstall and recovery</a>
+        </div>
+        <div class="help-category">
+          <h3>Releases and project</h3>
           <a href="/downloads/#release-notes-title">Release notes</a>
-          <a href={sourceResource.href}>Source repository</a>
-          <a href={supportResource.href}>{supportResource.label}</a>
+          <a href="/downloads/#history-title">Previous accepted versions</a>
+          <a href="#known-limitations">Known limitations</a>
+          <a href="/downloads/#platforms-title">Platform status</a>
+          <a href="#release-source">Licence, source, and support</a>
+          <a href="#contribute">Contribute</a>
+          <a href={supportResource.href}>Public issue tracker</a>
         </div>
       </nav>
     </div>
@@ -152,11 +218,12 @@ const helpJobs = jobs.map((job) => {
     <section class="help-group" aria-labelledby="getting-started-guides" data-help-group>
       <h2 id="getting-started-guides">Getting Started</h2>
 
-      <article class="help-article" id="choose-package" data-help-article data-help-keywords="download requirements windows macos linux architecture package status">
+      <article class="help-article" id="choose-package" data-help-article data-help-context="Getting started" data-help-keywords="download requirements windows macos linux architecture package status">
         <h3>Choose the accepted package</h3>
         <div class="help-article-body">
+          <p class="help-result-context" data-help-result-context>Getting started</p>
           <p>
-            The current website authority exposes one hash-bound <strong>{windows.label}</strong> {windowsVariant.format} candidate for <strong>{windowsVariant.architecture}</strong>. It is inspectable here, but {windows.gate.toLowerCase()}
+            The current website authority exposes one hash-bound <strong>{windows.label}</strong> {windowsVariant.format} candidate for <strong>{windowsVariant.architecture}</strong>. Its accepted state remains explicit: {windows.gate}
           </p>
           <p>
             macOS and Linux have no accepted website artifact. Their source and packaging work does not create an installation path, signed package, or public release.
@@ -176,9 +243,10 @@ const helpJobs = jobs.map((job) => {
         </div>
       </article>
 
-      <article class="help-article" id="install-windows" data-help-article data-help-keywords="install setup extract zip sha checksum python speech model signature windows macos linux">
+      <article class="help-article" id="install-windows" data-help-article data-help-context="Getting started" data-help-keywords="install setup extract zip sha checksum python speech model signature windows macos linux">
         <h3>Install the Windows candidate</h3>
         <div class="help-article-body">
+          <p class="help-result-context" data-help-result-context>Getting started</p>
           <p class="help-notice"><strong>{release.publication.label}.</strong> These steps describe the repository candidate's tracked procedure. They do not claim a clean installed-machine pass, signing, deployment, or public-release acceptance.</p>
           <ol class="help-instructions">
             <li><p><strong>Verify the download.</strong> Compare its SHA-256 with <code>{windowsVariant.integrity.value}</code>. If it differs, stop and download the candidate again from <a href="/downloads/#windows">Downloads</a>.</p></li>
@@ -203,9 +271,10 @@ const helpJobs = jobs.map((job) => {
         </div>
       </article>
 
-      <article class="help-article" id="first-launch" data-help-article data-help-keywords="welcome onboarding local transcription microphone settings speech ready tray first launch">
+      <article class="help-article" id="first-launch" data-help-article data-help-context="Getting started" data-help-keywords="welcome onboarding local transcription microphone settings speech ready tray first launch">
         <h3>Complete first launch</h3>
         <div class="help-article-body">
+          <p class="help-result-context" data-help-result-context>Getting started</p>
           <p>Open Mumble from its tray icon if the main window is not already visible. The accepted Windows source presents a first-run welcome tour and Home reports its current state.</p>
           <ul>
             <li>Keep <strong>Local transcription</strong> selected for the account-free default path.</li>
@@ -217,9 +286,10 @@ const helpJobs = jobs.map((job) => {
         </div>
       </article>
 
-      <article class="help-article" id="first-dictation" data-help-article data-help-keywords="write microphone island listening transcribing inserted sent not inserted delivery uncertain cursor first dictation ctrl windows">
+      <article class="help-article" id="first-dictation" data-help-article data-help-context="Getting started" data-help-keywords="write microphone island listening transcribing inserted sent not inserted delivery uncertain cursor first dictation ctrl windows">
         <h3>Make your first dictation</h3>
         <div class="help-article-body">
+          <p class="help-result-context" data-help-result-context>Getting started</p>
           <ol class="help-instructions">
             <li><p>Open an ordinary editable text field and place the cursor where the result belongs. Keep that destination selected.</p></li>
             <li><p>Use the effective <strong>Start / stop dictation</strong> command shown on Home or in Settings. A fresh Windows setup defaults to <kbd>Ctrl + Windows</kbd>.</p></li>
@@ -231,9 +301,10 @@ const helpJobs = jobs.map((job) => {
         </div>
       </article>
 
-      <article class="help-article" id="deck-recovery" data-help-article data-help-keywords="deck history recover saved copy paste latest insertion focus destination ctrl alt d v">
+      <article class="help-article" id="deck-recovery" data-help-article data-help-context="Getting started" data-help-keywords="deck history recover saved copy paste latest insertion focus destination ctrl alt d v">
         <h3>Recover a result from the Deck</h3>
         <div class="help-article-body">
+          <p class="help-result-context" data-help-result-context>Getting started</p>
           <p>Mumble preserves the finished result when the destination is missing, changed, read-only, protected, higher-privilege, unsafe for clipboard preservation, or otherwise uncertain.</p>
           <ul>
             <li>Open the Deck with the effective command shown in Home or Settings; the fresh Windows default is <kbd>Ctrl + Alt + D</kbd>.</li>
@@ -247,9 +318,10 @@ const helpJobs = jobs.map((job) => {
     <section class="help-group" aria-labelledby="commands-guide" data-help-group>
       <h2 id="commands-guide">Commands and everyday jobs</h2>
 
-      <article class="help-article" id="commands" data-help-article data-help-keywords="keyboard shortcut conflict settings effective command dictate paste deck find web search ctrl alt windows">
+      <article class="help-article" id="commands" data-help-article data-help-context="Everyday jobs" data-help-keywords="keyboard shortcut conflict settings effective command dictate paste deck find web search ctrl alt windows">
         <h3>Use effective global commands</h3>
         <div class="help-article-body">
+          <p class="help-result-context" data-help-result-context>Everyday jobs</p>
           <p>These are fresh Windows defaults, not a promise that a user's saved command still matches them. Home and Settings show the effective commands for that installation.</p>
           <dl class="help-shortcut-list">
             <div><dt>Start / stop dictation</dt><dd><kbd>Ctrl + Windows</kbd></dd></div>
@@ -267,88 +339,195 @@ const helpJobs = jobs.map((job) => {
           class="help-article"
           id={`${job.id}-guide`}
           data-help-article
+          data-help-context={job.context}
           data-help-keywords={job.keywords}
         >
           <h3>{job.label}</h3>
           <div class="help-article-body">
+            <p class="help-result-context" data-help-result-context>{job.context}</p>
             <p>{job.summary}</p>
             <p>{job.proof}</p>
-            <p>{job.guidance}</p>
+            <section class="help-task-block">
+              <h4>Do this</h4>
+              <ol class="help-instructions">
+                {job.steps.map((step) => <li><p>{step}</p></li>)}
+              </ol>
+            </section>
+            <section class="help-task-block">
+              <h4>Privacy boundary</h4>
+              <p>{job.privacy}</p>
+            </section>
+            <section class="help-task-block">
+              <h4>If it does not work</h4>
+              <ul>{job.recovery.map((step) => <li>{step}</li>)}</ul>
+            </section>
             {job.link && <p><a href={job.link.href}>{job.link.label}</a> {job.linkNote}</p>}
           </div>
         </article>
       ))}
     </section>
 
-    <section class="help-group" aria-labelledby="control-guides" data-help-group>
-      <h2 id="control-guides">Control, access, and recovery</h2>
+    <section class="help-group" aria-labelledby="privacy-access-guides" data-help-group>
+      <h2 id="privacy-access-guides">Privacy and access</h2>
 
-      <article class="help-article" id="privacy-routes" data-help-article data-help-keywords="privacy local audio text cloud provider consent reader web search mumble find secrets keys">
+      <article class="help-article" id="privacy-routes" data-help-article data-help-context="Privacy and access" data-help-keywords="privacy local audio text cloud provider consent reader speech web search mumble find secrets keys cost credits">
         <h3>Understand privacy routes</h3>
         <div class="help-article-body">
-          <ul>
-            <li><strong>Local transcription:</strong> recorded audio stays on this computer by default.</li>
-            <li><strong>Cloud transcription:</strong> the recorded clip leaves only after the user selects a configured cloud transcription provider.</li>
-            <li><strong>Text shaping:</strong> finished text, not recorded audio, can leave through the deliberately selected route.</li>
-            <li><strong>Reader speech:</strong> document text reaches the selected online speech provider only when that optional voice path is used.</li>
-            <li><strong>Mumble Find:</strong> apps-and-files results stay local.</li>
-            <li><strong>Web Search:</strong> selected words go online only after provider-named confirmation.</li>
-          </ul>
-          <p>Never paste provider keys into Help search, an issue report, or any shared message. Review <a href="/privacy/">Privacy boundaries</a> before enabling an online route.</p>
+          <p class="help-result-context" data-help-result-context>Privacy and access</p>
+          <p>These six routes use the same product authority as <a href="/privacy/">Privacy boundaries</a>. A route authorises only its named input and action; it does not grant permission to a later feature.</p>
+          <dl class="help-route-ledger">
+            <div data-route-kind="local">
+              <dt><span>Local · default</span>Local transcription</dt>
+              <dd>Microphone audio is processed on this computer by default. Once the local speech model is present, this path needs no Mumble account, provider key, or internet connection.</dd>
+            </div>
+            <div data-route-kind="online">
+              <dt><span>Online · optional</span>Cloud transcription</dt>
+              <dd>The recorded clip goes to the configured speech provider only after Cloud transcription is deliberately selected. It needs the matching key and may carry the provider's own cost; there is no silent online fallback.</dd>
+            </div>
+            <div data-route-kind="conditional">
+              <dt><span>Local or online · optional</span>Text shaping</dt>
+              <dd>Offline cleanup and mode inference happen first. A selected hosted route receives finished text—not the recorded audio—through the effective configured provider.</dd>
+            </div>
+            <div data-route-kind="online">
+              <dt><span>Online · optional</span>Reader speech</dt>
+              <dd>Document text needed for playback goes to the selected speech provider only when voice is used. The route needs network access, its matching key, and provider credits or billing.</dd>
+            </div>
+            <div data-route-kind="local">
+              <dt><span>Local · separate command</span>Mumble Find</dt>
+              <dd>The query, local apps-and-files catalogue, and result list stay on the computer. A local no-match, partial result, or failure never becomes Web Search.</dd>
+            </div>
+            <div data-route-kind="online">
+              <dt><span>Online · consent gated</span>Web Search</dt>
+              <dd>Selected words remain in a bounded local request until confirmation names Google, Perplexity, or Brave and the user chooses Search online. Keep private, expiry, replay, or a failed consent surface sends nothing.</dd>
+            </div>
+          </dl>
+          <p class="help-notice">Never paste provider keys into Help search, the public issue tracker, or any shared message. Provider keys belong only in local Mumble Settings.</p>
         </div>
       </article>
 
-      <article class="help-article" id="accessibility" data-help-article data-help-keywords="accessibility keyboard focus reduced motion narrow screen zoom disclosure search microphone permission">
+      <article class="help-article" id="accessibility" data-help-article data-help-context="Privacy and access" data-help-keywords="accessibility keyboard effective command focus visual states reduced motion narrow screen zoom disclosure search screen reader assistive technology windows macos linux">
         <h3>Use Mumble accessibly</h3>
         <div class="help-article-body">
-          <p>This Help page keeps landmarks, headings, native disclosures, labelled search, visible focus, and all static links available by keyboard. At narrow widths it follows the same reading order, and reduced-motion preference removes search and navigation transitions.</p>
-          <p>For product setup, use the effective command labels shown in Home and Settings. Automated source and browser evidence does not prove physical screen-reader output, microphone permission dialogs, hardware shortcuts, or installed-product behaviour.</p>
+          <p class="help-result-context" data-help-result-context>Privacy and access</p>
+          <p>Use the interface's real labels and current state rather than colour or motion alone. Mumble can be a productivity and access option, but this guidance makes no health claim.</p>
+          <div class="help-table-wrap" role="region" aria-label="Accessibility guidance table" tabindex="0">
+            <table class="help-access-table">
+              <caption>Keyboard, visual state, motion, and assistive-technology guidance</caption>
+              <thead><tr><th scope="col">Need</th><th scope="col">Use this</th><th scope="col">Current evidence limit</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">Keyboard</th><td>Use Tab and Shift + Tab for website controls, follow visible focus, use Enter or Space for native disclosures, Escape to clear Help search, and the effective commands shown on Home or in Settings.</td><td>Fresh Windows defaults are examples only. Saved commands can differ, and macOS or Linux use their own platform labels.</td></tr>
+                <tr><th scope="row">Visual states</th><td>Read the named states: Ready, Listening, Transcribing, Building, Inserted, Sent, Not inserted, and Delivery uncertain.</td><td>Colour, waveform, and motion support the label; they do not replace it.</td></tr>
+                <tr><th scope="row">Reduced motion</th><td>This website removes transitions when the operating system requests reduced motion. On Windows, the Island reads the Windows client-animation preference.</td><td>Automated source evidence does not prove every physical display, driver, or installed preference.</td></tr>
+                <tr><th scope="row">Assistive technology</th><td>This Help page uses landmarks, ordered headings, named search, native disclosures, links, and real tables. Narrow screens keep the same reading order.</td><td>Physical screen-reader output, microphone permission dialogs, global hardware shortcuts, and installed-product use have not been independently accepted.</td></tr>
+                <tr><th scope="row">Platform</th><td>Use Windows as the current product-contract reference and check <a href="/downloads/#platforms-title">Platform status</a> before installation.</td><td>macOS and Linux source ports exist, but their physical, package, accessibility, and public-release gates remain open.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </article>
+    </section>
 
-      <article class="help-article" id="troubleshooting" data-help-article data-help-keywords="troubleshoot package runtime model microphone shortcut focus insertion provider secrets privacy setup repair">
-        <h3>Fix initial setup problems</h3>
+    <section class="help-group" aria-labelledby="troubleshooting-guides" data-help-group>
+      <h2 id="troubleshooting-guides">Troubleshooting</h2>
+
+      <article class="help-article" id="troubleshooting" data-help-article data-help-context="Troubleshooting" data-help-keywords="troubleshoot package installer capture import transcription route provider key cost shaping reader deck mumble find web search update uninstall rollback recovery">
+        <h3>Troubleshoot by symptom</h3>
         <div class="help-article-body">
-          <p>Choose the track that names the failure: package, runtime/model, microphone, shortcut, focus/insertion, or provider. Keep privacy and system security boundaries intact while recovering.</p>
+          <p class="help-result-context" data-help-result-context>Troubleshooting</p>
+          <p>Open the disclosure that names the failure. Stop when a step would weaken system security, expose private content, or use a route you did not choose.</p>
           <div class="help-troubleshooting">
             <details open>
               <summary>Package or installer</summary>
               <p>Confirm Windows 10 or 11 (64-bit), compare the SHA-256, extract every file, and keep the folder in a permanent location. A missing <kbd>install.ps1</kbd> usually means the ZIP was not fully extracted. Do not bypass an unverified warning you cannot validate.</p>
             </details>
-            <details>
-              <summary>Runtime or speech model</summary>
-              <p>First-time setup needs internet access. Wait for <kbd>model ready</kbd>; if setup says the speech model will download on first use, allow that tracked path to finish. Do not sideload an unknown runtime or model to make the warning disappear.</p>
+            <details id="capture-troubleshooting">
+              <summary>Capture or import</summary>
+              <p>For live capture, confirm the selected microphone and normal Windows microphone permission, then use the product's microphone test. For an existing meeting, import WAV, MP3, FLAC, or OGG audio. Computer-audio capture and direct video import are not accepted paths. If processing is interrupted, keep the saved local recording and use the meeting's recovery state rather than deleting it.</p>
+            </details>
+            <details id="route-troubleshooting">
+              <summary>Transcription route</summary>
+              <p>Read the saved and effective speech-to-text route in Settings. Local transcription needs the local model but no provider key. Cloud transcription needs a deliberately selected supported provider and its matching key. A missing or unsupported route should fail closed; do not switch online merely to hide an error.</p>
             </details>
             <details>
-              <summary>Microphone</summary>
-              <p>Open Settings → Speech to text, select an available microphone, and use the product's microphone test. Review the normal Windows microphone permission rather than disabling security tools.</p>
+              <summary>Provider keys and costs</summary>
+              <p>Mumble does not supply provider keys or absorb external usage charges. Put your own matching key only in Mumble Settings, check the provider's own credit or billing position, and never include a key, transcript, selected words, or private settings in a public report.</p>
             </details>
             <details>
-              <summary>Shortcut</summary>
-              <p>Read the effective command in Home or Settings. Choose a free combination when Mumble reports an overlap or registration failure; the previous live binding is preserved where the accepted Windows path can reconcile it.</p>
+              <summary>Text shaping</summary>
+              <p>Confirm the Prompt, Email, Reply, or Deck action and inspect its effective route. Local formatting remains available without a hosted provider. If a hosted route is not ready, correct the provider or key in Settings; recover any already-finished result from Deck instead of rerunning it blindly.</p>
+            </details>
+            <details id="reader-troubleshooting">
+              <summary>Reader</summary>
+              <p>For import, choose a format offered by Reader's file picker and confirm the file is readable and not empty. For speech, check the selected provider, model, voice, network access, matching key, and credits. A playback failure pauses rather than skipping unread text, and a fallback cannot cross to another provider silently.</p>
             </details>
             <details>
-              <summary>Focus or insertion</summary>
-              <p>Focus a writable field before recording and keep that destination selected through Stop. If Mumble reports uncertain or not inserted, inspect the destination, then recover the saved result from Deck instead of repeating blindly.</p>
+              <summary>Deck recovery</summary>
+              <p>Read the terminal outcome first. For Not inserted, select a verified writable field and use Copy or Paste latest. For Delivery uncertain, inspect the destination before doing anything else so you do not create duplicate text. The result remains in Deck and History.</p>
             </details>
             <details>
-              <summary>Optional provider</summary>
-              <p>Local dictation needs no provider key. For a deliberately selected cloud route, confirm the named provider and configure your own key only in Mumble Settings. Never include credentials, dictated text, or private settings in a report.</p>
+              <summary>Mumble Find</summary>
+              <p>A no-match remains local. Change the query or choose Refresh local index when the operating-system catalogue appears stale. Do not use Web Search as an assumed fallback. Real Windows Search freshness, native drag, and installed behaviour remain physical acceptance gates.</p>
+            </details>
+            <details>
+              <summary>Web Search</summary>
+              <p>Read the effective Web Search command in Home or Settings. A shortcut conflict can leave it unregistered rather than steal another command. If consent expires or the browser cannot open, resolve that problem, select the words again, and create a new one-shot request; an old request is not replayed.</p>
+            </details>
+            <details>
+              <summary>Updates</summary>
+              <p>The production update channel is disabled until publisher authenticity is configured, and this candidate is not a public release. Use <a href="/downloads/#release-notes-title">Release notes</a> and current Downloads status; do not install an update from an unrelated prompt, mirror, or message.</p>
+            </details>
+            <details id="uninstall-troubleshooting">
+              <summary>Uninstall and recovery</summary>
+              <p>The tracked Windows candidate is designed to add an <kbd>Uninstall Mumble</kbd> Start-menu shortcut. Its uninstaller separately asks whether to delete saved transcripts and settings and whether to remove the program folder; choose No to retain either. A rollback is available only for an ownership-proven update backup, and no previous accepted website rollback package is maintained. Do not rename or delete an unknown backup; use the public issue tracker if the owned recovery path is unavailable.</p>
             </details>
           </div>
         </div>
       </article>
+    </section>
 
-      <article class="help-article" id="release-source" data-help-article data-help-keywords="release notes source github issue report technical contribution license mit public gated status">
-        <h3>Follow release and source status</h3>
+    <section class="help-group" aria-labelledby="project-guides" data-help-group>
+      <h2 id="project-guides">Releases and project</h2>
+
+      <article class="help-article" id="known-limitations" data-help-article data-help-context="Releases and project" data-help-keywords="known limitations windows macos linux video computer audio find search accessibility update signed physical package release">
+        <h3>Know the current limitations</h3>
         <div class="help-article-body">
-          <p><strong>{release.publication.label}.</strong> {release.publication.reason}</p>
+          <p class="help-result-context" data-help-result-context>Releases and project</p>
           <ul>
-            <li><a href="/downloads/#release-notes-title">Release notes</a> reports that this candidate has no published public-release notes.</li>
-            <li><a href={sourceResource.href}>Source repository</a> is the public technical project path.</li>
-            <li><a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE">MIT licence</a> defines the project licence.</li>
-            <li><a href={supportResource.href}>{supportResource.label}</a> opens the public GitHub tracker for support and defect reports.</li>
+            <li><strong>Release:</strong> {release.publication.label.toLowerCase()}. The Windows ZIP is a repository candidate, not a signed, installed, deployed, or publicly released package.</li>
+            <li><strong>Platforms:</strong> Windows is the product-contract reference. macOS and Linux have no accepted website artifact; their physical, package, permission, accessibility, signing, and release gates remain open.</li>
+            <li><strong>Capture:</strong> microphone meetings and WAV, MP3, FLAC, or OGG audio import are current. Computer-audio capture and direct video import are not accepted.</li>
+            <li><strong>Search:</strong> Mumble Find is local. Physical Windows Search freshness, native drag, and installed behaviour remain unaccepted; Web Search remains separate and consent gated.</li>
+            <li><strong>Updates and recovery:</strong> the production update channel is disabled, publisher signing is not accepted, and no previous accepted website rollback package is maintained.</li>
+            <li><strong>Accessibility:</strong> source and browser checks cover semantics, focus, keyboard use, reduced motion, and responsive layout, but physical assistive-technology and installed-platform acceptance remain open.</li>
           </ul>
+        </div>
+      </article>
+
+      <article class="help-article" id="release-source" data-help-article data-help-context="Releases and project" data-help-keywords="release notes previous versions known limitations platform status source inspect github issue tracker report support technical contribute pull request license licence mit public gated">
+        <h3>Follow releases, inspect source, or contribute</h3>
+        <div class="help-article-body">
+          <p class="help-result-context" data-help-result-context>Releases and project</p>
+          <p><strong>{release.publication.label}.</strong> {release.publication.reason}</p>
+          <nav class="help-project-links" aria-label="Release and open-source destinations">
+            <a href="/downloads/#release-notes-title" aria-label="Release notes"><span>Release notes</span><small>{release.releaseNotes.label}</small></a>
+            <a href="/downloads/#history-title" aria-label="Previous accepted versions"><span>Previous accepted versions</span><small>{release.history.statusLabel}</small></a>
+            <a href="#known-limitations" aria-label="Known limitations"><span>Known limitations</span><small>Current source and evidence gates</small></a>
+            <a href="/downloads/#platforms-title" aria-label="Platform status"><span>Platform status</span><small>Windows, macOS, and Linux</small></a>
+            <a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE" aria-label="MIT licence"><span>MIT licence</span><small>Read the project licence</small></a>
+            <a href={sourceResource.href} aria-label="Inspect the source"><span>Inspect the source</span><small>Public Mumble repository</small></a>
+          </nav>
+          <section class="help-task-block" id="contribute">
+            <h4>Contribute</h4>
+            <ol class="help-instructions">
+              <li><p>Inspect the public source and MIT licence, then read existing issues for the task or defect you want to address.</p></li>
+              <li><p>Use the public GitHub issue tracker to describe the outcome, evidence, privacy boundary, and remaining limits before proposing a substantial change.</p></li>
+              <li><p>Keep the change focused, add or preserve visitor-facing tests, and submit it through the repository's normal review path. A local test result is not release acceptance.</p></li>
+            </ol>
+          </section>
+          <section class="help-task-block">
+            <h4>Support and defect reports</h4>
+            <p><a href={supportResource.href}>The public GitHub issue tracker</a> is Mumble's sole support and defect-reporting route. Do not include provider keys, private text, recordings, personal settings, or credentials.</p>
+          </section>
         </div>
       </article>
     </section>

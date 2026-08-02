@@ -5,8 +5,10 @@ if (searchForm) {
   const clearButton = searchForm.querySelector('[data-help-search-clear]');
   const status = searchForm.querySelector('[data-help-search-status]');
   const emptyState = document.querySelector('[data-help-search-empty]');
+  const library = document.querySelector('#help-library');
   const articles = [...document.querySelectorAll('[data-help-article]')];
   const groups = [...document.querySelectorAll('[data-help-group]')];
+  const contextLabels = [...document.querySelectorAll('[data-help-result-context]')];
   const normalize = (value) => value.toLowerCase().replace(/\s+/g, ' ').trim();
 
   const resetSearch = () => {
@@ -18,14 +20,22 @@ if (searchForm) {
   const applySearch = () => {
     if (!input || !status || !emptyState) return;
     const query = normalize(input.value);
+    const queryTerms = query.split(' ').filter(Boolean);
     let shown = 0;
+    const shownContexts = new Set();
 
     articles.forEach((article) => {
       const keywords = article.getAttribute('data-help-keywords') ?? '';
-      const haystack = normalize(`${article.textContent ?? ''} ${keywords}`);
-      const matches = !query || haystack.includes(query);
+      const context = article.getAttribute('data-help-context')
+        ?? article.querySelector('[data-help-result-context]')?.textContent
+        ?? 'Help';
+      const haystack = normalize(`${article.textContent ?? ''} ${keywords} ${context}`);
+      const matches = !query || queryTerms.every((term) => haystack.includes(term));
       article.hidden = !matches;
-      if (matches) shown += 1;
+      if (matches) {
+        shown += 1;
+        shownContexts.add(context);
+      }
     });
 
     groups.forEach((group) => {
@@ -33,8 +43,12 @@ if (searchForm) {
     });
 
     emptyState.hidden = shown !== 0;
+    library?.toggleAttribute('data-searching', Boolean(query));
+    contextLabels.forEach((label) => label.setAttribute('aria-hidden', query ? 'false' : 'true'));
     if (clearButton) clearButton.disabled = query.length === 0;
-    status.textContent = `${shown} help ${shown === 1 ? 'topic' : 'topics'} shown.`;
+    status.textContent = query
+      ? `${shown} help ${shown === 1 ? 'topic' : 'topics'} shown${shown ? ` in ${[...shownContexts].join(', ')}` : ''}.`
+      : `${shown} help ${shown === 1 ? 'topic' : 'topics'} available.`;
   };
 
   searchForm.hidden = false;

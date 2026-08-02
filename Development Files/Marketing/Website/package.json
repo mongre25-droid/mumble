@@ -12,6 +12,7 @@
     "check:release": "node scripts/test-release-contract.mjs && node scripts/check-release.mjs",
     "build": "npm run check:release && astro build",
     "test:release": "node scripts/test-release-contract.mjs",
+    "test:help": "npm run build && node scripts/test-help-contract.mjs",
     "install:browser": "playwright install chromium",
     "audit:dependencies": "npm audit --audit-level=moderate",
     "test:browser": "npm run build && node scripts/verify-browser-contract.mjs",

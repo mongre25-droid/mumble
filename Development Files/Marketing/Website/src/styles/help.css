@@ -171,7 +171,7 @@
 
 .help-category-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--help-space-8);
   margin-top: var(--help-space-10);
 }
@@ -265,6 +265,19 @@
   margin-top: var(--help-space-5);
 }
 
+.help-result-context {
+  display: none;
+  color: var(--gold-strong);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-action);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.help-library[data-searching] .help-result-context {
+  display: block;
+}
+
 .help-article-body p,
 .help-article-body li,
 .help-article-body dd {
@@ -301,13 +314,30 @@
 .help-article-body ul li::before {
   position: absolute;
   inset-inline-start: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 0.8em;
   width: var(--space-1);
   height: var(--space-1);
   border-radius: 50%;
   background: var(--gold);
   content: "";
+}
+
+.help-task-block {
+  padding-block-start: var(--help-space-5);
+  border-top: var(--stroke) solid var(--rule);
+}
+
+.help-task-block h4 {
+  margin: 0 0 var(--space-3);
+  color: var(--text);
+  font-size: var(--type-body-large);
+  font-weight: var(--weight-heading);
+  letter-spacing: var(--tracking-title);
+}
+
+.help-task-block > p {
+  color: var(--text-soft);
+  line-height: var(--leading-prose);
 }
 
 .help-instructions {
@@ -423,12 +453,126 @@
   background: var(--ink-panel);
 }
 
+.help-route-ledger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: var(--stroke) solid var(--rule-strong);
+}
+
+.help-route-ledger > div {
+  min-width: 0;
+  padding: var(--help-space-5);
+  border-bottom: var(--stroke) solid var(--rule);
+}
+
+.help-route-ledger > div:nth-child(odd) {
+  padding-inline-start: 0;
+  border-inline-end: var(--stroke) solid var(--rule);
+}
+
+.help-route-ledger dt {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--text);
+  font-weight: var(--weight-heading);
+}
+
+.help-route-ledger dt span {
+  color: var(--gold-strong);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-action);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.help-route-ledger dd {
+  margin-top: var(--space-3);
+}
+
+.help-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border-block: var(--stroke) solid var(--rule-strong);
+  scrollbar-gutter: stable;
+}
+
+.help-access-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.help-access-table caption {
+  padding: var(--space-4) 0;
+  color: var(--text);
+  font-weight: var(--weight-heading);
+  text-align: left;
+}
+
+.help-access-table th,
+.help-access-table td {
+  padding: var(--space-4);
+  border-top: var(--stroke) solid var(--rule);
+  color: var(--text-soft);
+  line-height: var(--leading-prose);
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-access-table thead th {
+  color: var(--text-muted);
+  font-size: var(--type-caption);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.help-access-table tbody th {
+  width: 18%;
+  color: var(--text);
+}
+
+.help-project-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-block: var(--stroke) solid var(--rule-strong);
+}
+
+.help-project-links a {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+  align-content: center;
+  min-height: calc(var(--control-size) + var(--space-4));
+  padding: var(--space-4);
+  border-bottom: var(--stroke) solid var(--rule);
+  text-decoration: none;
+}
+
+.help-project-links a:nth-child(odd) {
+  border-inline-end: var(--stroke) solid var(--rule);
+}
+
+.help-project-links span {
+  color: var(--text);
+  font-weight: var(--weight-action);
+}
+
+.help-project-links small {
+  color: var(--text-muted);
+  font-size: var(--type-body-small);
+}
+
+.help-project-links a:hover span {
+  color: var(--gold-strong);
+}
+
 .help-troubleshooting {
   display: grid;
   gap: var(--space-3);
 }
 
 .help-troubleshooting details {
+  scroll-margin-top: calc(var(--header-height) + var(--help-space-6));
   border-top: var(--stroke) solid var(--rule);
 }
 
@@ -512,6 +656,21 @@
   .help-truth-list div,
   .help-shortcut-list div {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .help-route-ledger,
+  .help-project-links {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .help-route-ledger > div,
+  .help-route-ledger > div:nth-child(odd) {
+    padding-inline: 0;
+    border-inline-end: 0;
+  }
+
+  .help-project-links a:nth-child(odd) {
+    border-inline-end: 0;
   }
 
   .help-paths a + a {

@@ -31,8 +31,9 @@ const helpArticleHeadings = [
   ...canonicalJobs.map((job) => job.label),
   'Understand privacy routes',
   'Use Mumble accessibly',
-  'Fix initial setup problems',
-  'Follow release and source status',
+  'Troubleshoot by symptom',
+  'Know the current limitations',
+  'Follow releases, inspect source, or contribute',
 ];
 
 const contentTypes = new Map([
@@ -700,7 +701,7 @@ async function helpJourney(browser) {
 
   await page.goto(`${origin}/help/`, { waitUntil: 'networkidle' });
   await assertSharedShell(page, 'Help');
-  await page.getByRole('heading', { level: 1, name: /first successful dictation/i }).waitFor();
+  await page.getByRole('heading', { level: 1, name: /solve the task/i }).waitFor();
   await page.getByRole('navigation', { name: 'Popular help tasks' }).waitFor();
   await page.getByRole('navigation', { name: 'Browse Help topics' }).waitFor();
   await page.getByRole('navigation', { name: 'Choose Getting Started platform' }).waitFor();
@@ -716,6 +717,53 @@ async function helpJourney(browser) {
       (await article.innerText()).includes(job.summary),
       `${job.label} Help guidance does not render its canonical summary`,
     );
+    for (const blockHeading of ['Do this', 'Privacy boundary', 'If it does not work']) {
+      await article.getByRole('heading', { level: 4, name: blockHeading, exact: true }).waitFor();
+    }
+  }
+
+  const privacyRoutes = page.locator('#privacy-routes');
+  for (const route of [
+    'Local transcription',
+    'Cloud transcription',
+    'Text shaping',
+    'Reader speech',
+    'Mumble Find',
+    'Web Search',
+  ]) {
+    await privacyRoutes.locator('dt').filter({ hasText: route }).waitFor();
+  }
+  assert.equal(
+    await privacyRoutes.getByRole('link', { name: 'Privacy boundaries', exact: true }).getAttribute('href'),
+    '/privacy/',
+    'Help privacy ledger does not reach the canonical Privacy page',
+  );
+
+  const accessTable = page.getByRole('region', { name: 'Accessibility guidance table' });
+  await accessTable.getByRole('table', { name: /Keyboard, visual state, motion/i }).waitFor();
+  await accessTable.focus();
+  await assertVisibleFocus(page, 'Help accessibility table focus');
+  assert.match(
+    await accessTable.innerText(),
+    /Physical screen-reader output.+have not been independently accepted/is,
+    'Help accessibility guidance omits its physical evidence limit',
+  );
+
+  const troubleshootingTopics = [
+    'Package or installer',
+    'Capture or import',
+    'Transcription route',
+    'Provider keys and costs',
+    'Text shaping',
+    'Reader',
+    'Deck recovery',
+    'Mumble Find',
+    'Web Search',
+    'Updates',
+    'Uninstall and recovery',
+  ];
+  for (const topic of troubleshootingTopics) {
+    await page.locator('#troubleshooting summary').filter({ hasText: topic }).waitFor();
   }
 
   const platformLinks = [
@@ -747,7 +795,7 @@ async function helpJourney(browser) {
   assert.match(helpText, /Publisher signature.+Not accepted/is);
   assert.match(helpText, /70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493/i);
   assert.doesNotMatch(helpText, /Mumble Search/i);
-  assert.match(helpText, /public GitHub tracker for support and defect reports/i);
+  assert.match(helpText, /public GitHub issue tracker.+sole support and defect-reporting route/is);
   assert.doesNotMatch(
     helpText,
     /source repository remains private|issue reporting is not publicly available|no public support or defect-reporting route/i,
@@ -785,7 +833,12 @@ async function helpJourney(browser) {
     ['Privacy boundaries', '/privacy/'],
     ['Product overview', '/#jobs'],
     ['Release notes', '/downloads/#release-notes-title'],
-    ['Source repository', 'https://github.com/mongre25-droid/mumble'],
+    ['Previous accepted versions', '/downloads/#history-title'],
+    ['Known limitations', '#known-limitations'],
+    ['Platform status', '/downloads/#platforms-title'],
+    ['MIT licence', 'https://github.com/mongre25-droid/mumble/blob/main/LICENSE'],
+    ['Inspect the source', 'https://github.com/mongre25-droid/mumble'],
+    ['The public GitHub issue tracker', publicIssuesUrl],
   ]);
   for (const [name, href] of expectedDestinations) {
     assert.equal(
@@ -794,6 +847,16 @@ async function helpJourney(browser) {
       `${name} has the wrong Help destination`,
     );
   }
+  assert.equal(await page.locator('a[href^="mailto:"]').count(), 0, 'Help exposes an email support route');
+  assert.doesNotMatch(helpText, /contact us|donation|sales enquiry/i, 'Help exposes an unwanted support channel');
+  const missingFragment = await page.locator('a[href^="#"]').evaluateAll((links) => {
+    for (const link of links) {
+      const target = link.getAttribute('href')?.slice(1);
+      if (target && !document.getElementById(target)) return target;
+    }
+    return null;
+  });
+  assert.equal(missingFragment, null, `Help links to missing fragment #${missingFragment}`);
 
   const search = page.getByRole('searchbox', { name: 'Search Mumble Help' });
   await search.focus();
@@ -801,13 +864,17 @@ async function helpJourney(browser) {
   const articles = page.getByRole('article');
   const articleCount = await articles.count();
   assert.equal(articleCount, helpArticleHeadings.length, 'Help article contract drifted');
-  await search.fill('microphone');
+  await search.fill('Reader speech');
   await page.getByRole('status').filter({ hasText: /help topics? shown/i }).waitFor();
   const visibleCount = await articles.count();
   assert.ok(visibleCount > 0 && visibleCount < articleCount, 'Help search did not filter the static article set');
-  for (let index = 0; index < visibleCount; index += 1) {
-    assert.match(await articles.nth(index).innerText(), /microphone/i, 'Help search exposed an unrelated topic');
-  }
+  const visibleContexts = await page.locator('[data-help-result-context]:visible').allTextContents();
+  assert.ok(visibleContexts.length > 0, 'Help search results omit useful topic context');
+  assert.ok(
+    visibleContexts.some((contextLabel) => /Everyday jobs|Privacy and access|Troubleshooting/i.test(contextLabel)),
+    'Help search results expose no meaningful category context',
+  );
+  assert.match(await page.getByRole('status').innerText(), /Everyday jobs|Privacy and access|Troubleshooting/i);
   await page.keyboard.press('Escape');
   assert.equal(await search.inputValue(), '', 'Escape did not clear Help search');
   assert.equal(await articles.count(), articleCount, 'clearing Help search did not restore all topics');
@@ -816,7 +883,7 @@ async function helpJourney(browser) {
   await noHorizontalOverflow(page, 'desktop Help');
   assertNoBrowserErrors(browserErrors, 'desktop Help browser errors');
   await context.close();
-  record('Help search enhancement, canonical job authority, actual Island outcome labels, public source and issue reporting, platform gates, shortcuts, recovery, reduced motion, and keyboard focus');
+  record('complete Help search, five-job procedures, six privacy routes, accessibility evidence limits, troubleshooting, canonical destinations, fragment integrity, public issue reporting, reduced motion, and keyboard focus');
 }
 
 async function mobileHelpJourney(browser) {
@@ -833,13 +900,14 @@ async function mobileHelpJourney(browser) {
   const search = page.getByRole('searchbox', { name: 'Search Mumble Help' });
   const articles = page.getByRole('article');
   const articleCount = await articles.count();
-  await search.fill('model ready');
+  await search.fill('Reader speech');
   await page.getByRole('status').filter({ hasText: /help topics? shown/i }).waitFor();
   const visibleCount = await articles.count();
   assert.ok(visibleCount > 0 && visibleCount < articleCount, 'mobile Help search did not filter the article set');
-  for (let index = 0; index < visibleCount; index += 1) {
-    assert.match(await articles.nth(index).innerText(), /model/i, 'mobile Help search exposed an unrelated topic');
-  }
+  assert.ok(
+    await page.locator('[data-help-result-context]:visible').count() > 0,
+    'mobile Help search results omit useful topic context',
+  );
 
   const clearSearch = page.getByRole('button', { name: 'Clear search' });
   await clearSearch.focus();
@@ -863,13 +931,13 @@ async function mobileHelpJourney(browser) {
   ]);
   await page.locator('#install-macos-title').waitFor();
 
-  const microphoneSummary = page.locator('#troubleshooting summary').filter({ hasText: 'Microphone' });
+  const captureSummary = page.locator('#troubleshooting summary').filter({ hasText: 'Capture or import' });
   await page.keyboard.press('Tab');
-  await microphoneSummary.focus();
+  await captureSummary.focus();
   await assertVisibleFocus(page, 'mobile Help troubleshooting disclosure focus');
   await page.keyboard.press('Enter');
   assert.equal(
-    await microphoneSummary.evaluate((summary) => summary.parentElement?.open),
+    await captureSummary.evaluate((summary) => summary.parentElement?.open),
     true,
     'mobile Help troubleshooting disclosure did not open from the keyboard',
   );
@@ -878,7 +946,7 @@ async function mobileHelpJourney(browser) {
   await noHorizontalOverflow(page, 'mobile Help');
   assertNoBrowserErrors(browserErrors, 'mobile Help browser errors');
   await context.close();
-  record('mobile Help search, clear control, taxonomy and platform paths, disclosure keyboard use, reduced motion, and horizontal fit');
+  record('mobile Help contextual search, clear control, taxonomy and platform paths, disclosure keyboard use, reduced motion, and horizontal fit');
 }
 
 async function mobileMenu(browser) {
