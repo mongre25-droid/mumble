@@ -20,7 +20,7 @@ const demonstrationPanelId = (stateId: string) => `${storyId}-panel-${stateId}`;
 const taskId = (id: string) => `${storyId}-task-${id}`;
 ---
 
-{surface === 'home' && (
+{surface === 'home' && job.id === 'write' && (
   <section
     class="product-stage write-product-stage"
     aria-labelledby={stageTitleId}
@@ -108,9 +108,88 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   </section>
 )}
 
+{surface === 'home' && job.id === 'find' && (
+  <section
+    class="product-stage find-product-stage shell"
+    aria-labelledby={stageTitleId}
+    data-job-story={job.id}
+    data-story-surface="home"
+  >
+    <div class="stage-bar">
+      <span class="stage-brand">Mumble / {job.label}</span>
+      <span class="stage-state"><i aria-hidden="true"></i>Local and online stay separate</span>
+    </div>
+
+    <header class="find-stage-heading">
+      <div>
+        <h2 id={stageTitleId}>{story.opening.title}</h2>
+        <p>{story.demonstration.note}</p>
+      </div>
+      <a class="text-link" href="/product/#find-mechanism">See how Find works</a>
+    </header>
+
+    <div class="find-stage-layout">
+      <figure class="find-deck-capture">
+        <img
+          src="/product/deck-command-surface.webp"
+          width="1152"
+          height="800"
+          loading="eager"
+          alt="Genuine current Mumble Deck capture showing searchable content types, Starred filtering, Pin or Unpin, and the separate Mumble Find command"
+        />
+        <figcaption>
+          <strong>Genuine Mumble Deck capture</strong>
+          <span>Search saved text, filter Starred material, then copy, paste, or shape it again.</span>
+        </figcaption>
+      </figure>
+
+      <div class="find-route-stack">
+        <article class="find-route find-route-local" data-find-route="local">
+          <header>
+            <span>Private on this device</span>
+            <h3>Mumble Find</h3>
+            <p>Find apps &amp; files from local indexed results. Hosted web results never enter this list.</p>
+          </header>
+          <div class="find-query" aria-label="Illustrative Mumble Find query">
+            <span>Illustrative query</span>
+            <strong>project brief</strong>
+          </div>
+          <div class="find-result-demo" aria-label="Illustrative local results, not user data">
+            <span class="find-demo-label">Interface illustration · illustrative local results</span>
+            <div>
+              <strong>Project brief.docx</strong>
+              <small>Illustrative file · not user data</small>
+            </div>
+            <p aria-label="Available result actions">Open · Show in folder · Drag to another app</p>
+          </div>
+        </article>
+
+        <article class="find-route find-route-web" data-find-route="web">
+          <header>
+            <span>Separate consent-gated action</span>
+            <h3>Web Search</h3>
+            <p>Selected words stay on this computer until a confirmation names the chosen provider.</p>
+          </header>
+          <blockquote>
+            <span>Illustrative selected text · not user data</span>
+            “Compare the quarterly outline with the launch notes.”
+          </blockquote>
+          <dl>
+            <div><dt>Chosen provider</dt><dd>Perplexity</dd></div>
+            <div><dt>Before confirmation</dt><dd>Words remain local</dd></div>
+            <div><dt>After Search online</dt><dd>Selected words go to Perplexity</dd></div>
+          </dl>
+          <p class="find-failure-truth">If the browser cannot open, Mumble reports that Web Search could not open. Failure never appears as browser success.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+)}
+
 {surface === 'product' && (
   <section
     class="job-story job-story-mechanism shell"
+    id={job.id === 'find' ? 'find-mechanism' : undefined}
     aria-labelledby={mechanismTitleId}
     data-job-story={job.id}
     data-story-surface="product"
@@ -119,6 +198,64 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
       <h2 id={mechanismTitleId}>{story.mechanism.title}</h2>
       <p>{story.mechanism.summary}</p>
     </header>
+
+    {job.id === 'find' && (
+      <div class="find-boundary-ledger" aria-label="Deck, local Mumble Find, and Web Search boundaries">
+        <article data-find-boundary="deck">
+          <div class="find-boundary-name">
+            <span>Saved Mumble material</span>
+            <h3>Deck history</h3>
+          </div>
+          <div>
+            <p>Search all Deck content across Transcripts, Clipboard, Prompts, and Emails. Use Starred to return to material kept for reuse.</p>
+          </div>
+          <ul aria-label="Deck reuse actions">
+            <li>Read the full saved item</li>
+            <li>Copy or Paste latest</li>
+            <li>Select material to shape again</li>
+          </ul>
+        </article>
+
+        <article data-find-boundary="local">
+          <div class="find-boundary-name">
+            <span>Private on this device</span>
+            <h3>Mumble Find</h3>
+          </div>
+          <div>
+            <p>Find apps &amp; files from local apps and indexed files. Hosted web results never appear in this local list.</p>
+            <div class="find-product-result" aria-label="Illustrative local Mumble Find result, not user data">
+              <span>Interface illustration · illustrative local result</span>
+              <strong>Project brief.docx</strong>
+              <small>Demonstration file · not user data</small>
+            </div>
+          </div>
+          <ul aria-label="Mumble Find result actions">
+            <li>Open</li>
+            <li>Show in folder</li>
+            <li>Drag to another app</li>
+          </ul>
+        </article>
+
+        <article data-find-boundary="web">
+          <div class="find-boundary-name">
+            <span>Separate online route</span>
+            <h3>Web Search</h3>
+          </div>
+          <div>
+            <p>Selected words remain on this computer until a provider-named confirmation is accepted with Search online.</p>
+            <blockquote>
+              <span>Illustrative selected text · not user data</span>
+              “Compare the quarterly outline with the launch notes.”
+            </blockquote>
+          </div>
+          <ul aria-label="Web Search provider and outcome truth">
+            <li>Provider: Google, Perplexity, or Brave</li>
+            <li>Keep private cancels</li>
+            <li>Browser could not open is shown as failure</li>
+          </ul>
+        </article>
+      </div>
+    )}
 
     <ol class="job-sequence">
       {story.mechanism.steps.map((step, index) => (
@@ -148,6 +285,20 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
           <header>
             <h2>{task.title}</h2>
             <p>{task.summary}</p>
+            {job.id === 'find' && task.id === 'local-app-file' && (
+              <div class="find-task-example" aria-label="Illustrative local result, not user data">
+                <span>Illustrative local result · not user data</span>
+                <strong>Project brief.docx</strong>
+                <small>Example action: Show in folder</small>
+              </div>
+            )}
+            {job.id === 'find' && task.id === 'web-search' && (
+              <blockquote class="find-task-example">
+                <span>Illustrative selected text · not user data</span>
+                “Compare the quarterly outline with the launch notes.”
+                <small>Chosen provider in this demonstration: Perplexity</small>
+              </blockquote>
+            )}
           </header>
           <ol>
             {task.steps.map((step, index) => (

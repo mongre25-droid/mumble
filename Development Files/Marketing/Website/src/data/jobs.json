@@ -132,6 +132,98 @@
     "label": "Find",
     "summary": "Use Mumble Find to search local apps and files without hosted results entering the list.",
     "proof": "Web Search is separate and sends selected text online only after provider-named confirmation.",
-    "story": null
+    "story": {
+      "opening": {
+        "title": "Find what Mumble kept, what is on this computer, or deliberately go online.",
+        "summary": "The Deck, Mumble Find, and Web Search solve different retrieval jobs. Saved Mumble material stays in the Deck. Mumble Find searches local apps and indexed files. Web Search is a separate provider-named action that waits for confirmation before selected words leave this computer."
+      },
+      "demonstration": {
+        "spoken": "",
+        "note": "The Deck image is a genuine current capture. Local results and selected words in the two route illustrations are demonstrations, not user data.",
+        "states": []
+      },
+      "mechanism": {
+        "title": "One Find job, three boundaries that never merge.",
+        "summary": "The Deck retrieves Mumble material, Mumble Find retrieves local apps and indexed files, and Web Search sends selected words to one named provider only after confirmation.",
+        "steps": [
+          {
+            "id": "deck-history",
+            "title": "Search the Deck history",
+            "body": "The Deck keeps transcripts, clipboard captures, prompts, emails, and finished results available together. Search all Deck content or narrow the view by content type, then filter to Starred material when you want the items deliberately kept for reuse.",
+            "proof": "Clipboard capture and saved Deck material remain local in the current product path."
+          },
+          {
+            "id": "deck-reuse",
+            "title": "Reuse the material you found",
+            "body": "Open a matching Deck row, read it in full, copy or paste the latest item, or select saved text for a deliberate shaping action. Starred copies survive ordinary source-history clearing within the product's bounded favourites store.",
+            "proof": "Deck actions work on saved Mumble material; they do not become app-and-file search."
+          },
+          {
+            "id": "local-find",
+            "title": "Open Mumble Find for this computer",
+            "body": "Mumble Find is a separate, keyboard-first local launcher for installed apps and indexed files. Type a query, move through local results, then choose Open, Show in folder, or Drag to another app where the result supports that action.",
+            "proof": "Hosted web results never enter the Mumble Find list."
+          },
+          {
+            "id": "web-consent",
+            "title": "Choose Web Search only when you mean to go online",
+            "body": "Select text, choose the separate Search the web action, and inspect the confirmation. It names the configured Google, Perplexity, or Brave provider and shows the selected words. Nothing leaves until you choose Search online; Keep private cancels the request.",
+            "proof": "The provider and selected-text boundary are frozen for one short-lived confirmation."
+          },
+          {
+            "id": "web-failure",
+            "title": "Keep failure truthful",
+            "body": "Mumble reports Web Search opened only after the browser opener confirms success. If the browser could not open, the request reports that failure and tells the user to check the default browser before trying again.",
+            "proof": "A consumed consent request cannot silently become a success message or open twice."
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "prior-text",
+          "title": "Find prior text",
+          "summary": "Return to a transcript, clipboard capture, prompt, or email already kept in Mumble.",
+          "steps": [
+            "Open the Deck; this is the saved Mumble-material boundary, not Mumble Find.",
+            "Use Search all Deck content, or first narrow the view to Transcripts, Clipboard, Prompts, or Emails.",
+            "Read the matching Deck row in full and confirm it is the material you meant to recover.",
+            "Copy the item, paste the latest matching item, or leave it selected for a deliberate next action."
+          ]
+        },
+        {
+          "id": "deck-material",
+          "title": "Reopen useful Deck material",
+          "summary": "Use the Starred filter to return to material deliberately kept for reuse.",
+          "steps": [
+            "Open the Deck and choose the relevant content type so the list stays understandable.",
+            "Turn on Starred to show the saved copies you marked for later use.",
+            "Open the useful row and review the complete saved material before acting on it.",
+            "Copy or paste it, or select it for one explicit shaping action; this remains a Deck workflow."
+          ]
+        },
+        {
+          "id": "local-app-file",
+          "title": "Locate a local app or file",
+          "summary": "Use Mumble Find when the destination is an app, file, or folder on this computer.",
+          "steps": [
+            "Invoke the separate Mumble Find command; the centred launcher identifies itself as Private on this device.",
+            "Type the app or filename. The list contains local results only and never inserts hosted web results.",
+            "Move through the results with the keyboard and confirm the illustrated result is the local item you intended.",
+            "Choose Open, Show in folder, or Drag to another app when that result offers the action."
+          ]
+        },
+        {
+          "id": "web-search",
+          "title": "Search the web deliberately",
+          "summary": "Send selected words to one chosen provider only after inspecting the confirmation.",
+          "steps": [
+            "Select the Deck text you intend to send, then choose the separate Search the web action.",
+            "Read the confirmation: it names the chosen provider—Google, Perplexity, or Brave—and shows the selected words.",
+            "Choose Keep private to cancel, or choose Search online to send only those selected words to the named provider.",
+            "Treat the result literally: Web Search opened appears only after browser success; browser could not open remains a failure with recovery guidance."
+          ]
+        }
+      ]
+    }
   }
 ]

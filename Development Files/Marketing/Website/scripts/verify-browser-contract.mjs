@@ -173,7 +173,7 @@ async function desktopJourney(browser) {
   await page.getByRole('heading', { level: 1, name: /field where your words belong/i }).waitFor();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Downloads' }).waitFor();
   await page.getByRole('heading', { level: 3, name: 'Write' }).waitFor();
-  await page.getByRole('heading', { level: 3, name: 'Find' }).waitFor();
+  await page.getByRole('heading', { level: 3, name: 'Find', exact: true }).waitFor();
   assert.match(await page.getByText('Mumble Find', { exact: false }).first().innerText(), /Mumble Find/);
   assert.match(await page.getByText('Web Search', { exact: false }).first().innerText(), /Web Search/);
   const homeText = await page.locator('body').innerText();
@@ -539,6 +539,161 @@ async function writeJourney(browser) {
     await context.close();
   }
   record('Issue #37 desktop/mobile Write journey, direct-step keyboard controls, reduced-motion stability, truthful mechanism, complete task sequences, no microphone request, release action, and horizontal fit');
+}
+
+async function findJourney(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 1365, height: 900 },
+    reducedMotion: 'reduce',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+  });
+  const page = await context.newPage();
+  const browserErrors = browserErrorsFor(page);
+
+  await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
+  const stage = page.locator('[data-job-story="find"][data-story-surface="home"]');
+  assert.equal(
+    await stage.count(),
+    1,
+    'Home must expose one major Find job stage, not only a small job-ledger entry',
+  );
+  const stageText = await stage.innerText();
+  assert.match(stageText, /Genuine Mumble Deck capture/i);
+  assert.match(stageText, /Mumble Find/i);
+  assert.match(stageText, /Find apps & files/i);
+  assert.match(stageText, /private on this device/i);
+  assert.match(stageText, /illustrative local results/i);
+  assert.match(stageText, /Web Search/i);
+  assert.match(stageText, /selected words/i);
+  assert.match(stageText, /Google|Perplexity|Brave/i);
+  assert.match(stageText, /confirm/i);
+  assert.doesNotMatch(stageText, /Mumble Search/i);
+  const findStageLink = stage.getByRole('link', { name: 'See how Find works', exact: true });
+  await findStageLink.focus();
+  await assertVisibleFocus(page, 'desktop Home Find stage link focus');
+  const stableStageText = await stage.innerText();
+  await page.waitForTimeout(400);
+  assert.equal(await stage.innerText(), stableStageText, 'reduced-motion Home Find stage changed without visitor input');
+  await noHorizontalOverflow(page, 'desktop Find Home');
+
+  await followPrimaryNavigation(page, 'Product', '/product/', false);
+  const productFind = page.locator('[data-job-story="find"][data-story-surface="product"]');
+  assert.equal(
+    await productFind.count(),
+    1,
+    'Product must expose one complete Find mechanism region',
+  );
+  const productText = await productFind.innerText();
+  for (const required of [
+    /Deck history/i,
+    /Search all Deck content/i,
+    /Starred/i,
+    /copy|paste|shape/i,
+    /local apps and indexed files/i,
+    /Open/i,
+    /Show in folder/i,
+    /Drag to another app/i,
+    /hosted web results never/i,
+    /Google/i,
+    /Perplexity/i,
+    /Brave/i,
+    /selected words/i,
+    /Search online/i,
+    /browser could not open/i,
+  ]) {
+    assert.match(productText, required, `Product Find region omits ${required}`);
+  }
+  assert.equal(
+    await productFind.locator('[data-find-boundary]').count(),
+    3,
+    'Product must keep Deck, local Mumble Find, and Web Search as three named boundaries',
+  );
+  assert.doesNotMatch(productText, /Mumble Search/i);
+  await noHorizontalOverflow(page, 'desktop Find Product');
+
+  await followPrimaryNavigation(page, 'Use Cases', '/use-cases/', false);
+  const useCasesFind = page.locator('[data-job-story="find"][data-story-surface="use-cases"]');
+  assert.equal(
+    await useCasesFind.count(),
+    1,
+    'Use Cases must expose one complete Find task region',
+  );
+  for (const [taskId, task] of [
+    ['prior-text', 'Find prior text'],
+    ['deck-material', 'Reopen useful Deck material'],
+    ['local-app-file', 'Locate a local app or file'],
+    ['web-search', 'Search the web deliberately'],
+  ]) {
+    const taskRegion = useCasesFind.locator(`#job-find-task-${taskId}`);
+    assert.equal(await taskRegion.count(), 1, `${task} is missing`);
+    assert.equal(
+      await taskRegion.getByRole('heading', { level: 2, name: task, exact: true }).count(),
+      1,
+      `${task} heading is missing`,
+    );
+    assert.ok(await taskRegion.getByRole('listitem').count() >= 4, `${task} is not an end-to-end sequence`);
+  }
+  const useCasesText = await useCasesFind.innerText();
+  assert.match(useCasesText, /Search all Deck content/i);
+  assert.match(useCasesText, /Starred/i);
+  assert.match(useCasesText, /Mumble Find/i);
+  assert.match(useCasesText, /local results/i);
+  assert.match(useCasesText, /Open|Show in folder/i);
+  assert.match(useCasesText, /chosen provider/i);
+  assert.match(useCasesText, /selected words/i);
+  assert.match(useCasesText, /Search online/i);
+  assert.match(useCasesText, /browser could not open/i);
+  assert.match(useCasesText, /Illustrative selected text · not user data/i);
+  assert.doesNotMatch(useCasesText, /Mumble Search/i);
+  await noHorizontalOverflow(page, 'desktop Find Use Cases');
+  assertNoBrowserErrors(browserErrors, 'desktop Find journey browser errors');
+  await context.close();
+
+  const mobileContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: 'reduce',
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+  });
+  await mobileContext.addInitScript(() => {
+    window.__mumbleMicrophoneRequests = 0;
+    if (navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices.getUserMedia = () => {
+        window.__mumbleMicrophoneRequests += 1;
+        return Promise.reject(new Error('Website microphone access is forbidden'));
+      };
+    }
+  });
+  const mobilePage = await mobileContext.newPage();
+  const mobileErrors = browserErrorsFor(mobilePage);
+
+  await mobilePage.goto(`${origin}/`, { waitUntil: 'networkidle' });
+  const mobileStage = mobilePage.locator('[data-job-story="find"][data-story-surface="home"]');
+  assert.equal(await mobileStage.count(), 1, 'mobile Home Find stage is missing');
+  assert.equal(await mobileStage.locator('[data-find-route]').count(), 2, 'mobile Home local and web routes merged');
+  const mobileFindLink = mobileStage.getByRole('link', { name: 'See how Find works', exact: true });
+  await mobileFindLink.focus();
+  await assertVisibleFocus(mobilePage, 'mobile Home Find stage link focus');
+  await noHorizontalOverflow(mobilePage, 'mobile Find Home');
+
+  await followPrimaryNavigation(mobilePage, 'Product', '/product/', true);
+  const mobileProductFind = mobilePage.locator('[data-job-story="find"][data-story-surface="product"]');
+  assert.equal(await mobileProductFind.locator('[data-find-boundary]').count(), 3, 'mobile Product Find boundaries merged');
+  assert.match(await mobileProductFind.innerText(), /browser could not open/i);
+  await noHorizontalOverflow(mobilePage, 'mobile Find Product');
+
+  await followPrimaryNavigation(mobilePage, 'Use Cases', '/use-cases/', true);
+  const mobileUseCasesFind = mobilePage.locator('[data-job-story="find"][data-story-surface="use-cases"]');
+  assert.equal(await mobileUseCasesFind.locator('article').count(), 4, 'mobile Find task sequences are incomplete');
+  const mobilePriorText = mobilePage.locator('a[href="#job-find-task-prior-text"]');
+  assert.equal(await mobilePriorText.count(), 1, 'mobile Find task jump is missing');
+  await mobilePriorText.focus();
+  await assertVisibleFocus(mobilePage, 'mobile Find task-jump focus');
+  assert.equal(await mobilePage.evaluate(() => window.__mumbleMicrophoneRequests), 0);
+  await noHorizontalOverflow(mobilePage, 'mobile Find Use Cases');
+  assertNoBrowserErrors(mobileErrors, 'mobile Find journey browser errors');
+  await mobileContext.close();
+
+  record('Issue #41 desktop/mobile Find journey keeps Deck, local Mumble Find, provider consent, failure truth, keyboard focus, reduced motion, zero microphone use, and fit distinct');
 }
 
 
@@ -991,13 +1146,18 @@ async function noJavaScriptPath(browser) {
     await assertSharedShell(page, 'Home');
     await page.getByRole('heading', { level: 1, name: /field where your words belong/i }).waitFor();
     for (const job of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
-      await page.getByRole('heading', { level: 3, name: job }).waitFor();
+      await page.getByRole('heading', { level: 3, name: job, exact: true }).waitFor();
     }
     const stage = page.locator('[data-job-story="write"][data-story-surface="home"]');
     assert.equal(await stage.getByRole('tabpanel').count(), 3, 'no-JavaScript Write states are incomplete');
     for (const panel of ['Choose cursor', 'Speak', 'Text returned']) {
       await stage.getByRole('tabpanel', { name: new RegExp(panel, 'i') }).waitFor();
     }
+    const noScriptFindStage = page.locator('[data-job-story="find"][data-story-surface="home"]');
+    assert.equal(await noScriptFindStage.count(), 1, 'no-JavaScript Home Find stage is missing');
+    assert.equal(await noScriptFindStage.locator('[data-find-route]').count(), 2, 'no-JavaScript Home Find routes merged');
+    assert.match(await noScriptFindStage.innerText(), /Private on this device/i);
+    assert.match(await noScriptFindStage.innerText(), /Search online/i);
     assert.deepEqual(
       stopTimeDestinationFindings(
         await page.locator('main').innerText(),
@@ -1026,6 +1186,10 @@ async function noJavaScriptPath(browser) {
     assert.match(productText, /deliberate global Dictate command/i);
     assert.match(productText, /Local transcription is the default/i);
     assert.match(productText, /saved in the Deck/i);
+    const noScriptProductFind = page.locator('[data-job-story="find"][data-story-surface="product"]');
+    assert.equal(await noScriptProductFind.count(), 1, 'no-JavaScript Product Find region is missing');
+    assert.equal(await noScriptProductFind.locator('[data-find-boundary]').count(), 3, 'no-JavaScript Product Find boundaries merged');
+    assert.match(await noScriptProductFind.innerText(), /browser could not open/i);
     assert.deepEqual(
       stopTimeDestinationFindings(productText, 'product', `no-JavaScript Product ${viewport.width}px`),
       [],
@@ -1042,6 +1206,9 @@ async function noJavaScriptPath(browser) {
     for (const task of ['Everyday notes', 'Longer text', 'Across applications']) {
       await page.getByRole('heading', { level: 2, name: task }).waitFor();
     }
+    const noScriptUseCasesFind = page.locator('[data-job-story="find"][data-story-surface="use-cases"]');
+    assert.equal(await noScriptUseCasesFind.locator('article').count(), 4, 'no-JavaScript Find tasks are incomplete');
+    assert.match(await noScriptUseCasesFind.innerText(), /Illustrative selected text · not user data/i);
     assert.deepEqual(
       stopTimeDestinationFindings(
         await page.locator('main').innerText(),
@@ -1124,7 +1291,7 @@ async function noJavaScriptPath(browser) {
     assertNoBrowserErrors(browserErrors, `no-JavaScript ${viewport.width}px browser errors`);
     await context.close();
   }
-  record('no-JavaScript desktop/mobile Home-to-Product-to-Use-Cases-to-Downloads journeys retain complete Write states, truthful Stop-time destination guidance, ≥44px mobile header action geometry, mechanisms, task sequences, release facts, platform states, download access, and horizontal fit');
+  record('no-JavaScript desktop/mobile journeys retain complete Write and Find stages, distinct Deck/local/web boundaries, task sequences, release facts, download access, and horizontal fit');
 }
 
 let browser;
@@ -1135,6 +1302,7 @@ try {
   await desktopJourney(browser);
   await correctionConstraints(browser);
   await writeJourney(browser);
+  await findJourney(browser);
   await platformRecommendations(browser);
   await downloadsContract(browser);
   await mobileMenu(browser);

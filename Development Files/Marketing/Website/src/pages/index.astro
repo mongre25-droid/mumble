@@ -7,8 +7,10 @@ import release from '../data/release.json';
 
 const windows = release.platforms.find((platform) => platform.id === 'windows');
 const write = jobs.find((job) => job.id === 'write');
+const find = jobs.find((job) => job.id === 'find');
 if (!windows) throw new Error('Windows release authority is missing');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!find?.story) throw new Error('Find story authority is missing');
 ---
 
 <BaseLayout
@@ -55,6 +57,14 @@ if (!write?.story) throw new Error('Write story authority is missing');
         </li>
       ))}
     </ol>
+  </section>
+
+  <section class="find-section" aria-labelledby="find-story-title">
+    <div class="shell section-intro">
+      <h2 id="find-story-title">Three clear ways back to what you need.</h2>
+      <p>{find.story.opening.summary}</p>
+    </div>
+    <JobStory job={find} surface="home" />
   </section>
 
   <section class="privacy-section" id="privacy" aria-labelledby="privacy-title">

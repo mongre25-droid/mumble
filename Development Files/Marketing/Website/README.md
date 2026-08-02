@@ -27,15 +27,17 @@ Node 22.12 or later is required.
 
 The current maintained site exposes six complete outputs:
 
-1. Home (`/`) introduces the local-first offer, one accepted product capture,
-   the five canonical jobs, privacy boundaries, the current release position,
-   and the Write journey.
+1. Home (`/`) introduces the local-first offer, accepted product captures, the
+   five canonical jobs, privacy boundaries, the current release position, and
+   complete Write and Find journeys. Find keeps searchable Deck material,
+   local Mumble Find, and deliberate Web Search visibly separate.
 2. Product (`/product/`) explains Write's deliberate command, visible Island
-   states, local transcription default, Stop-time intended-cursor return, and
-   Deck recovery.
-3. Use Cases (`/use-cases/`) applies the same Write model to everyday notes,
-   longer text, and cross-application work without changing to profession-first
-   navigation.
+   states, local transcription default, Stop-time intended-cursor return, Deck
+   recovery and reuse, local app/file finding, and consent-led Web Search.
+3. Use Cases (`/use-cases/`) turns Write and Find into complete task sequences:
+   everyday notes, longer text, cross-application work, finding prior text,
+   reopening useful Deck material, locating a local app or file, and choosing a
+   web provider deliberately.
 4. Privacy (`/privacy/`) explains Local Transcription and Mumble Find as
    separate local routes, keeps optional online routes distinct, and states the
    static website's zero-CDN, no-analytics, and no-tracking boundary.
@@ -52,8 +54,8 @@ the canonical and public Windows artifact bytes.
 
 ## Interaction and accessibility
 
-- Core Home, navigation, release facts, and download access remain available
-  without JavaScript.
+- Core Home, complete Write and Find journeys, navigation, release facts, and
+  download access remain available without JavaScript.
 - Operating-system detection changes only the recommended action; complete
   Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.
