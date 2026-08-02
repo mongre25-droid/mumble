@@ -11,31 +11,48 @@
       },
       "demonstration": {
         "title": "See where your words return.",
-        "spoken": "Move the design review to Thursday and send the notes before lunch.",
+        "stageStatus": "Local route by default",
+        "presentation": {
+          "kind": "capture",
+          "src": "/product/home.webp",
+          "width": 1180,
+          "height": 820,
+          "priority": "high",
+          "alt": "Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status",
+          "captionTitle": "Genuine Mumble capture",
+          "captionDetail": "Current accepted Windows source surface"
+        },
         "note": "Illustrative cursor close-up—not a live transcription. The Mumble workspace above is a genuine product capture.",
         "states": [
           {
             "id": "cursor",
             "label": "Choose cursor",
             "status": "Before command",
+            "mode": "text",
             "title": "Keep the intended field ready for Stop.",
             "body": "Place the cursor in the writing field where you want the finished text. Keep it focused, or return to it, before choosing Stop.",
+            "fieldLabel": "Unbranded writing field",
             "field": "Project note —"
           },
           {
             "id": "speak",
             "label": "Speak",
             "status": "Island · Listening",
+            "mode": "text",
             "title": "Mumble makes its state visible.",
             "body": "Use the global Dictate command and speak. Before choosing Stop, keep or return focus to the intended field. The Island shows Listening, then Transcribing.",
+            "fieldLabel": "Unbranded writing field",
+            "spoken": "Move the design review to Thursday and send the notes before lunch.",
             "field": "Project note —"
           },
           {
             "id": "returned",
             "label": "Text returned",
             "status": "Island · Done",
+            "mode": "text",
             "title": "Stop freezes the intended destination.",
             "body": "When Stop is requested, Mumble freezes the focused field for one target-bound insertion. If delivery cannot complete, the result remains recoverable in the Deck.",
+            "fieldLabel": "Unbranded writing field",
             "field": "Project note — Move the design review to Thursday and send the notes before lunch."
           }
         ]
@@ -126,7 +143,26 @@
       },
       "demonstration": {
         "title": "See one finished thought become a structured prompt.",
-        "spoken": "Plan a design review for Thursday. Ask for the three highest-risk usability issues, evidence for each, and the next action.",
+        "stageStatus": "Optional shaping · route frozen per action",
+        "presentation": {
+          "kind": "route",
+          "ariaLabel": "Shape route overview",
+          "steps": [
+            {
+              "label": "Input",
+              "value": "Finished text"
+            },
+            {
+              "label": "Chosen job",
+              "value": "Prompt",
+              "mode": "prompt"
+            },
+            {
+              "label": "Control",
+              "value": "Effective route frozen"
+            }
+          ]
+        },
         "note": "Illustrative Shape demonstration—not a live provider result. It shows the product’s real Prompt mode and privacy boundary without claiming a provider outcome.",
         "states": [
           {

@@ -18,11 +18,16 @@ const mechanismTitleId = `${storyId}-mechanism-title`;
 const demonstrationTabId = (stateId: string) => `${storyId}-tab-${stateId}`;
 const demonstrationPanelId = (stateId: string) => `${storyId}-panel-${stateId}`;
 const taskId = (id: string) => `${storyId}-task-${id}`;
-type DemoState = (typeof story.demonstration.states)[number];
-const modeForState = (state: DemoState) => ('mode' in state ? state.mode : 'text');
-const fieldLabelForState = (state: DemoState) => (
-  'fieldLabel' in state ? state.fieldLabel : 'Unbranded writing field'
-);
+const presentation = story.demonstration.presentation;
+const capturePresentation = presentation.kind === 'capture' ? presentation : null;
+const routePresentation = presentation.kind === 'route' ? presentation : null;
+const routeSteps = routePresentation?.steps ?? [];
+if (!capturePresentation && !routePresentation) {
+  throw new Error(`${job.label} story has an unsupported demonstration presentation`);
+}
+if (routePresentation && routeSteps.length === 0) {
+  throw new Error(`${job.label} route presentation has no steps`);
+}
 ---
 
 {surface === 'home' && (
@@ -37,34 +42,38 @@ const fieldLabelForState = (state: DemoState) => (
       <span class="stage-brand">Mumble / {job.label}</span>
       <span class="stage-state">
         <i aria-hidden="true"></i>
-        {job.id === 'shape' ? 'Optional shaping · route frozen per action' : 'Local route by default'}
+        {story.demonstration.stageStatus}
       </span>
     </div>
 
-    {job.id === 'write' ? (
+    {capturePresentation ? (
       <figure class="write-capture">
         <img
-          src="/product/home.webp"
-          width="1180"
-          height="820"
-          loading="eager"
-          fetchpriority="high"
-          alt="Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status"
+          src={capturePresentation.src}
+          width={capturePresentation.width}
+          height={capturePresentation.height}
+          loading={capturePresentation.priority === 'high' ? 'eager' : 'lazy'}
+          fetchpriority={capturePresentation.priority === 'high' ? 'high' : 'auto'}
+          alt={capturePresentation.alt}
         />
         <figcaption>
-          <strong>Genuine Mumble capture</strong>
-          <span>Current accepted Windows source surface</span>
+          <strong>{capturePresentation.captionTitle}</strong>
+          <span>{capturePresentation.captionDetail}</span>
         </figcaption>
       </figure>
-    ) : (
-      <div class="shape-route-summary" aria-label="Shape route overview">
-        <div><span>Input</span><strong>Finished text</strong></div>
-        <i aria-hidden="true"></i>
-        <div data-mode="prompt"><span>Chosen job</span><strong>Prompt</strong></div>
-        <i aria-hidden="true"></i>
-        <div><span>Control</span><strong>Effective route frozen</strong></div>
+    ) : routePresentation ? (
+      <div class="job-route-summary" aria-label={routePresentation.ariaLabel}>
+        {routeSteps.map((step, index) => (
+          <>
+            {index > 0 && <i aria-hidden="true"></i>}
+            <div data-mode={'mode' in step ? step.mode : undefined}>
+              <span>{step.label}</span>
+              <strong>{step.value}</strong>
+            </div>
+          </>
+        ))}
       </div>
-    )}
+    ) : null}
 
     <div class="write-closeup">
       <header class="write-closeup-header">
@@ -100,18 +109,18 @@ const fieldLabelForState = (state: DemoState) => (
             data-job-panel={job.id}
           >
             <div class="write-panel-copy">
-              <span class="write-state-label" data-mode={modeForState(state)}>{state.status}</span>
+              <span class="write-state-label" data-mode={state.mode}>{state.status}</span>
               <h3>{state.title}</h3>
               <p>{state.body}</p>
             </div>
-            <div class="write-field" data-mode={modeForState(state)} aria-label={`Illustrative writing field during ${state.label}`}>
-              <span>{fieldLabelForState(state)}</span>
+            <div class="write-field" data-mode={state.mode} aria-label={`Illustrative writing field during ${state.label}`}>
+              <span>{state.fieldLabel}</span>
               <p>{state.field}<i aria-hidden="true"></i></p>
             </div>
-            {state.id === 'speak' && (
+            {'spoken' in state && (
               <p class="write-spoken-sample">
                 <strong>Example speech</strong>
-                <q>{story.demonstration.spoken}</q>
+                <q>{state.spoken}</q>
               </p>
             )}
           </section>

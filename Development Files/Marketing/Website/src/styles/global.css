@@ -1376,7 +1376,7 @@ code {
   margin-inline: auto;
 }
 
-.shape-route-summary {
+.job-route-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr) 44px minmax(0, 1fr);
   align-items: stretch;
@@ -1385,7 +1385,7 @@ code {
   background: var(--ink-panel);
 }
 
-.shape-route-summary div {
+.job-route-summary div {
   display: grid;
   align-content: center;
   gap: var(--space-2);
@@ -1394,7 +1394,7 @@ code {
   border-block: 1px solid var(--rule);
 }
 
-.shape-route-summary span {
+.job-route-summary span {
   color: var(--text-muted);
   font-size: 0.68rem;
   font-weight: 680;
@@ -1402,24 +1402,24 @@ code {
   text-transform: uppercase;
 }
 
-.shape-route-summary strong {
+.job-route-summary strong {
   color: var(--text);
   font-size: 0.9rem;
   font-weight: 680;
 }
 
-.shape-route-summary [data-mode='prompt'] strong {
+.job-route-summary [data-mode='prompt'] strong {
   color: var(--mode-prompt);
 }
 
-.shape-route-summary > i {
+.job-route-summary > i {
   position: relative;
   align-self: center;
   height: 1px;
   background: var(--rule-strong);
 }
 
-.shape-route-summary > i::after {
+.job-route-summary > i::after {
   position: absolute;
   top: -3px;
   right: 0;
@@ -2600,17 +2600,17 @@ code {
     gap: var(--space-6);
   }
 
-  .shape-route-summary {
+  .job-route-summary {
     grid-template-columns: 1fr;
   }
 
-  .shape-route-summary > i {
+  .job-route-summary > i {
     width: 1px;
     height: 24px;
     margin-left: var(--space-5);
   }
 
-  .shape-route-summary > i::after {
+  .job-route-summary > i::after {
     top: auto;
     right: -3px;
     bottom: 0;
