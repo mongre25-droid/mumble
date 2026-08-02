@@ -12,6 +12,11 @@ if (!windows || !windowsVariant?.integrity || !macos || !linux) {
   throw new Error('Help requires complete accepted platform authority');
 }
 
+const supportResource = release.resources.find((resource) => resource.id === 'support');
+if (!supportResource || !('statusLabel' in supportResource)) {
+  throw new Error('Help requires the canonical gated support resource');
+}
+
 const jobGuidance = {
   write: {
     keywords: 'write dictate cursor text insert deck first dictation',
@@ -128,7 +133,7 @@ const helpJobs = jobs.map((job) => {
           <a href="#release-source">Release and source status</a>
           <a href="/downloads/#release-notes-title">Release notes</a>
           <a href="https://github.com/mongre25-droid/mumble">Source repository</a>
-          <span class="help-category-status">Issue reporting · not publicly available</span>
+          <span class="help-category-status">{supportResource.statusLabel}</span>
         </div>
       </nav>
     </div>
@@ -338,7 +343,7 @@ const helpJobs = jobs.map((job) => {
             <li><a href="/downloads/#release-notes-title">Release notes</a> reports that this candidate has no published public-release notes.</li>
             <li><a href="https://github.com/mongre25-droid/mumble">Source repository</a> is the technical project path; public availability must still be read from the current repository state.</li>
             <li><a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE">MIT licence</a> defines the project licence.</li>
-            <li><strong>Issue reporting is not publicly available while the source repository remains private.</strong> No public support or defect-reporting route is currently claimed.</li>
+            <li><strong>{supportResource.statusLabel}</strong> No public support or defect-reporting route is currently claimed.</li>
           </ul>
         </div>
       </article>
@@ -346,7 +351,7 @@ const helpJobs = jobs.map((job) => {
 
     <section class="help-empty" data-help-search-empty hidden aria-labelledby="help-empty-title">
       <h2 id="help-empty-title">No help topic matched that search.</h2>
-      <p>Clear the search to browse every category. Issue reporting is not publicly available while the source repository remains private.</p>
+      <p>Clear the search to browse every category. {supportResource.statusLabel}</p>
     </section>
   </section>
 

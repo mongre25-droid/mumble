@@ -1,6 +1,11 @@
 ---
 import Logo from './Logo.astro';
 import release from '../data/release.json';
+
+const supportResource = release.resources.find((resource) => resource.id === 'support');
+if (!supportResource || !('statusLabel' in supportResource)) {
+  throw new Error('Footer requires the canonical gated support resource');
+}
 ---
 
 <footer class="site-footer" data-site-footer>
@@ -29,7 +34,7 @@ import release from '../data/release.json';
       <div>
         <h2>Project</h2>
         <a href="https://github.com/mongre25-droid/mumble">Repository</a>
-        <span>Issue reporting gated</span>
+        <span>{supportResource.statusLabel}</span>
         <span>{release.channel.label}</span>
       </div>
     </nav>

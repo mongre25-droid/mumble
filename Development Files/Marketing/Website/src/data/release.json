@@ -89,8 +89,9 @@
     },
     {
       "id": "support",
-      "label": "Issue tracker",
-      "href": "https://github.com/mongre25-droid/mumble/issues"
+      "label": "Issue reporting",
+      "availability": "gated",
+      "statusLabel": "Issue reporting is not publicly available while the source repository remains private."
     }
   ],
   "integrityGuide": {

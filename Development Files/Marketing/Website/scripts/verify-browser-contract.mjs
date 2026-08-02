@@ -175,6 +175,140 @@ async function assertReducedMotion(page, name) {
   }
 }
 
+async function assertPrivateSupportGate(browser) {
+  const supportResource = release.resources.find((resource) => resource.id === 'support');
+  assert.equal(supportResource?.availability, 'gated', 'release support resource is not gated');
+  assert.ok(supportResource?.statusLabel, 'release support resource is missing its gated status');
+
+  const routes = ['/', '/privacy/', '/downloads/', '/help/', '/missing-private-support-probe'];
+  for (const javaScriptEnabled of [true, false]) {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      javaScriptEnabled,
+    });
+    const page = await context.newPage();
+    for (const route of routes) {
+      await page.goto(`${origin}${route}`, { waitUntil: javaScriptEnabled ? 'networkidle' : 'load' });
+      const issueLinks = await page.locator('a[href]').evaluateAll((anchors) =>
+        anchors
+          .map((anchor) => anchor.href)
+          .filter((href) => {
+            const destination = new URL(href);
+            return (
+              destination.hostname === 'github.com' &&
+              destination.pathname.startsWith('/mongre25-droid/mumble/issues')
+            );
+          }),
+      );
+      assert.deepEqual(
+        issueLinks,
+        [],
+        `${route} exposes private issue reporting with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
+      );
+      assert.ok(
+        await page.getByText(supportResource.statusLabel, { exact: true }).count(),
+        `${route} omits the canonical private-support status with JavaScript ${javaScriptEnabled ? 'on' : 'off'}`,
+      );
+    }
+    await context.close();
+  }
+}
+
+async function assertAcceptedPageGeometry(browser) {
+  const cases = [
+    {
+      name: 'desktop',
+      viewport: { width: 1440, height: 900 },
+      privacy: { heroPadding: '128px', explorerPadding: '128px', routeTitle: '72px' },
+      help: {
+        categoryGap: '32px',
+        categoryMarginTop: '40px',
+        articleGap: '40px',
+        articlePadding: '32px',
+        articleTitle: '28px',
+      },
+    },
+    {
+      name: 'mobile',
+      viewport: { width: 390, height: 844 },
+      privacy: { heroPadding: '64px', explorerPadding: '64px', routeTitle: '39px' },
+      help: {
+        categoryGap: '24px',
+        categoryMarginTop: '40px',
+        articleGap: '16px',
+        articlePadding: '32px',
+        articleTitle: '20.8px',
+      },
+    },
+  ];
+
+  for (const javaScriptEnabled of [true, false]) {
+    for (const item of cases) {
+      const context = await browser.newContext({
+        viewport: item.viewport,
+        javaScriptEnabled,
+      });
+      const page = await context.newPage();
+      await page.goto(`${origin}/privacy/`, { waitUntil: javaScriptEnabled ? 'networkidle' : 'load' });
+      const tokens = await page.evaluate(() => {
+        const root = getComputedStyle(document.documentElement);
+        return {
+          space8: root.getPropertyValue('--space-8').trim(),
+          space10: root.getPropertyValue('--space-10').trim(),
+          typeTitle: root.getPropertyValue('--type-title').trim(),
+          helpSpace8: root.getPropertyValue('--help-space-8').trim(),
+          helpSpace10: root.getPropertyValue('--help-space-10').trim(),
+          helpTypeTitle: root.getPropertyValue('--help-type-title').trim(),
+        };
+      });
+      assert.deepEqual(
+        tokens,
+        {
+          space8: '64px',
+          space10: '128px',
+          typeTitle: 'clamp(2.4rem, 5vw, 4.6rem)',
+          helpSpace8: '2rem',
+          helpSpace10: '2.5rem',
+          helpTypeTitle: 'clamp(1.3rem, 2vw, 1.75rem)',
+        },
+        `${item.name} ${javaScriptEnabled ? 'JavaScript' : 'no-JavaScript'} token authority drifted`,
+      );
+      const privacyGeometry = await page.evaluate(() => ({
+        heroPadding: getComputedStyle(document.querySelector('.privacy-hero')).paddingBlockStart,
+        explorerPadding: getComputedStyle(document.querySelector('.privacy-explorer')).paddingBlockStart,
+        routeTitle: getComputedStyle(
+          document.querySelector('#local-transcription .privacy-route-heading h2'),
+        ).fontSize,
+      }));
+      assert.deepEqual(
+        privacyGeometry,
+        item.privacy,
+        `${item.name} ${javaScriptEnabled ? 'JavaScript' : 'no-JavaScript'} Privacy geometry drifted`,
+      );
+
+      await page.goto(`${origin}/help/`, { waitUntil: javaScriptEnabled ? 'networkidle' : 'load' });
+      const helpGeometry = await page.evaluate(() => {
+        const categories = getComputedStyle(document.querySelector('.help-category-grid'));
+        const article = getComputedStyle(document.querySelector('.help-article'));
+        const articleTitle = getComputedStyle(document.querySelector('.help-article > h3'));
+        return {
+          categoryGap: categories.columnGap,
+          categoryMarginTop: categories.marginTop,
+          articleGap: article.columnGap,
+          articlePadding: article.paddingBlockStart,
+          articleTitle: articleTitle.fontSize,
+        };
+      });
+      assert.deepEqual(
+        helpGeometry,
+        item.help,
+        `${item.name} ${javaScriptEnabled ? 'JavaScript' : 'no-JavaScript'} Help geometry drifted`,
+      );
+      await context.close();
+    }
+  }
+}
+
 async function assertSharedShell(page, currentLabel) {
   assert.equal(await page.locator('a[href="#main-content"]').count(), 1, 'skip navigation is missing or duplicated');
   assert.equal(await page.locator('header[data-site-header]').count(), 1, 'site header is missing or duplicated');
@@ -461,8 +595,17 @@ async function downloadsContract(browser) {
       const resources = page.getByRole('navigation', { name: 'Release resources' });
       await resources.waitFor();
       for (const resource of release.resources) {
-        const link = resources.getByRole('link', { name: resource.label, exact: true });
-        assert.equal(await link.getAttribute('href'), resource.href, `${resource.id} resource destination drifted`);
+        if ('href' in resource) {
+          const link = resources.getByRole('link', { name: resource.label, exact: true });
+          assert.equal(await link.getAttribute('href'), resource.href, `${resource.id} resource destination drifted`);
+        } else {
+          assert.equal(
+            await resources.getByRole('link', { name: resource.label, exact: true }).count(),
+            0,
+            `${resource.id} gated resource became an active link`,
+          );
+          await resources.getByText(resource.statusLabel, { exact: true }).waitFor();
+        }
       }
       const history = page.locator('[data-release-history]');
       assert.match(await history.innerText(), new RegExp(release.history.statusLabel, 'i'));
@@ -1072,6 +1215,8 @@ try {
   console.log(`Browser executable route: ${executablePath ?? 'Playwright-managed Chromium'}`);
   browser = await chromium.launch({ headless: true, executablePath });
   console.log(`Browser version: ${browser.version()}`);
+  await assertPrivateSupportGate(browser);
+  await assertAcceptedPageGeometry(browser);
   await desktopJourney(browser);
   await helpJourney(browser);
   await mobileHelpJourney(browser);

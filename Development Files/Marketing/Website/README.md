@@ -39,7 +39,8 @@ The current tracer bullet exposes only complete destinations:
 
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,
-release notes, and recommendation labels are in `src/data/release.json`.
+release notes, visitor resources, gated support status, and recommendation labels
+are in `src/data/release.json`.
 `npm.cmd run build` fails closed when that authority drifts from source version or
 the canonical and public Windows artifact bytes.
 

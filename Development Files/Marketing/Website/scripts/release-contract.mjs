@@ -152,7 +152,12 @@ export const acceptedReleaseContract = Object.freeze({
     { id: 'release-notes', label: 'Release notes', href: '#release-notes-title' },
     { id: 'source', label: 'Source record', href: 'https://github.com/mongre25-droid/mumble' },
     { id: 'licence', label: 'MIT licence', href: 'https://github.com/mongre25-droid/mumble/blob/main/LICENSE' },
-    { id: 'support', label: 'Issue tracker', href: 'https://github.com/mongre25-droid/mumble/issues' },
+    {
+      id: 'support',
+      label: 'Issue reporting',
+      availability: 'gated',
+      statusLabel: 'Issue reporting is not publicly available while the source repository remains private.',
+    },
   ],
   integrityGuide: {
     title: 'Verify before you run it',
@@ -234,13 +239,15 @@ function validateResources(authority, accepted) {
   }
   authority.resources.forEach((resource, index) => {
     const expected = accepted.resources[index];
-    requireRecordKeys(resource, ['id', 'label', 'href'], `resources[${index}]`);
+    requireRecordKeys(resource, Object.keys(expected), `resources[${index}]`);
     requireString(resource.id, `resources[${index}].id`);
     requireString(resource.label, `resources[${index}].label`);
-    requireSafeHref(resource.href, `resources[${index}].href`);
-    requireExact(resource.id, expected.id, `resources[${index}].id`);
-    requireExact(resource.label, expected.label, `resources[${index}].label`);
-    requireExact(resource.href, expected.href, `resources[${index}].href`);
+    if ('href' in expected) requireSafeHref(resource.href, `resources[${index}].href`);
+    if ('availability' in expected) requireString(resource.availability, `resources[${index}].availability`);
+    if ('statusLabel' in expected) requireString(resource.statusLabel, `resources[${index}].statusLabel`);
+    for (const [field, expectedValue] of Object.entries(expected)) {
+      requireExact(resource[field], expectedValue, `resources[${index}].${field}`);
+    }
   });
 
   requireRecordKeys(authority.integrityGuide, ['title', 'summary', 'steps'], 'integrityGuide');
