@@ -5,12 +5,17 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "description": "Mumble marketing website — Astro-powered static landing page",
+  "description": "Mumble public website — Astro-powered static multi-page shell",
   "scripts": {
     "dev": "astro dev",
     "check": "astro check",
-    "check:release": "node scripts/check-release.mjs",
+    "check:release": "node scripts/test-release-contract.mjs && node scripts/check-release.mjs",
     "build": "npm run check:release && astro build",
+    "test:release": "node scripts/test-release-contract.mjs",
+    "install:browser": "playwright install chromium",
+    "audit:dependencies": "npm audit --audit-level=moderate",
+    "test:browser": "npm run build && node scripts/verify-browser-contract.mjs",
+    "verify": "npm run check:release && astro check && astro build && npm run audit:dependencies && node scripts/verify-browser-contract.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },
@@ -20,6 +25,7 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3"
+    "@types/node": "^24.13.3",
+    "playwright": "^1.55.1"
   }
 }

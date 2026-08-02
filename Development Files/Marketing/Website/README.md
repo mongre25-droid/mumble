@@ -5,38 +5,48 @@ The static marketing site for Mumble, built with Astro 7 and vanilla JavaScript.
 ## Commands
 
 ```powershell
-npm install
-npm.cmd run check
+npm.cmd ci --ignore-scripts
+npm.cmd run test:release
+node scripts/check-release.mjs
 npm.cmd run build
-npm.cmd run preview -- --host 127.0.0.1
+npm.cmd exec -- astro check
+npm.cmd run audit:dependencies
 ```
 
-`npm.cmd run build` first checks that `public/Mumble.zip` exactly matches the
-release ZIP at the repository root, then generates the static site in `dist/`.
+The real-browser contract runs against the built static site. Install Playwright's
+managed Chromium, or point the harness at an existing Chromium executable:
+
+```powershell
+$env:PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+npm.cmd run test:browser
+```
+
 Node 22.12 or later is required.
 
 ## Page structure
 
-The homepage is intentionally compact and product-led:
+The current tracer bullet exposes only complete destinations:
 
-1. Direct Windows download and current product capture
-2. Interactive dictation flow
-3. Accessible workflow tabs for Dictation, Meetings, Smart Modes, and Reader
-4. Island, Deck, and secondary feature inventory
-5. Explicit Local, Cloud Transcription, and Pro Mode data paths
-6. Release requirements, platform status, and FAQ
+1. Home introduces the local-first offer, one accepted product capture, the five
+   canonical jobs, privacy boundaries, and the current release position.
+2. Downloads presents the hash-bound Windows candidate and visible gated states
+   for macOS and Linux from one release authority.
+3. The not-found page returns visitors to Home or Downloads.
 
-The source lives in `src/`. Product captures are optimized WebP files in
-`public/product/`. The site uses no external fonts, analytics, CDN assets, or
-framework runtime in the browser.
+Canonical job content is in `src/data/jobs.json`. Release channel, version,
+publication state, platform facts, integrity, requirements, artifact location,
+release notes, and recommendation labels are in `src/data/release.json`.
+`npm.cmd run build` fails closed when that authority drifts from source version or
+the canonical and public Windows artifact bytes.
 
 ## Interaction and accessibility
 
-- Core content remains available without JavaScript.
-- Workflow tabs implement labelled tab panels, roving focus, and arrow keys.
+- Core Home, navigation, release facts, and download access remain available
+  without JavaScript.
+- Operating-system detection changes only the recommended action; complete
+  Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.
-- Motion respects `prefers-reduced-motion`.
-- Skip navigation and visible keyboard focus are preserved.
-
-Mumble is currently available for 64-bit Windows 10 and later. macOS and Linux
-versions are in development.
+- The shared shell preserves skip navigation, semantic landmarks, metadata,
+  visible keyboard focus, reduced motion, forced colours, and narrow reflow.
+- Product media is local. The site uses no external fonts, analytics, CDN
+  assets, tracking, or browser framework hydration.

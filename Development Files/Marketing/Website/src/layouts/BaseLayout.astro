@@ -1,31 +1,32 @@
 ---
 import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
 
 export interface Props {
-  title?: string;
-  description?: string;
-  ogTitle?: string;
-  ogDescription?: string;
-  ogImage?: string;
-  canonicalURL?: string;
+  title: string;
+  description: string;
+  currentPath: string;
   noindex?: boolean;
 }
 
-const {
-  title = 'Mumble — Private voice-to-text for Windows',
-  description = 'Mumble turns your voice into clean text in any app. Transcription runs on your Windows PC by default, with meetings, Smart Modes, Reader, and optional bring-your-own AI.',
-  ogTitle = 'Mumble — The voice layer for everything you write',
-  ogDescription = 'Press one hotkey, speak, and get clean text in any app. Private, local-first voice-to-text for Windows.',
-  ogImage = 'https://getmumble.com/product/home.webp',
-  canonicalURL = 'https://getmumble.com',
-  noindex = false,
-} = Astro.props;
+const { title, description, currentPath, noindex = false } = Astro.props;
+const siteOrigin = 'https://getmumble.com';
+const canonicalURL = new URL(currentPath, siteOrigin).toString();
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'Mumble',
+  url: siteOrigin,
+  description: 'The public website for Mumble, a local-first desktop voice workspace.',
+  inLanguage: 'en',
+};
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" class="no-js">
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
@@ -33,43 +34,40 @@ const {
     <meta name="theme-color" content="#080806" />
     <meta name="color-scheme" content="dark" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content={ogTitle} />
-    <meta property="og:description" content={ogDescription} />
-    <meta property="og:image" content={ogImage} />
+    <meta property="og:site_name" content="Mumble" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:image" content={`${siteOrigin}/product/home.webp`} />
     <meta property="og:image:width" content="1180" />
     <meta property="og:image:height" content="820" />
-    <meta property="og:image:alt" content="Mumble voice-first workspace" />
-    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:image:alt" content="Mumble's near-black and gold Home workspace" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={ogTitle} />
-    <meta name="twitter:description" content={ogDescription} />
-    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={`${siteOrigin}/product/home.webp`} />
     <link rel="canonical" href={canonicalURL} />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/mumble.png" />
     <link rel="apple-touch-icon" href="/mumble.png" />
-    <script type="application/ld+json" is:inline>
-      {
-        "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "Mumble",
-        "applicationCategory": "ProductivityApplication",
-        "operatingSystem": "Windows 10 or later (64-bit)",
-        "description": "Private, local-first dictation, meeting transcription, Smart Modes, and text-to-speech for Windows.",
-        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-        "license": "https://opensource.org/licenses/MIT"
-      }
-    </script>
-    <slot name="head" />
-    <script is:inline>document.documentElement.classList.add('js');</script>
+    <script is:inline>document.documentElement.classList.replace('no-js', 'js');</script>
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(structuredData)}></script>
   </head>
   <body>
+    <!--
+      THESIS: A public release console turns Mumble's accepted product and package truth into one direct Home-to-Downloads journey; it refuses the generic hype-first launch page.
+      OWN-WORLD: Near-black workspace planes, warm text, one gold accent, fine ruled seams, and gold-tinted liquid glass inherit the accepted application without copying another site's trade dress.
+      STORY: Understand the local-first offer, inspect the five jobs and privacy boundaries, then choose a truthful desktop artifact or gated platform state.
+      FIRST VIEWPORT: Compact shell above a two-column offer and dominant real Home capture; the platform action stays beside release status and a complete Downloads link.
+      FORM: Application control surface, brief-pinned direction, seed key ISSUE-36-PINNED.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
     <a class="skip-link" href="#main-content">Skip to content</a>
-    <slot name="header" />
-    <main id="main-content">
+    <Header currentPath={currentPath} />
+    <main id="main-content" tabindex="-1">
       <slot />
     </main>
-    <slot name="footer" />
+    <Footer />
     <script>
       import '../scripts/site.js';
     </script>

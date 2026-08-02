@@ -1,10 +1,14 @@
 [CmdletBinding()]
 param(
-    [string]$RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path,
+    [string]$RepositoryRoot,
     [string]$Revision = 'HEAD'
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+    $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
+}
+
 
 if ($env:OS -ne 'Windows_NT') {
     throw 'This regression must run on Windows.'

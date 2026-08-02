@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "application": "Mumble",
+  "version": "0.95",
+  "channel": {
+    "id": "pre-release",
+    "label": "Pre-release candidate"
+  },
+  "publication": {
+    "state": "gated",
+    "publishedAt": null,
+    "label": "Public release remains gated",
+    "statusLabel": "Gated",
+    "dateLabel": "Not published",
+    "reason": "Installation lifecycle, physical acceptance, signing, deployment, release, and owner acceptance are not complete."
+  },
+  "releaseNotes": {
+    "state": "not-published",
+    "label": "Not published for this candidate",
+    "summary": "Public release notes will follow an accepted public release; this candidate has no published release notes."
+  },
+  "unavailableFacts": {
+    "artifactMetadata": "Not published",
+    "integrity": "No artifact to verify",
+    "download": "Unavailable"
+  },
+  "recommendations": {
+    "windows": {
+      "label": "Download candidate for Windows",
+      "href": "/Mumble.zip",
+      "download": true
+    },
+    "macos": {
+      "label": "View macOS status",
+      "href": "/downloads/#macos",
+      "download": false
+    },
+    "linux": {
+      "label": "View Linux status",
+      "href": "/downloads/#linux",
+      "download": false
+    },
+    "unknown": {
+      "label": "View desktop downloads",
+      "href": "/downloads/#platforms-title",
+      "download": false
+    },
+    "mobile": {
+      "label": "View desktop downloads",
+      "href": "/downloads/#platforms-title",
+      "download": false
+    }
+  },
+  "platforms": [
+    {
+      "id": "windows",
+      "label": "Windows",
+      "availability": "candidate",
+      "availabilityLabel": "Candidate artifact",
+      "architecture": "x86_64",
+      "format": "ZIP",
+      "sizeBytes": 1098061,
+      "integrity": {
+        "algorithm": "SHA-256",
+        "value": "29235fdcbd2e11560dd549b53c81bab1f202c568a9c7b2f550fe4cd94d3fe0f5",
+        "publisherSignature": {
+          "state": "not-accepted",
+          "label": "Not accepted"
+        }
+      },
+      "requirements": [
+        "64-bit Windows",
+        "Internet access for first-time setup",
+        "Keep the extracted Mumble folder in a permanent location"
+      ],
+      "artifactLocation": "/Mumble.zip",
+      "gate": "Validated repository candidate bytes are available here, but this is not an installed, signed, deployed, or publicly released package."
+    },
+    {
+      "id": "macos",
+      "label": "macOS",
+      "availability": "gated",
+      "availabilityLabel": "No accepted artifact",
+      "statusLabel": "Gated",
+      "architecture": null,
+      "format": null,
+      "sizeBytes": null,
+      "integrity": null,
+      "requirements": [],
+      "artifactLocation": null,
+      "gate": "No current accepted macOS artifact exists. Packaging, physical checks, signing, and notarisation remain open."
+    },
+    {
+      "id": "linux",
+      "label": "Linux",
+      "availability": "gated",
+      "availabilityLabel": "No accepted artifact",
+      "statusLabel": "Gated",
+      "architecture": null,
+      "format": null,
+      "sizeBytes": null,
+      "integrity": null,
+      "requirements": [],
+      "artifactLocation": null,
+      "gate": "No current accepted public Linux artifact exists. Physical desktop, package, signing, and release gates remain open."
+    }
+  ]
+}

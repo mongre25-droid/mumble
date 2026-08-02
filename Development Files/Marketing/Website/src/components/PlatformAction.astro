@@ -1,0 +1,29 @@
+---
+import release from '../data/release.json';
+
+export interface Props {
+  className?: string;
+}
+
+const { className = '' } = Astro.props;
+const fallback = release.recommendations.unknown;
+const recommendationData = Object.fromEntries(
+  Object.entries(release.recommendations).flatMap(([platform, recommendation]) => [
+    [`data-${platform}-label`, recommendation.label],
+    [`data-${platform}-href`, recommendation.href],
+    [`data-${platform}-download`, String(recommendation.download)],
+  ]),
+);
+---
+
+<a
+  class:list={['platform-action', className]}
+  href={fallback.href}
+  data-platform-action
+  {...recommendationData}
+>
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" />
+  </svg>
+  <span>{fallback.label}</span>
+</a>

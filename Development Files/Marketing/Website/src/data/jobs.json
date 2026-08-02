@@ -1,0 +1,32 @@
+[
+  {
+    "id": "write",
+    "label": "Write",
+    "summary": "Turn speech into clean text for the cursor you chose, with a saved recovery path when delivery is blocked.",
+    "proof": "Local transcription is the default; optional shaping is a separate decision."
+  },
+  {
+    "id": "capture",
+    "label": "Capture",
+    "summary": "Record microphone meetings into a local, searchable working record you can review and export.",
+    "proof": "Mumble saves the recording locally before transcription and later analysis."
+  },
+  {
+    "id": "shape",
+    "label": "Shape",
+    "summary": "Give finished text a deliberate job, including Prompt, Email, Reply, and Deck actions.",
+    "proof": "Cloud text shaping is optional and sends finished text—not recorded audio—through the chosen route."
+  },
+  {
+    "id": "listen",
+    "label": "Listen",
+    "summary": "Read documents with saved progress, find, bookmarks, summaries, and optional voice playback.",
+    "proof": "Provider-backed speech is an explicit online choice and may carry the provider's own cost."
+  },
+  {
+    "id": "find",
+    "label": "Find",
+    "summary": "Use Mumble Find to search local apps and files without hosted results entering the list.",
+    "proof": "Web Search is separate and sends selected text online only after provider-named confirmation."
+  }
+]

@@ -1,38 +1,41 @@
 ---
 import Logo from './Logo.astro';
-import { release } from '../data/release';
+import release from '../data/release.json';
 ---
 
 <footer class="site-footer" data-site-footer>
-  <div class="container footer-main">
-    <div class="footer-intro">
+  <div class="shell footer-grid">
+    <div class="footer-brand">
       <a class="brand-link" href="/" aria-label="Mumble home"><Logo /></a>
-      <p>The private voice layer for everything you write.</p>
+      <p>A local-first desktop voice workspace for useful work, not an online account.</p>
+      <p class="footer-state"><span aria-hidden="true"></span>{release.publication.label}</p>
     </div>
-    <div class="footer-links">
+
+    <nav class="footer-links" aria-label="Footer">
       <div>
-        <h2>Product</h2>
-        <a href="/#product">How it works</a>
-        <a href="/#workflows">Workflows</a>
-        <a href="/#download">Download</a>
+        <h2>Explore</h2>
+        <a href="/">Home</a>
+        <a href="/#jobs">Five jobs</a>
+        <a href="/downloads/">Downloads</a>
       </div>
       <div>
         <h2>Trust</h2>
-        <a href="/#privacy">Privacy architecture</a>
-        <span>MIT licensed</span>
-        <span>Repository link pending</span>
+        <a href="/#privacy">Privacy boundaries</a>
+        <a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE">MIT licence</a>
+        <span>Zero-CDN website</span>
       </div>
       <div>
-        <h2>Platforms</h2>
-        <span>Windows · Available</span>
-        <span>macOS · In development</span>
-        <span>Linux · In development</span>
+        <h2>Project</h2>
+        <a href="https://github.com/mongre25-droid/mumble">Repository</a>
+        <a href="https://github.com/mongre25-droid/mumble/issues">Issue tracker</a>
+        <span>{release.channel.label}</span>
       </div>
-    </div>
+    </nav>
   </div>
-  <div class="container footer-meta">
+
+  <div class="shell footer-meta">
     <span>© <span data-current-year>2026</span> Mumble</span>
-    <span>v{release.version} “{release.codename}”</span>
-    <span class="status-line"><i></i> Local-first by default</span>
+    <span>Source version {release.version}</span>
+    <span>Free · MIT licensed</span>
   </div>
 </footer>
