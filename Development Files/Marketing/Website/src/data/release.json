@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "application": "Mumble",
   "version": "0.95",
   "channel": {
@@ -17,12 +17,22 @@
   "releaseNotes": {
     "state": "not-published",
     "label": "Not published for this candidate",
-    "summary": "Public release notes will follow an accepted public release; this candidate has no published release notes."
+    "summary": "Public release notes will follow an accepted public release; this candidate has no published release notes.",
+    "publishedAt": null,
+    "href": null
+  },
+  "history": {
+    "state": "not-maintained",
+    "label": "Previous accepted versions",
+    "statusLabel": "None maintained",
+    "summary": "No previous accepted website downloads are maintained for this gated candidate. No rollback package is offered here.",
+    "acceptedVersions": []
   },
   "unavailableFacts": {
-    "artifactMetadata": "Not published",
+    "size": "Not published",
+    "requirements": "Not published",
     "integrity": "No artifact to verify",
-    "download": "Unavailable"
+    "action": "Unavailable"
   },
   "recommendations": {
     "windows": {
@@ -51,30 +61,93 @@
       "download": false
     }
   },
+  "resources": [
+    {
+      "id": "platform-status",
+      "label": "Platform status",
+      "href": "#platforms-title"
+    },
+    {
+      "id": "integrity",
+      "label": "Integrity guide",
+      "href": "#integrity-title"
+    },
+    {
+      "id": "release-notes",
+      "label": "Release notes",
+      "href": "#release-notes-title"
+    },
+    {
+      "id": "source",
+      "label": "Source record",
+      "href": "https://github.com/mongre25-droid/mumble"
+    },
+    {
+      "id": "licence",
+      "label": "MIT licence",
+      "href": "https://github.com/mongre25-droid/mumble/blob/main/LICENSE"
+    },
+    {
+      "id": "support",
+      "label": "Issue tracker",
+      "href": "https://github.com/mongre25-droid/mumble/issues"
+    }
+  ],
+  "integrityGuide": {
+    "title": "Verify before you run it",
+    "summary": "The byte count and SHA-256 identify the repository candidate. A matching checksum does not provide publisher-signature, installation, physical-acceptance, or public-release evidence.",
+    "steps": [
+      "Compare the downloaded file size with the exact byte count.",
+      "Compute SHA-256 and compare all 64 hexadecimal characters.",
+      "Check publisher-signature and release-gate status separately; neither is implied by a matching checksum."
+    ]
+  },
   "platforms": [
     {
       "id": "windows",
       "label": "Windows",
       "availability": "candidate",
       "availabilityLabel": "Candidate artifact",
-      "architecture": "x86_64",
-      "format": "ZIP",
-      "sizeBytes": 1207711,
-      "integrity": {
-        "algorithm": "SHA-256",
-        "value": "70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493",
-        "publisherSignature": {
-          "state": "not-accepted",
-          "label": "Not accepted"
+      "statusLabel": "Public release gated",
+      "gate": "Validated repository candidate bytes are available here, but this is not an installed, signed, deployed, or publicly released package.",
+      "variants": [
+        {
+          "id": "windows-x86_64-zip",
+          "availability": "candidate",
+          "availabilityLabel": "Candidate artifact",
+          "statusLabel": "Downloadable candidate",
+          "architecture": "x86_64",
+          "format": "ZIP",
+          "sizeBytes": 1207711,
+          "requirements": [
+            "Windows 10 or 11 (64-bit)",
+            "Internet access for first-time setup",
+            "Keep the extracted Mumble folder in a permanent location"
+          ],
+          "artifactLocation": "/Mumble.zip",
+          "gate": "The repository candidate can be downloaded for inspection. Installation lifecycle, physical acceptance, publisher signing, deployment, and public release remain open.",
+          "integrity": {
+            "algorithm": "SHA-256",
+            "value": "70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493",
+            "checksumStatus": {
+              "state": "matched",
+              "label": "Matches canonical package bytes",
+              "summary": "The published value matches the repository's canonical Internal/Releases/Mumble.zip bytes."
+            },
+            "publisherSignature": {
+              "state": "not-accepted",
+              "label": "Not accepted",
+              "summary": "No accepted publisher signing or clean-install trust result exists."
+            }
+          },
+          "provenance": {
+            "schema": "mumble.release-provenance.v1",
+            "sourceCommit": "9d583ec31432b975e3a8955d2ebecf9c3ca87080",
+            "inputClosureDigest": "87f3031fababeb82a39e356e975efcedd2ce329466e0654a1ae2afb2d3b0a6a6",
+            "memberCount": 147
+          }
         }
-      },
-      "requirements": [
-        "Windows 10 or 11 (64-bit)",
-        "Internet access for first-time setup",
-        "Keep the extracted Mumble folder in a permanent location"
-      ],
-      "artifactLocation": "/Mumble.zip",
-      "gate": "Validated repository candidate bytes are available here, but this is not an installed, signed, deployed, or publicly released package."
+      ]
     },
     {
       "id": "macos",
@@ -82,13 +155,37 @@
       "availability": "gated",
       "availabilityLabel": "No accepted artifact",
       "statusLabel": "Gated",
-      "architecture": null,
-      "format": null,
-      "sizeBytes": null,
-      "integrity": null,
-      "requirements": [],
-      "artifactLocation": null,
-      "gate": "No current accepted macOS artifact exists. Packaging, physical checks, signing, and notarisation remain open."
+      "gate": "No current accepted macOS artifact exists. Packaging, physical checks, signing, and notarisation remain open.",
+      "variants": [
+        {
+          "id": "macos-arm64-zip",
+          "availability": "gated",
+          "availabilityLabel": "No accepted artifact",
+          "statusLabel": "Gated",
+          "architecture": "arm64",
+          "format": "ZIP",
+          "sizeBytes": null,
+          "requirements": [],
+          "artifactLocation": null,
+          "gate": "No accepted Apple Silicon artifact is published. Physical Apple Silicon execution, installation lifecycle, signing, and notarisation remain open.",
+          "integrity": null,
+          "provenance": null
+        },
+        {
+          "id": "macos-x86_64-zip",
+          "availability": "gated",
+          "availabilityLabel": "No accepted artifact",
+          "statusLabel": "Gated",
+          "architecture": "x86_64",
+          "format": "ZIP",
+          "sizeBytes": null,
+          "requirements": [],
+          "artifactLocation": null,
+          "gate": "No accepted Intel Mac artifact is published. Physical Intel execution, installation lifecycle, signing, and notarisation remain open.",
+          "integrity": null,
+          "provenance": null
+        }
+      ]
     },
     {
       "id": "linux",
@@ -96,13 +193,37 @@
       "availability": "gated",
       "availabilityLabel": "No accepted artifact",
       "statusLabel": "Gated",
-      "architecture": null,
-      "format": null,
-      "sizeBytes": null,
-      "integrity": null,
-      "requirements": [],
-      "artifactLocation": null,
-      "gate": "No current accepted public Linux artifact exists. Physical desktop, package, signing, and release gates remain open."
+      "gate": "No current accepted public Linux artifact exists. Physical desktop, package, signing, and release gates remain open.",
+      "variants": [
+        {
+          "id": "linux-x86_64-tar-gz",
+          "availability": "gated",
+          "availabilityLabel": "No accepted artifact",
+          "statusLabel": "Gated",
+          "architecture": "x86_64",
+          "format": "TAR.GZ",
+          "sizeBytes": null,
+          "requirements": [],
+          "artifactLocation": null,
+          "gate": "No accepted Linux TAR.GZ is published. Distribution lifecycle, physical GNOME/KDE and X11/Wayland checks, signing, and release remain open.",
+          "integrity": null,
+          "provenance": null
+        },
+        {
+          "id": "linux-x86_64-zip",
+          "availability": "gated",
+          "availabilityLabel": "No accepted artifact",
+          "statusLabel": "Gated",
+          "architecture": "x86_64",
+          "format": "ZIP",
+          "sizeBytes": null,
+          "requirements": [],
+          "artifactLocation": null,
+          "gate": "No accepted Linux ZIP is published. Distribution lifecycle, physical GNOME/KDE and X11/Wayland checks, signing, and release remain open.",
+          "integrity": null,
+          "provenance": null
+        }
+      ]
     }
   ]
 }

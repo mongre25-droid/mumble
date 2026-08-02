@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
+import release from '../src/data/release.json' with { type: 'json' };
 
 const websiteRoot = resolve(import.meta.dirname, '..');
 const distRoot = resolve(websiteRoot, 'dist');
@@ -165,34 +166,48 @@ async function desktopJourney(browser) {
   await page.waitForURL(`${origin}/downloads/`);
   await page.getByRole('heading', { level: 1, name: /download facts before the download/i }).waitFor();
   await assertSharedShell(page, 'Downloads');
-  await page.getByRole('heading', { level: 2, name: 'Windows' }).waitFor();
-  await page.getByRole('heading', { level: 2, name: 'macOS' }).waitFor();
-  await page.getByRole('heading', { level: 2, name: 'Linux' }).waitFor();
+  for (const platform of release.platforms) {
+    await page.getByRole('heading', { level: 2, name: platform.label }).waitFor();
+  }
 
-  const windowsPanel = page.locator('article').filter({ has: page.getByRole('heading', { level: 2, name: 'Windows' }) });
-  assert.match(await windowsPanel.innerText(), /Candidate artifact/i);
-  assert.match(await windowsPanel.innerText(), /Public release remains gated/i);
-  const windowsDownload = windowsPanel.getByRole('link', { name: /Download candidate for Windows/i });
-  assert.equal(await windowsDownload.getAttribute('href'), '/Mumble.zip');
-  assert.match(await windowsPanel.innerText(), /70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493/i);
+  const candidatePlatform = release.platforms.find((platform) => platform.availability === 'candidate');
+  const candidate = candidatePlatform?.variants.find((variant) => variant.availability === 'candidate');
+  assert.ok(candidatePlatform && candidate?.integrity && candidate.artifactLocation);
+  const windowsPanel = page.locator('article').filter({
+    has: page.getByRole('heading', { level: 2, name: candidatePlatform.label }),
+  });
   const windowsText = await windowsPanel.innerText();
-  assert.match(windowsText, /x86_64/i);
-  assert.match(windowsText, /\bZIP\b/);
-  assert.match(windowsText, /1,207,711 bytes/);
-  assert.match(windowsText, /Internet access for first-time setup/i);
-  assert.match(windowsText, /Windows 10 or 11 \(64-bit\)/i);
-  assert.match(windowsText, /Publisher signature\s+Not accepted/i);
+  assert.ok(windowsText.includes(candidate.availabilityLabel));
+  assert.ok(windowsText.includes(release.publication.label));
+  const windowsDownload = windowsPanel.getByRole('link', {
+    name: release.recommendations.windows.label,
+    exact: true,
+  });
+  assert.equal(await windowsDownload.getAttribute('href'), candidate.artifactLocation);
+  assert.ok(windowsText.includes(candidate.integrity.value));
+  assert.ok(windowsText.includes(candidate.architecture));
+  assert.ok(windowsText.includes(candidate.format));
+  assert.ok(windowsText.includes(`${candidate.sizeBytes.toLocaleString('en-GB')} bytes`));
+  for (const requirement of candidate.requirements) {
+    assert.ok(windowsText.includes(requirement), `Windows panel omits requirement ${requirement}`);
+  }
+  assert.match(
+    windowsText,
+    new RegExp(`Publisher signature\\s+${candidate.integrity.publisherSignature.label}`, 'i'),
+  );
 
-  for (const platform of ['macOS', 'Linux']) {
-    const panel = page.locator('article').filter({ has: page.getByRole('heading', { level: 2, name: platform }) });
-    assert.match(await panel.innerText(), /No accepted artifact/i);
-    assert.equal(await panel.getByRole('link').count(), 0, `${platform} exposes an unsupported download`);
+  for (const platform of release.platforms.filter((entry) => entry.availability === 'gated')) {
+    const panel = page.locator('article').filter({
+      has: page.getByRole('heading', { level: 2, name: platform.label }),
+    });
+    assert.ok((await panel.innerText()).includes(platform.availabilityLabel));
+    assert.equal(await panel.getByRole('link').count(), 0, `${platform.label} exposes an unsupported download`);
   }
 
   const pageText = await page.locator('body').innerText();
   assert.doesNotMatch(pageText, /available now|macOS available|Linux available|public release available/i);
-  assert.match(pageText, /not an installed, signed, deployed, or publicly released package/i);
-  assert.match(pageText, /public release remains gated/i);
+  assert.ok(pageText.includes(candidatePlatform.gate));
+  assert.ok(pageText.includes(release.publication.label));
   await noHorizontalOverflow(page, 'desktop Downloads');
   assertNoBrowserErrors(browserErrors, 'desktop journey browser errors');
   await context.close();
@@ -204,44 +219,37 @@ async function platformRecommendations(browser) {
     {
       name: 'Windows',
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0 Safari/537.36',
-      action: 'Download candidate for Windows',
-      href: '/Mumble.zip',
+      action: release.recommendations.windows,
     },
     {
       name: 'macOS',
       userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Safari/605.1.15',
-      action: 'View macOS status',
-      href: '/downloads/#macos',
+      action: release.recommendations.macos,
     },
     {
       name: 'Linux',
       userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
-      action: 'View Linux status',
-      href: '/downloads/#linux',
+      action: release.recommendations.linux,
     },
     {
       name: 'unknown desktop',
       userAgent: 'CustomDesktop/1.0',
-      action: 'View desktop downloads',
-      href: '/downloads/#platforms-title',
+      action: release.recommendations.unknown,
     },
     {
       name: 'ChromeOS unknown desktop',
       userAgent: 'Mozilla/5.0 (X11; CrOS x86_64 16093.68.0) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
-      action: 'View desktop downloads',
-      href: '/downloads/#platforms-title',
+      action: release.recommendations.unknown,
     },
     {
       name: 'FreeBSD X11 unknown desktop',
       userAgent: 'Mozilla/5.0 (X11; FreeBSD amd64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
-      action: 'View desktop downloads',
-      href: '/downloads/#platforms-title',
+      action: release.recommendations.unknown,
     },
     {
       name: 'mobile',
       userAgent: 'Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36',
-      action: 'View desktop downloads',
-      href: '/downloads/#platforms-title',
+      action: release.recommendations.mobile,
     },
   ];
 
@@ -257,9 +265,13 @@ async function platformRecommendations(browser) {
     if (item.name === 'mobile') {
       await page.getByRole('button', { name: 'Open menu' }).click();
     }
-    const action = page.getByRole('link', { name: item.action }).first();
+    const action = page.getByRole('link', { name: item.action.label }).first();
     await action.waitFor();
-    assert.equal(await action.getAttribute('href'), item.href, `${item.name} recommendation has the wrong destination`);
+    assert.equal(
+      await action.getAttribute('href'),
+      item.action.href,
+      `${item.name} recommendation has the wrong destination`,
+    );
     assert.equal(
       await page.getByRole('link', { name: 'Downloads', exact: true }).count() > 0,
       true,
@@ -269,6 +281,158 @@ async function platformRecommendations(browser) {
     await context.close();
   }
   record('Windows, macOS, Linux, unknown X11/desktop, and mobile recommendations preserve complete Downloads access');
+}
+
+async function downloadsContract(browser) {
+  const cases = [
+    {
+      name: 'Windows',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140.0 Safari/537.36',
+      action: release.recommendations.windows,
+    },
+    {
+      name: 'macOS',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_6) AppleWebKit/605.1.15 Safari/605.1.15',
+      action: release.recommendations.macos,
+    },
+    {
+      name: 'Linux',
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+      action: release.recommendations.linux,
+    },
+    {
+      name: 'unknown desktop',
+      userAgent: 'CustomDesktop/1.0',
+      action: release.recommendations.unknown,
+    },
+    {
+      name: 'mobile',
+      userAgent: 'Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36',
+      action: release.recommendations.mobile,
+    },
+  ];
+  const variants = release.platforms.flatMap((platform) =>
+    platform.variants.map((variant) => ({ platform, variant })),
+  );
+  const windows = variants.find(({ variant }) => variant.availability === 'candidate');
+  assert.ok(windows, 'release authority has no candidate variant');
+
+  for (const javaScriptEnabled of [true, false]) {
+    for (const item of cases) {
+      const context = await browser.newContext({
+        viewport: item.name === 'mobile' ? { width: 390, height: 844 } : { width: 1280, height: 800 },
+        userAgent: item.userAgent,
+        javaScriptEnabled,
+      });
+      const page = await context.newPage();
+      const browserErrors = browserErrorsFor(page);
+      await page.goto(`${origin}/downloads/`, { waitUntil: javaScriptEnabled ? 'networkidle' : 'load' });
+      await assertSharedShell(page, 'Downloads');
+      await page.getByRole('heading', { level: 1, name: /download facts before the download/i }).waitFor();
+
+      const expectedAction = javaScriptEnabled ? item.action : release.recommendations.unknown;
+      const recommendation = page.locator('.recommendation')
+        .getByRole('link', { name: expectedAction.label, exact: true });
+      await recommendation.waitFor();
+      assert.equal(
+        await recommendation.getAttribute('href'),
+        expectedAction.href,
+        `${item.name} ${javaScriptEnabled ? 'JavaScript' : 'no-JavaScript'} recommendation destination drifted`,
+      );
+      assert.equal(
+        await recommendation.getAttribute('download'),
+        expectedAction.download ? '' : null,
+        `${item.name} ${javaScriptEnabled ? 'JavaScript' : 'no-JavaScript'} recommendation download state drifted`,
+      );
+
+      const matrix = page.locator('[data-downloads-matrix]');
+      await matrix.waitFor();
+      assert.equal(
+        await matrix.locator('[data-variant-id]').count(),
+        variants.length,
+        'Downloads matrix does not expose every accepted variant',
+      );
+      for (const { platform, variant } of variants) {
+        const panel = matrix.locator(`[data-variant-id="${variant.id}"]`);
+        await panel.waitFor();
+        const text = await panel.innerText();
+        assert.match(text, new RegExp(platform.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+        assert.match(text, new RegExp(variant.architecture.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+        assert.match(text, new RegExp(variant.format.replace('.', '\\.'), 'i'));
+        assert.match(text, new RegExp(release.channel.label, 'i'));
+        assert.match(text, new RegExp(release.version.replace('.', '\\.'), 'i'));
+        assert.match(text, new RegExp(release.publication.statusLabel, 'i'));
+        assert.match(text, new RegExp(release.publication.dateLabel, 'i'));
+        if (variant.availability === 'candidate') {
+          assert.match(text, new RegExp(`${variant.sizeBytes.toLocaleString('en-GB')} bytes`));
+          for (const requirement of variant.requirements) {
+            assert.ok(text.includes(requirement), `${variant.id} omits requirement ${requirement}`);
+          }
+          assert.ok(text.includes(variant.integrity.algorithm), `${variant.id} omits checksum algorithm`);
+          assert.ok(text.includes(variant.integrity.value), `${variant.id} omits checksum`);
+          assert.ok(text.includes(variant.integrity.checksumStatus.label), `${variant.id} omits checksum status`);
+          assert.ok(
+            text.includes(variant.integrity.publisherSignature.label),
+            `${variant.id} omits publisher-signature status`,
+          );
+          const action = panel.getByRole('link', { name: release.recommendations.windows.label, exact: true });
+          assert.equal(await action.getAttribute('href'), variant.artifactLocation);
+        } else {
+          assert.match(text, new RegExp(variant.statusLabel, 'i'));
+          assert.ok(text.includes(variant.gate), `${variant.id} omits its unavailable reason`);
+          assert.ok(text.includes(release.unavailableFacts.size), `${variant.id} omits unavailable size truth`);
+          assert.ok(text.includes(release.unavailableFacts.integrity), `${variant.id} omits unavailable integrity truth`);
+          assert.ok(text.includes(release.unavailableFacts.action), `${variant.id} omits unavailable action truth`);
+          assert.equal(await panel.getByRole('link').count(), 0, `${variant.id} exposes an unavailable action`);
+        }
+      }
+
+      const resources = page.getByRole('navigation', { name: 'Release resources' });
+      await resources.waitFor();
+      for (const resource of release.resources) {
+        const link = resources.getByRole('link', { name: resource.label, exact: true });
+        assert.equal(await link.getAttribute('href'), resource.href, `${resource.id} resource destination drifted`);
+      }
+      const history = page.locator('[data-release-history]');
+      assert.match(await history.innerText(), new RegExp(release.history.statusLabel, 'i'));
+      assert.match(await history.innerText(), new RegExp(release.history.summary, 'i'));
+      assert.equal(
+        await history.locator('[data-previous-release]').count(),
+        release.history.acceptedVersions.length,
+        'previous-version rendering disagrees with release authority',
+      );
+      const bodyText = await page.locator('body').innerText();
+      assert.doesNotMatch(
+        bodyText,
+        /\b(?:Mumble for (?:iOS|Android)|iOS app|Android app|mobile app)\b/i,
+        `${item.name} path implies a Mumble mobile app`,
+      );
+      await resources.getByRole('link', { name: 'Integrity guide', exact: true }).focus();
+      await assertVisibleFocus(page, `${item.name} release-resource focus`);
+      await noHorizontalOverflow(page, `${item.name} Downloads ${javaScriptEnabled ? 'JavaScript' : 'no-JavaScript'}`);
+      assertNoBrowserErrors(
+        browserErrors,
+        `${item.name} Downloads ${javaScriptEnabled ? 'JavaScript' : 'no-JavaScript'} browser errors`,
+      );
+      await context.close();
+    }
+  }
+
+  const reducedContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: 'reduce',
+  });
+  const reducedPage = await reducedContext.newPage();
+  await reducedPage.goto(`${origin}/downloads/`, { waitUntil: 'networkidle' });
+  assert.equal(
+    await reducedPage.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior),
+    'auto',
+    'reduced-motion Downloads keeps smooth scrolling',
+  );
+  await noHorizontalOverflow(reducedPage, 'reduced-motion mobile Downloads');
+  await reducedContext.close();
+
+  record('Downloads full platform matrix, authority facts, gated variants, resources, history, no-mobile-app promise, focus, reduced motion, JavaScript/no-JavaScript, and horizontal fit');
 }
 
 async function mobileMenu(browser) {
@@ -586,6 +750,7 @@ try {
   console.log(`Browser version: ${browser.version()}`);
   await desktopJourney(browser);
   await platformRecommendations(browser);
+  await downloadsContract(browser);
   await mobileMenu(browser);
   await noJavaScriptPath(browser);
   await privacyRoutes(browser);

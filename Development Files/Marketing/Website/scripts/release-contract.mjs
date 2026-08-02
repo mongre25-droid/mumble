@@ -5,9 +5,109 @@ function fail(message) {
 function requireString(value, field) {
   if (typeof value !== 'string' || value.trim() === '') fail(`${field} must be a non-empty string`);
 }
+
+function requireExact(value, expected, field) {
+  if (value !== expected) fail(`${field} must remain ${JSON.stringify(expected)}`);
+}
+
+function requireArrayExact(value, expected, field) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== expected.length ||
+    value.some((item, index) => item !== expected[index])
+  ) {
+    fail(`${field} must remain ${JSON.stringify(expected)}`);
+  }
+}
+
+function requireRecordKeys(value, expected, field) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    fail(`${field} must be an object`);
+  }
+  const actualKeys = Object.keys(value).sort();
+  const expectedKeys = [...expected].sort();
+  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
+    fail(`${field} keys must remain ${JSON.stringify(expectedKeys)}`);
+  }
+}
+
+function requireSafeHref(value, field) {
+  requireString(value, field);
+  const safeFragment = /^#[A-Za-z][A-Za-z0-9_-]*$/.test(value);
+  const safeRootPath = /^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*\/?(?:#[A-Za-z][A-Za-z0-9_-]*)?$/.test(value);
+  const safeProjectUrl = /^https:\/\/github\.com\/mongre25-droid\/mumble(?:\/(?:blob\/main\/LICENSE|issues))?$/.test(value);
+  if (!safeFragment && !safeRootPath && !safeProjectUrl) {
+    fail(`${field} must be a safe Mumble destination`);
+  }
+}
+
+const windowsVariant = {
+  id: 'windows-x86_64-zip',
+  availability: 'candidate',
+  availabilityLabel: 'Candidate artifact',
+  statusLabel: 'Downloadable candidate',
+  architecture: 'x86_64',
+  format: 'ZIP',
+  sizeBytes: 1207711,
+  requirements: [
+    'Windows 10 or 11 (64-bit)',
+    'Internet access for first-time setup',
+    'Keep the extracted Mumble folder in a permanent location',
+  ],
+  artifactLocation: '/Mumble.zip',
+  gate: 'The repository candidate can be downloaded for inspection. Installation lifecycle, physical acceptance, publisher signing, deployment, and public release remain open.',
+  integrity: {
+    algorithm: 'SHA-256',
+    value: '70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493',
+    checksumStatus: {
+      state: 'matched',
+      label: 'Matches canonical package bytes',
+      summary: "The published value matches the repository's canonical Internal/Releases/Mumble.zip bytes.",
+    },
+    publisherSignature: {
+      state: 'not-accepted',
+      label: 'Not accepted',
+      summary: 'No accepted publisher signing or clean-install trust result exists.',
+    },
+  },
+  provenance: {
+    schema: 'mumble.release-provenance.v1',
+    sourceCommit: '9d583ec31432b975e3a8955d2ebecf9c3ca87080',
+    inputClosureDigest: '87f3031fababeb82a39e356e975efcedd2ce329466e0654a1ae2afb2d3b0a6a6',
+    memberCount: 147,
+  },
+};
+
+const gatedVariants = {
+  'macos-arm64-zip': {
+    platformId: 'macos',
+    architecture: 'arm64',
+    format: 'ZIP',
+    gate: 'No accepted Apple Silicon artifact is published. Physical Apple Silicon execution, installation lifecycle, signing, and notarisation remain open.',
+  },
+  'macos-x86_64-zip': {
+    platformId: 'macos',
+    architecture: 'x86_64',
+    format: 'ZIP',
+    gate: 'No accepted Intel Mac artifact is published. Physical Intel execution, installation lifecycle, signing, and notarisation remain open.',
+  },
+  'linux-x86_64-tar-gz': {
+    platformId: 'linux',
+    architecture: 'x86_64',
+    format: 'TAR.GZ',
+    gate: 'No accepted Linux TAR.GZ is published. Distribution lifecycle, physical GNOME/KDE and X11/Wayland checks, signing, and release remain open.',
+  },
+  'linux-x86_64-zip': {
+    platformId: 'linux',
+    architecture: 'x86_64',
+    format: 'ZIP',
+    gate: 'No accepted Linux ZIP is published. Distribution lifecycle, physical GNOME/KDE and X11/Wayland checks, signing, and release remain open.',
+  },
+};
+
 export const acceptedReleaseContract = Object.freeze({
+  schema: 2,
   application: 'Mumble',
-  version: '0.95',
   channel: {
     id: 'pre-release',
     label: 'Pre-release candidate',
@@ -24,11 +124,20 @@ export const acceptedReleaseContract = Object.freeze({
     state: 'not-published',
     label: 'Not published for this candidate',
     summary: 'Public release notes will follow an accepted public release; this candidate has no published release notes.',
+    publishedAt: null,
+    href: null,
+  },
+  history: {
+    state: 'not-maintained',
+    label: 'Previous accepted versions',
+    statusLabel: 'None maintained',
+    summary: 'No previous accepted website downloads are maintained for this gated candidate. No rollback package is offered here.',
   },
   unavailableFacts: {
-    artifactMetadata: 'Not published',
+    size: 'Not published',
+    requirements: 'Not published',
     integrity: 'No artifact to verify',
-    download: 'Unavailable',
+    action: 'Unavailable',
   },
   recommendations: {
     windows: { label: 'Download candidate for Windows', href: '/Mumble.zip', download: true },
@@ -37,32 +146,32 @@ export const acceptedReleaseContract = Object.freeze({
     unknown: { label: 'View desktop downloads', href: '/downloads/#platforms-title', download: false },
     mobile: { label: 'View desktop downloads', href: '/downloads/#platforms-title', download: false },
   },
-  windows: {
-    id: 'windows',
-    label: 'Windows',
-    availabilityLabel: 'Candidate artifact',
-    availability: 'candidate',
-    architecture: 'x86_64',
-    format: 'ZIP',
-    artifactLocation: '/Mumble.zip',
-    sizeBytes: 1207711,
-    requirements: [
-      'Windows 10 or 11 (64-bit)',
-      'Internet access for first-time setup',
-      'Keep the extracted Mumble folder in a permanent location',
+  resources: [
+    { id: 'platform-status', label: 'Platform status', href: '#platforms-title' },
+    { id: 'integrity', label: 'Integrity guide', href: '#integrity-title' },
+    { id: 'release-notes', label: 'Release notes', href: '#release-notes-title' },
+    { id: 'source', label: 'Source record', href: 'https://github.com/mongre25-droid/mumble' },
+    { id: 'licence', label: 'MIT licence', href: 'https://github.com/mongre25-droid/mumble/blob/main/LICENSE' },
+    { id: 'support', label: 'Issue tracker', href: 'https://github.com/mongre25-droid/mumble/issues' },
+  ],
+  integrityGuide: {
+    title: 'Verify before you run it',
+    summary: 'The byte count and SHA-256 identify the repository candidate. A matching checksum does not provide publisher-signature, installation, physical-acceptance, or public-release evidence.',
+    steps: [
+      'Compare the downloaded file size with the exact byte count.',
+      'Compute SHA-256 and compare all 64 hexadecimal characters.',
+      'Check publisher-signature and release-gate status separately; neither is implied by a matching checksum.',
     ],
-    gate: 'Validated repository candidate bytes are available here, but this is not an installed, signed, deployed, or publicly released package.',
-    integrity: {
-      algorithm: 'SHA-256',
-      value: '70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493',
-      publisherSignature: {
-        state: 'not-accepted',
-        label: 'Not accepted',
-      },
-    },
   },
-  gatedPlatformIds: ['macos', 'linux'],
-  gatedPlatforms: {
+  platformOrder: ['windows', 'macos', 'linux'],
+  platforms: {
+    windows: {
+      label: 'Windows',
+      availability: 'candidate',
+      availabilityLabel: 'Candidate artifact',
+      statusLabel: 'Public release gated',
+      gate: 'Validated repository candidate bytes are available here, but this is not an installed, signed, deployed, or publicly released package.',
+    },
     macos: {
       label: 'macOS',
       availability: 'gated',
@@ -78,203 +187,356 @@ export const acceptedReleaseContract = Object.freeze({
       gate: 'No current accepted public Linux artifact exists. Physical desktop, package, signing, and release gates remain open.',
     },
   },
+  variantOrder: [
+    'windows-x86_64-zip',
+    'macos-arm64-zip',
+    'macos-x86_64-zip',
+    'linux-x86_64-tar-gz',
+    'linux-x86_64-zip',
+  ],
+  windows: windowsVariant,
+  gatedVariants,
 });
 
-function requireExact(value, expected, field) {
-  if (value !== expected) fail(`${field} must remain ${JSON.stringify(expected)}`);
-}
-function requireArrayExact(value, expected, field) {
-  if (
-    !Array.isArray(value) ||
-    value.length !== expected.length ||
-    value.some((item, index) => item !== expected[index])
-  ) {
-    fail(`${field} must remain ${JSON.stringify(expected)}`);
+function validatePublication(authority, accepted) {
+  requireRecordKeys(authority.publication, Object.keys(accepted.publication), 'publication');
+  for (const [field, expected] of Object.entries(accepted.publication)) {
+    if (expected !== null) requireString(authority.publication[field], `publication.${field}`);
+    requireExact(authority.publication[field], expected, `publication.${field}`);
+  }
+
+  requireRecordKeys(authority.releaseNotes, Object.keys(accepted.releaseNotes), 'releaseNotes');
+  for (const [field, expected] of Object.entries(accepted.releaseNotes)) {
+    if (expected !== null) requireString(authority.releaseNotes[field], `releaseNotes.${field}`);
+    requireExact(authority.releaseNotes[field], expected, `releaseNotes.${field}`);
+  }
+
+  requireRecordKeys(authority.history, [...Object.keys(accepted.history), 'acceptedVersions'], 'history');
+  for (const [field, expected] of Object.entries(accepted.history)) {
+    requireString(authority.history[field], `history.${field}`);
+    requireExact(authority.history[field], expected, `history.${field}`);
+  }
+  if (!Array.isArray(authority.history.acceptedVersions)) fail('history.acceptedVersions must be an array');
+  if (authority.history.acceptedVersions.length !== 0) {
+    fail('history.acceptedVersions must stay empty until a previous accepted download is maintained');
   }
 }
 
+function validateResources(authority, accepted) {
+  requireRecordKeys(authority.unavailableFacts, Object.keys(accepted.unavailableFacts), 'unavailableFacts');
+  for (const [field, expected] of Object.entries(accepted.unavailableFacts)) {
+    requireString(authority.unavailableFacts[field], `unavailableFacts.${field}`);
+    requireExact(authority.unavailableFacts[field], expected, `unavailableFacts.${field}`);
+  }
 
+  if (!Array.isArray(authority.resources) || authority.resources.length !== accepted.resources.length) {
+    fail(`resources must contain exactly ${accepted.resources.length} destinations`);
+  }
+  authority.resources.forEach((resource, index) => {
+    const expected = accepted.resources[index];
+    requireRecordKeys(resource, ['id', 'label', 'href'], `resources[${index}]`);
+    requireString(resource.id, `resources[${index}].id`);
+    requireString(resource.label, `resources[${index}].label`);
+    requireSafeHref(resource.href, `resources[${index}].href`);
+    requireExact(resource.id, expected.id, `resources[${index}].id`);
+    requireExact(resource.label, expected.label, `resources[${index}].label`);
+    requireExact(resource.href, expected.href, `resources[${index}].href`);
+  });
+
+  requireRecordKeys(authority.integrityGuide, ['title', 'summary', 'steps'], 'integrityGuide');
+  requireString(authority.integrityGuide.title, 'integrityGuide.title');
+  requireString(authority.integrityGuide.summary, 'integrityGuide.summary');
+  requireExact(authority.integrityGuide.title, accepted.integrityGuide.title, 'integrityGuide.title');
+  requireExact(authority.integrityGuide.summary, accepted.integrityGuide.summary, 'integrityGuide.summary');
+  authority.integrityGuide.steps?.forEach((step, index) => requireString(step, `integrityGuide.steps[${index}]`));
+  requireArrayExact(authority.integrityGuide.steps, accepted.integrityGuide.steps, 'integrityGuide.steps');
+}
+
+function validateRecommendations(authority, accepted) {
+  requireRecordKeys(authority.recommendations, Object.keys(accepted.recommendations), 'recommendations');
+  for (const [id, expected] of Object.entries(accepted.recommendations)) {
+    const recommendation = authority.recommendations[id];
+    requireRecordKeys(recommendation, ['label', 'href', 'download'], `recommendations.${id}`);
+    requireString(recommendation.label, `recommendations.${id}.label`);
+    requireSafeHref(recommendation.href, `recommendations.${id}.href`);
+    if (typeof recommendation.download !== 'boolean') {
+      fail(`recommendations.${id}.download must be boolean`);
+    }
+    requireExact(recommendation.label, expected.label, `recommendations.${id}.label`);
+    requireExact(recommendation.href, expected.href, `recommendations.${id}.href`);
+    requireExact(recommendation.download, expected.download, `recommendations.${id}.download`);
+  }
+  if (
+    authority.recommendations.mobile.label !== authority.recommendations.unknown.label ||
+    authority.recommendations.mobile.href !== authority.recommendations.unknown.href ||
+    authority.recommendations.mobile.download !== false ||
+    authority.recommendations.unknown.download !== false
+  ) {
+    fail('mobile and unknown visitors must receive the same neutral desktop-download choice');
+  }
+}
+
+function validateCandidateVariant(platform, variant, releaseVersion, evidence, accepted) {
+  requireString(variant.architecture, `${variant.id}.architecture`);
+  requireString(variant.format, `${variant.id}.format`);
+  requireString(variant.artifactLocation, `${variant.id}.artifactLocation`);
+  requireSafeHref(variant.artifactLocation, `${variant.id}.artifactLocation`);
+  if (!Number.isSafeInteger(variant.sizeBytes) || variant.sizeBytes <= 0) {
+    fail(`${variant.id}.sizeBytes must be a positive integer`);
+  }
+  if (!Array.isArray(variant.requirements) || variant.requirements.length === 0) {
+    fail(`${variant.id}.requirements must be a non-empty array`);
+  }
+  variant.requirements.forEach((requirement, index) =>
+    requireString(requirement, `${variant.id}.requirements[${index}]`),
+  );
+  requireArrayExact(variant.requirements, accepted.windows.requirements, `${variant.id}.requirements`);
+
+  requireRecordKeys(
+    variant.integrity,
+    ['algorithm', 'value', 'checksumStatus', 'publisherSignature'],
+    `${variant.id}.integrity`,
+  );
+  requireExact(variant.integrity.algorithm, 'SHA-256', `${variant.id}.integrity.algorithm`);
+  if (!/^[0-9a-f]{64}$/.test(variant.integrity.value ?? '')) {
+    fail(`${variant.id}.integrity.value must be a lowercase SHA-256 hash`);
+  }
+  for (const statusName of ['checksumStatus', 'publisherSignature']) {
+    requireRecordKeys(variant.integrity[statusName], ['state', 'label', 'summary'], `${variant.id}.integrity.${statusName}`);
+    requireString(variant.integrity[statusName].state, `${variant.id}.integrity.${statusName}.state`);
+    requireString(variant.integrity[statusName].label, `${variant.id}.integrity.${statusName}.label`);
+    requireString(variant.integrity[statusName].summary, `${variant.id}.integrity.${statusName}.summary`);
+  }
+
+  requireRecordKeys(
+    variant.provenance,
+    ['schema', 'sourceCommit', 'inputClosureDigest', 'memberCount'],
+    `${variant.id}.provenance`,
+  );
+  requireString(variant.provenance.schema, `${variant.id}.provenance.schema`);
+  if (!/^[0-9a-f]{40}$/.test(variant.provenance.sourceCommit ?? '')) {
+    fail(`${variant.id}.provenance.sourceCommit must be a lowercase full Git commit`);
+  }
+  if (!/^[0-9a-f]{64}$/.test(variant.provenance.inputClosureDigest ?? '')) {
+    fail(`${variant.id}.provenance.inputClosureDigest must be a lowercase SHA-256 digest`);
+  }
+  if (!Number.isSafeInteger(variant.provenance.memberCount) || variant.provenance.memberCount <= 0) {
+    fail(`${variant.id}.provenance.memberCount must be a positive integer`);
+  }
+
+  if (platform.id !== 'windows' || variant.id !== accepted.windows.id) {
+    fail('the accepted Windows artifact must be the sole candidate');
+  }
+  for (const field of [
+    'availability',
+    'availabilityLabel',
+    'statusLabel',
+    'architecture',
+    'format',
+    'sizeBytes',
+    'artifactLocation',
+    'gate',
+  ]) {
+    requireExact(variant[field], accepted.windows[field], `${variant.id}.${field}`);
+  }
+  for (const [field, expected] of Object.entries(accepted.windows.integrity)) {
+    if (typeof expected === 'object') {
+      for (const [statusField, statusExpected] of Object.entries(expected)) {
+        requireExact(
+          variant.integrity[field][statusField],
+          statusExpected,
+          `${variant.id}.integrity.${field}.${statusField}`,
+        );
+      }
+    } else {
+      requireExact(variant.integrity[field], expected, `${variant.id}.integrity.${field}`);
+    }
+  }
+  for (const [field, expected] of Object.entries(accepted.windows.provenance)) {
+    requireExact(variant.provenance[field], expected, `${variant.id}.provenance.${field}`);
+  }
+
+  const artifact = evidence.artifactFacts(variant.artifactLocation);
+  if (!artifact) fail(`${variant.id} candidate artifact does not exist`);
+  if (artifact.sizeBytes !== variant.sizeBytes) {
+    fail(`${variant.id} size does not match ${variant.artifactLocation}`);
+  }
+  if (artifact.sha256 !== variant.integrity.value) {
+    fail(`${variant.id} hash does not match ${variant.artifactLocation}`);
+  }
+
+  const canonical = evidence.canonicalWindows;
+  if (!canonical) fail('canonical Internal/Releases/Mumble.zip is missing');
+  requireString(canonical.version, 'canonical Windows packaged version');
+  if (canonical.version !== releaseVersion) {
+    fail(`packaged version ${canonical.version} does not match website version ${releaseVersion}`);
+  }
+  if (canonical.sizeBytes !== variant.sizeBytes || canonical.sha256 !== variant.integrity.value) {
+    fail('Windows authority does not match canonical Internal/Releases/Mumble.zip');
+  }
+  if (artifact.sizeBytes !== canonical.sizeBytes || artifact.sha256 !== canonical.sha256) {
+    fail('website and canonical Windows artifacts disagree');
+  }
+  if (!canonical.provenance) fail('canonical Windows provenance is missing');
+  const packagedIdentity = {
+    schema: canonical.provenance.schema,
+    sourceCommit: canonical.provenance.sourceCommit,
+    inputClosureDigest: canonical.provenance.inputClosureDigest,
+    memberCount: canonical.provenance.memberCount,
+  };
+  for (const [field, expected] of Object.entries(variant.provenance)) {
+    requireExact(packagedIdentity[field], expected, `packaged provenance ${field}`);
+  }
+  requireExact(canonical.provenance.platform, platform.id, 'packaged provenance platform');
+  requireExact(canonical.provenance.architecture, variant.architecture, 'packaged provenance architecture');
+  requireExact(canonical.provenance.format, variant.format, 'packaged provenance format');
+}
+
+function validateGatedVariant(platform, variant, accepted) {
+  const expected = accepted.gatedVariants[variant.id];
+  if (!expected || expected.platformId !== platform.id) {
+    fail(`${variant.id} is not an accepted ${platform.id} variant`);
+  }
+  requireExact(variant.availability, 'gated', `${variant.id}.availability`);
+  requireExact(variant.availabilityLabel, 'No accepted artifact', `${variant.id}.availabilityLabel`);
+  requireExact(variant.statusLabel, 'Gated', `${variant.id}.statusLabel`);
+  requireExact(variant.architecture, expected.architecture, `${variant.id}.architecture`);
+  requireExact(variant.format, expected.format, `${variant.id}.format`);
+  requireExact(variant.gate, expected.gate, `${variant.id}.gate`);
+  if (
+    variant.sizeBytes !== null ||
+    variant.artifactLocation !== null ||
+    variant.integrity !== null ||
+    variant.provenance !== null
+  ) {
+    fail(`${variant.id} gated state must not invent artifact facts`);
+  }
+  if (!Array.isArray(variant.requirements) || variant.requirements.length !== 0) {
+    fail(`${variant.id} gated state must not invent package requirements`);
+  }
+}
 
 export function validateReleaseAuthority(authority, evidence) {
   const accepted = acceptedReleaseContract;
-  if (authority.schema !== 1) fail('schema must be 1');
+  requireRecordKeys(
+    authority,
+    [
+      'schema',
+      'application',
+      'version',
+      'channel',
+      'publication',
+      'releaseNotes',
+      'history',
+      'unavailableFacts',
+      'recommendations',
+      'resources',
+      'integrityGuide',
+      'platforms',
+    ],
+    'release authority',
+  );
+  requireExact(authority.schema, accepted.schema, 'schema');
   requireString(authority.application, 'application');
   requireString(authority.version, 'version');
   requireExact(authority.application, accepted.application, 'application');
-  requireExact(authority.version, accepted.version, 'version');
-
-  requireString(authority.channel?.id, 'channel.id');
-  requireString(authority.channel?.label, 'channel.label');
-  requireExact(authority.channel.id, accepted.channel.id, 'channel.id');
-  requireExact(authority.channel.label, accepted.channel.label, 'channel.label');
-
-  requireString(authority.publication?.state, 'publication.state');
-  requireString(authority.publication?.label, 'publication.label');
-  requireString(authority.publication?.statusLabel, 'publication.statusLabel');
-  requireString(authority.publication?.dateLabel, 'publication.dateLabel');
-  requireString(authority.publication?.reason, 'publication.reason');
-  requireExact(authority.publication.state, accepted.publication.state, 'publication.state');
-  requireExact(authority.publication.publishedAt, accepted.publication.publishedAt, 'publication.publishedAt');
-  requireExact(authority.publication.label, accepted.publication.label, 'publication.label');
-  requireExact(authority.publication.statusLabel, accepted.publication.statusLabel, 'publication.statusLabel');
-  requireExact(authority.publication.dateLabel, accepted.publication.dateLabel, 'publication.dateLabel');
-  requireExact(authority.publication.reason, accepted.publication.reason, 'publication.reason');
-
-  requireString(authority.releaseNotes?.state, 'releaseNotes.state');
-  requireString(authority.releaseNotes?.label, 'releaseNotes.label');
-  requireString(authority.releaseNotes?.summary, 'releaseNotes.summary');
-  requireExact(authority.releaseNotes.state, accepted.releaseNotes.state, 'releaseNotes.state');
-  requireExact(authority.releaseNotes.label, accepted.releaseNotes.label, 'releaseNotes.label');
-  requireExact(authority.releaseNotes.summary, accepted.releaseNotes.summary, 'releaseNotes.summary');
-  requireString(authority.unavailableFacts?.artifactMetadata, 'unavailableFacts.artifactMetadata');
-  requireString(authority.unavailableFacts?.integrity, 'unavailableFacts.integrity');
-  requireString(authority.unavailableFacts?.download, 'unavailableFacts.download');
-  requireExact(
-    authority.unavailableFacts.artifactMetadata,
-    accepted.unavailableFacts.artifactMetadata,
-    'unavailableFacts.artifactMetadata',
-  );
-  requireExact(authority.unavailableFacts.integrity, accepted.unavailableFacts.integrity, 'unavailableFacts.integrity');
-  requireExact(authority.unavailableFacts.download, accepted.unavailableFacts.download, 'unavailableFacts.download');
-
   requireString(evidence?.sourceVersion, 'evidence.sourceVersion');
   if (authority.version !== evidence.sourceVersion) {
     fail(`website version ${authority.version} does not match source version ${evidence.sourceVersion}`);
   }
 
-  const recommendations = authority.recommendations;
-  const recommendationContract = accepted.recommendations;
-  for (const [id, expected] of Object.entries(recommendationContract)) {
-    requireString(recommendations?.[id]?.label, `recommendations.${id}.label`);
-    requireExact(recommendations[id].label, expected.label, `recommendations.${id}.label`);
-    requireString(recommendations?.[id]?.href, `recommendations.${id}.href`);
-    if (typeof recommendations[id].download !== 'boolean') {
-      fail(`recommendations.${id}.download must be boolean`);
-    }
-    requireExact(recommendations[id].href, expected.href, `recommendations.${id}.href`);
-    requireExact(recommendations[id].download, expected.download, `recommendations.${id}.download`);
+  requireRecordKeys(authority.channel, Object.keys(accepted.channel), 'channel');
+  for (const [field, expected] of Object.entries(accepted.channel)) {
+    requireString(authority.channel[field], `channel.${field}`);
+    requireExact(authority.channel[field], expected, `channel.${field}`);
   }
-  if (recommendations.mobile.label !== recommendations.unknown.label) {
-    fail('mobile and unknown visitors must receive the same neutral desktop-download choice');
-  }
+  validatePublication(authority, accepted);
+  validateResources(authority, accepted);
+  validateRecommendations(authority, accepted);
 
-  if (!Array.isArray(authority.platforms) || authority.platforms.length === 0) {
-    fail('platforms must be a non-empty array');
+  if (!Array.isArray(authority.platforms) || authority.platforms.length !== accepted.platformOrder.length) {
+    fail('platforms must contain exactly Windows, macOS, and Linux');
   }
-
   const representedPlatforms = new Set();
-  const variants = new Set();
+  const representedVariantIds = new Set();
+  const variantTuples = new Set();
   let candidateArtifacts = 0;
+
   for (const platform of authority.platforms) {
+    requireRecordKeys(
+      platform,
+      ['id', 'label', 'availability', 'availabilityLabel', 'statusLabel', 'gate', 'variants'],
+      'platform',
+    );
     requireString(platform.id, 'platform.id');
-    requireString(platform.label, `${platform.id}.label`);
-    requireString(platform.availability, `${platform.id}.availability`);
-    requireString(platform.availabilityLabel, `${platform.id}.availabilityLabel`);
-    requireString(platform.gate, `${platform.id}.gate`);
-    const acceptedPlatform =
-      platform.id === accepted.windows.id ? accepted.windows : accepted.gatedPlatforms[platform.id];
-    if (!acceptedPlatform) fail(`${platform.id} is not an accepted platform`);
-    requireExact(platform.label, acceptedPlatform.label, `${platform.id}.label`);
-    requireExact(platform.availabilityLabel, acceptedPlatform.availabilityLabel, `${platform.id}.availabilityLabel`);
-    requireExact(platform.gate, acceptedPlatform.gate, `${platform.id}.gate`);
+    if (representedPlatforms.has(platform.id)) fail(`duplicate platform ${platform.id}`);
     representedPlatforms.add(platform.id);
+    const expectedPlatform = accepted.platforms[platform.id];
+    if (!expectedPlatform) fail(`${platform.id} is not an accepted platform`);
+    for (const [field, expected] of Object.entries(expectedPlatform)) {
+      requireString(platform[field], `${platform.id}.${field}`);
+      requireExact(platform[field], expected, `${platform.id}.${field}`);
+    }
+    if (!Array.isArray(platform.variants) || platform.variants.length === 0) {
+      fail(`${platform.id}.variants must be a non-empty array`);
+    }
 
-    const variantKey = `${platform.id}:${platform.architecture ?? 'none'}`;
-    if (variants.has(variantKey)) fail(`duplicate platform/architecture variant ${variantKey}`);
-    variants.add(variantKey);
-
-    if (platform.availability === 'candidate') {
-      candidateArtifacts += 1;
-      requireString(platform.architecture, `${platform.id}.architecture`);
-      requireString(platform.format, `${platform.id}.format`);
-      requireString(platform.artifactLocation, `${platform.id}.artifactLocation`);
-      if (!Number.isSafeInteger(platform.sizeBytes) || platform.sizeBytes <= 0) {
-        fail(`${platform.id}.sizeBytes must be a positive integer`);
-      }
-      if (!Array.isArray(platform.requirements) || platform.requirements.length === 0) {
-        fail(`${platform.id}.requirements must be a non-empty array`);
-      }
-      platform.requirements.forEach((value, index) => requireString(value, `${platform.id}.requirements[${index}]`));
-      requireArrayExact(platform.requirements, accepted.windows.requirements, 'windows.requirements');
-      if (platform.integrity?.algorithm !== 'SHA-256') fail(`${platform.id} must use SHA-256 integrity`);
-      if (!/^[0-9a-f]{64}$/.test(platform.integrity?.value ?? '')) {
-        fail(`${platform.id}.integrity.value must be a lowercase SHA-256 hash`);
-      }
-      requireString(platform.integrity?.publisherSignature?.state, `${platform.id}.integrity.publisherSignature.state`);
-      requireString(platform.integrity?.publisherSignature?.label, `${platform.id}.integrity.publisherSignature.label`);
-
-      const pathSegments = platform.artifactLocation.slice(1).split('/');
-      if (
-        !/^\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*$/.test(platform.artifactLocation) ||
-        pathSegments.some((segment) => segment === '.' || segment === '..')
-      ) {
-        fail(`${platform.id}.artifactLocation must be a safe POSIX root-relative path`);
-      }
-
-      if (platform.id !== accepted.windows.id) fail('the accepted Windows artifact must be the sole candidate');
-      requireExact(platform.availability, accepted.windows.availability, 'windows.availability');
-      requireExact(platform.architecture, accepted.windows.architecture, 'windows.architecture');
-      requireExact(platform.format, accepted.windows.format, 'windows.format');
-      requireExact(platform.artifactLocation, accepted.windows.artifactLocation, 'windows.artifactLocation');
-      requireExact(platform.sizeBytes, accepted.windows.sizeBytes, 'windows.sizeBytes');
-      requireExact(platform.integrity.algorithm, accepted.windows.integrity.algorithm, 'windows.integrity.algorithm');
-      requireExact(platform.integrity.value, accepted.windows.integrity.value, 'windows.integrity.value');
-      requireExact(
-        platform.integrity.publisherSignature.state,
-        accepted.windows.integrity.publisherSignature.state,
-        'windows.integrity.publisherSignature.state',
+    for (const variant of platform.variants) {
+      requireRecordKeys(
+        variant,
+        [
+          'id',
+          'availability',
+          'availabilityLabel',
+          'statusLabel',
+          'architecture',
+          'format',
+          'sizeBytes',
+          'requirements',
+          'artifactLocation',
+          'gate',
+          'integrity',
+          'provenance',
+        ],
+        `${platform.id}.variant`,
       );
-      requireExact(
-        platform.integrity.publisherSignature.label,
-        accepted.windows.integrity.publisherSignature.label,
-        'windows.integrity.publisherSignature.label',
-      );
+      requireString(variant.id, `${platform.id}.variant.id`);
+      requireString(variant.availability, `${variant.id}.availability`);
+      requireString(variant.availabilityLabel, `${variant.id}.availabilityLabel`);
+      requireString(variant.statusLabel, `${variant.id}.statusLabel`);
+      requireString(variant.architecture, `${variant.id}.architecture`);
+      requireString(variant.format, `${variant.id}.format`);
+      requireString(variant.gate, `${variant.id}.gate`);
+      if (representedVariantIds.has(variant.id)) fail(`duplicate variant identity ${variant.id}`);
+      representedVariantIds.add(variant.id);
+      const tuple = `${platform.id}:${variant.architecture}:${variant.format}`;
+      if (variantTuples.has(tuple)) fail(`duplicate platform/architecture/format variant ${tuple}`);
+      variantTuples.add(tuple);
 
-      const artifact = evidence.artifactFacts(platform.artifactLocation);
-      if (!artifact) fail(`${platform.id} candidate artifact does not exist`);
-      if (artifact.sizeBytes !== platform.sizeBytes) {
-        fail(`${platform.id} size does not match ${platform.artifactLocation}`);
+      if (variant.availability === 'candidate') {
+        candidateArtifacts += 1;
+        validateCandidateVariant(platform, variant, authority.version, evidence, accepted);
+      } else if (variant.availability === 'gated') {
+        validateGatedVariant(platform, variant, accepted);
+      } else {
+        fail(`${variant.id}.availability must be candidate or gated`);
       }
-      if (artifact.sha256 !== platform.integrity.value) {
-        fail(`${platform.id} hash does not match ${platform.artifactLocation}`);
-      }
-      if (!evidence.canonicalWindows) fail('canonical Internal/Releases/Mumble.zip is missing');
-      if (evidence.canonicalWindows.sha256 !== platform.integrity.value) {
-        fail('Windows authority does not match canonical Internal/Releases/Mumble.zip');
-      }
-      if (evidence.canonicalWindows.sizeBytes !== platform.sizeBytes) {
-        fail('Windows authority size does not match canonical Internal/Releases/Mumble.zip');
-      }
-    } else if (platform.availability === 'gated') {
-      requireString(platform.statusLabel, `${platform.id}.statusLabel`);
-      const acceptedGatedPlatform = accepted.gatedPlatforms[platform.id];
-      requireExact(platform.availability, acceptedGatedPlatform.availability, `${platform.id}.availability`);
-      requireExact(platform.statusLabel, acceptedGatedPlatform.statusLabel, `${platform.id}.statusLabel`);
-      if (!accepted.gatedPlatformIds.includes(platform.id)) {
-        fail(`${platform.id} is not an accepted gated platform`);
-      }
-      if (
-        platform.architecture !== null ||
-        platform.format !== null ||
-        platform.sizeBytes !== null ||
-        platform.integrity !== null ||
-        platform.artifactLocation !== null
-      ) {
-        fail(`${platform.id} gated state must not invent artifact facts`);
-      }
-      if (!Array.isArray(platform.requirements) || platform.requirements.length !== 0) {
-        fail(`${platform.id} gated state must not invent package requirements`);
-      }
-    } else {
-      fail(`${platform.id}.availability must be candidate or gated`);
     }
   }
 
-  for (const requiredPlatform of [accepted.windows.id, ...accepted.gatedPlatformIds]) {
-    if (!representedPlatforms.has(requiredPlatform)) fail(`missing ${requiredPlatform} platform state`);
+  for (const platformId of accepted.platformOrder) {
+    if (!representedPlatforms.has(platformId)) fail(`missing ${platformId} platform state`);
   }
-  if (authority.platforms.length !== 3) fail('platforms must contain exactly Windows, macOS, and Linux');
+  for (const variantId of accepted.variantOrder) {
+    if (!representedVariantIds.has(variantId)) fail(`missing ${variantId} variant state`);
+  }
+  if (representedVariantIds.size !== accepted.variantOrder.length) {
+    fail(`release matrix must contain exactly ${accepted.variantOrder.length} accepted variants`);
+  }
   if (candidateArtifacts !== 1) fail('exactly one candidate artifact must be represented');
+  if (authority.recommendations.windows.href !== accepted.windows.artifactLocation) {
+    fail('Windows recommendation must resolve to the accepted candidate artifact');
+  }
 
   return authority;
 }

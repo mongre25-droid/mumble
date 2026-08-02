@@ -3,13 +3,20 @@ import release from '../src/data/release.json' with { type: 'json' };
 import { acceptedReleaseContract, validateReleaseAuthority } from './release-contract.mjs';
 
 const acceptedArtifact = {
+  version: release.version,
   sizeBytes: acceptedReleaseContract.windows.sizeBytes,
   sha256: acceptedReleaseContract.windows.integrity.value,
+  provenance: {
+    ...acceptedReleaseContract.windows.provenance,
+    platform: 'windows',
+    architecture: 'x86_64',
+    format: 'ZIP',
+  },
 };
 const evidence = {
-  sourceVersion: '0.95',
+  sourceVersion: release.version,
   artifactFacts(location) {
-    return location === '/Mumble.zip' ? acceptedArtifact : null;
+    return location === acceptedReleaseContract.windows.artifactLocation ? acceptedArtifact : null;
   },
   canonicalWindows: acceptedArtifact,
 };
@@ -20,7 +27,21 @@ function changed(mutator) {
   return candidate;
 }
 
-let rejectionCount = 0;
+function platform(candidate, id) {
+  return candidate.platforms.find((entry) => entry.id === id);
+}
+
+function variant(candidate, id) {
+  return candidate.platforms.flatMap((entry) => entry.variants).find((entry) => entry.id === id);
+}
+
+let passCount = 0;
+
+function passes(name, candidate, customEvidence = evidence) {
+  assert.doesNotThrow(() => validateReleaseAuthority(candidate, customEvidence), name);
+  console.log(`PASS ${name}`);
+  passCount += 1;
+}
 
 function rejects(name, candidate, pattern, customEvidence = evidence) {
   assert.throws(
@@ -29,11 +50,36 @@ function rejects(name, candidate, pattern, customEvidence = evidence) {
     name,
   );
   console.log(`PASS ${name}`);
-  rejectionCount += 1;
+  passCount += 1;
 }
 
-assert.doesNotThrow(() => validateReleaseAuthority(release, evidence));
-console.log('PASS accepted release authority');
+passes('accepted release authority', release);
+
+assert.deepEqual(
+  release.platforms.flatMap((entry) =>
+    entry.variants.map((item) => `${entry.id}:${item.architecture}:${item.format}`),
+  ),
+  [
+    'windows:x86_64:ZIP',
+    'macos:arm64:ZIP',
+    'macos:x86_64:ZIP',
+    'linux:x86_64:TAR.GZ',
+    'linux:x86_64:ZIP',
+  ],
+  'release authority must expose every accepted desktop package choice',
+);
+console.log('PASS complete desktop package matrix');
+passCount += 1;
+
+passes(
+  'version follows source and packaged evidence instead of an assumed release literal',
+  changed((candidate) => { candidate.version = '2.7'; }),
+  {
+    ...evidence,
+    sourceVersion: '2.7',
+    canonicalWindows: { ...acceptedArtifact, version: '2.7' },
+  },
+);
 
 rejects(
   'missing required field fails closed',
@@ -41,24 +87,69 @@ rejects(
   /channel\.id must be a non-empty string/,
 );
 rejects(
-  'source and displayed versions cannot drift',
-  changed((candidate) => { candidate.version = '9.9'; }),
-  /version must remain/,
+  'unknown release-authority fields fail closed',
+  changed((candidate) => { candidate.legacyDownload = '/old.zip'; }),
+  /release authority keys must remain/,
 );
 rejects(
-  'duplicate platform and architecture variants are rejected',
-  changed((candidate) => { candidate.platforms.push(structuredClone(candidate.platforms[0])); }),
-  /duplicate platform\/architecture variant windows:x86_64/,
+  'source and displayed versions cannot drift',
+  changed((candidate) => { candidate.version = '9.9'; }),
+  /website version 9\.9 does not match source version/,
+);
+rejects(
+  'displayed and packaged versions cannot drift',
+  release,
+  /packaged version 0\.94 does not match website version 0\.95/,
+  { ...evidence, canonicalWindows: { ...acceptedArtifact, version: '0.94' } },
+);
+rejects(
+  'missing packaged version fails closed',
+  release,
+  /canonical Windows packaged version must be a non-empty string/,
+  { ...evidence, canonicalWindows: { ...acceptedArtifact, version: null } },
+);
+rejects(
+  'duplicate platform architecture and format variants are rejected',
+  changed((candidate) => {
+    const duplicate = structuredClone(variant(candidate, 'macos-arm64-zip'));
+    duplicate.id = 'macos-arm64-zip-copy';
+    platform(candidate, 'macos').variants.push(duplicate);
+  }),
+  /duplicate platform\/architecture\/format variant macos:arm64:ZIP/,
+);
+rejects(
+  'duplicate variant identities are rejected',
+  changed((candidate) => {
+    const duplicate = structuredClone(variant(candidate, 'macos-arm64-zip'));
+    duplicate.format = 'DMG';
+    platform(candidate, 'macos').variants.push(duplicate);
+  }),
+  /duplicate variant identity macos-arm64-zip/,
 );
 rejects(
   'impossible artifact sizes are rejected',
-  changed((candidate) => { candidate.platforms[0].sizeBytes = 0; }),
+  changed((candidate) => { variant(candidate, 'windows-x86_64-zip').sizeBytes = 0; }),
   /sizeBytes must be a positive integer/,
 );
 rejects(
   'malformed integrity hashes are rejected',
-  changed((candidate) => { candidate.platforms[0].integrity.value = 'not-a-hash'; }),
+  changed((candidate) => { variant(candidate, 'windows-x86_64-zip').integrity.value = 'not-a-hash'; }),
   /must be a lowercase SHA-256 hash/,
+);
+rejects(
+  'malformed provenance commits are rejected',
+  changed((candidate) => { variant(candidate, 'windows-x86_64-zip').provenance.sourceCommit = 'short'; }),
+  /must be a lowercase full Git commit/,
+);
+rejects(
+  'malformed provenance closure digests are rejected',
+  changed((candidate) => { variant(candidate, 'windows-x86_64-zip').provenance.inputClosureDigest = 'short'; }),
+  /must be a lowercase SHA-256 digest/,
+);
+rejects(
+  'impossible provenance member counts are rejected',
+  changed((candidate) => { variant(candidate, 'windows-x86_64-zip').provenance.memberCount = 0; }),
+  /memberCount must be a positive integer/,
 );
 rejects(
   'a promised candidate artifact must exist',
@@ -67,15 +158,101 @@ rejects(
   { ...evidence, artifactFacts: () => null },
 );
 rejects(
-  'displayed artifact size must match packaged bytes',
+  'displayed artifact size must match served bytes',
   release,
   /size does not match/,
   { ...evidence, artifactFacts: () => ({ ...acceptedArtifact, sizeBytes: 12 }) },
 );
 rejects(
-  'gated platforms cannot carry invented artifact facts',
-  changed((candidate) => { candidate.platforms[1].artifactLocation = '/invented.dmg'; }),
+  'displayed artifact hash must match served bytes',
+  release,
+  /hash does not match/,
+  { ...evidence, artifactFacts: () => ({ ...acceptedArtifact, sha256: 'a'.repeat(64) }) },
+);
+rejects(
+  'canonical Windows artifact is required',
+  release,
+  /canonical Internal\/Releases\/Mumble\.zip is missing/,
+  { ...evidence, canonicalWindows: null },
+);
+rejects(
+  'canonical package provenance is required',
+  release,
+  /canonical Windows provenance is missing/,
+  { ...evidence, canonicalWindows: { ...acceptedArtifact, provenance: null } },
+);
+rejects(
+  'displayed provenance source must match packaged provenance',
+  release,
+  /packaged provenance sourceCommit must remain/,
+  {
+    ...evidence,
+    canonicalWindows: {
+      ...acceptedArtifact,
+      provenance: { ...acceptedArtifact.provenance, sourceCommit: 'a'.repeat(40) },
+    },
+  },
+);
+rejects(
+  'displayed package tuple must match packaged provenance',
+  release,
+  /packaged provenance platform must remain/,
+  {
+    ...evidence,
+    canonicalWindows: {
+      ...acceptedArtifact,
+      provenance: { ...acceptedArtifact.provenance, platform: 'linux' },
+    },
+  },
+);
+rejects(
+  'displayed member count must match packaged provenance',
+  release,
+  /packaged provenance memberCount must remain/,
+  {
+    ...evidence,
+    canonicalWindows: {
+      ...acceptedArtifact,
+      provenance: { ...acceptedArtifact.provenance, memberCount: 146 },
+    },
+  },
+);
+rejects(
+  'gated variants cannot carry invented artifact facts',
+  changed((candidate) => { variant(candidate, 'macos-arm64-zip').sizeBytes = 12; }),
   /gated state must not invent artifact facts/,
+);
+rejects(
+  'gated variants cannot carry invented package requirements',
+  changed((candidate) => { variant(candidate, 'linux-x86_64-zip').requirements = ['Any Linux']; }),
+  /gated state must not invent package requirements/,
+);
+rejects(
+  'every accepted variant must remain represented',
+  changed((candidate) => { platform(candidate, 'macos').variants.shift(); }),
+  /missing macos-arm64-zip variant state/,
+);
+rejects(
+  'variant identity drift is rejected',
+  changed((candidate) => { variant(candidate, 'windows-x86_64-zip').id = 'windows-renamed'; }),
+  /accepted Windows artifact must be the sole candidate/,
+);
+rejects(
+  'maintained history cannot invent a previous accepted download',
+  changed((candidate) => {
+    candidate.history.acceptedVersions.push({ version: '0.94', href: '/Mumble-0.94.zip' });
+  }),
+  /must stay empty until a previous accepted download is maintained/,
+);
+rejects(
+  'resource destinations cannot leave the approved project boundary',
+  changed((candidate) => { candidate.resources[3].href = 'https://example.com/source'; }),
+  /must be a safe Mumble destination/,
+);
+rejects(
+  'integrity guidance cannot silently lose a verification step',
+  changed((candidate) => { candidate.integrityGuide.steps.pop(); }),
+  /integrityGuide\.steps must remain/,
 );
 rejects(
   'publication state cannot outrun accepted release gates',
@@ -98,9 +275,32 @@ for (const [field, contradictoryValue] of [
   );
 }
 rejects(
+  'checksum status cannot contradict the canonical-byte match',
+  changed((candidate) => {
+    variant(candidate, 'windows-x86_64-zip').integrity.checksumStatus.label = 'Unchecked';
+  }),
+  /windows-x86_64-zip\.integrity\.checksumStatus\.label must remain/,
+);
+rejects(
+  'checksum status explanation cannot contradict the canonical-byte match',
+  changed((candidate) => {
+    variant(candidate, 'windows-x86_64-zip').integrity.checksumStatus.summary = 'No checksum was checked.';
+  }),
+  /windows-x86_64-zip\.integrity\.checksumStatus\.summary must remain/,
+);
+rejects(
   'publisher signature label cannot contradict its unaccepted state',
-  changed((candidate) => { candidate.platforms[0].integrity.publisherSignature.label = 'Accepted'; }),
-  /windows\.integrity\.publisherSignature\.label must remain/,
+  changed((candidate) => {
+    variant(candidate, 'windows-x86_64-zip').integrity.publisherSignature.label = 'Accepted';
+  }),
+  /windows-x86_64-zip\.integrity\.publisherSignature\.label must remain/,
+);
+rejects(
+  'publisher signature explanation cannot imply accepted signing',
+  changed((candidate) => {
+    variant(candidate, 'windows-x86_64-zip').integrity.publisherSignature.summary = 'Publisher signing passed.';
+  }),
+  /windows-x86_64-zip\.integrity\.publisherSignature\.summary must remain/,
 );
 for (const [field, contradictoryValue] of [
   ['label', 'Published release notes'],
@@ -113,9 +313,10 @@ for (const [field, contradictoryValue] of [
   );
 }
 for (const [field, contradictoryValue] of [
-  ['artifactMetadata', 'Published package'],
+  ['size', '1 MB'],
+  ['requirements', 'Any computer'],
   ['integrity', 'Verified'],
-  ['download', 'Download now'],
+  ['action', 'Download now'],
 ]) {
   rejects(
     `unavailable ${field} copy cannot invent a release`,
@@ -133,52 +334,66 @@ for (const id of ['windows', 'macos', 'linux', 'unknown', 'mobile']) {
 for (const id of ['windows', 'macos', 'linux']) {
   for (const [field, contradictoryValue] of [
     ['label', `${id} released`],
+    ['availability', 'published'],
     ['availabilityLabel', 'Public release'],
+    ['statusLabel', 'Available'],
     ['gate', 'Every release gate is complete.'],
   ]) {
     rejects(
       `${id} ${field} cannot contradict its platform state`,
-      changed((candidate) => {
-        candidate.platforms.find((platform) => platform.id === id)[field] = contradictoryValue;
-      }),
+      changed((candidate) => { platform(candidate, id)[field] = contradictoryValue; }),
       new RegExp(`${id}\\.${field} must remain`),
     );
   }
 }
-for (const id of ['macos', 'linux']) {
+for (const id of Object.keys(acceptedReleaseContract.gatedVariants)) {
   rejects(
-    `${id} status label cannot contradict its gated state`,
-    changed((candidate) => {
-      candidate.platforms.find((platform) => platform.id === id).statusLabel = 'Available';
-    }),
+    `${id} status cannot contradict its gated state`,
+    changed((candidate) => { variant(candidate, id).statusLabel = 'Available'; }),
     new RegExp(`${id}\\.statusLabel must remain`),
   );
 }
 rejects(
   'Windows requirements cannot broaden the accepted package claim',
-  changed((candidate) => { candidate.platforms[0].requirements[0] = 'Any operating system'; }),
-  /windows\.requirements must remain/,
+  changed((candidate) => {
+    variant(candidate, 'windows-x86_64-zip').requirements[0] = 'Any operating system';
+  }),
+  /windows-x86_64-zip\.requirements must remain/,
 );
 rejects(
   'coordinated artifact replacement cannot redefine accepted bytes',
   changed((candidate) => {
-    candidate.platforms[0].sizeBytes = 12;
-    candidate.platforms[0].integrity.value = 'a'.repeat(64);
+    const windows = variant(candidate, 'windows-x86_64-zip');
+    windows.sizeBytes = 12;
+    windows.integrity.value = 'a'.repeat(64);
   }),
-  /windows\.sizeBytes must remain/,
+  /windows-x86_64-zip\.sizeBytes must remain/,
   {
     ...evidence,
-    artifactFacts: () => ({ sizeBytes: 12, sha256: 'a'.repeat(64) }),
-    canonicalWindows: { sizeBytes: 12, sha256: 'a'.repeat(64) },
+    artifactFacts: () => ({ ...acceptedArtifact, sizeBytes: 12, sha256: 'a'.repeat(64) }),
+    canonicalWindows: { ...acceptedArtifact, sizeBytes: 12, sha256: 'a'.repeat(64) },
   },
+);
+rejects(
+  'safe-looking artifact path drift is rejected',
+  changed((candidate) => {
+    variant(candidate, 'windows-x86_64-zip').artifactLocation = '/renamed.zip';
+  }),
+  /windows-x86_64-zip\.artifactLocation must remain/,
+);
+rejects(
+  'package identity drift is rejected',
+  changed((candidate) => { variant(candidate, 'windows-x86_64-zip').format = 'MSI'; }),
+  /windows-x86_64-zip\.format must remain/,
 );
 for (const unsafeLocation of ['//outside.zip', '/C:/outside.zip', String.raw`\outside.zip`]) {
   rejects(
     `unsafe artifact path ${JSON.stringify(unsafeLocation)} is rejected`,
-    changed((candidate) => { candidate.platforms[0].artifactLocation = unsafeLocation; }),
-    /safe POSIX root-relative path/,
+    changed((candidate) => {
+      variant(candidate, 'windows-x86_64-zip').artifactLocation = unsafeLocation;
+    }),
+    /must be a safe Mumble destination/,
   );
 }
 
-
-console.log(`Release contract regression passed: ${rejectionCount + 1} invariant cases.`);
+console.log(`Release contract regression passed: ${passCount} invariant cases.`);

@@ -3,44 +3,57 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import PlatformAction from '../components/PlatformAction.astro';
 import release from '../data/release.json';
 
-const windows = release.platforms.find((platform) => platform.id === 'windows');
-const gatedPlatforms = release.platforms.filter((platform) => platform.availability === 'gated');
-if (!windows || !windows.integrity || !windows.artifactLocation) {
+const variants = release.platforms.flatMap((platform) =>
+  platform.variants.map((variant) => ({ platform, variant })),
+);
+const windowsCandidate = variants.find(({ variant }) => variant.availability === 'candidate');
+if (!windowsCandidate?.variant.integrity || !windowsCandidate.variant.artifactLocation) {
   throw new Error('Windows artifact facts are incomplete');
 }
-const size = `${new Intl.NumberFormat('en-GB', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-}).format(windows.sizeBytes / 1_000_000)} MB (${new Intl.NumberFormat('en-GB').format(windows.sizeBytes)} bytes)`;
+const acceptedVersions: Array<{ version: string; href: string }> = release.history.acceptedVersions;
+const formatSize = (sizeBytes: number | null) => (
+  typeof sizeBytes === 'number'
+    ? `${new Intl.NumberFormat('en-GB', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(sizeBytes / 1_000_000)} MB (${new Intl.NumberFormat('en-GB').format(sizeBytes)} bytes)`
+    : release.unavailableFacts.size
+);
 ---
 
 <BaseLayout
   title={`Downloads — Mumble ${release.version} ${release.channel.label}`}
-  description="Inspect Mumble's current Windows candidate, integrity facts, requirements, publication gate, and truthful macOS and Linux states."
+  description="Compare every accepted Mumble desktop package contract, inspect the current Windows candidate and integrity facts, and see truthful macOS and Linux gates."
   currentPath="/downloads/"
 >
   <section class="downloads-hero shell" aria-labelledby="downloads-title">
     <div>
+      <p class="eyebrow">Desktop release authority</p>
       <h1 id="downloads-title">Download facts before the download.</h1>
       <p>
-        Mumble {release.version} is a {release.channel.label.toLowerCase()} with one accepted Windows artifact in the repository. It is available to inspect and download here without implying installation, signing, deployment, or public-release acceptance.
+        One Windows candidate has accepted repository bytes. Every accepted macOS and Linux package
+        choice remains visible without pretending that packaging, signing, deployment, or public
+        release is complete.
       </p>
     </div>
 
     <aside class="recommendation" aria-labelledby="recommendation-title">
+      <span class="recommendation-kicker">Detected desktop</span>
       <h2 id="recommendation-title">Choose a desktop package.</h2>
-      <p>Detected-platform recommendation changes this action only. Every platform state remains visible below.</p>
+      <p>Detection changes this action only. It never removes another package choice.</p>
       <PlatformAction className="button button-primary" />
     </aside>
   </section>
 
   <section class="publication-band" aria-labelledby="publication-title">
     <div class="shell publication-grid">
-      <div>
+      <div class="publication-summary">
+        <span>{release.publication.statusLabel}</span>
         <h2 id="publication-title">{release.publication.label}</h2>
+        <p>{release.publication.reason}</p>
       </div>
-      <p>{release.publication.reason}</p>
       <dl>
+        <div><dt>Version</dt><dd>{release.version}</dd></div>
         <div><dt>Channel</dt><dd>{release.channel.label}</dd></div>
         <div><dt>Publication date</dt><dd>{release.publication.dateLabel}</dd></div>
         <div><dt>Release notes</dt><dd>{release.releaseNotes.label}</dd></div>
@@ -48,92 +61,186 @@ const size = `${new Intl.NumberFormat('en-GB', {
     </div>
   </section>
 
-  <section class="platform-section shell" aria-labelledby="platforms-title">
+  <div class="release-resource-band">
+    <nav class="shell release-resources" aria-label="Release resources">
+      <span>Release resources</span>
+      <ul>
+        {release.resources.map((resource) => (
+          <li><a href={resource.href}>{resource.label}</a></li>
+        ))}
+      </ul>
+    </nav>
+  </div>
+
+  <section
+    class="platform-section shell"
+    id="platforms-title"
+    aria-labelledby="platforms-heading"
+    data-downloads-matrix
+  >
     <header class="section-intro downloads-intro">
-      <h2 id="platforms-title">Complete desktop status</h2>
-      <p>Unavailable platforms stay visible and never become dead download controls.</p>
+      <p class="eyebrow">All accepted choices</p>
+      <h2 id="platforms-heading">Desktop package matrix</h2>
+      <p>
+        Architecture and file format stay explicit. Gated variants show why they are unavailable
+        instead of becoming disabled or dead download controls.
+      </p>
     </header>
 
-    <div class="platform-list">
-      <article class="platform-primary" id="windows" aria-labelledby="windows-title">
-        <header class="platform-heading">
-          <div>
-            <span>{windows.availabilityLabel}</span>
-            <h2 id="windows-title">{windows.label}</h2>
-          </div>
-          <strong>{release.publication.label}</strong>
-        </header>
-
-        <p class="platform-gate">{windows.gate}</p>
-
-        <div class="artifact-grid">
-          <dl class="artifact-facts">
-            <div><dt>Version</dt><dd>{release.version}</dd></div>
-            <div><dt>Channel</dt><dd>{release.channel.label}</dd></div>
-            <div><dt>Platform</dt><dd>{windows.label}</dd></div>
-            <div><dt>Architecture</dt><dd>{windows.architecture}</dd></div>
-            <div><dt>Format</dt><dd>{windows.format}</dd></div>
-            <div><dt>Size</dt><dd>{size}</dd></div>
-            <div><dt>Artifact location</dt><dd><code>{windows.artifactLocation}</code></dd></div>
-            <div><dt>Availability</dt><dd>{windows.availabilityLabel}</dd></div>
-          </dl>
-
-          <div class="artifact-detail">
+    <div class="package-platforms">
+      {release.platforms.map((platform) => (
+        <article
+          class:list={['package-platform', { 'package-platform-candidate': platform.availability === 'candidate' }]}
+          id={platform.id}
+          aria-labelledby={`${platform.id}-title`}
+        >
+          <header class="package-platform-heading">
             <div>
-              <h3>Requirements</h3>
-              <ul>
-                {windows.requirements.map((requirement) => <li>{requirement}</li>)}
-              </ul>
+              <span>{platform.availabilityLabel}</span>
+              <h2 id={`${platform.id}-title`}>{platform.label}</h2>
             </div>
-            <div>
-              <h3>Integrity</h3>
-              <dl>
-                <div><dt>Algorithm</dt><dd>{windows.integrity.algorithm}</dd></div>
-                <div><dt>SHA-256</dt><dd><code>{windows.integrity.value}</code></dd></div>
-                <div><dt>Publisher signature</dt><dd>{windows.integrity.publisherSignature.label}</dd></div>
-              </dl>
-            </div>
+            <strong>{platform.availability === 'candidate' ? release.publication.label : platform.statusLabel}</strong>
+          </header>
+          <p class="package-platform-gate">{platform.gate}</p>
+
+          <div class="package-variants">
+            {platform.variants.map((variant) => (
+              <section
+                class:list={[
+                  'package-variant',
+                  {
+                    'package-variant-candidate': variant.availability === 'candidate',
+                    'package-variant-gated': variant.availability === 'gated',
+                  },
+                ]}
+                aria-labelledby={`${variant.id}-title`}
+                data-variant-id={variant.id}
+              >
+                <header class="package-variant-heading">
+                  <div>
+                    <span>{platform.label} · Mumble {release.version} · {release.channel.label}</span>
+                    <h3 id={`${variant.id}-title`}>{variant.architecture} · {variant.format}</h3>
+                  </div>
+                  <strong>{variant.statusLabel}</strong>
+                </header>
+
+                <dl class="variant-state-line">
+                  <div><dt>Publication</dt><dd>{release.publication.statusLabel}</dd></div>
+                  <div><dt>Date</dt><dd>{release.publication.dateLabel}</dd></div>
+                  <div><dt>Availability</dt><dd>{variant.availabilityLabel}</dd></div>
+                </dl>
+
+                {variant.availability === 'candidate' && variant.integrity ? (
+                  <>
+                    <p class="variant-gate">{variant.gate}</p>
+                    <div class="candidate-facts-grid">
+                      <dl class="artifact-facts">
+                        <div><dt>Platform</dt><dd>{platform.label}</dd></div>
+                        <div><dt>Architecture</dt><dd>{variant.architecture}</dd></div>
+                        <div><dt>Format</dt><dd>{variant.format}</dd></div>
+                        <div><dt>Size</dt><dd>{formatSize(variant.sizeBytes)}</dd></div>
+                        <div><dt>Artifact</dt><dd><code>{variant.artifactLocation}</code></dd></div>
+                      </dl>
+
+                      <section class="candidate-requirements" aria-labelledby={`${variant.id}-requirements`}>
+                        <h4 id={`${variant.id}-requirements`}>Requirements</h4>
+                        <ul>
+                          {variant.requirements.map((requirement) => <li>{requirement}</li>)}
+                        </ul>
+                      </section>
+                    </div>
+
+                    <section class="candidate-integrity" aria-labelledby={`${variant.id}-integrity`}>
+                      <div>
+                        <span>Canonical-byte match</span>
+                        <h4 id={`${variant.id}-integrity`}>Integrity and publisher status</h4>
+                      </div>
+                      <dl>
+                        <div><dt>Algorithm</dt><dd>{variant.integrity.algorithm}</dd></div>
+                        <div class="checksum-row"><dt>Checksum</dt><dd><code>{variant.integrity.value}</code></dd></div>
+                        <div>
+                          <dt>Checksum status</dt>
+                          <dd><strong>{variant.integrity.checksumStatus.label}</strong> — {variant.integrity.checksumStatus.summary}</dd>
+                        </div>
+                        <div>
+                          <dt>Publisher signature</dt>
+                          <dd><strong>{variant.integrity.publisherSignature.label}</strong> — {variant.integrity.publisherSignature.summary}</dd>
+                        </div>
+                      </dl>
+                    </section>
+
+                    <div class="artifact-actions">
+                      <a class="button button-primary" href={variant.artifactLocation} download>
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" />
+                        </svg>
+                        {release.recommendations.windows.label}
+                      </a>
+                      <p>Verify the SHA-256 value after download. Candidate bytes are not a public-release claim.</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p class="variant-gate">{variant.gate}</p>
+                    <dl class="unavailable-facts">
+                      <div><dt>Platform</dt><dd>{platform.label}</dd></div>
+                      <div><dt>Architecture</dt><dd>{variant.architecture}</dd></div>
+                      <div><dt>Format</dt><dd>{variant.format}</dd></div>
+                      <div><dt>Size</dt><dd>{release.unavailableFacts.size}</dd></div>
+                      <div><dt>Requirements</dt><dd>{release.unavailableFacts.requirements}</dd></div>
+                      <div><dt>Integrity</dt><dd>{release.unavailableFacts.integrity}</dd></div>
+                      <div><dt>Download</dt><dd>{release.unavailableFacts.action}</dd></div>
+                    </dl>
+                  </>
+                )}
+              </section>
+            ))}
           </div>
-        </div>
+        </article>
+      ))}
+    </div>
+  </section>
 
-        <div class="artifact-actions">
-          <a class="button button-primary" href={windows.artifactLocation} download>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14" /></svg>
-            {release.recommendations.windows.label}
-          </a>
-          <p>Verify the SHA-256 value after download. This candidate is not a public-release claim.</p>
-        </div>
-      </article>
+  <section class="release-detail shell" id="integrity-title" aria-labelledby="integrity-heading" data-integrity-guide>
+    <header>
+      <p class="eyebrow">Verify before use</p>
+      <h2 id="integrity-heading">{release.integrityGuide.title}</h2>
+      <p>{release.integrityGuide.summary}</p>
+    </header>
+    <div class="integrity-layout">
+      <ol>
+        {release.integrityGuide.steps.map((step) => <li>{step}</li>)}
+      </ol>
+      <dl class="provenance-facts">
+        <div><dt>Schema</dt><dd><code>{windowsCandidate.variant.provenance?.schema}</code></dd></div>
+        <div><dt>Source commit</dt><dd><code>{windowsCandidate.variant.provenance?.sourceCommit}</code></dd></div>
+        <div><dt>Input closure</dt><dd><code>{windowsCandidate.variant.provenance?.inputClosureDigest}</code></dd></div>
+        <div><dt>ZIP members</dt><dd>{windowsCandidate.variant.provenance?.memberCount}</dd></div>
+      </dl>
+    </div>
+  </section>
 
-      <div class="gated-platforms">
-        {gatedPlatforms.map((platform) => (
-          <article id={platform.id} aria-labelledby={`${platform.id}-title`}>
-            <header class="platform-heading">
-              <div>
-                <span>{platform.availabilityLabel}</span>
-                <h2 id={`${platform.id}-title`}>{platform.label}</h2>
-              </div>
-              <strong>{platform.statusLabel}</strong>
-            </header>
-            <p>{platform.gate}</p>
-            <dl>
-              <div><dt>Architecture</dt><dd>{release.unavailableFacts.artifactMetadata}</dd></div>
-              <div><dt>Format</dt><dd>{release.unavailableFacts.artifactMetadata}</dd></div>
-              <div><dt>Integrity</dt><dd>{release.unavailableFacts.integrity}</dd></div>
-              <div><dt>Download</dt><dd>{release.unavailableFacts.download}</dd></div>
-            </dl>
+  <div class="release-closure">
+    <div class="shell release-closure-grid">
+      <section id="release-notes-title" aria-labelledby="release-notes-heading">
+        <span>{release.releaseNotes.state}</span>
+        <h2 id="release-notes-heading">Release notes</h2>
+        <strong>{release.releaseNotes.label}</strong>
+        <p>{release.releaseNotes.summary}</p>
+      </section>
+
+      <section id="history-title" aria-labelledby="history-heading" data-release-history>
+        <span>{release.history.state}</span>
+        <h2 id="history-heading">Release history</h2>
+        <strong>{release.history.statusLabel}</strong>
+        <p>{release.history.summary}</p>
+        {acceptedVersions.map((accepted) => (
+          <article data-previous-release>
+            <h3>{accepted.version}</h3>
+            <a href={accepted.href}>Download accepted version</a>
           </article>
         ))}
-      </div>
+      </section>
     </div>
-  </section>
-
-  <section class="release-notes shell" aria-labelledby="release-notes-title">
-    <div>
-      <h2 id="release-notes-title">Release notes</h2>
-      <strong>{release.releaseNotes.label}</strong>
-    </div>
-    <p>{release.releaseNotes.summary}</p>
-    <a class="text-link" href="/">Return to the Mumble overview</a>
-  </section>
+  </div>
 </BaseLayout>
