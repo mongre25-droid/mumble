@@ -1543,7 +1543,7 @@ code {
 }
 
 .write-demo-controls .button {
-  min-height: 42px;
+  min-height: 44px;
   padding-block: var(--space-2);
   font-size: 0.72rem;
 }
@@ -1802,7 +1802,7 @@ code {
 
 .job-sequence-index {
   padding-top: var(--space-1);
-  color: var(--gold-dark);
+  color: var(--gold);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 0.72rem;
 }
@@ -1858,8 +1858,8 @@ code {
 
 .recovery-capture img {
   width: 100%;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
+  aspect-ratio: 36 / 25;
+  object-fit: contain;
   object-position: top center;
 }
 
@@ -2270,7 +2270,7 @@ code {
 }
 
 .task-ledger li > span {
-  color: var(--gold-dark);
+  color: var(--gold);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 0.72rem;
 }

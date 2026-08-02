@@ -104,6 +104,39 @@ async function assertVisibleFocus(page, name) {
   assert.notEqual(style.outlineWidth, '0px', `${name} outline has zero width`);
 }
 
+function contrastRatio(foreground, background) {
+  const channels = (color) => {
+    const hex = color.match(/^#([\da-f]{6})$/i);
+    const rgb = color.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    const values = hex
+      ? [1, 3, 5].map((offset) => Number.parseInt(hex[1].slice(offset - 1, offset + 1), 16))
+      : rgb?.slice(1, 4).map(Number);
+    assert.ok(values, `Unsupported contrast colour: ${color}`);
+    return values.map((value) => {
+      const channel = value / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+  };
+  const luminance = (color) => {
+    const [red, green, blue] = channels(color);
+    return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
+  };
+  const lighter = Math.max(luminance(foreground), luminance(background));
+  const darker = Math.min(luminance(foreground), luminance(background));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function markerContrast(page, selector) {
+  const colours = await page.locator(selector).first().evaluate((element) => {
+    const root = getComputedStyle(document.documentElement);
+    return {
+      foreground: getComputedStyle(element).color,
+      surfaces: [root.getPropertyValue('--ink').trim(), '#0a0907'],
+    };
+  });
+  return Math.min(...colours.surfaces.map((surface) => contrastRatio(colours.foreground, surface)));
+}
+
 async function assertSharedShell(page, currentLabel) {
   assert.equal(await page.locator('a[href="#main-content"]').count(), 1, 'skip navigation is missing or duplicated');
   assert.equal(await page.locator('header[data-site-header]').count(), 1, 'site header is missing or duplicated');
@@ -224,6 +257,93 @@ async function followPrimaryNavigation(page, label, href, mobile) {
     page.waitForURL(`${origin}${href}`),
     link.click(),
   ]);
+}
+
+async function correctionConstraints(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 1365, height: 900 },
+    reducedMotion: 'reduce',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+  });
+  const page = await context.newPage();
+  const findings = [];
+
+  await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
+  const stage = page.locator('[data-job-story="write"][data-story-surface="home"]');
+  const storyId = await stage.getAttribute('data-job-story');
+  const expectedTitleId = `job-${storyId}-stage-title`;
+  if (await stage.getAttribute('aria-labelledby') !== expectedTitleId) {
+    findings.push('reusable story title ID is not derived from the job ID');
+  }
+  if (await stage.getAttribute('data-job-demo') !== storyId) {
+    findings.push('interaction dispatch still lacks the job-scoped demo hook');
+  }
+  const tabs = stage.locator(`[data-job-tab="${storyId}"]`);
+  const panels = stage.locator(`[data-job-panel="${storyId}"]`);
+  if (await tabs.count() !== 3 || await panels.count() !== 3) {
+    findings.push('tabs and panels do not expose the shared job-scoped hooks');
+  } else {
+    for (let index = 0; index < await tabs.count(); index += 1) {
+      const tab = tabs.nth(index);
+      const panel = panels.nth(index);
+      const tabId = await tab.getAttribute('id');
+      const panelId = await panel.getAttribute('id');
+      if (!tabId?.startsWith(`job-${storyId}-tab-`) || !panelId?.startsWith(`job-${storyId}-panel-`)) {
+        findings.push('tab and panel IDs do not use the shared job-scoped convention');
+        break;
+      }
+      if (await tab.getAttribute('aria-controls') !== panelId || await panel.getAttribute('aria-labelledby') !== tabId) {
+        findings.push('job-scoped tab and panel relationships are broken');
+        break;
+      }
+    }
+  }
+  if (await stage.getByRole('tablist', { name: 'Write demonstration steps' }).count() !== 1
+    || await stage.getByRole('group', { name: 'Write demonstration navigation' }).count() !== 1) {
+    findings.push('demonstration labels are not derived from the supplied job label');
+  }
+  const controlHeights = await Promise.all(
+    ['Previous Write step', 'Next Write step'].map(async (name) => (
+      await stage.getByRole('button', { name }).boundingBox()
+    )),
+  );
+  if (controlHeights.some((box) => !box || box.height < 44)) {
+    findings.push(`Previous/Next targets are below 44px (${controlHeights.map((box) => box?.height ?? 0).join(', ')})`);
+  }
+
+  await page.goto(`${origin}/product/`, { waitUntil: 'networkidle' });
+  const deckCapture = page.locator('.recovery-capture img');
+  const deckFacts = await deckCapture.evaluate((image) => ({
+    src: image.getAttribute('src'),
+    alt: image.getAttribute('alt') ?? '',
+    width: image.getAttribute('width'),
+    height: image.getAttribute('height'),
+    naturalWidth: image.naturalWidth,
+    naturalHeight: image.naturalHeight,
+  }));
+  if (deckFacts.src !== '/product/deck-command-surface.webp'
+    || deckFacts.width !== '1152'
+    || deckFacts.height !== '800'
+    || deckFacts.naturalWidth !== 1152
+    || deckFacts.naturalHeight !== 800
+    || !['content type', 'Starred', 'Pin', 'Unpin', 'More'].every((term) => deckFacts.alt.includes(term))) {
+    findings.push(`Product uses stale or inaccurately described Deck proof (${JSON.stringify(deckFacts)})`);
+  }
+  const mechanismContrast = await markerContrast(page, '.job-sequence-index');
+  if (mechanismContrast < 4.5) {
+    findings.push(`Product sequence contrast is ${mechanismContrast.toFixed(2)}:1`);
+  }
+
+  await page.goto(`${origin}/use-cases/`, { waitUntil: 'networkidle' });
+  const taskContrast = await markerContrast(page, '.task-ledger li > span');
+  if (taskContrast < 4.5) {
+    findings.push(`Use Cases sequence contrast is ${taskContrast.toFixed(2)}:1`);
+  }
+
+  await context.close();
+  assert.deepEqual(findings, [], `Issue #37 correction constraints:\n- ${findings.join('\n- ')}`);
+  console.log(`Correction measurements: controls ${controlHeights.map((box) => box.height).join('px, ')}px; contrast ${mechanismContrast.toFixed(2)}:1 / ${taskContrast.toFixed(2)}:1`);
+  record('Issue #37 reusable job story, current Deck proof, 44px controls, and 4.5:1 sequence markers');
 }
 
 async function assertWriteStage(page, viewportName) {
@@ -892,6 +1012,7 @@ try {
   browser = await chromium.launch({ headless: true, executablePath });
   console.log(`Browser version: ${browser.version()}`);
   await desktopJourney(browser);
+  await correctionConstraints(browser);
   await writeJourney(browser);
   await platformRecommendations(browser);
   await downloadsContract(browser);

@@ -20,7 +20,7 @@ if (!write?.story) throw new Error('Write story authority is missing');
       <p>Write is organised by tasks rather than professions. Each path uses the same cursor, command, visible state, local-default transcription, return, and recovery model.</p>
     </div>
     <nav class="task-jump" aria-label="Write task sequences">
-      {write.story.tasks.map((task) => <a href={`#${task.id}`}>{task.title}</a>)}
+      {write.story.tasks.map((task) => <a href={`#job-${write.id}-task-${task.id}`}>{task.title}</a>)}
     </nav>
   </section>
 

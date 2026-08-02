@@ -12,15 +12,21 @@ export interface Props {
 const { job, surface } = Astro.props;
 if (!job.story) throw new Error(`${job.label} has no detailed job story`);
 const story = job.story;
+const storyId = `job-${job.id}`;
+const stageTitleId = `${storyId}-stage-title`;
+const mechanismTitleId = `${storyId}-mechanism-title`;
+const demonstrationTabId = (stateId: string) => `${storyId}-tab-${stateId}`;
+const demonstrationPanelId = (stateId: string) => `${storyId}-panel-${stateId}`;
+const taskId = (id: string) => `${storyId}-task-${id}`;
 ---
 
 {surface === 'home' && (
   <section
     class="product-stage write-product-stage"
-    aria-labelledby="write-stage-title"
+    aria-labelledby={stageTitleId}
     data-job-story={job.id}
     data-story-surface="home"
-    data-write-demo
+    data-job-demo={job.id}
   >
     <div class="stage-bar">
       <span class="stage-brand">Mumble / {job.label}</span>
@@ -44,20 +50,20 @@ const story = job.story;
 
     <div class="write-closeup">
       <header class="write-closeup-header">
-        <h2 id="write-stage-title">See where your words return.</h2>
+        <h2 id={stageTitleId}>See where your words return.</h2>
         <p>{story.demonstration.note}</p>
       </header>
 
-      <div class="write-demo-tabs" role="tablist" aria-label="Write demonstration steps" data-write-tablist>
+      <div class="write-demo-tabs" role="tablist" aria-label={`${job.label} demonstration steps`} data-job-tablist={job.id}>
         {story.demonstration.states.map((state, index) => (
           <button
-            id={`write-tab-${state.id}`}
+            id={demonstrationTabId(state.id)}
             type="button"
             role="tab"
             aria-selected={index === 0 ? 'true' : 'false'}
-            aria-controls={`write-panel-${state.id}`}
+            aria-controls={demonstrationPanelId(state.id)}
             tabindex={index === 0 ? '0' : '-1'}
-            data-write-tab
+            data-job-tab={job.id}
           >
             <span aria-hidden="true">{index + 1}</span>
             {state.label}
@@ -68,12 +74,12 @@ const story = job.story;
       <div class="write-demo-panels">
         {story.demonstration.states.map((state) => (
           <section
-            id={`write-panel-${state.id}`}
+            id={demonstrationPanelId(state.id)}
             class="write-demo-panel"
             role="tabpanel"
-            aria-labelledby={`write-tab-${state.id}`}
+            aria-labelledby={demonstrationTabId(state.id)}
             tabindex="0"
-            data-write-panel
+            data-job-panel={job.id}
           >
             <div class="write-panel-copy">
               <span class="write-state-label">{state.status}</span>
@@ -94,9 +100,9 @@ const story = job.story;
         ))}
       </div>
 
-      <div class="write-demo-controls" aria-label="Write demonstration navigation">
-        <button class="button button-quiet" type="button" data-write-previous>Previous Write step</button>
-        <button class="button button-quiet" type="button" data-write-next>Next Write step</button>
+      <div class="write-demo-controls" role="group" aria-label={`${job.label} demonstration navigation`}>
+        <button class="button button-quiet" type="button" data-job-previous={job.id}>Previous {job.label} step</button>
+        <button class="button button-quiet" type="button" data-job-next={job.id}>Next {job.label} step</button>
       </div>
     </div>
   </section>
@@ -105,12 +111,12 @@ const story = job.story;
 {surface === 'product' && (
   <section
     class="job-story job-story-mechanism shell"
-    aria-labelledby="write-mechanism-title"
+    aria-labelledby={mechanismTitleId}
     data-job-story={job.id}
     data-story-surface="product"
   >
     <header class="section-intro">
-      <h2 id="write-mechanism-title">{story.mechanism.title}</h2>
+      <h2 id={mechanismTitleId}>{story.mechanism.title}</h2>
       <p>{story.mechanism.summary}</p>
     </header>
 
@@ -138,7 +144,7 @@ const story = job.story;
   >
     <div class="task-ledger">
       {story.tasks.map((task) => (
-        <article id={task.id}>
+        <article id={taskId(task.id)}>
           <header>
             <h2>{task.title}</h2>
             <p>{task.summary}</p>

@@ -98,12 +98,15 @@ document.querySelectorAll('[data-current-year]').forEach((year) => {
   year.textContent = String(new Date().getFullYear());
 });
 
-document.querySelectorAll('[data-write-demo]').forEach((demo) => {
-  const tabs = Array.from(demo.querySelectorAll('[data-write-tab]'));
-  const panels = Array.from(demo.querySelectorAll('[data-write-panel]'));
-  const previous = demo.querySelector('[data-write-previous]');
-  const next = demo.querySelector('[data-write-next]');
-  if (tabs.length === 0 || tabs.length !== panels.length) return;
+document.querySelectorAll('[data-job-demo]').forEach((demo) => {
+  const jobId = demo.dataset.jobDemo;
+  const tabs = Array.from(demo.querySelectorAll('[data-job-tab]'));
+  const panels = Array.from(demo.querySelectorAll('[data-job-panel]'));
+  const previous = demo.querySelector('[data-job-previous]');
+  const next = demo.querySelector('[data-job-next]');
+  if (!jobId || tabs.length === 0 || tabs.length !== panels.length) return;
+  if (tabs.some((tab) => tab.dataset.jobTab !== jobId)
+    || panels.some((panel) => panel.dataset.jobPanel !== jobId)) return;
 
   let selectedIndex = Math.max(0, tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true'));
 
@@ -117,7 +120,7 @@ document.querySelectorAll('[data-write-demo]').forEach((demo) => {
     panels.forEach((panel, panelIndex) => {
       panel.hidden = panelIndex !== selectedIndex;
     });
-    demo.dataset.writeStep = String(selectedIndex + 1);
+    demo.dataset.jobStep = String(selectedIndex + 1);
     if (focus) tabs[selectedIndex].focus();
   };
 
