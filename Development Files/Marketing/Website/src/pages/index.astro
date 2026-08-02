@@ -7,13 +7,15 @@ import release from '../data/release.json';
 
 const windows = release.platforms.find((platform) => platform.id === 'windows');
 const write = jobs.find((job) => job.id === 'write');
+const capture = jobs.find((job) => job.id === 'capture');
 if (!windows) throw new Error('Windows release authority is missing');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!capture?.story) throw new Error('Capture story authority is missing');
 ---
 
 <BaseLayout
-  title="Mumble Write — Speech returns to the cursor you chose"
-  description="See Mumble turn speech into finished text at the intended cursor with local transcription by default and a saved Deck recovery path."
+  title="Mumble — Write at your cursor and Capture searchable records"
+  description="See Mumble turn speech into finished text and selected-microphone recordings or supported audio imports into searchable working records."
   currentPath="/"
 >
   <section class="hero write-hero shell" aria-labelledby="home-title">
@@ -36,6 +38,16 @@ if (!write?.story) throw new Error('Write story authority is missing');
 
     <JobStory job={write} surface="home" />
   </section>
+
+  <section class="capture-intro shell" aria-labelledby="capture-home-title">
+    <div>
+      <h2 id="capture-home-title">Keep the conversation, not just the memory of it.</h2>
+      <p>{capture.story.opening.summary}</p>
+    </div>
+    <a class="text-link" href="/product/#job-capture-mechanism-title">How Capture works</a>
+  </section>
+
+  <JobStory job={capture} surface="home" />
 
   <section class="jobs-section" id="jobs" aria-labelledby="jobs-title">
     <div class="shell section-intro">

@@ -6,14 +6,16 @@ import jobs from '../data/jobs.json';
 import release from '../data/release.json';
 
 const write = jobs.find((job) => job.id === 'write');
+const capture = jobs.find((job) => job.id === 'capture');
 const recovery = write?.story?.mechanism.steps.find((step) => step.id === 'recovery');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!capture?.story) throw new Error('Capture story authority is missing');
 if (!recovery) throw new Error('Write recovery authority is missing');
 ---
 
 <BaseLayout
-  title="Product — How Mumble Write returns text"
-  description="Follow Mumble Write from the deliberate global command and visible Island state through local transcription, intended-cursor return, and Deck recovery."
+  title="Product — How Mumble Write and Capture work"
+  description="Follow Mumble Write from speech to the intended cursor, then see Capture save, transcribe, search, replay, and export microphone recordings and supported audio imports."
   currentPath="/product/"
 >
   <section class="page-hero shell" aria-labelledby="product-title">
@@ -49,6 +51,16 @@ if (!recovery) throw new Error('Write recovery authority is missing');
       <a class="button button-quiet" href="/use-cases/">Follow three Write tasks</a>
     </div>
   </section>
+
+  <section class="capture-intro shell" aria-labelledby="capture-product-title">
+    <div>
+      <h2 id="capture-product-title">Capture keeps the original recording and the working record connected.</h2>
+      <p>{capture.summary}</p>
+    </div>
+    <p>{capture.proof}</p>
+  </section>
+
+  <JobStory job={capture} surface="product" />
 
   <section class="journey-next" aria-labelledby="product-next-title">
     <div class="shell journey-next-layout">

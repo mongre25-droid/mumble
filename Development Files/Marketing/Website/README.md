@@ -27,15 +27,18 @@ Node 22.12 or later is required.
 
 The current maintained site exposes six complete outputs:
 
-1. Home (`/`) introduces the local-first offer, one accepted product capture,
+1. Home (`/`) introduces the local-first offer, accepted product evidence,
    the five canonical jobs, privacy boundaries, the current release position,
-   and the Write journey.
+   the Write journey, and a Capture journey led by accepted Meetings evidence.
 2. Product (`/product/`) explains Write's deliberate command, visible Island
    states, local transcription default, Stop-time intended-cursor return, and
-   Deck recovery.
-3. Use Cases (`/use-cases/`) applies the same Write model to everyday notes,
-   longer text, and cross-application work without changing to profession-first
-   navigation.
+   Deck recovery. It also explains selected-microphone capture, supported audio
+   imports, durable local records, explicit transcription routes, search,
+   playback, export, optional transcript-only analysis, and unavailable future
+   media inputs.
+3. Use Cases (`/use-cases/`) applies the shared job-story model to everyday
+   notes, longer text, cross-application writing, meetings, lectures, and
+   existing supported audio without changing to profession-first navigation.
 4. Privacy (`/privacy/`) explains Local Transcription and Mumble Find as
    separate local routes, keeps optional online routes distinct, and states the
    static website's zero-CDN, no-analytics, and no-tracking boundary.
@@ -54,6 +57,9 @@ the canonical and public Windows artifact bytes.
 
 - Core Home, navigation, release facts, and download access remain available
   without JavaScript.
+- The shared Write and Capture stories remain complete as text without
+  JavaScript; their step controls add direct keyboard navigation when scripting
+  is available.
 - Operating-system detection changes only the recommended action; complete
   Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.

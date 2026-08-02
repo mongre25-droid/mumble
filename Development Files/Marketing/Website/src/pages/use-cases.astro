@@ -6,12 +6,14 @@ import jobs from '../data/jobs.json';
 import release from '../data/release.json';
 
 const write = jobs.find((job) => job.id === 'write');
+const capture = jobs.find((job) => job.id === 'capture');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!capture?.story) throw new Error('Capture story authority is missing');
 ---
 
 <BaseLayout
-  title="Use Cases — Complete Mumble Write tasks"
-  description="Follow complete Mumble Write sequences for everyday notes, longer text, and work across desktop applications without profession-first navigation."
+  title="Use Cases — Complete Mumble Write and Capture tasks"
+  description="Follow complete Mumble Write and Capture sequences for notes, cross-application work, meetings, lectures, and supported existing audio."
   currentPath="/use-cases/"
 >
   <section class="page-hero use-cases-hero shell" aria-labelledby="use-cases-title">
@@ -26,6 +28,18 @@ if (!write?.story) throw new Error('Write story authority is missing');
 
   <JobStory job={write} surface="use-cases" />
 
+  <section class="capture-task-intro shell" aria-labelledby="capture-tasks-title">
+    <div>
+      <h2 id="capture-tasks-title">Capture starts with the recording task.</h2>
+      <p>Meetings, lectures, and existing recordings use the same saved-first, route-visible, searchable-record model.</p>
+    </div>
+    <nav class="task-jump" aria-label="Capture task sequences">
+      {capture.story.tasks.map((task) => <a href={`#job-${capture.id}-task-${task.id}`}>{task.title}</a>)}
+    </nav>
+  </section>
+
+  <JobStory job={capture} surface="use-cases" />
+
   <section class="journey-next" aria-labelledby="use-cases-next-title">
     <div class="shell journey-next-layout">
       <div>
@@ -33,7 +47,7 @@ if (!write?.story) throw new Error('Write story authority is missing');
         <p>{release.publication.label}. The current package wording and every unavailable platform state remain controlled by the shared release authority.</p>
       </div>
       <div class="journey-next-actions">
-        <a class="button button-quiet" href="/product/">How Write works</a>
+        <a class="button button-quiet" href="/product/">How Write and Capture work</a>
         <PlatformAction className="button button-primary" />
         <a class="text-link" href="/downloads/">Release details and all platforms</a>
       </div>

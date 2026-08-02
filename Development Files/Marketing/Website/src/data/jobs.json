@@ -109,9 +109,117 @@
   {
     "id": "capture",
     "label": "Capture",
-    "summary": "Record microphone meetings into a local, searchable working record you can review and export.",
-    "proof": "Mumble saves the recording locally before transcription and later analysis.",
-    "story": null
+    "summary": "Turn selected-microphone recordings and supported audio imports into durable, searchable working records.",
+    "proof": "Mumble saves a private local recording before transcription; optional analysis uses transcript text, not the original audio.",
+    "story": {
+      "opening": {
+        "title": "Turn a recording into a working record.",
+        "summary": "Record through the microphone selected in Mumble, or bring an existing WAV, MP3, FLAC, or OGG audio file. Mumble saves a private local recording first, then turns it into a record you can search, replay, and export."
+      },
+      "demonstration": {
+        "note": "Genuine Mumble interface, shown with demonstration meeting data. This website does not use your microphone or pretend to record.",
+        "states": [
+          {
+            "id": "source",
+            "label": "Choose source",
+            "status": "Before the meeting",
+            "title": "Start with the selected microphone or accepted audio.",
+            "body": "Use Mumble's selected microphone for a room recording, or import a WAV, MP3, FLAC, or OGG audio file. The app names the effective transcription route before capture begins.",
+            "image": "/product/meetings-before.webp",
+            "alt": "Genuine Mumble Meetings capture before recording, showing Record meeting, Import audio, the local transcription route, and the private meeting library"
+          },
+          {
+            "id": "record",
+            "label": "Record",
+            "status": "During the meeting",
+            "title": "Pause, resume, or Stop & save.",
+            "body": "The live state shows elapsed time, bounded microphone level, the selected microphone, saved location, and transcription route. Pause and resume when needed; Stop & save finishes the durable recording before transcription.",
+            "image": "/product/meetings-during.webp",
+            "alt": "Genuine Mumble Meetings capture during recording, showing elapsed time, microphone input level, Pause, Stop and save, and the local context ledger"
+          },
+          {
+            "id": "review",
+            "label": "Find record",
+            "status": "After the meeting",
+            "title": "Search the saved library and keep working.",
+            "body": "Search meeting titles and full transcripts in the local library. Open the original recording for playback, review the transcript, and export the record when it is ready.",
+            "image": "/product/meetings-after.webp",
+            "alt": "Genuine Mumble Meetings capture after recording, showing a searchable local meeting library with saved demonstration records"
+          }
+        ]
+      },
+      "mechanism": {
+        "title": "Audio is saved first. The route stays visible.",
+        "summary": "Capture keeps the source, durable save, transcription route, local working record, and optional later actions in one understandable sequence.",
+        "steps": [
+          {
+            "id": "source",
+            "title": "Choose the selected microphone or supported audio",
+            "body": "Record through the microphone selected in Mumble, with a visible elapsed time and controls to pause, resume, and Stop & save. Existing recordings can enter through WAV, MP3, FLAC, or OGG audio import.",
+            "proof": "Direct video import and computer-audio capture are not current input choices."
+          },
+          {
+            "id": "durable-save",
+            "title": "Keep a private local recording",
+            "body": "Mumble writes microphone capture to a private local WAV while the meeting is running. Stop & save finishes that durable recording before transcription starts; imported audio is normalised into the same private meeting library first.",
+            "proof": "A failed or interrupted transcription does not silently discard a recording that was saved successfully."
+          },
+          {
+            "id": "transcription-route",
+            "title": "Choose Local or Cloud transcription explicitly",
+            "body": "Local transcription is the default and keeps meeting audio on this computer. Cloud transcription sends meeting audio to the deliberately selected configured provider after the route choice; the saved private local recording remains the working source.",
+            "proof": "The current effective route is shown before, during, and after capture."
+          },
+          {
+            "id": "review",
+            "title": "Search, replay, and review the record",
+            "body": "Search titles and full transcripts in the local meeting library, find matching transcript segments, and play the original recording in the computer's audio player. Best-effort speaker grouping can help review, but labels may need correction and can be less reliable for long or Cloud recordings.",
+            "proof": "Transcript search and playback are review tools; the screenshot data is a labelled demonstration."
+          },
+          {
+            "id": "export-analysis",
+            "title": "Export first; choose analysis separately",
+            "body": "Export a ready record as TXT, Markdown, JSON, HTML, or the clipboard. Summary, action-item, decision, and question tools remain optional and run only when a configured analysis route is available and you choose the action. The original recording is never sent for analysis.",
+            "proof": "Hosted analysis receives transcript text only; it is separate from the transcription route."
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "meeting",
+          "title": "Meeting",
+          "summary": "Keep a room conversation as a searchable record without pretending the website is a recorder.",
+          "steps": [
+            "Open Meetings, confirm the selected microphone, saved location, and effective Local or Cloud transcription route.",
+            "Choose Record meeting. Use Pause and Resume when needed while the elapsed time and microphone level remain visible.",
+            "Choose Stop & save. Mumble finishes the private local recording before transcription begins.",
+            "Search the saved meeting, review or replay it, export the ready transcript, and choose optional analysis only when its route is available."
+          ]
+        },
+        {
+          "id": "lecture",
+          "title": "Lecture",
+          "summary": "Capture a microphone lecture, then return to the exact part you need later.",
+          "steps": [
+            "Select the room microphone in Mumble and check the effective transcription route before the lecture begins.",
+            "Record the lecture, pausing and resuming around breaks; current source limits one recording or import to four hours.",
+            "Stop & save so the private recording is durable before Mumble transcribes it through the selected route.",
+            "Search the transcript for a topic, replay the original recording in the computer's player, and export the ready record for your notes."
+          ]
+        },
+        {
+          "id": "existing-recording",
+          "title": "Existing recording",
+          "summary": "Bring supported audio into the same local meeting library and review path.",
+          "steps": [
+            "Choose Import audio and select a WAV, MP3, FLAC, or OGG recording of up to four hours.",
+            "Mumble normalises and saves a private local copy before background transcription begins.",
+            "The selected Local route keeps audio here; an explicit Cloud route sends audio to the configured transcription provider.",
+            "Search the completed transcript, play the saved recording, export the record, or choose optional transcript-only analysis when available."
+          ]
+        }
+      ]
+    }
   },
   {
     "id": "shape",
