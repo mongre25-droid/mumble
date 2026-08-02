@@ -605,7 +605,7 @@ def test_durable_records_separate_green_ci_from_physical_and_release_gates():
     assert current.records_ci_status == "passed"
     assert current.records_review_status == "rejected"
     assert current.record_candidate_status == "awaiting-review"
-    assert current.rejected_records_candidate == "21c21567029b1232e07ba85ca4d196820f3cfed9"
+    assert current.rejected_records_candidate == "7a2e239d6c152413b9404844b681634436c79061"
     assert current.records_correction_parent == current.rejected_records_candidate
     assert current.package_build_status == "passed"
     assert current.package_install_status == "not-run"

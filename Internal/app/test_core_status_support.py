@@ -34,9 +34,9 @@ _EXPECTED_FIELDS = {
     "records_ci_status": "passed",
     "records_review_status": "rejected",
     "record_candidate_status": "awaiting-review",
-    "rejected_records_candidate": "21c21567029b1232e07ba85ca4d196820f3cfed9",
+    "rejected_records_candidate": "7a2e239d6c152413b9404844b681634436c79061",
     "rejected_records_candidate_status": "rejected",
-    "records_correction_parent": "21c21567029b1232e07ba85ca4d196820f3cfed9",
+    "records_correction_parent": "7a2e239d6c152413b9404844b681634436c79061",
     "records_review_task": "019fc013-3ab9-7bc0-9c39-f63385bb8359",
     "package_build_status": "passed",
     "package_install_status": "not-run",
@@ -61,9 +61,9 @@ _EXPECTED_FIELDS = {
     "windows_package_sha256": "70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493",
     "failed_ci_run": "30728545428",
     "cancelled_ci_runs": "30728750267,30730118039,30730292106",
-    "document_structure_sha256": "31704788AA7C423EB4BA7BAC8632512D368B7542BB6EDE9078886CF632D7962C",
+    "document_structure_sha256": "E5B16B344F55E1A6EC436F58CD6EC4BEA6A23A53D8BCE5922E7031626E1C9D1C",
     "non_projection_text_sha256": "7DF73E89BE7E3FD9F36B8CE8426E2FB60E96E2A8052D7C9A8BDB68CB85AEB07B",
-    "current_record": "Entry 97",
+    "current_record": "Entry 98",
     "pr_number": "49",
     "pr_status": "merged",
     "merge_status": "merged",
@@ -550,6 +550,11 @@ class _AuthorityHTMLParser(HTMLParser):
             "processing instructions are not allowed in canonical STATUS"
         )
 
+    def unknown_decl(self, data: str) -> None:
+        raise CurrentStatusContractError(
+            "marked or unknown declarations are not allowed in canonical STATUS"
+        )
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attribute_names = [name for name, _value in attrs]
         attributes = dict(attrs)
@@ -791,7 +796,7 @@ def test_current_status_contract_accepts_the_canonical_authority() -> None:
 
     current = parse_current_status(status_path.read_text(encoding="utf-8"))
 
-    assert current.current_record == "Entry 97"
+    assert current.current_record == "Entry 98"
 
 
 def test_every_present_state_row_agrees_with_the_canonical_authority() -> None:

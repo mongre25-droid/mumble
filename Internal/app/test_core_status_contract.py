@@ -417,3 +417,25 @@ def test_current_status_accepts_the_sole_canonical_authority_script() -> None:
     current = parse_current_status(_status_html())
 
     assert current.schema == "mumble.current-state.v1"
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        "<![CDATA[PR #49 is open and CI failed]]>",
+        "<![IGNORE[PR #49 is open]]>",
+        (
+            "<![CDATA[<p>PR #49 is open; CI failed; source unmerged; "
+            "release completed.</p>]]>"
+        ),
+        "<![cDaTa[PR #49 is open and CI failed]]>",
+        "<![ignore[PR #49 is open]]>",
+    ),
+)
+def test_current_status_rejects_marked_and_unknown_declarations(attack: str) -> None:
+    status_html = _status_html()
+    anchor = '<h2><span class="sec">4</span>Programme dependency board</h2>'
+    mutated = status_html.replace(anchor, attack + anchor, 1)
+
+    with pytest.raises(CurrentStatusContractError, match="marked or unknown declaration"):
+        parse_current_status(mutated)
