@@ -612,6 +612,15 @@ class _AuthorityHTMLParser(HTMLParser):
         self._outside_projection_content: list[str] = []
         self._document_tokens: list[str] = []
         self._doctype_count = 0
+        self._closing = False
+        self._close_data_events = 0
+
+    def close(self) -> None:
+        self._closing = True
+        try:
+            super().close()
+        finally:
+            self._closing = False
 
     def handle_decl(self, decl: str) -> None:
         if decl != "DOCTYPE html" or self._doctype_count:
@@ -679,6 +688,8 @@ class _AuthorityHTMLParser(HTMLParser):
             self._content = []
 
     def handle_data(self, data: str) -> None:
+        if self._closing:
+            self._close_data_events += 1
         if self._capturing:
             self._content.append(data)
         else:
@@ -744,6 +755,7 @@ def parse_current_status(status_html: str) -> CurrentStatus:
     parser = _AuthorityHTMLParser()
     try:
         parser.feed(status_html)
+        residual_at_eof = parser.rawdata
         parser.close()
     except CurrentStatusContractError:
         raise
@@ -755,6 +767,11 @@ def parse_current_status(status_html: str) -> CurrentStatus:
         ):
             raise
         raise CurrentStatusContractError(_FORBIDDEN_MARKUP_ERROR) from exc
+    if (
+        parser.rawdata
+        or (residual_at_eof and parser._close_data_events != 1)
+    ):
+        raise CurrentStatusContractError(_FORBIDDEN_MARKUP_ERROR)
     if parser._doctype_count != 1:
         raise CurrentStatusContractError("STATUS must have one exact HTML doctype")
     if parser._capturing:
@@ -964,6 +981,95 @@ def test_forbidden_markup_routes_share_one_exact_domain_error(attack: str) -> No
 
     assert type(caught.value) is CurrentStatusContractError
     assert str(caught.value) == _FORBIDDEN_MARKUP_ERROR
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        "<!--",
+        "<!-- unclosed",
+        "<![",
+        "<![C",
+        "<![CDATA",
+        "<![CDATA[",
+        "<![CDATA[value",
+        "<![IGNORE",
+        "<![IGNORE[",
+        "<![IGNORE[value",
+        "<![BOGUS",
+        "<!",
+        "<!D",
+        "<!DOCTYPE",
+        "<!DOCTYPE html",
+        "<?",
+        "<?probe",
+        "<?probe value",
+    ),
+)
+def test_incomplete_forbidden_markup_at_eof_uses_exact_domain_error(
+    attack: str,
+) -> None:
+    with pytest.raises(CurrentStatusContractError) as caught:
+        parse_current_status(_canonical_status_html() + attack)
+
+    assert type(caught.value) is CurrentStatusContractError
+    assert str(caught.value) == _FORBIDDEN_MARKUP_ERROR
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        "<!-- unclosed",
+        "<![CDATA[value",
+        "<![IGNORE[value",
+        "<![BOGUS",
+        "<!DOCTYPE html",
+        "<?probe value",
+    ),
+)
+def test_html_parser_defers_incomplete_forbidden_markup_in_rawdata(
+    attack: str,
+) -> None:
+    parser = _AuthorityHTMLParser()
+
+    parser.feed(_canonical_status_html() + attack)
+    residual_before_close = parser.rawdata
+    parser.close()
+
+    assert residual_before_close == attack
+    assert parser._close_data_events == 2
+    assert parser.rawdata == ""
+
+
+def test_canonical_status_leaves_no_html_parser_residual() -> None:
+    parser = _AuthorityHTMLParser()
+
+    parser.feed(_canonical_status_html())
+    residual_before_close = parser.rawdata
+    parser.close()
+
+    assert residual_before_close == ""
+    assert parser._close_data_events == 0
+    assert parser.rawdata == ""
+
+
+def test_deferred_ordinary_text_reaches_the_fingerprint_contract() -> None:
+    parser = _AuthorityHTMLParser()
+    parser.feed(_canonical_status_html() + "ordinary text &")
+    residual_before_close = parser.rawdata
+    parser.close()
+
+    assert residual_before_close == "\nordinary text &"
+    assert parser._close_data_events == 1
+    assert parser.rawdata == ""
+
+    with pytest.raises(CurrentStatusContractError) as caught:
+        parse_current_status(_canonical_status_html() + "ordinary text &")
+
+    assert type(caught.value) is CurrentStatusContractError
+    assert str(caught.value) == (
+        "human-visible text outside current-state projections differs from the contract"
+    )
 
 
 def test_malformed_declaration_assertion_from_close_uses_forbidden_markup_error(
