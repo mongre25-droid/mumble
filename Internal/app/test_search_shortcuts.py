@@ -931,7 +931,11 @@ class CoreCurrentTruthTests(unittest.TestCase):
         web_guidance = readme.split(
             "<strong>Current Web Search boundary:</strong>", 1
         )[1].split("</p>", 1)[0]
-        self.assertEqual(current.main, "66a3564ab2e7354f0b1c5b0649686611c758f8bc")
+        self.assertEqual(current.main, "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f")
+        self.assertEqual(
+            current.source_merge,
+            "66a3564ab2e7354f0b1c5b0649686611c758f8bc",
+        )
         self.assertEqual(
             current.accepted_source, "b6fe674f6332a5cfb20bf35568152fe22798f55e"
         )
@@ -955,10 +959,20 @@ class CoreCurrentTruthTests(unittest.TestCase):
         self.assertEqual(current.records_ci_status, "passed")
         self.assertEqual(current.records_review_status, "rejected")
         self.assertEqual(current.record_candidate_status, "awaiting-review")
-        self.assertEqual(current.current_record, "Entry 95")
-        self.assertIn('id="entry-95"', logs)
+        self.assertEqual(
+            current.rejected_records_candidate,
+            "bf778c698064023bd3fe8e33abb8a1093c1dd8a0",
+        )
+        self.assertEqual(current.package_build_status, "passed")
+        self.assertEqual(current.package_install_status, "not-run")
+        self.assertEqual(current.physical_status, "not-run")
+        self.assertEqual(current.signing_status, "not-run")
+        self.assertEqual(current.public_release_status, "not-run")
+        self.assertEqual(current.owner_acceptance_status, "not-run")
+        self.assertEqual(current.current_record, "Entry 96")
+        self.assertIn('id="entry-96"', logs)
         self.assertIn(
-            'data-evidence-boundary="publication-receipt-authority-correction"', logs
+            'data-evidence-boundary="exact-current-projection-correction"', logs
         )
         accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",

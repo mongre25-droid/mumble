@@ -599,13 +599,23 @@ def test_durable_records_separate_green_ci_from_physical_and_release_gates():
     assert current.acceptance_gates == "open"
 
     assert current.published_records_head == "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f"
-    assert current.published_records_parent == current.main
+    assert current.published_records_head == current.main
+    assert current.published_records_parent == current.source_merge
     assert current.records_ci_run == "30730441394"
     assert current.records_ci_status == "passed"
     assert current.records_review_status == "rejected"
     assert current.record_candidate_status == "awaiting-review"
-    assert 'id="entry-95"' in logs
-    assert 'data-evidence-boundary="publication-receipt-authority-correction"' in logs
+    assert current.rejected_records_candidate == "bf778c698064023bd3fe8e33abb8a1093c1dd8a0"
+    assert current.records_correction_parent == current.rejected_records_candidate
+    assert current.package_build_status == "passed"
+    assert current.package_install_status == "not-run"
+    assert current.physical_status == "not-run"
+    assert current.signing_status == "not-run"
+    assert current.artifact_promotion_status == "not-run"
+    assert current.public_release_status == "not-run"
+    assert current.owner_acceptance_status == "not-run"
+    assert 'id="entry-96"' in logs
+    assert 'data-evidence-boundary="exact-current-projection-correction"' in logs
     assert current.review_task in logs
     assert current.review_subject in logs
     assert "PR #49" in logs
