@@ -326,6 +326,171 @@ async function mobileMenu(browser) {
   record('mobile Home-to-Downloads visible-link journey, menu containment, focus restoration, inertness, and horizontal fit');
 }
 
+const transcriptionRouteFacts = [
+  'Captured input',
+  'Processing location',
+  'Temporary and durable data',
+  'Durable output',
+  'What leaves the device',
+  'Requirements',
+  'Controls',
+  'Current limitations',
+];
+const findRouteFacts = [
+  'Query input',
+  'Processing location',
+  'What leaves the device',
+  'Output',
+  'Controls',
+  'Requirements',
+  'Current limitations',
+];
+
+async function assertRouteTable(table, facts, name) {
+  await table.waitFor();
+  for (const fact of facts) {
+    assert.equal(
+      await table.getByRole('rowheader', { name: fact, exact: true }).count(),
+      1,
+      `${name} is missing the ${fact} semantic fact`,
+    );
+  }
+}
+
+async function privacyRoutes(browser) {
+  const desktopContext = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+  });
+  const desktopPage = await desktopContext.newPage();
+  const desktopErrors = browserErrorsFor(desktopPage);
+
+  await desktopPage.goto(`${origin}/privacy/`, { waitUntil: 'networkidle' });
+  await assertSharedShell(desktopPage, 'Privacy');
+  await desktopPage.getByRole('heading', { level: 1, name: /what stays on your computer/i }).waitFor();
+
+  const explorer = desktopPage.getByRole('tablist', { name: 'Explore local routes' });
+  const transcriptionTab = explorer.getByRole('tab', { name: /Local Transcription/i });
+  const findTab = explorer.getByRole('tab', { name: /Mumble Find/i });
+  const transcriptionPanel = desktopPage.locator('#local-transcription');
+  const findPanel = desktopPage.locator('#mumble-find');
+  const transcriptionTable = transcriptionPanel.getByRole('table', { name: 'Local Transcription data path' });
+  const findTable = findPanel.getByRole('table', { name: 'Mumble Find data path' });
+
+  assert.equal(await explorer.getAttribute('aria-orientation'), 'horizontal');
+  assert.equal(await transcriptionTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await transcriptionTab.getAttribute('aria-controls'), 'local-transcription');
+  assert.equal(await findTab.getAttribute('aria-selected'), 'false');
+  assert.equal(await findTab.getAttribute('aria-controls'), 'mumble-find');
+  assert.equal(await transcriptionPanel.getAttribute('role'), 'tabpanel');
+  assert.equal(await transcriptionPanel.getAttribute('aria-labelledby'), 'privacy-tab-transcription');
+  assert.equal(await findPanel.getAttribute('role'), 'tabpanel');
+  assert.equal(await findPanel.getAttribute('aria-labelledby'), 'privacy-tab-find');
+  assert.equal(await transcriptionPanel.isVisible(), true);
+  assert.equal(await findPanel.isVisible(), false);
+  await assertRouteTable(transcriptionTable, transcriptionRouteFacts, 'Local Transcription');
+  assert.equal(
+    await transcriptionPanel.getByRole('group', { name: /Local Transcription data-path explanation/i })
+      .getByRole('listitem').count(),
+    4,
+  );
+
+  await transcriptionTab.focus();
+  await assertVisibleFocus(desktopPage, 'Privacy Local Transcription route focus');
+  await desktopPage.keyboard.press('ArrowDown');
+  assert.equal(
+    await transcriptionTab.getAttribute('aria-selected'),
+    'true',
+    'desktop horizontal tablist intercepted the vertical scrolling key',
+  );
+  await desktopPage.keyboard.press('ArrowRight');
+  assert.equal(await findTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await transcriptionPanel.isVisible(), false);
+  assert.equal(await findPanel.isVisible(), true);
+  assert.match(await desktopPage.evaluate(() => document.activeElement?.textContent?.trim() || ''), /Mumble Find/i);
+  await assertVisibleFocus(desktopPage, 'Privacy Mumble Find route focus');
+  await assertRouteTable(findTable, findRouteFacts, 'Mumble Find');
+  assert.equal(
+    await findPanel.getByRole('group', { name: /Mumble Find data-path explanation/i })
+      .getByRole('listitem').count(),
+    4,
+  );
+
+  const findText = await findPanel.innerText();
+  assert.match(findText, /Windows Search.*SystemIndex/is);
+  assert.match(findText, /versioned application catalogue/i);
+  assert.match(findText, /no hosted results/i);
+  assert.doesNotMatch(findText, /Google|Perplexity|Brave|Search online/i);
+
+  await desktopPage.keyboard.press('ArrowLeft');
+  assert.equal(await transcriptionTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await transcriptionPanel.isVisible(), true);
+  assert.equal(await findPanel.isVisible(), false);
+  const transcriptionText = await transcriptionPanel.innerText();
+  assert.match(transcriptionText, /bounded.*recovery/is);
+  assert.match(transcriptionText, /faster-whisper/i);
+  assert.match(transcriptionText, /no account, provider key, or internet connection/i);
+  assert.doesNotMatch(transcriptionText, /Google|Perplexity|Brave|Search online/i);
+
+  const onlineBoundary = desktopPage.locator('.online-boundary');
+  const onlineText = await onlineBoundary.innerText();
+  assert.match(onlineText, /Google, Perplexity, or Brave/i);
+  assert.match(onlineText, /Search online/i);
+  assert.match(onlineText, /Keep private/i);
+  assert.equal(
+    await onlineBoundary.evaluate((element) => element.closest('.privacy-explorer') === null),
+    true,
+    'online-route boundary was nested inside the local explorer',
+  );
+  const websitePrivacyText = await desktopPage.locator('.website-privacy').innerText();
+  assert.match(websitePrivacyText, /Zero-CDN/i);
+  assert.match(websitePrivacyText, /no analytics/i);
+  assert.match(websitePrivacyText, /no tracking/i);
+  assert.doesNotMatch(await desktopPage.locator('body').innerText(), /Mumble Search/i);
+  assert.equal(
+    await explorer.getByRole('tab', { name: /Web Search/i }).count(),
+    0,
+    'Web Search was incorrectly presented as a local route',
+  );
+  await noHorizontalOverflow(desktopPage, 'desktop Privacy');
+  assertNoBrowserErrors(desktopErrors, 'desktop Privacy browser errors');
+  await desktopContext.close();
+
+  const mobileContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: 'reduce',
+  });
+  const mobilePage = await mobileContext.newPage();
+  const mobileErrors = browserErrorsFor(mobilePage);
+  await mobilePage.goto(`${origin}/privacy/`, { waitUntil: 'networkidle' });
+  await assertSharedShell(mobilePage, 'Privacy');
+  const mobileExplorer = mobilePage.getByRole('tablist', { name: 'Explore local routes' });
+  const mobileTranscriptionTab = mobileExplorer.getByRole('tab', { name: /Local Transcription/i });
+  const mobileFindTab = mobileExplorer.getByRole('tab', { name: /Mumble Find/i });
+  assert.equal(await mobileExplorer.getAttribute('aria-orientation'), 'vertical');
+  await mobileTranscriptionTab.focus();
+  await mobilePage.keyboard.press('ArrowDown');
+  assert.equal(await mobileFindTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await mobilePage.locator('#local-transcription').isVisible(), false);
+  assert.equal(await mobilePage.locator('#mumble-find').isVisible(), true);
+  await assertVisibleFocus(mobilePage, 'mobile Privacy Mumble Find route focus');
+  await mobilePage.waitForTimeout(250);
+  assert.equal(
+    await mobileFindTab.getAttribute('aria-selected'),
+    'true',
+    'reduced-motion route state changed without visitor input',
+  );
+  await assertRouteTable(
+    mobilePage.locator('#mumble-find').getByRole('table', { name: 'Mumble Find data path' }),
+    findRouteFacts,
+    'mobile Mumble Find',
+  );
+  await noHorizontalOverflow(mobilePage, 'mobile reduced-motion Privacy');
+  assertNoBrowserErrors(mobileErrors, 'mobile Privacy browser errors');
+  await mobileContext.close();
+  record('Privacy local-route explorer, complete semantic tables, orientation-aware keyboard tabs, online separation, reduced motion, and desktop/mobile fit');
+}
+
 async function noJavaScriptPath(browser) {
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     const context = await browser.newContext({ viewport, javaScriptEnabled: false });
@@ -337,11 +502,58 @@ async function noJavaScriptPath(browser) {
     for (const job of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
       await page.getByRole('heading', { level: 3, name: job }).waitFor();
     }
+    const privacyLink = page.getByRole('navigation', { name: 'Primary' })
+      .getByRole('link', { name: 'Privacy', exact: true });
+    await privacyLink.waitFor();
+    await noHorizontalOverflow(page, `no-JavaScript Home ${viewport.width}px`);
+
+    await Promise.all([
+      page.waitForURL(`${origin}/privacy/`),
+      privacyLink.click(),
+    ]);
+    assert.equal(
+      page.url(),
+      `${origin}/privacy/`,
+      `no-JavaScript ${viewport.width}px Home Privacy link did not reach Privacy`,
+    );
+    const noScriptExplorer = page.getByRole('navigation', { name: 'Explore local routes' });
+    assert.equal(
+      await noScriptExplorer.getByRole('link', { name: /Local Transcription/i }).getAttribute('href'),
+      '#local-transcription',
+    );
+    assert.equal(
+      await noScriptExplorer.getByRole('link', { name: /Mumble Find/i }).getAttribute('href'),
+      '#mumble-find',
+    );
+    await page.getByRole('heading', { level: 2, name: 'Local Transcription' }).waitFor();
+    await page.getByRole('heading', { level: 2, name: 'Mumble Find' }).waitFor();
+    await assertRouteTable(
+      page.getByRole('table', { name: 'Local Transcription data path' }),
+      transcriptionRouteFacts,
+      `no-JavaScript ${viewport.width}px Local Transcription`,
+    );
+    await assertRouteTable(
+      page.getByRole('table', { name: 'Mumble Find data path' }),
+      findRouteFacts,
+      `no-JavaScript ${viewport.width}px Mumble Find`,
+    );
+    assert.equal(
+      await page.getByRole('group', { name: /data-path explanation/i }).count(),
+      2,
+    );
+    const onlineText = await page.locator('.online-boundary').innerText();
+    assert.match(onlineText, /Google, Perplexity, or Brave/i);
+    assert.match(onlineText, /Search online/i);
+    assert.match(onlineText, /Keep private/i);
+    for (const panel of [page.locator('#local-transcription'), page.locator('#mumble-find')]) {
+      assert.doesNotMatch(await panel.innerText(), /Google|Perplexity|Brave|Search online/i);
+    }
+    assert.doesNotMatch(await page.locator('body').innerText(), /Mumble Search/i);
+    await noHorizontalOverflow(page, `no-JavaScript Privacy ${viewport.width}px`);
+
     const downloadsLink = page.getByRole('navigation', { name: 'Primary' })
       .getByRole('link', { name: 'Downloads', exact: true });
     await downloadsLink.waitFor();
-    await noHorizontalOverflow(page, `no-JavaScript Home ${viewport.width}px`);
-
     await Promise.all([
       page.waitForURL(`${origin}/downloads/`),
       downloadsLink.click(),
@@ -376,6 +588,7 @@ try {
   await platformRecommendations(browser);
   await mobileMenu(browser);
   await noJavaScriptPath(browser);
+  await privacyRoutes(browser);
   console.log(`Browser contract passed: ${results.length} visitor-behaviour groups.`);
 } finally {
   await browser?.close();

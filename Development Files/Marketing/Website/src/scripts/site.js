@@ -103,3 +103,77 @@ if (header) {
   updateHeader();
   window.addEventListener('scroll', updateHeader, { passive: true });
 }
+
+document.querySelectorAll('[data-route-tabs]').forEach((routeList) => {
+  const tabs = [...routeList.querySelectorAll('[data-route-tab]')];
+  const panels = new Map(
+    [...document.querySelectorAll('[data-route-panel]')].map((panel) => [panel.dataset.routePanel, panel]),
+  );
+  if (tabs.length < 2 || tabs.some((tab) => !panels.has(tab.dataset.routeTab))) return;
+
+  routeList.setAttribute('role', 'tablist');
+
+  const updateRouteOrientation = () => {
+    routeList.setAttribute('aria-orientation', mobileQuery.matches ? 'vertical' : 'horizontal');
+  };
+  mobileQuery.addEventListener('change', updateRouteOrientation);
+  updateRouteOrientation();
+
+  function activate(routeId, { focus = false, updateHash = false } = {}) {
+    tabs.forEach((tab) => {
+      const selected = tab.dataset.routeTab === routeId;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      panels.get(tab.dataset.routeTab).hidden = !selected;
+    });
+
+    const selectedTab = tabs.find((tab) => tab.dataset.routeTab === routeId);
+    if (focus) selectedTab?.focus();
+    if (updateHash && selectedTab) {
+      history.replaceState(history.state, '', selectedTab.getAttribute('href'));
+    }
+  }
+
+  tabs.forEach((tab, index) => {
+    const routeId = tab.dataset.routeTab;
+    const panel = panels.get(routeId);
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', panel.id);
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', tab.id);
+    panel.tabIndex = 0;
+
+    tab.addEventListener('click', (event) => {
+      event.preventDefault();
+      activate(routeId, { updateHash: true });
+    });
+
+    tab.addEventListener('keydown', (event) => {
+      const vertical = routeList.getAttribute('aria-orientation') === 'vertical';
+      let nextIndex;
+      if (
+        (vertical && event.key === 'ArrowDown') ||
+        (!vertical && event.key === 'ArrowRight')
+      ) {
+        nextIndex = (index + 1) % tabs.length;
+      } else if (
+        (vertical && event.key === 'ArrowUp') ||
+        (!vertical && event.key === 'ArrowLeft')
+      ) {
+        nextIndex = (index - 1 + tabs.length) % tabs.length;
+      } else if (event.key === 'Home') {
+        nextIndex = 0;
+      } else if (event.key === 'End') {
+        nextIndex = tabs.length - 1;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      activate(tabs[nextIndex].dataset.routeTab, { focus: true, updateHash: true });
+    });
+  });
+
+  const hashRoute = window.location.hash.slice(1);
+  const initialRoute = panels.has(hashRoute) ? hashRoute : tabs[0].dataset.routeTab;
+  activate(initialRoute);
+});
