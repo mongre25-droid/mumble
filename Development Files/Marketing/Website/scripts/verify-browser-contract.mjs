@@ -180,6 +180,7 @@ async function desktopJourney(browser) {
   assert.match(windowsText, /\bZIP\b/);
   assert.match(windowsText, /1,098,061 bytes/);
   assert.match(windowsText, /Internet access for first-time setup/i);
+  assert.match(windowsText, /Windows 10 or 11 \(64-bit\)/i);
   assert.match(windowsText, /Publisher signature\s+Not accepted/i);
 
   for (const platform of ['macOS', 'Linux']) {
@@ -309,12 +310,20 @@ async function mobileMenu(browser) {
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open menu');
   await assertVisibleFocus(page, 'mobile in-page navigation focus restoration');
 
-  await page.goto(`${origin}/downloads/`, { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: 'Open menu' }).click();
+  const mobileDownloadsLink = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Downloads', exact: true });
+  await mobileDownloadsLink.waitFor();
+  await Promise.all([
+    page.waitForURL(`${origin}/downloads/`),
+    mobileDownloadsLink.click(),
+  ]);
+  assert.equal(page.url(), `${origin}/downloads/`, 'mobile Home Downloads link did not reach Downloads');
   await assertSharedShell(page, 'Downloads');
   await noHorizontalOverflow(page, 'mobile Downloads');
   assertNoBrowserErrors(browserErrors, 'mobile navigation browser errors');
   await context.close();
-  record('mobile navigation contains keyboard focus, restores focus after dismissal and in-page navigation, clears inertness, and fits both pages');
+  record('mobile Home-to-Downloads visible-link journey, menu containment, focus restoration, inertness, and horizontal fit');
 }
 
 async function noJavaScriptPath(browser) {
@@ -328,10 +337,20 @@ async function noJavaScriptPath(browser) {
     for (const job of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
       await page.getByRole('heading', { level: 3, name: job }).waitFor();
     }
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Downloads' }).waitFor();
+    const downloadsLink = page.getByRole('navigation', { name: 'Primary' })
+      .getByRole('link', { name: 'Downloads', exact: true });
+    await downloadsLink.waitFor();
     await noHorizontalOverflow(page, `no-JavaScript Home ${viewport.width}px`);
 
-    await page.goto(`${origin}/downloads/`, { waitUntil: 'load' });
+    await Promise.all([
+      page.waitForURL(`${origin}/downloads/`),
+      downloadsLink.click(),
+    ]);
+    assert.equal(
+      page.url(),
+      `${origin}/downloads/`,
+      `no-JavaScript ${viewport.width}px Home Downloads link did not reach Downloads`,
+    );
     await assertSharedShell(page, 'Downloads');
     await page.getByText('0.95', { exact: true }).first().waitFor();
     await page.getByRole('link', { name: /Download candidate for Windows/i }).waitFor();
@@ -345,7 +364,7 @@ async function noJavaScriptPath(browser) {
     assertNoBrowserErrors(browserErrors, `no-JavaScript ${viewport.width}px browser errors`);
     await context.close();
   }
-  record('core Home, navigation, release facts, platform states, and download access work without JavaScript');
+  record('no-JavaScript desktop/mobile Home-to-Downloads visible-link journeys retain core content, release facts, platform states, download access, and horizontal fit');
 }
 
 let browser;

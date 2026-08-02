@@ -69,7 +69,7 @@
         }
       },
       "requirements": [
-        "64-bit Windows",
+        "Windows 10 or 11 (64-bit)",
         "Internet access for first-time setup",
         "Keep the extracted Mumble folder in a permanent location"
       ],
