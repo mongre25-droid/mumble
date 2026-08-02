@@ -570,7 +570,7 @@ def test_settings_uses_truthful_stage_effect_and_route_disclosure_language():
     assert 'setSettingsHydrationState("ready")' in js
 
 
-def test_durable_records_keep_convergence_and_physical_validation_open():
+def test_durable_records_separate_failed_ci_from_physical_and_release_gates():
     status = (
         APP_DIR.parent.parent / "Development Files" / "Core" / "STATUS.html"
     ).read_text(encoding="utf-8")
@@ -587,13 +587,42 @@ def test_durable_records_keep_convergence_and_physical_validation_open():
         'data-evidence-boundary="integration-candidate-awaiting-review"'
         not in processing_row
     )
-    for open_gate in (
-        "Physical Windows/macOS/Linux use",
-        "remaining package lifecycle and permissions",
-        "owner acceptance remain open",
+    source_row = status.split("<tr><td>Source and records</td>", 1)[1].split(
+        "</tr>", 1
+    )[0]
+    for current_identity in (
+        "2f000b43daced675fcbfa53c8e7c75862124906b",
+        "c86e48f770083490e4621ef9770e654ab0d38b1e",
+        "936659747c351d7a6980a5ce8b377638d07f7a13",
     ):
-        assert open_gate in status
-    assert 'data-evidence-boundary="integration-candidate"' in logs
-    assert "No live provider request" in logs
-    assert "physical Windows/macOS/Linux test" in logs
-    assert "not merged to main" in logs.lower()
+        assert current_identity in source_row
+    assert "/pull/49" in source_row
+    assert "Entry 92" in source_row
+    assert "no product or package source changed" in source_row
+
+    ci_row = status.split("<tr><td>CI</td>", 1)[1].split("</tr>", 1)[0]
+    assert "30728545428" in ci_row
+    assert "936659747c351d7a6980a5ce8b377638d07f7a13" in ci_row
+    assert "failed" in ci_row.lower()
+    assert "failure remains preserved" in ci_row.lower()
+    assert "replacement exact-head CI" in ci_row
+    assert "has not run" in ci_row
+
+    physical_row = status.split(
+        "<tr><td>Physical, release, and owner</td>", 1
+    )[1].split("</tr>", 1)[0].lower()
+    for separate_gate in (
+        "physical devices/desktops",
+        "installed lifecycle",
+        "permissions",
+        "signing/notarisation",
+        "public release",
+        "owner acceptance",
+    ):
+        assert separate_gate in physical_row
+
+    assert 'id="entry-92"' in logs
+    assert 'data-evidence-boundary="published-candidate-ci-correction"' in logs
+    assert "30728545428" in logs
+    assert "936659747c351d7a6980a5ce8b377638d07f7a13" in logs
+    assert "PR #49" in logs

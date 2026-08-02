@@ -920,28 +920,35 @@ class WebSearchPrivacyCommandTests(unittest.TestCase):
 
 
 class CoreCurrentTruthTests(unittest.TestCase):
-    def test_opening_core_truth_names_convergence_candidates_and_correction(self):
+    def test_structured_core_truth_names_current_source_ci_and_open_gates(self):
         core = Path(__file__).resolve().parents[2] / "Development Files" / "Core"
         status = (core / "STATUS.html").read_text(encoding="utf-8")
         readme = (core / "README.html").read_text(encoding="utf-8")
-        current_truth = status.split(
-            '<div class="plain"><div class="tag">Current truth</div>', 1
-        )[1].split("</p>", 1)[0]
+        logs = (core / "LOGS.html").read_text(encoding="utf-8")
+        source_row = status.split("<tr><td>Source and records</td>", 1)[1].split(
+            "</tr>", 1
+        )[0]
+        ci_row = status.split("<tr><td>CI</td>", 1)[1].split("</tr>", 1)[0]
         web_guidance = readme.split(
             "<strong>Current Web Search boundary:</strong>", 1
         )[1].split("</p>", 1)[0]
-        current_refs = (
-            "babdc38d2d3869540afb7bc1e7523151c5de4237",
-            "22777a7e62fb5c0730b412fcd85334fbe82d1678",
-            "6e984587",
-            "cb847d36",
-            "8bffc80c",
-            "a3f81d81",
-            "a7606cf5",
-            "6c69d676",
+        source_refs = (
+            "2f000b43daced675fcbfa53c8e7c75862124906b",
+            "c86e48f770083490e4621ef9770e654ab0d38b1e",
+            "936659747c351d7a6980a5ce8b377638d07f7a13",
         )
-        for current_ref in current_refs:
-            self.assertIn(current_ref, current_truth)
+        for source_ref in source_refs:
+            self.assertIn(source_ref, source_row)
+        self.assertIn("/pull/49", source_row)
+        self.assertIn("Entry 92", source_row)
+        self.assertIn("30728545428", ci_row)
+        self.assertIn("936659747c351d7a6980a5ce8b377638d07f7a13", ci_row)
+        self.assertIn("failure remains preserved", ci_row.lower())
+        self.assertIn("replacement exact-head CI", ci_row)
+        self.assertIn('id="entry-92"', logs)
+        self.assertIn(
+            'data-evidence-boundary="published-candidate-ci-correction"', logs
+        )
         accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",
             "8e93c8139ab1a5e4bd3e84811fcccc4a2ae6d1b6",
@@ -950,9 +957,6 @@ class CoreCurrentTruthTests(unittest.TestCase):
         )
         for exact_ref in accepted_web_search_refs:
             self.assertIn(exact_ref, web_guidance)
-        self.assertIn("correction", current_truth.lower())
-        self.assertIn("correction", web_guidance.lower())
-
         issue19_row = status.split(
             'href="https://github.com/mongre25-droid/mumble/issues/19"', 1
         )[1].split("</tr>", 1)[0]
