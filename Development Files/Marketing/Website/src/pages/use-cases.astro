@@ -1,0 +1,42 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import JobStory from '../components/JobStory.astro';
+import PlatformAction from '../components/PlatformAction.astro';
+import jobs from '../data/jobs.json';
+import release from '../data/release.json';
+
+const write = jobs.find((job) => job.id === 'write');
+if (!write?.story) throw new Error('Write story authority is missing');
+---
+
+<BaseLayout
+  title="Use Cases — Complete Mumble Write tasks"
+  description="Follow complete Mumble Write sequences for everyday notes, longer text, and work across desktop applications without profession-first navigation."
+  currentPath="/use-cases/"
+>
+  <section class="page-hero use-cases-hero shell" aria-labelledby="use-cases-title">
+    <div>
+      <h1 id="use-cases-title">Start with the writing task, not a persona.</h1>
+      <p>Write is organised by tasks rather than professions. Each path uses the same cursor, command, visible state, local-default transcription, return, and recovery model.</p>
+    </div>
+    <nav class="task-jump" aria-label="Write task sequences">
+      {write.story.tasks.map((task) => <a href={`#${task.id}`}>{task.title}</a>)}
+    </nav>
+  </section>
+
+  <JobStory job={write} surface="use-cases" />
+
+  <section class="journey-next" aria-labelledby="use-cases-next-title">
+    <div class="shell journey-next-layout">
+      <div>
+        <h2 id="use-cases-next-title">See the mechanism, then inspect the candidate.</h2>
+        <p>{release.publication.label}. The current package wording and every unavailable platform state remain controlled by the shared release authority.</p>
+      </div>
+      <div class="journey-next-actions">
+        <a class="button button-quiet" href="/product/">How Write works</a>
+        <PlatformAction className="button button-primary" />
+        <a class="text-link" href="/downloads/">Release details and all platforms</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

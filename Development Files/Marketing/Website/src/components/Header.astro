@@ -9,7 +9,8 @@ export interface Props {
 const { currentPath } = Astro.props;
 const navigation = [
   { label: 'Home', href: '/', current: currentPath === '/' },
-  { label: 'Five jobs', href: '/#jobs', current: false },
+  { label: 'Product', href: '/product/', current: currentPath === '/product/' },
+  { label: 'Use Cases', href: '/use-cases/', current: currentPath === '/use-cases/' },
   { label: 'Privacy', href: '/privacy/', current: currentPath === '/privacy/' },
   { label: 'Downloads', href: '/downloads/', current: currentPath === '/downloads/' },
 ];

@@ -137,7 +137,7 @@ async function desktopJourney(browser) {
 
   await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
   await assertSharedShell(page, 'Home');
-  await page.getByRole('heading', { level: 1, name: /speech into useful work/i }).waitFor();
+  await page.getByRole('heading', { level: 1, name: /cursor you chose/i }).waitFor();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Downloads' }).waitFor();
   await page.getByRole('heading', { level: 3, name: 'Write' }).waitFor();
   await page.getByRole('heading', { level: 3, name: 'Find' }).waitFor();
@@ -213,6 +213,120 @@ async function desktopJourney(browser) {
   await context.close();
   record('desktop Home-to-Downloads journey, keyboard focus, release truth, and horizontal fit');
 }
+
+async function followPrimaryNavigation(page, label, href, mobile) {
+  if (mobile) {
+    await page.getByRole('button', { name: 'Open menu' }).click();
+  }
+  const link = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: label, exact: true });
+  await Promise.all([
+    page.waitForURL(`${origin}${href}`),
+    link.click(),
+  ]);
+}
+
+async function assertWriteStage(page, viewportName) {
+  const stage = page.locator('[data-job-story="write"][data-story-surface="home"]');
+  await stage.getByRole('heading', { level: 2, name: /where your words return/i }).waitFor();
+  assert.match(await stage.innerText(), /Genuine Mumble capture/i);
+  assert.match(await stage.innerText(), /Illustrative cursor close-up—not a live transcription/i);
+  assert.match(await stage.innerText(), /destination comes first/i);
+
+  const tabs = stage.getByRole('tab');
+  assert.equal(await tabs.count(), 3, `${viewportName} Write stage does not expose three direct steps`);
+  const speak = stage.getByRole('tab', { name: /Speak/i });
+  await speak.focus();
+  await assertVisibleFocus(page, `${viewportName} Write direct-step focus`);
+  await page.keyboard.press('Enter');
+  assert.equal(await speak.getAttribute('aria-selected'), 'true');
+  await stage.getByRole('tabpanel', { name: /Speak/i }).waitFor();
+
+  await page.keyboard.press('ArrowRight');
+  const returned = stage.getByRole('tab', { name: /Text returned/i });
+  assert.equal(await returned.getAttribute('aria-selected'), 'true');
+  assert.equal(await returned.evaluate((element) => document.activeElement === element), true);
+  const returnedPanel = stage.getByRole('tabpanel', { name: /Text returned/i });
+  await returnedPanel.waitFor();
+  assert.match(await returnedPanel.innerText(), /intended cursor/i);
+  assert.match(await returnedPanel.innerText(), /recoverable in the Deck/i);
+
+  await page.waitForTimeout(550);
+  assert.equal(
+    await returned.getAttribute('aria-selected'),
+    'true',
+    `${viewportName} reduced-motion Write stage advanced without visitor input`,
+  );
+  await stage.getByRole('button', { name: 'Previous Write step' }).click();
+  assert.equal(await speak.getAttribute('aria-selected'), 'true');
+}
+
+async function writeJourney(browser) {
+  const cases = [
+    { name: 'desktop', viewport: { width: 1365, height: 900 }, mobile: false },
+    { name: 'mobile', viewport: { width: 390, height: 844 }, mobile: true },
+  ];
+
+  for (const item of cases) {
+    const context = await browser.newContext({
+      viewport: item.viewport,
+      reducedMotion: 'reduce',
+      userAgent: item.mobile
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+    });
+    await context.addInitScript(() => {
+      window.__mumbleMicrophoneRequests = 0;
+      if (navigator.mediaDevices?.getUserMedia) {
+        navigator.mediaDevices.getUserMedia = () => {
+          window.__mumbleMicrophoneRequests += 1;
+          return Promise.reject(new Error('Website microphone access is forbidden'));
+        };
+      }
+    });
+    const page = await context.newPage();
+    const browserErrors = browserErrorsFor(page);
+
+    await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
+    await assertSharedShell(page, 'Home');
+    await page.getByRole('heading', { level: 1, name: /cursor you chose/i }).waitFor();
+    await assertWriteStage(page, item.name);
+    assert.equal(await page.evaluate(() => window.__mumbleMicrophoneRequests), 0);
+    const homeText = await page.locator('body').innerText();
+    assert.doesNotMatch(homeText, /\b[0-9]+(?:\.[0-9]+)?[×x]\s*(?:faster|speed)/i);
+    await noHorizontalOverflow(page, `${item.name} Write Home`);
+
+    await followPrimaryNavigation(page, 'Product', '/product/', item.mobile);
+    await assertSharedShell(page, 'Product');
+    const productText = await page.locator('main').innerText();
+    assert.match(productText, /deliberate global Dictate command/i);
+    assert.match(productText, /Island shows Listening, then Transcribing/i);
+    assert.match(productText, /Local transcription is the default/i);
+    assert.match(productText, /intended cursor/i);
+    assert.match(productText, /saved in the Deck/i);
+    await page.locator('.journey-next [data-platform-action]').waitFor();
+    await noHorizontalOverflow(page, `${item.name} Product`);
+
+    await followPrimaryNavigation(page, 'Use Cases', '/use-cases/', item.mobile);
+    await assertSharedShell(page, 'Use Cases');
+    for (const task of ['Everyday notes', 'Longer text', 'Across applications']) {
+      const taskRegion = page.getByRole('article').filter({
+        has: page.getByRole('heading', { level: 2, name: task }),
+      });
+      await taskRegion.waitFor();
+      assert.ok(await taskRegion.getByRole('listitem').count() >= 4, `${task} is not a complete task sequence`);
+    }
+    const useCasesText = await page.locator('main').innerText();
+    assert.match(useCasesText, /tasks rather than professions/i);
+    await page.locator('.journey-next [data-platform-action]').waitFor();
+    await noHorizontalOverflow(page, `${item.name} Use Cases`);
+    assert.equal(await page.evaluate(() => window.__mumbleMicrophoneRequests), 0);
+    assertNoBrowserErrors(browserErrors, `${item.name} Write journey browser errors`);
+    await context.close();
+  }
+  record('Issue #37 desktop/mobile Write journey, direct-step keyboard controls, reduced-motion stability, truthful mechanism, complete task sequences, no microphone request, release action, and horizontal fit');
+}
+
 
 async function platformRecommendations(browser) {
   const cases = [
@@ -465,14 +579,13 @@ async function mobileMenu(browser) {
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open menu');
   assert.equal(await page.locator('main').getAttribute('inert'), null);
   await page.keyboard.press('Enter');
-  const jobsLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Five jobs', exact: true });
-  await jobsLink.focus();
+  const productLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Product', exact: true });
+  await productLink.focus();
   await page.keyboard.press('Enter');
-  await page.waitForURL(`${origin}/#jobs`);
+  await page.waitForURL(`${origin}/product/`);
   assert.equal(await page.getByRole('button', { name: 'Open menu' }).getAttribute('aria-expanded'), 'false');
-  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Open menu');
-  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Open menu');
-  await assertVisibleFocus(page, 'mobile in-page navigation focus restoration');
+  await assertSharedShell(page, 'Product');
+  await noHorizontalOverflow(page, 'mobile Product');
 
   await page.getByRole('button', { name: 'Open menu' }).click();
   const mobileDownloadsLink = page.getByRole('navigation', { name: 'Primary' })
@@ -482,12 +595,12 @@ async function mobileMenu(browser) {
     page.waitForURL(`${origin}/downloads/`),
     mobileDownloadsLink.click(),
   ]);
-  assert.equal(page.url(), `${origin}/downloads/`, 'mobile Home Downloads link did not reach Downloads');
+  assert.equal(page.url(), `${origin}/downloads/`, 'mobile Product Downloads link did not reach Downloads');
   await assertSharedShell(page, 'Downloads');
   await noHorizontalOverflow(page, 'mobile Downloads');
   assertNoBrowserErrors(browserErrors, 'mobile navigation browser errors');
   await context.close();
-  record('mobile Home-to-Downloads visible-link journey, menu containment, focus restoration, inertness, and horizontal fit');
+  record('mobile Home-to-Product-to-Downloads visible-link journey, menu containment, Escape focus restoration, inertness, and horizontal fit');
 }
 
 const transcriptionRouteFacts = [
@@ -662,15 +775,45 @@ async function noJavaScriptPath(browser) {
     const browserErrors = browserErrorsFor(page);
     await page.goto(`${origin}/`, { waitUntil: 'load' });
     await assertSharedShell(page, 'Home');
-    await page.getByRole('heading', { level: 1, name: /speech into useful work/i }).waitFor();
+    await page.getByRole('heading', { level: 1, name: /cursor you chose/i }).waitFor();
     for (const job of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
       await page.getByRole('heading', { level: 3, name: job }).waitFor();
     }
+    const stage = page.locator('[data-job-story="write"][data-story-surface="home"]');
+    assert.equal(await stage.getByRole('tabpanel').count(), 3, 'no-JavaScript Write states are incomplete');
+    for (const panel of ['Choose cursor', 'Speak', 'Text returned']) {
+      await stage.getByRole('tabpanel', { name: new RegExp(panel, 'i') }).waitFor();
+    }
+    await noHorizontalOverflow(page, `no-JavaScript Home ${viewport.width}px`);
+
+    const productLink = page.getByRole('navigation', { name: 'Primary' })
+      .getByRole('link', { name: 'Product', exact: true });
+    await Promise.all([
+      page.waitForURL(`${origin}/product/`),
+      productLink.click(),
+    ]);
+    await assertSharedShell(page, 'Product');
+    const productText = await page.locator('main').innerText();
+    assert.match(productText, /deliberate global Dictate command/i);
+    assert.match(productText, /Local transcription is the default/i);
+    assert.match(productText, /saved in the Deck/i);
+    await noHorizontalOverflow(page, `no-JavaScript Product ${viewport.width}px`);
+
+    const useCasesLink = page.getByRole('navigation', { name: 'Primary' })
+      .getByRole('link', { name: 'Use Cases', exact: true });
+    await Promise.all([
+      page.waitForURL(`${origin}/use-cases/`),
+      useCasesLink.click(),
+    ]);
+    await assertSharedShell(page, 'Use Cases');
+    for (const task of ['Everyday notes', 'Longer text', 'Across applications']) {
+      await page.getByRole('heading', { level: 2, name: task }).waitFor();
+    }
+    await noHorizontalOverflow(page, `no-JavaScript Use Cases ${viewport.width}px`);
+
     const privacyLink = page.getByRole('navigation', { name: 'Primary' })
       .getByRole('link', { name: 'Privacy', exact: true });
     await privacyLink.waitFor();
-    await noHorizontalOverflow(page, `no-JavaScript Home ${viewport.width}px`);
-
     await Promise.all([
       page.waitForURL(`${origin}/privacy/`),
       privacyLink.click(),
@@ -678,7 +821,7 @@ async function noJavaScriptPath(browser) {
     assert.equal(
       page.url(),
       `${origin}/privacy/`,
-      `no-JavaScript ${viewport.width}px Home Privacy link did not reach Privacy`,
+      `no-JavaScript ${viewport.width}px Use Cases Privacy link did not reach Privacy`,
     );
     const noScriptExplorer = page.getByRole('navigation', { name: 'Explore local routes' });
     assert.equal(
@@ -725,7 +868,7 @@ async function noJavaScriptPath(browser) {
     assert.equal(
       page.url(),
       `${origin}/downloads/`,
-      `no-JavaScript ${viewport.width}px Home Downloads link did not reach Downloads`,
+      `no-JavaScript ${viewport.width}px Use Cases Downloads link did not reach Downloads`,
     );
     await assertSharedShell(page, 'Downloads');
     await page.getByText('0.95', { exact: true }).first().waitFor();
@@ -740,7 +883,7 @@ async function noJavaScriptPath(browser) {
     assertNoBrowserErrors(browserErrors, `no-JavaScript ${viewport.width}px browser errors`);
     await context.close();
   }
-  record('no-JavaScript desktop/mobile Home-to-Downloads visible-link journeys retain core content, release facts, platform states, download access, and horizontal fit');
+  record('no-JavaScript desktop/mobile Home-to-Product-to-Use-Cases-to-Downloads journeys retain complete Write states, mechanisms, task sequences, release facts, platform states, download access, and horizontal fit');
 }
 
 let browser;
@@ -749,6 +892,7 @@ try {
   browser = await chromium.launch({ headless: true, executablePath });
   console.log(`Browser version: ${browser.version()}`);
   await desktopJourney(browser);
+  await writeJourney(browser);
   await platformRecommendations(browser);
   await downloadsContract(browser);
   await mobileMenu(browser);

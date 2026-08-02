@@ -1,0 +1,158 @@
+---
+import jobs from '../data/jobs.json';
+
+type Job = (typeof jobs)[number];
+type StorySurface = 'home' | 'product' | 'use-cases';
+
+export interface Props {
+  job: Job;
+  surface: StorySurface;
+}
+
+const { job, surface } = Astro.props;
+if (!job.story) throw new Error(`${job.label} has no detailed job story`);
+const story = job.story;
+---
+
+{surface === 'home' && (
+  <section
+    class="product-stage write-product-stage"
+    aria-labelledby="write-stage-title"
+    data-job-story={job.id}
+    data-story-surface="home"
+    data-write-demo
+  >
+    <div class="stage-bar">
+      <span class="stage-brand">Mumble / {job.label}</span>
+      <span class="stage-state"><i aria-hidden="true"></i>Local route by default</span>
+    </div>
+
+    <figure class="write-capture">
+      <img
+        src="/product/home.webp"
+        width="1180"
+        height="820"
+        loading="eager"
+        fetchpriority="high"
+        alt="Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status"
+      />
+      <figcaption>
+        <strong>Genuine Mumble capture</strong>
+        <span>Current accepted Windows source surface</span>
+      </figcaption>
+    </figure>
+
+    <div class="write-closeup">
+      <header class="write-closeup-header">
+        <h2 id="write-stage-title">See where your words return.</h2>
+        <p>{story.demonstration.note}</p>
+      </header>
+
+      <div class="write-demo-tabs" role="tablist" aria-label="Write demonstration steps" data-write-tablist>
+        {story.demonstration.states.map((state, index) => (
+          <button
+            id={`write-tab-${state.id}`}
+            type="button"
+            role="tab"
+            aria-selected={index === 0 ? 'true' : 'false'}
+            aria-controls={`write-panel-${state.id}`}
+            tabindex={index === 0 ? '0' : '-1'}
+            data-write-tab
+          >
+            <span aria-hidden="true">{index + 1}</span>
+            {state.label}
+          </button>
+        ))}
+      </div>
+
+      <div class="write-demo-panels">
+        {story.demonstration.states.map((state) => (
+          <section
+            id={`write-panel-${state.id}`}
+            class="write-demo-panel"
+            role="tabpanel"
+            aria-labelledby={`write-tab-${state.id}`}
+            tabindex="0"
+            data-write-panel
+          >
+            <div class="write-panel-copy">
+              <span class="write-state-label">{state.status}</span>
+              <h3>{state.title}</h3>
+              <p>{state.body}</p>
+            </div>
+            <div class="write-field" aria-label={`Illustrative writing field during ${state.label}`}>
+              <span>Unbranded writing field</span>
+              <p>{state.field}<i aria-hidden="true"></i></p>
+            </div>
+            {state.id === 'speak' && (
+              <p class="write-spoken-sample">
+                <strong>Example speech</strong>
+                <q>{story.demonstration.spoken}</q>
+              </p>
+            )}
+          </section>
+        ))}
+      </div>
+
+      <div class="write-demo-controls" aria-label="Write demonstration navigation">
+        <button class="button button-quiet" type="button" data-write-previous>Previous Write step</button>
+        <button class="button button-quiet" type="button" data-write-next>Next Write step</button>
+      </div>
+    </div>
+  </section>
+)}
+
+{surface === 'product' && (
+  <section
+    class="job-story job-story-mechanism shell"
+    aria-labelledby="write-mechanism-title"
+    data-job-story={job.id}
+    data-story-surface="product"
+  >
+    <header class="section-intro">
+      <h2 id="write-mechanism-title">{story.mechanism.title}</h2>
+      <p>{story.mechanism.summary}</p>
+    </header>
+
+    <ol class="job-sequence">
+      {story.mechanism.steps.map((step, index) => (
+        <li>
+          <span class="job-sequence-index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+          <div>
+            <h3>{step.title}</h3>
+            <p>{step.body}</p>
+            <small>{step.proof}</small>
+          </div>
+        </li>
+      ))}
+    </ol>
+  </section>
+)}
+
+{surface === 'use-cases' && (
+  <section
+    class="job-story job-story-tasks shell"
+    aria-label={`${job.label} task sequences`}
+    data-job-story={job.id}
+    data-story-surface="use-cases"
+  >
+    <div class="task-ledger">
+      {story.tasks.map((task) => (
+        <article id={task.id}>
+          <header>
+            <h2>{task.title}</h2>
+            <p>{task.summary}</p>
+          </header>
+          <ol>
+            {task.steps.map((step, index) => (
+              <li>
+                <span aria-hidden="true">{index + 1}</span>
+                <p>{step}</p>
+              </li>
+            ))}
+          </ol>
+        </article>
+      ))}
+    </div>
+  </section>
+)}

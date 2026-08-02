@@ -3,30 +3,135 @@
     "id": "write",
     "label": "Write",
     "summary": "Turn speech into clean text for the cursor you chose, with a saved recovery path when delivery is blocked.",
-    "proof": "Local transcription is the default; optional shaping is a separate decision."
+    "proof": "Local transcription is the default; optional shaping is a separate decision.",
+    "story": {
+      "opening": {
+        "title": "Speak once. Return to the cursor you chose.",
+        "summary": "Choose a writing field, use Mumble’s deliberate Dictate command, and speak while the Island shows what is happening. Mumble then attempts to return the finished text to that same field."
+      },
+      "demonstration": {
+        "spoken": "Move the design review to Thursday and send the notes before lunch.",
+        "note": "Illustrative cursor close-up—not a live transcription. The Mumble workspace above is a genuine product capture.",
+        "states": [
+          {
+            "id": "cursor",
+            "label": "Choose cursor",
+            "status": "Before command",
+            "title": "The destination comes first.",
+            "body": "Place the cursor in the writing field that should receive the finished text.",
+            "field": "Project note —"
+          },
+          {
+            "id": "speak",
+            "label": "Speak",
+            "status": "Island · Listening",
+            "title": "Mumble makes its state visible.",
+            "body": "Use the global Dictate command and speak. The Island shows Listening, then Transcribing after you stop.",
+            "field": "Project note —"
+          },
+          {
+            "id": "returned",
+            "label": "Text returned",
+            "status": "Island · Done",
+            "title": "Finished text returns to the intended cursor.",
+            "body": "Mumble attempts one target-bound insertion. If it cannot complete, the result remains recoverable in the Deck.",
+            "field": "Project note — Move the design review to Thursday and send the notes before lunch."
+          }
+        ]
+      },
+      "mechanism": {
+        "title": "One deliberate command. One visible route back.",
+        "summary": "Write keeps the starting field, processing state, privacy route, delivery attempt, and recovery path in one understandable sequence.",
+        "steps": [
+          {
+            "id": "destination",
+            "title": "Choose where the words belong",
+            "body": "Place the cursor in a writable field. Mumble keeps the intended destination with this dictation instead of asking you to move into a separate editor.",
+            "proof": "The destination is chosen before recording begins."
+          },
+          {
+            "id": "command",
+            "title": "Start with the deliberate global Dictate command",
+            "body": "Invoke Dictate from the application you are already using. The Island shows Listening, then Transcribing, so recording and processing are visible rather than implied.",
+            "proof": "The same global command starts and stops the dictation."
+          },
+          {
+            "id": "transcription",
+            "title": "Transcribe on this computer by default",
+            "body": "Local transcription is the default. Recorded audio stays on this computer unless the user explicitly selects Cloud transcription.",
+            "proof": "Optional shaping is a separate finished-text decision."
+          },
+          {
+            "id": "recovery",
+            "title": "Return once, or recover safely",
+            "body": "Mumble attempts to insert the finished text at the intended cursor. If insertion cannot complete, the result is saved in the Deck and History for Copy or Paste latest instead of being sent again automatically.",
+            "proof": "A changed or unavailable target does not authorize a second blind insertion."
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "everyday-notes",
+          "title": "Everyday notes",
+          "summary": "Add a complete thought to the note already open in front of you.",
+          "steps": [
+            "Place the cursor at the point where the note should continue.",
+            "Use the global Dictate command and speak the thought in ordinary language.",
+            "Stop the dictation and use the Island state to follow transcription.",
+            "Continue from the inserted text, or use the saved Deck result if delivery could not complete."
+          ]
+        },
+        {
+          "id": "longer-text",
+          "title": "Longer text",
+          "summary": "Draft a connected passage without replacing the document you already chose.",
+          "steps": [
+            "Place the cursor in the draft where the next passage belongs.",
+            "Start Dictate and speak the passage at a comfortable pace.",
+            "Stop when the passage is complete; the Island shows the transition into transcription.",
+            "Review the returned text in the draft, or recover the finished result from the Deck if insertion was blocked."
+          ]
+        },
+        {
+          "id": "across-applications",
+          "title": "Across applications",
+          "summary": "Carry the same Write sequence into another writable desktop application.",
+          "steps": [
+            "Open the destination application and place its cursor in the intended field.",
+            "Invoke the global Dictate command without leaving that application.",
+            "Speak, then stop while the Island identifies the active state.",
+            "Mumble attempts the same target-bound return; if the destination changed, it keeps the text in the Deck rather than inserting elsewhere."
+          ]
+        }
+      ]
+    }
   },
   {
     "id": "capture",
     "label": "Capture",
     "summary": "Record microphone meetings into a local, searchable working record you can review and export.",
-    "proof": "Mumble saves the recording locally before transcription and later analysis."
+    "proof": "Mumble saves the recording locally before transcription and later analysis.",
+    "story": null
   },
   {
     "id": "shape",
     "label": "Shape",
     "summary": "Give finished text a deliberate job, including Prompt, Email, Reply, and Deck actions.",
-    "proof": "Cloud text shaping is optional and sends finished text—not recorded audio—through the chosen route."
+    "proof": "Cloud text shaping is optional and sends finished text—not recorded audio—through the chosen route.",
+    "story": null
   },
   {
     "id": "listen",
     "label": "Listen",
     "summary": "Read documents with saved progress, find, bookmarks, summaries, and optional voice playback.",
-    "proof": "Provider-backed speech is an explicit online choice and may carry the provider's own cost."
+    "proof": "Provider-backed speech is an explicit online choice and may carry the provider's own cost.",
+    "story": null
   },
   {
     "id": "find",
     "label": "Find",
     "summary": "Use Mumble Find to search local apps and files without hosted results entering the list.",
-    "proof": "Web Search is separate and sends selected text online only after provider-named confirmation."
+    "proof": "Web Search is separate and sends selected text online only after provider-named confirmation.",
+    "story": null
   }
 ]

@@ -98,6 +98,49 @@ document.querySelectorAll('[data-current-year]').forEach((year) => {
   year.textContent = String(new Date().getFullYear());
 });
 
+document.querySelectorAll('[data-write-demo]').forEach((demo) => {
+  const tabs = Array.from(demo.querySelectorAll('[data-write-tab]'));
+  const panels = Array.from(demo.querySelectorAll('[data-write-panel]'));
+  const previous = demo.querySelector('[data-write-previous]');
+  const next = demo.querySelector('[data-write-next]');
+  if (tabs.length === 0 || tabs.length !== panels.length) return;
+
+  let selectedIndex = Math.max(0, tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true'));
+
+  const selectStep = (index, { focus = false } = {}) => {
+    selectedIndex = (index + tabs.length) % tabs.length;
+    tabs.forEach((tab, tabIndex) => {
+      const selected = tabIndex === selectedIndex;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    });
+    panels.forEach((panel, panelIndex) => {
+      panel.hidden = panelIndex !== selectedIndex;
+    });
+    demo.dataset.writeStep = String(selectedIndex + 1);
+    if (focus) tabs[selectedIndex].focus();
+  };
+
+  tabs.forEach((tab, tabIndex) => {
+    tab.addEventListener('click', () => selectStep(tabIndex));
+    tab.addEventListener('keydown', (event) => {
+      const keys = {
+        ArrowLeft: tabIndex - 1,
+        ArrowRight: tabIndex + 1,
+        Home: 0,
+        End: tabs.length - 1,
+      };
+      if (!(event.key in keys)) return;
+      event.preventDefault();
+      selectStep(keys[event.key], { focus: true });
+    });
+  });
+
+  previous?.addEventListener('click', () => selectStep(selectedIndex - 1));
+  next?.addEventListener('click', () => selectStep(selectedIndex + 1));
+  selectStep(selectedIndex);
+});
+
 if (header) {
   const updateHeader = () => header.toggleAttribute('data-scrolled', window.scrollY > 8);
   updateHeader();

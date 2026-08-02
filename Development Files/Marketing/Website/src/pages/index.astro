@@ -1,24 +1,25 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PlatformAction from '../components/PlatformAction.astro';
+import JobStory from '../components/JobStory.astro';
 import jobs from '../data/jobs.json';
 import release from '../data/release.json';
 
 const windows = release.platforms.find((platform) => platform.id === 'windows');
+const write = jobs.find((job) => job.id === 'write');
 if (!windows) throw new Error('Windows release authority is missing');
+if (!write?.story) throw new Error('Write story authority is missing');
 ---
 
 <BaseLayout
-  title="Mumble — Local-first desktop voice workspace"
-  description="Mumble turns speech into useful work across writing, microphone capture, text shaping, document listening, and private local find."
+  title="Mumble Write — Speech returns to the cursor you chose"
+  description="See Mumble turn speech into finished text at the intended cursor with local transcription by default and a saved Deck recovery path."
   currentPath="/"
 >
-  <section class="hero shell" aria-labelledby="home-title">
+  <section class="hero write-hero shell" aria-labelledby="home-title">
     <div class="hero-copy">
-      <h1 id="home-title">Turn speech into <strong>useful work.</strong></h1>
-      <p class="hero-lead">
-        Mumble is a local-first desktop voice workspace. It helps a thought travel into the work already on your computer—without making an account or cloud service the centre of the local path.
-      </p>
+      <h1 id="home-title">{write.story.opening.title}</h1>
+      <p class="hero-lead">{write.story.opening.summary}</p>
 
       <div class="hero-actions">
         <PlatformAction className="button button-primary" />
@@ -33,24 +34,7 @@ if (!windows) throw new Error('Windows release authority is missing');
       </ul>
     </div>
 
-    <figure class="product-stage">
-      <div class="stage-bar" aria-hidden="true">
-        <span class="stage-brand">Mumble / Home</span>
-        <span class="stage-state"><i></i>Local route</span>
-      </div>
-      <img
-        src="/product/home.webp"
-        width="1180"
-        height="820"
-        loading="eager"
-        fetchpriority="high"
-        alt="Mumble Home showing the near-black and gold voice workspace, Start dictation action, latest result, global shortcuts, and local transcription status"
-      />
-      <figcaption>
-        <strong>Real product capture</strong>
-        <span>Accepted Windows source surface · source version {release.version}</span>
-      </figcaption>
-    </figure>
+    <JobStory job={write} surface="home" />
   </section>
 
   <section class="jobs-section" id="jobs" aria-labelledby="jobs-title">
