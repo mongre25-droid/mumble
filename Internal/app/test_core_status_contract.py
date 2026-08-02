@@ -68,3 +68,35 @@ def test_current_status_rejects_a_second_current_authority() -> None:
 
     with pytest.raises(CurrentStatusContractError, match="exactly one current-state authority"):
         parse_current_status(mutated)
+
+
+@pytest.mark.parametrize(
+    ("current_fragment", "contradictory_fragment"),
+    (
+        (
+            "Published records child <code>ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f</code>",
+            "Published records child <code>1111111111111111111111111111111111111111</code>",
+        ),
+        (
+            "Accepted source <code>b6fe674f6332a5cfb20bf35568152fe22798f55e</code>",
+            "Accepted source <code>c86e48f770083490e4621ef9770e654ab0d38b1e</code>",
+        ),
+        (
+            "criteria 1 and 6 are satisfied by accepted source <code>b6fe674f</code>",
+            "criteria 1 and 6 are satisfied by accepted local source <code>c86e48f7</code>",
+        ),
+        (
+            "Remote <code>main</code> is rejected records child <code>ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f</code>",
+            "Unchanged main 2f000b43; no push, PR, merge",
+        ),
+    ),
+)
+def test_current_status_rejects_each_contradictory_prose_authority(
+    current_fragment: str, contradictory_fragment: str
+) -> None:
+    status_html = _status_html()
+    assert current_fragment in status_html
+    mutated = status_html.replace(current_fragment, contradictory_fragment, 1)
+
+    with pytest.raises(CurrentStatusContractError, match="contradicts|stale claims"):
+        parse_current_status(mutated)

@@ -598,8 +598,14 @@ def test_durable_records_separate_green_ci_from_physical_and_release_gates():
     assert current.promotion_status == "source-merged"
     assert current.acceptance_gates == "open"
 
-    assert 'id="entry-94"' in logs
-    assert 'data-evidence-boundary="accepted-correction-publication"' in logs
+    assert current.published_records_head == "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f"
+    assert current.published_records_parent == current.main
+    assert current.records_ci_run == "30730441394"
+    assert current.records_ci_status == "passed"
+    assert current.records_review_status == "rejected"
+    assert current.record_candidate_status == "awaiting-review"
+    assert 'id="entry-95"' in logs
+    assert 'data-evidence-boundary="publication-receipt-authority-correction"' in logs
     assert current.review_task in logs
     assert current.review_subject in logs
     assert "PR #49" in logs

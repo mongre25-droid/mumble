@@ -947,10 +947,18 @@ class CoreCurrentTruthTests(unittest.TestCase):
         self.assertEqual(current.merge_status, "merged")
         self.assertEqual(current.promotion_status, "source-merged")
         self.assertEqual(current.open_issues, "12,25,28,29,30")
-        self.assertEqual(current.current_record, "Entry 94")
-        self.assertIn('id="entry-94"', logs)
+        self.assertEqual(
+            current.published_records_head,
+            "ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f",
+        )
+        self.assertEqual(current.records_ci_run, "30730441394")
+        self.assertEqual(current.records_ci_status, "passed")
+        self.assertEqual(current.records_review_status, "rejected")
+        self.assertEqual(current.record_candidate_status, "awaiting-review")
+        self.assertEqual(current.current_record, "Entry 95")
+        self.assertIn('id="entry-95"', logs)
         self.assertIn(
-            'data-evidence-boundary="accepted-correction-publication"', logs
+            'data-evidence-boundary="publication-receipt-authority-correction"', logs
         )
         accepted_web_search_refs = (
             "52b06b8ee98ba8ef3b2029347a14eae818b8ac70",
