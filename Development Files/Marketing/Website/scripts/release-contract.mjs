@@ -25,13 +25,33 @@ export const acceptedReleaseContract = Object.freeze({
     label: 'Not published for this candidate',
     summary: 'Public release notes will follow an accepted public release; this candidate has no published release notes.',
   },
+  unavailableFacts: {
+    artifactMetadata: 'Not published',
+    integrity: 'No artifact to verify',
+    download: 'Unavailable',
+  },
+  recommendations: {
+    windows: { label: 'Download candidate for Windows', href: '/Mumble.zip', download: true },
+    macos: { label: 'View macOS status', href: '/downloads/#macos', download: false },
+    linux: { label: 'View Linux status', href: '/downloads/#linux', download: false },
+    unknown: { label: 'View desktop downloads', href: '/downloads/#platforms-title', download: false },
+    mobile: { label: 'View desktop downloads', href: '/downloads/#platforms-title', download: false },
+  },
   windows: {
     id: 'windows',
+    label: 'Windows',
+    availabilityLabel: 'Candidate artifact',
     availability: 'candidate',
     architecture: 'x86_64',
     format: 'ZIP',
     artifactLocation: '/Mumble.zip',
     sizeBytes: 1207711,
+    requirements: [
+      'Windows 10 or 11 (64-bit)',
+      'Internet access for first-time setup',
+      'Keep the extracted Mumble folder in a permanent location',
+    ],
+    gate: 'Validated repository candidate bytes are available here, but this is not an installed, signed, deployed, or publicly released package.',
     integrity: {
       algorithm: 'SHA-256',
       value: '70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493',
@@ -42,11 +62,37 @@ export const acceptedReleaseContract = Object.freeze({
     },
   },
   gatedPlatformIds: ['macos', 'linux'],
+  gatedPlatforms: {
+    macos: {
+      label: 'macOS',
+      availability: 'gated',
+      availabilityLabel: 'No accepted artifact',
+      statusLabel: 'Gated',
+      gate: 'No current accepted macOS artifact exists. Packaging, physical checks, signing, and notarisation remain open.',
+    },
+    linux: {
+      label: 'Linux',
+      availability: 'gated',
+      availabilityLabel: 'No accepted artifact',
+      statusLabel: 'Gated',
+      gate: 'No current accepted public Linux artifact exists. Physical desktop, package, signing, and release gates remain open.',
+    },
+  },
 });
 
 function requireExact(value, expected, field) {
   if (value !== expected) fail(`${field} must remain ${JSON.stringify(expected)}`);
 }
+function requireArrayExact(value, expected, field) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== expected.length ||
+    value.some((item, index) => item !== expected[index])
+  ) {
+    fail(`${field} must remain ${JSON.stringify(expected)}`);
+  }
+}
+
 
 
 export function validateReleaseAuthority(authority, evidence) {
@@ -83,6 +129,13 @@ export function validateReleaseAuthority(authority, evidence) {
   requireString(authority.unavailableFacts?.artifactMetadata, 'unavailableFacts.artifactMetadata');
   requireString(authority.unavailableFacts?.integrity, 'unavailableFacts.integrity');
   requireString(authority.unavailableFacts?.download, 'unavailableFacts.download');
+  requireExact(
+    authority.unavailableFacts.artifactMetadata,
+    accepted.unavailableFacts.artifactMetadata,
+    'unavailableFacts.artifactMetadata',
+  );
+  requireExact(authority.unavailableFacts.integrity, accepted.unavailableFacts.integrity, 'unavailableFacts.integrity');
+  requireExact(authority.unavailableFacts.download, accepted.unavailableFacts.download, 'unavailableFacts.download');
 
   requireString(evidence?.sourceVersion, 'evidence.sourceVersion');
   if (authority.version !== evidence.sourceVersion) {
@@ -90,15 +143,10 @@ export function validateReleaseAuthority(authority, evidence) {
   }
 
   const recommendations = authority.recommendations;
-  const recommendationContract = {
-    windows: { href: accepted.windows.artifactLocation, download: true },
-    macos: { href: '/downloads/#macos', download: false },
-    linux: { href: '/downloads/#linux', download: false },
-    unknown: { href: '/downloads/#platforms-title', download: false },
-    mobile: { href: '/downloads/#platforms-title', download: false },
-  };
+  const recommendationContract = accepted.recommendations;
   for (const [id, expected] of Object.entries(recommendationContract)) {
     requireString(recommendations?.[id]?.label, `recommendations.${id}.label`);
+    requireExact(recommendations[id].label, expected.label, `recommendations.${id}.label`);
     requireString(recommendations?.[id]?.href, `recommendations.${id}.href`);
     if (typeof recommendations[id].download !== 'boolean') {
       fail(`recommendations.${id}.download must be boolean`);
@@ -123,6 +171,12 @@ export function validateReleaseAuthority(authority, evidence) {
     requireString(platform.availability, `${platform.id}.availability`);
     requireString(platform.availabilityLabel, `${platform.id}.availabilityLabel`);
     requireString(platform.gate, `${platform.id}.gate`);
+    const acceptedPlatform =
+      platform.id === accepted.windows.id ? accepted.windows : accepted.gatedPlatforms[platform.id];
+    if (!acceptedPlatform) fail(`${platform.id} is not an accepted platform`);
+    requireExact(platform.label, acceptedPlatform.label, `${platform.id}.label`);
+    requireExact(platform.availabilityLabel, acceptedPlatform.availabilityLabel, `${platform.id}.availabilityLabel`);
+    requireExact(platform.gate, acceptedPlatform.gate, `${platform.id}.gate`);
     representedPlatforms.add(platform.id);
 
     const variantKey = `${platform.id}:${platform.architecture ?? 'none'}`;
@@ -141,6 +195,7 @@ export function validateReleaseAuthority(authority, evidence) {
         fail(`${platform.id}.requirements must be a non-empty array`);
       }
       platform.requirements.forEach((value, index) => requireString(value, `${platform.id}.requirements[${index}]`));
+      requireArrayExact(platform.requirements, accepted.windows.requirements, 'windows.requirements');
       if (platform.integrity?.algorithm !== 'SHA-256') fail(`${platform.id} must use SHA-256 integrity`);
       if (!/^[0-9a-f]{64}$/.test(platform.integrity?.value ?? '')) {
         fail(`${platform.id}.integrity.value must be a lowercase SHA-256 hash`);
@@ -192,6 +247,9 @@ export function validateReleaseAuthority(authority, evidence) {
       }
     } else if (platform.availability === 'gated') {
       requireString(platform.statusLabel, `${platform.id}.statusLabel`);
+      const acceptedGatedPlatform = accepted.gatedPlatforms[platform.id];
+      requireExact(platform.availability, acceptedGatedPlatform.availability, `${platform.id}.availability`);
+      requireExact(platform.statusLabel, acceptedGatedPlatform.statusLabel, `${platform.id}.statusLabel`);
       if (!accepted.gatedPlatformIds.includes(platform.id)) {
         fail(`${platform.id} is not an accepted gated platform`);
       }

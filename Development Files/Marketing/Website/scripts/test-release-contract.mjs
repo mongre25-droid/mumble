@@ -112,6 +112,53 @@ for (const [field, contradictoryValue] of [
     new RegExp(`releaseNotes\\.${field} must remain`),
   );
 }
+for (const [field, contradictoryValue] of [
+  ['artifactMetadata', 'Published package'],
+  ['integrity', 'Verified'],
+  ['download', 'Download now'],
+]) {
+  rejects(
+    `unavailable ${field} copy cannot invent a release`,
+    changed((candidate) => { candidate.unavailableFacts[field] = contradictoryValue; }),
+    new RegExp(`unavailableFacts\\.${field} must remain`),
+  );
+}
+for (const id of ['windows', 'macos', 'linux', 'unknown', 'mobile']) {
+  rejects(
+    `${id} recommendation label cannot invent a route`,
+    changed((candidate) => { candidate.recommendations[id].label = 'Download released app'; }),
+    new RegExp(`recommendations\\.${id}\\.label must remain`),
+  );
+}
+for (const id of ['windows', 'macos', 'linux']) {
+  for (const [field, contradictoryValue] of [
+    ['label', `${id} released`],
+    ['availabilityLabel', 'Public release'],
+    ['gate', 'Every release gate is complete.'],
+  ]) {
+    rejects(
+      `${id} ${field} cannot contradict its platform state`,
+      changed((candidate) => {
+        candidate.platforms.find((platform) => platform.id === id)[field] = contradictoryValue;
+      }),
+      new RegExp(`${id}\\.${field} must remain`),
+    );
+  }
+}
+for (const id of ['macos', 'linux']) {
+  rejects(
+    `${id} status label cannot contradict its gated state`,
+    changed((candidate) => {
+      candidate.platforms.find((platform) => platform.id === id).statusLabel = 'Available';
+    }),
+    new RegExp(`${id}\\.statusLabel must remain`),
+  );
+}
+rejects(
+  'Windows requirements cannot broaden the accepted package claim',
+  changed((candidate) => { candidate.platforms[0].requirements[0] = 'Any operating system'; }),
+  /windows\.requirements must remain/,
+);
 rejects(
   'coordinated artifact replacement cannot redefine accepted bytes',
   changed((candidate) => {
