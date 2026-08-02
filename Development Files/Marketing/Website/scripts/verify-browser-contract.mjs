@@ -9,6 +9,7 @@ const websiteRoot = resolve(import.meta.dirname, '..');
 const distRoot = resolve(websiteRoot, 'dist');
 const results = [];
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim() || undefined;
+const requestedGroup = process.env.MUMBLE_WEBSITE_BROWSER_GROUP?.trim() || undefined;
 
 const contentTypes = new Map([
   ['.css', 'text/css; charset=utf-8'],
@@ -490,7 +491,7 @@ async function mobileMenu(browser) {
   record('mobile Home-to-Downloads visible-link journey, menu containment, focus restoration, inertness, and horizontal fit');
 }
 
-const routeFacts = [
+const routeFactNames = [
   'Input',
   'Local stage',
   'Egress',
@@ -508,46 +509,140 @@ const routeContracts = [
     tabName: /Local Transcription/i,
     tableName: 'Local Transcription data path',
     evidence: [/faster-whisper/i, /nothing leaves/i, /no provider/i],
+    facts: {
+      Input: /one-channel audio.*microphone selected in Settings/is,
+      'Local stage': /durable recovery segments.*faster-whisper.*local CPU/is,
+      Egress: /nothing leaves this computer.*finished text only/is,
+      Provider: /no external provider.*faster-whisper model/is,
+      Network: /not required.*local speech model is present/is,
+      'Key or account': /no Mumble account.*no provider key/is,
+      'External cost': /no external provider charge.*computer's own processing and storage/is,
+      Output: /saved in local History\/Deck.*target-bound insertion/is,
+      'User control': /choose and test the microphone.*device-only override/is,
+      'Failure boundary': /failure stays local.*never silently sends audio online/is,
+    },
   },
   {
     id: 'cloud-transcription',
     tabName: /Cloud Transcription/i,
     tableName: 'Cloud Transcription data path',
     evidence: [/recorded audio/i, /Groq, OpenAI, or OpenRouter/i, /deliberately select/i],
+    facts: {
+      Input: /recorded microphone-audio clip.*effective route is Cloud/is,
+      'Local stage': /durable local recovery segments.*freezes one route snapshot/is,
+      Egress: /WAV representation of recorded audio.*effective provider.*finished text shaping is not part/is,
+      Provider: /Groq, OpenAI, or OpenRouter.*does not switch providers/is,
+      Network: /internet connection.*provider request and response/is,
+      'Key or account': /own provider account.*matching API key.*no built-in key/is,
+      'External cost': /provider may charge.*does not absorb that provider cost/is,
+      Output: /provider's transcript.*local History\/Deck.*target-bound delivery/is,
+      'User control': /deliberately select Cloud.*device-only override.*inactive/is,
+      'Failure boundary': /missing key\/model.*blocks egress.*no silent online fallback/is,
+    },
   },
   {
     id: 'text-shaping',
     tabName: /Text Shaping/i,
     tableName: 'Text Shaping data path',
     evidence: [/finished text/i, /Cerebras or OpenRouter/i, /never sends (?:the )?captured/i],
+    facts: {
+      Input: /finished transcript or selected text.*Prompt.*Reader summary/is,
+      'Local stage': /offline cleanup and mode inference.*freezes the effective provider/is,
+      Egress: /finished text.*never sends captured audio or a microphone recording/is,
+      Provider: /Cerebras or OpenRouter.*confirmed selected model/is,
+      Network: /internet connection.*effective shaping route is hosted/is,
+      'Key or account': /own provider account.*matching API key.*no hosted-processing key/is,
+      'External cost': /provider may charge.*between the user and that provider/is,
+      Output: /shaped text returns.*saved locally.*target-bound path/is,
+      'User control': /choose the action, provider.*hosted processing off.*device-only override/is,
+      'Failure boundary': /missing key\/model.*blocks egress.*does not try another online provider/is,
+    },
   },
   {
     id: 'reader-speech',
     tabName: /Reader speech/i,
     tableName: 'Reader speech data path',
     evidence: [/online text-to-speech/i, /OpenRouter or OpenAI/i, /provider credits/i],
+    facts: {
+      Input: /current text passage.*Reader document.*built-in phrase.*test a voice/is,
+      'Local stage': /extracts and chunks document text locally.*Reader library.*bookmarks.*provider choice/is,
+      Egress: /passage text.*speech model and voice request.*document file and microphone audio are not sent/is,
+      Provider: /OpenRouter or OpenAI.*only within the same provider/is,
+      Network: /internet connection.*each text-to-speech request/is,
+      'Key or account': /own OpenRouter or OpenAI account.*matching API key.*no speech-provider key/is,
+      'External cost': /speech consumes provider credits.*does not include or absorb/is,
+      Output: /provider-generated audio.*playback.*progress and bookmarks.*locally/is,
+      'User control': /choose provider, model, voice, speed.*device-only mode.*unavailable/is,
+      'Failure boundary': /exhausted credits.*stops speech.*no local speech fallback.*no switch/is,
+    },
   },
   {
     id: 'mumble-find',
     tabName: /Mumble Find/i,
     tableName: 'Mumble Find data path',
     evidence: [/Windows Search.*SystemIndex/is, /no hosted results/i, /nothing leaves/i],
+    facts: {
+      Input: /words typed.*Mumble Find overlay/is,
+      'Local stage': /versioned app catalogue.*Windows Search SystemIndex.*local workers/is,
+      Egress: /nothing leaves this computer.*no hosted results.*no automatic Web Search fallback/is,
+      Provider: /no external provider.*local application catalogue.*local search index/is,
+      Network: /not required.*local query.*local result actions/is,
+      'Key or account': /no Mumble account.*no provider key/is,
+      'External cost': /no external provider charge/is,
+      Output: /up to 12 text-first rows.*Open, Show in folder, or native drag/is,
+      'User control': /separate global shortcut.*category filters.*local-index refresh/is,
+      'Failure boundary': /stale operating-system index.*remain local.*never become Web Search/is,
+    },
   },
   {
     id: 'web-search',
     tabName: /Web Search/i,
     tableName: 'Web Search data path',
     evidence: [/Google, Perplexity, or Brave/i, /Search online/i, /Keep private/i],
+    facts: {
+      Input: /words explicitly selected or dictated.*separate Web Search command/is,
+      'Local stage': /query and selected provider.*bounded, expiring local request.*consent/is,
+      Egress: /only after Search online.*selected words.*external provider's search URL/is,
+      Provider: /Google, Perplexity, or Brave.*named in the confirmation before egress/is,
+      Network: /internet connection.*working configured or default browser.*after consent/is,
+      'Key or account': /no API key.*destination may apply its own account/is,
+      'External cost': /Mumble charges nothing.*supplies no provider access.*remain external/is,
+      Output: /confirmed external browser destination.*not hosted results.*only when the browser opener confirms/is,
+      'User control': /choose the provider.*provider-named confirmation.*Keep private or Search online/is,
+      'Failure boundary': /blank input, Keep private, expiry, replay.*no successful external-open claim.*Mumble Find never falls back/is,
+    },
   },
 ];
 
-async function assertRouteTable(table, facts, name) {
+async function assertRouteTable(table, expectedFacts, name) {
   await table.waitFor();
-  for (const fact of facts) {
+  assert.deepEqual(
+    Object.keys(expectedFacts),
+    routeFactNames,
+    `${name} independent fact oracle is incomplete or out of order`,
+  );
+  assert.equal(
+    await table.locator('tbody tr').count(),
+    routeFactNames.length,
+    `${name} does not contain exactly ten semantic fact rows`,
+  );
+  for (const [fact, expectedValue] of Object.entries(expectedFacts)) {
+    const rowHeader = table.getByRole('rowheader', { name: fact, exact: true });
     assert.equal(
-      await table.getByRole('rowheader', { name: fact, exact: true }).count(),
+      await rowHeader.count(),
       1,
       `${name} is missing the ${fact} semantic fact`,
+    );
+    const row = rowHeader.locator('xpath=ancestor::tr');
+    assert.equal(await row.count(), 1, `${name} ${fact} is not bound to one table row`);
+    const valueCell = row.getByRole('cell');
+    assert.equal(await valueCell.count(), 1, `${name} ${fact} is not bound to one value cell`);
+    const actualValue = (await valueCell.innerText()).trim();
+    assert.notEqual(actualValue, '', `${name} ${fact} value is empty`);
+    assert.match(
+      actualValue,
+      expectedValue,
+      `${name} ${fact} value does not match its independent expected fact`,
     );
   }
 }
@@ -596,7 +691,7 @@ async function privacyRoutes(browser) {
     await assertVisibleFocus(desktopPage, `Privacy ${route.id} route focus`);
     await assertRouteTable(
       panels[index].getByRole('table', { name: route.tableName }),
-      routeFacts,
+      route.facts,
       route.tableName,
     );
     assert.equal(
@@ -669,7 +764,7 @@ async function privacyRoutes(browser) {
   );
   await assertRouteTable(
     mobilePage.locator('#web-search').getByRole('table', { name: 'Web Search data path' }),
-    routeFacts,
+    routeContracts.at(-1).facts,
     'mobile Web Search',
   );
   await noHorizontalOverflow(mobilePage, 'mobile reduced-motion Privacy');
@@ -713,7 +808,7 @@ async function noJavaScriptPath(browser) {
       assert.equal(await panel.isVisible(), true, `no-JavaScript ${route.id} route is hidden`);
       await assertRouteTable(
         panel.getByRole('table', { name: route.tableName }),
-        routeFacts,
+        route.facts,
         `no-JavaScript ${viewport.width}px ${route.tableName}`,
       );
     }
@@ -771,12 +866,18 @@ try {
   console.log(`Browser executable route: ${executablePath ?? 'Playwright-managed Chromium'}`);
   browser = await chromium.launch({ headless: true, executablePath });
   console.log(`Browser version: ${browser.version()}`);
-  await desktopJourney(browser);
-  await platformRecommendations(browser);
-  await downloadsContract(browser);
-  await mobileMenu(browser);
-  await noJavaScriptPath(browser);
-  await privacyRoutes(browser);
+  if (requestedGroup === 'privacy') {
+    await privacyRoutes(browser);
+  } else if (requestedGroup) {
+    throw new Error(`Unknown browser contract group: ${requestedGroup}`);
+  } else {
+    await desktopJourney(browser);
+    await platformRecommendations(browser);
+    await downloadsContract(browser);
+    await mobileMenu(browser);
+    await noJavaScriptPath(browser);
+    await privacyRoutes(browser);
+  }
   console.log(`Browser contract passed: ${results.length} visitor-behaviour groups.`);
 } finally {
   await browser?.close();

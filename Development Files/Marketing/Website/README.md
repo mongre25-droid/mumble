@@ -39,6 +39,9 @@ The current static shell exposes only complete destinations:
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,
 release notes, and recommendation labels are in `src/data/release.json`.
+Privacy route identity, explanatory content, visual steps, control evidence, and
+semantic facts are centralized in `src/data/privacy-routes.ts`; the browser
+contract keeps an independent expected fact matrix.
 `npm.cmd run build` fails closed when that authority drifts from source version or
 the canonical and public Windows artifact bytes.
 
