@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 from urllib.request import urlopen
+
+from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -141,38 +144,86 @@ def metadata(name: str, version: str) -> dict[str, object]:
     }
 
 
+def _profile_target(profile_name: str) -> tuple[str, str, str, tuple[int, int], bool]:
+    match = re.fullmatch(
+        r"(windows|macos|linux)-(x86_64|arm64)-(cp(\d)(\d{2})(t?))",
+        profile_name,
+    )
+    if not match:
+        raise RuntimeError(f"unsupported dependency profile: {profile_name}")
+    platform, architecture, profile_tag, major, minor, suffix = match.groups()
+    interpreter = profile_tag.removesuffix("t")
+    return platform, architecture, interpreter, (int(major), int(minor)), suffix == "t"
+
+
+def _platform_applies(platform: str, architecture: str, wheel_platform: str) -> bool:
+    if platform == "windows":
+        return architecture == "x86_64" and wheel_platform == "win_amd64"
+    if platform == "macos":
+        match = re.fullmatch(r"macosx_\d+_\d+_(arm64|x86_64|universal2)", wheel_platform)
+        return bool(match and match.group(1) in (architecture, "universal2"))
+    if platform == "linux":
+        match = re.fullmatch(
+            r"(?:manylinux(?:1|2010|2014|_\d+_\d+)|musllinux_\d+_\d+)_"
+            r"(x86_64|aarch64)",
+            wheel_platform,
+        )
+        expected = "aarch64" if architecture == "arm64" else architecture
+        return bool(match and match.group(1) == expected)
+    return False
+
+
+def _python_abi_applies(
+    interpreter: str,
+    version: tuple[int, int],
+    free_threaded: bool,
+    wheel_interpreter: str,
+    wheel_abi: str,
+) -> bool:
+    if wheel_abi == "none":
+        return wheel_interpreter == "py3" or wheel_interpreter == interpreter
+    expected_abi = interpreter + ("t" if free_threaded else "")
+    if wheel_interpreter == interpreter and wheel_abi == expected_abi:
+        return True
+    if wheel_abi != "abi3" or free_threaded:
+        return False
+    match = re.fullmatch(r"cp(\d)(\d{1,2})", wheel_interpreter)
+    if not match:
+        return False
+    wheel_version = (int(match.group(1)), int(match.group(2)))
+    return wheel_version[0] == version[0] and wheel_version <= version
+
+
+def _wheel_applies(profile_name: str, filename: str) -> bool:
+    platform, architecture, interpreter, version, free_threaded = _profile_target(
+        profile_name)
+    try:
+        _distribution, _version, _build, tags = parse_wheel_filename(filename)
+    except InvalidWheelFilename:
+        return False
+    for tag in tags:
+        if tag.platform == "any":
+            if tag.abi != "none":
+                continue
+        elif not _platform_applies(platform, architecture, tag.platform):
+            continue
+        if _python_abi_applies(
+            interpreter, version, free_threaded, tag.interpreter, tag.abi
+        ):
+            return True
+    return False
+
+
 def compatible_files(profile_name: str, name: str, version: str) -> list[dict[str, str]]:
     files = RELEASE_FILES[(name.casefold(), version)]
-    if profile_name.startswith("windows-"):
-        platform_tokens = ("win_",)
-        binary_tokens = ("win_amd64",)
-        python_tokens = ("cp313", "abi3")
-    elif profile_name.startswith("macos-arm64-"):
-        platform_tokens = ("macosx_",)
-        binary_tokens = ("arm64", "universal2")
-        python_tokens = (profile_name.rsplit("-", 1)[1], "abi3")
-    elif profile_name.startswith("macos-x86_64-"):
-        platform_tokens = ("macosx_",)
-        binary_tokens = ("x86_64", "universal2")
-        python_tokens = (profile_name.rsplit("-", 1)[1], "abi3")
-    else:
-        platform_tokens = ("manylinux", "musllinux")
-        binary_tokens = ("x86_64",)
-        python_tokens = ("cp313", "abi3")
-    pure = [row for row in files if "-none-any.whl" in row["filename"]]
-    binary = [
-        row for row in files
-        if row["filename"].endswith(".whl")
-        and any(token in row["filename"] for token in platform_tokens)
-        and any(token in row["filename"] for token in binary_tokens)
-        and (any(token in row["filename"] for token in python_tokens)
-             or "-py3-none-" in row["filename"])
+    wheels = [
+        row for row in files if _wheel_applies(profile_name, row["filename"])
     ]
     source = [
         row for row in files
         if row["filename"].endswith((".tar.gz", ".zip"))
     ]
-    candidates = pure + binary + source
+    candidates = wheels + source
     if not candidates:
         raise RuntimeError(f"no target-compatible artifact for {profile_name}: {name}=={version}")
     return sorted(candidates, key=lambda row: row["filename"])

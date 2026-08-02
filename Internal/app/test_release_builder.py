@@ -10,7 +10,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).parents[2]
-ACCEPTED_PACKAGE_BASE = "2f000b43daced675fcbfa53c8e7c75862124906b"
+PACKAGE_PROVENANCE_BASE = "9d583ec31432b975e3a8955d2ebecf9c3ca87080"
 BUILDER_PATH = (
     REPO_ROOT / "Development Files" / "Tooling" / "_rebuild_zip.py"
 )
@@ -57,7 +57,7 @@ def test_windows_candidate_embeds_and_validates_complete_provenance():
         payload,
         repo_root=REPO_ROOT,
         members=members,
-        expected_source_commit=ACCEPTED_PACKAGE_BASE,
+        expected_source_commit=PACKAGE_PROVENANCE_BASE,
     )
     assert decoded["package"] == {
         "architecture": "x86_64",

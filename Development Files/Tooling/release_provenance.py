@@ -160,7 +160,7 @@ def _git_head(repo_root: Path) -> str:
 def _inventory(repo_root: Path) -> tuple[dict[str, Any], bytes]:
     path = repo_root / "Development Files" / "Legal" / "release-inventory.json"
     try:
-        raw = path.read_bytes()
+        raw = _packaged_text(path.read_bytes())
         decoded = json.loads(raw)
     except (OSError, json.JSONDecodeError) as exc:
         raise ProvenanceError("canonical release inventory is missing or invalid") from exc
@@ -221,7 +221,7 @@ def _inventory(repo_root: Path) -> tuple[dict[str, Any], bytes]:
 def _dependency_closure(repo_root: Path) -> tuple[dict[str, Any], bytes]:
     path = repo_root / "Development Files" / "Legal" / "dependency-lock.json"
     try:
-        raw = path.read_bytes()
+        raw = _packaged_text(path.read_bytes())
         decoded = json.loads(raw)
     except (OSError, json.JSONDecodeError) as exc:
         raise ProvenanceError("canonical dependency closure is missing or invalid") from exc

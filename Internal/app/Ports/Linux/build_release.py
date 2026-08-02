@@ -24,6 +24,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import tarfile
 import tempfile
 import time
@@ -34,6 +35,15 @@ PORT_ROOT = Path(__file__).resolve().parent
 APP_ROOT = PORT_ROOT / "app"
 DEFAULT_OUTPUT = PORT_ROOT / "dist"
 ZIP_EPOCH = 315532800  # 1980-01-01 00:00:00 UTC (ZIP's minimum timestamp).
+TEXT_SUFFIXES = {
+    ".css", ".desktop", ".html", ".js", ".json", ".md", ".py",
+    ".service", ".sh", ".sql", ".txt",
+}
+RETAINED_LICENSE_PATHS = (
+    "computer_control/Apache-2.0.txt",
+    "computer_control/comtypes-MIT.txt",
+    "computer_control/pywin32-BSD.txt",
+)
 
 # Release contents are an allowlist, not "everything except known junk". This
 # prevents a new audit JSON, cache, test fixture, Windows copy, or local secret
@@ -182,6 +192,14 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _packaged_bytes(path: Path) -> bytes:
+    """Return checkout-independent bytes for a release source."""
+    data = path.read_bytes()
+    if path.suffix.lower() in TEXT_SUFFIXES or path.name == "LICENSE":
+        return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return data
+
+
 def _provenance_module(repository_root: Path):
     path = (
         repository_root / "Development Files" / "Tooling" /
@@ -196,6 +214,33 @@ def _provenance_module(repository_root: Path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _git_tracked_snapshot(repository_root: Path) -> frozenset[str]:
+    """Return one canonical snapshot of every Git-tracked checkout path."""
+    result = subprocess.run(
+        ["git", "-C", str(repository_root), "ls-files", "-z", "--cached"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"cannot establish tracked release sources: {detail}")
+    try:
+        names = [item.decode("utf-8") for item in result.stdout.split(b"\0") if item]
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("tracked release source name is not valid UTF-8") from exc
+    if len(names) != len(set(names)):
+        raise RuntimeError("duplicate path in tracked release source snapshot")
+    for name in names:
+        path = Path(name)
+        if (
+            not name or "\\" in name or path.is_absolute()
+            or name != path.as_posix() or any(part in ("", ".", "..") for part in path.parts)
+        ):
+            raise RuntimeError(f"unsafe path in tracked release source snapshot: {name!r}")
+    return frozenset(names)
 
 
 def _checked_source(path: Path, allowed_root: Path) -> Path:
@@ -230,33 +275,54 @@ def _checked_source(path: Path, allowed_root: Path) -> Path:
     return candidate
 
 
-def _runtime_files() -> list[tuple[str, bytes, int]]:
+def _tracked_source(
+    path: Path,
+    allowed_root: Path,
+    repository_root: Path,
+    tracked: frozenset[str],
+) -> Path:
+    """Require an allowlisted source to be regular, contained, and tracked."""
+    candidate = _checked_source(path, allowed_root)
+    try:
+        relative = candidate.relative_to(repository_root).as_posix()
+    except ValueError as exc:
+        raise RuntimeError(f"release source escapes the repository: {path}") from exc
+    if relative not in tracked:
+        raise RuntimeError(f"release source is not tracked by Git: {relative}")
+    return candidate
+
+
+def _runtime_files(
+    tracked: frozenset[str] | None = None,
+) -> list[tuple[str, bytes, int]]:
     """Return sorted ``(archive path, bytes, mode)`` runtime entries."""
     rows: list[tuple[str, bytes, int]] = []
     repository_root = _repository_root()
+    if tracked is None:
+        tracked = _git_tracked_snapshot(repository_root)
     fixed = [
-        (_checked_source(PORT_ROOT / "install.sh", PORT_ROOT),
+        (_tracked_source(PORT_ROOT / "install.sh", PORT_ROOT, repository_root, tracked),
          "install.sh", 0o755),
-        (_checked_source(PORT_ROOT / "uninstall.sh", PORT_ROOT),
+        (_tracked_source(PORT_ROOT / "uninstall.sh", PORT_ROOT, repository_root, tracked),
          "uninstall.sh", 0o755),
-        (_checked_source(APP_ROOT / "READ ME FIRST.txt", APP_ROOT),
+        (_tracked_source(APP_ROOT / "READ ME FIRST.txt", APP_ROOT, repository_root, tracked),
          "READ ME FIRST.txt", 0o644),
-        (_checked_source(repository_root / "LICENSE", repository_root),
+        (_tracked_source(repository_root / "LICENSE", repository_root, repository_root, tracked),
          "LICENSE", 0o644),
-        (_checked_source(
+        (_tracked_source(
             repository_root / "Internal" / "app" / "THIRD_PARTY_NOTICES.md",
-            repository_root), "THIRD_PARTY_NOTICES.md", 0o644),
-        (_checked_source(
+            repository_root, repository_root, tracked), "THIRD_PARTY_NOTICES.md", 0o644),
+        (_tracked_source(
             repository_root / "Development Files" / "Legal" /
-            "release-inventory.json", repository_root),
+            "release-inventory.json", repository_root, repository_root, tracked),
          "RELEASE-INVENTORY.json", 0o644),
-        (_checked_source(
+        (_tracked_source(
             repository_root / "Development Files" / "Legal" /
-            "dependency-lock.json", repository_root),
+            "dependency-lock.json", repository_root, repository_root, tracked),
          "DEPENDENCY-CLOSURE.json", 0o644),
     ]
     for source, name, mode in fixed:
-        data = source.read_bytes()
+        data = _packaged_bytes(source)
         if name.endswith(".sh") and b"\r" in data:
             raise RuntimeError(f"{source} contains CR bytes; Linux scripts must use LF")
         rows.append((name, data, mode))
@@ -264,16 +330,36 @@ def _runtime_files() -> list[tuple[str, bytes, int]]:
     licence_root = repository_root / "Internal" / "app" / "licenses"
     if not licence_root.is_dir():
         raise RuntimeError(f"retained licence directory is missing: {licence_root}")
-    for source in sorted(licence_root.rglob("*")):
-        if not source.is_file():
+    discovered_licences: dict[str, Path] = {}
+    for source in sorted(licence_root.rglob("*"), key=lambda item: item.as_posix()):
+        if source.is_symlink():
+            raise RuntimeError(f"retained licence source contains a symlink: {source}")
+        if source.is_dir():
             continue
-        checked = _checked_source(source, repository_root)
+        if not source.is_file():
+            raise RuntimeError(f"retained licence source is unexpected: {source}")
         relative = source.relative_to(licence_root).as_posix()
-        rows.append((f"licenses/{relative}", checked.read_bytes(), 0o644))
+        if relative in discovered_licences:
+            raise RuntimeError(f"duplicate retained licence source: {relative}")
+        discovered_licences[relative] = source
+    expected_licences = set(RETAINED_LICENSE_PATHS)
+    actual_licences = set(discovered_licences)
+    if actual_licences != expected_licences:
+        unexpected = sorted(actual_licences - expected_licences)
+        missing = sorted(expected_licences - actual_licences)
+        raise RuntimeError(
+            "retained licence sources are unexpected or missing; "
+            f"unexpected={unexpected}; missing={missing}"
+        )
+    for relative in RETAINED_LICENSE_PATHS:
+        checked = _tracked_source(
+            discovered_licences[relative], licence_root, repository_root, tracked)
+        rows.append((f"licenses/{relative}", _packaged_bytes(checked), 0o644))
 
     for relative in RUNTIME_PATHS:
-        source = _checked_source(APP_ROOT / relative, APP_ROOT)
-        rows.append((f"app/{relative}", source.read_bytes(), 0o644))
+        source = _tracked_source(
+            APP_ROOT / relative, APP_ROOT, repository_root, tracked)
+        rows.append((f"app/{relative}", _packaged_bytes(source), 0o644))
 
     names = [name for name, _data, _mode in rows]
     if len(names) != len(set(names)):
@@ -285,8 +371,13 @@ def _runtime_files() -> list[tuple[str, bytes, int]]:
     return sorted(rows, key=lambda row: row[0])
 
 
-def _entries(version: str, package_format: str) -> list[tuple[str, bytes, int]]:
-    runtime = _runtime_files()
+def _entries(
+    version: str,
+    package_format: str,
+    runtime: list[tuple[str, bytes, int]] | None = None,
+) -> list[tuple[str, bytes, int]]:
+    if runtime is None:
+        runtime = _runtime_files()
     manifest = {
         "schema": 1,
         "application": "Mumble voice-to-text",
@@ -497,12 +588,17 @@ def build(output_dir: Path) -> list[Path]:
     version = _version()
     root_name = f"Mumble-Linux-{version}"
     epoch = _epoch()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    repository_root = _repository_root()
+    tracked = _git_tracked_snapshot(repository_root)
+    runtime = _runtime_files(tracked)
+    tar_entries = _entries(version, "tar.gz", runtime)
+    zip_entries = _entries(version, "zip", runtime)
+    if [row[0] for row in tar_entries] != [row[0] for row in zip_entries]:
+        raise RuntimeError("tar.gz and zip release source membership differs")
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     tar_path = output_dir / f"{root_name}.tar.gz"
     zip_path = output_dir / f"{root_name}.zip"
-    tar_entries = _entries(version, "tar.gz")
-    zip_entries = _entries(version, "zip")
     _tar_bytes(root_name, tar_entries, epoch, tar_path)
     _zip_bytes(root_name, zip_entries, epoch, zip_path)
     _verify_tar(tar_path, root_name, tar_entries)

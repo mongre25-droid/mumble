@@ -145,8 +145,7 @@ def _source_members(repo_root: Path) -> dict[str, tuple[bytes, int]]:
             legal_sources[f"licenses/{relative}"] = source
     for name, source in legal_sources.items():
         checked = require_tracked(_checked_file(source, repo_root))
-        # These are canonical legal authorities, so package their exact bytes.
-        members[name] = (checked.read_bytes(), 0o644)
+        members[name] = (_packaged_bytes(checked), 0o644)
 
     if len(members) != len(set(members)):
         raise RuntimeError("duplicate macOS package member")

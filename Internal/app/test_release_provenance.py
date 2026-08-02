@@ -12,6 +12,10 @@ ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "Development Files" / "Tooling" / "release_provenance.py"
 
 
+def _packaged_text(path):
+    return path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def _load_module():
     spec = importlib.util.spec_from_file_location("release_provenance", MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
@@ -27,8 +31,8 @@ def _windows_members():
     return {
         "Mumble.exe": (b"launcher", 0o644),
         "LICENSE": (ROOT / "LICENSE").read_bytes(),
-        "RELEASE-INVENTORY.json": (legal / "release-inventory.json").read_bytes(),
-        "DEPENDENCY-CLOSURE.json": (legal / "dependency-lock.json").read_bytes(),
+        "RELEASE-INVENTORY.json": _packaged_text(legal / "release-inventory.json"),
+        "DEPENDENCY-CLOSURE.json": _packaged_text(legal / "dependency-lock.json"),
         prefix + "requirements-lock-win-x86_64-cp313.txt": (
             app / "requirements-lock-win-x86_64-cp313.txt"
         ).read_bytes(),
@@ -51,7 +55,7 @@ def _windows_members():
         prefix + "cloud_schema.sql": (app / "cloud_schema.sql").read_bytes(),
         prefix + "update.py": (app / "update.py").read_bytes(),
         prefix + "mumble.py": (app / "mumble.py").read_bytes(),
-        prefix + "model_provenance.py": (app / "model_provenance.py").read_bytes(),
+        prefix + "model_provenance.py": _packaged_text(app / "model_provenance.py"),
         prefix + "install.ps1": (app / "install.ps1").read_bytes(),
         prefix + "uninstall.ps1": (app / "uninstall.ps1").read_bytes(),
     }
