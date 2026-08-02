@@ -123,9 +123,134 @@
   {
     "id": "listen",
     "label": "Listen",
-    "summary": "Read documents with saved progress, find, bookmarks, summaries, and optional voice playback.",
-    "proof": "Provider-backed speech is an explicit online choice and may carry the provider's own cost.",
-    "story": null
+    "summary": "Turn supported documents into a library-first listening workspace with saved progress, find, bookmarks, and optional summaries.",
+    "proof": "Playback uses the configured online text-to-speech route and requires network access, a user provider key, provider availability, and provider credits.",
+    "story": {
+      "opening": {
+        "title": "Let the document keep your place while you listen.",
+        "summary": "Add supported documents to Reader, choose an online voice and speed, then play or pause while Mumble preserves the document, reading position, progress, find results, and bookmarks in one library-first flow."
+      },
+      "demonstration": {
+        "note": "Genuine Mumble Reader interface with demonstration library content. The close-up states explain the accepted flow and do not play audio on this website.",
+        "states": [
+          {
+            "id": "library",
+            "label": "Choose document",
+            "status": "Library ready",
+            "title": "Start from the document, not a blank player.",
+            "body": "Open a saved document from All, Collections, History, search, Starred, or Continue Reading. Reader keeps library and progress context visible before playback begins.",
+            "field": "Demonstration document · PDF · 22% complete",
+            "detail": "Illustrative close-up based on supported Reader library states"
+          },
+          {
+            "id": "listen",
+            "label": "Listen",
+            "status": "Online speech route",
+            "title": "Play or pause with voice and speed visible.",
+            "body": "Reader speech uses the configured online text-to-speech route. Network access, a user provider key, provider availability, and available provider credits are required before audio can be created.",
+            "field": "Playing · Demonstration document · 1×",
+            "detail": "Illustrative playback state; this static website produces no audio"
+          },
+          {
+            "id": "return",
+            "label": "Return",
+            "status": "Position saved",
+            "title": "Resume from the saved reading position.",
+            "body": "Return through Continue Reading, inspect progress, find a passage, and use bookmarks without losing the document position that Reader has retained.",
+            "field": "Resume at 22% · Find and bookmarks available",
+            "detail": "Illustrative continuity state using supported Reader controls"
+          }
+        ]
+      },
+      "mechanism": {
+        "title": "The document stays primary. Online speech remains explicit.",
+        "summary": "Listen connects supported document import, a saved library, configured online playback, navigation, progress, and a separately chosen summary route without hiding their boundaries.",
+        "steps": [
+          {
+            "id": "document",
+            "title": "Add a supported document",
+            "body": "Paste plain text, or open TXT, Markdown, PDF, DOCX, HTML, EPUB, RTF, CSV, XLSX, PPTX, or ODT. Reader extracts a structured document and adds it to the saved library.",
+            "proof": "Unsupported formats are not advertised as Reader inputs."
+          },
+          {
+            "id": "library",
+            "title": "Organise the saved library",
+            "body": "Use All, Collections, History, library search, Starred, and Continue Reading to return to the right document rather than rebuilding a temporary playlist.",
+            "proof": "Collections and reading history remain part of Reader's library-first model."
+          },
+          {
+            "id": "playback",
+            "title": "Choose the online voice, then play or pause",
+            "body": "Select the configured provider and model, then choose the voice and speed. Reader sends short document passages through that frozen online text-to-speech route to create audio, then keeps play, pause, stop, and progress close to the document.",
+            "proof": "Network access, a user provider key, provider availability, and available provider credits are required."
+          },
+          {
+            "id": "navigation",
+            "title": "Find, bookmark, and move through the document",
+            "body": "Find text inside the open document, move between matches, add a bookmark at the current position, and choose another passage without separating navigation from playback.",
+            "proof": "Find and bookmarks operate on the document already open in Reader."
+          },
+          {
+            "id": "continuity",
+            "title": "Keep reading position and progress",
+            "body": "Reader records the current word as the saved reading position, reports progress, and offers Continue Reading so a later session can return to the retained place.",
+            "proof": "Closing Find or Summary restores useful focus without moving the saved reading or playback position."
+          },
+          {
+            "id": "summary",
+            "title": "Choose an optional summary separately",
+            "body": "Summary is not part of playback. When you choose it and a configured analysis route is ready, Mumble sends document text to that provider; the resulting summary can then be read through the separately configured speech route.",
+            "proof": "A summary action and text-to-speech playback are two distinct online decisions."
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "long-document",
+          "title": "Long document",
+          "summary": "Add a supported long document and keep its reading controls close to the text.",
+          "steps": [
+            "Open Reader and add a supported document or paste plain text; it joins the saved library before playback.",
+            "Choose the configured online text-to-speech provider, model, voice, and speed.",
+            "Confirm network access, a user provider key, provider availability, and available provider credits before choosing Play.",
+            "Play or pause while the document, current position, and progress remain visible together."
+          ]
+        },
+        {
+          "id": "resume-reading",
+          "title": "Resume reading",
+          "summary": "Return later without searching manually for the last spoken passage.",
+          "steps": [
+            "Open Reader and choose Continue Reading or the saved document from the library.",
+            "Review the retained reading position and progress before audio starts.",
+            "Check that the configured online speech route is ready, then keep or change voice and speed.",
+            "Choose Play to continue from the saved position, or select another passage deliberately."
+          ]
+        },
+        {
+          "id": "find-passage",
+          "title": "Find a passage",
+          "summary": "Move directly to matching text while keeping playback and position understandable.",
+          "steps": [
+            "Open the saved document and choose Find in document.",
+            "Enter a phrase and move through the matching passages with Previous or Next.",
+            "Choose the intended passage; Reader updates the visible document position without creating a separate result.",
+            "Resume configured online playback there, or add a bookmark for a later return."
+          ]
+        },
+        {
+          "id": "retain-progress",
+          "title": "Retain progress",
+          "summary": "Finish a session with a durable place to return, even when no summary is requested.",
+          "steps": [
+            "Pause or stop Reader when the listening session should end.",
+            "Reader retains the document's current word position and updates its visible progress.",
+            "Return through the library, Collections, History, Starred, or Continue Reading when the document is needed again.",
+            "Choose Summary only as a separate optional document-text action; retained playback progress does not depend on it."
+          ]
+        }
+      ]
+    }
   },
   {
     "id": "find",

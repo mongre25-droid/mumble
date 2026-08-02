@@ -12,6 +12,7 @@ export interface Props {
 const { job, surface } = Astro.props;
 if (!job.story) throw new Error(`${job.label} has no detailed job story`);
 const story = job.story;
+const isListen = job.id === 'listen';
 const storyId = `job-${job.id}`;
 const stageTitleId = `${storyId}-stage-title`;
 const mechanismTitleId = `${storyId}-mechanism-title`;
@@ -22,7 +23,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
 
 {surface === 'home' && (
   <section
-    class="product-stage write-product-stage"
+    class:list={['product-stage', `${job.id}-product-stage`]}
     aria-labelledby={stageTitleId}
     data-job-story={job.id}
     data-story-surface="home"
@@ -30,28 +31,33 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   >
     <div class="stage-bar">
       <span class="stage-brand">Mumble / {job.label}</span>
-      <span class="stage-state"><i aria-hidden="true"></i>Local route by default</span>
+      <span class="stage-state"><i aria-hidden="true"></i>{isListen ? 'Online speech requirements visible' : 'Local route by default'}</span>
     </div>
 
-    <figure class="write-capture">
+    <figure class:list={['write-capture', isListen && 'listen-capture']}>
       <img
-        src="/product/home.webp"
+        src={isListen ? '/product/reader.webp' : '/product/home.webp'}
         width="1180"
         height="820"
-        loading="eager"
-        fetchpriority="high"
-        alt="Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status"
+        loading={isListen ? 'lazy' : 'eager'}
+        fetchpriority={isListen ? 'auto' : 'high'}
+        alt={isListen
+          ? 'Genuine Mumble Reader capture showing online voice selection, library tabs, Continue Reading progress, and demonstration library content'
+          : 'Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status'}
       />
       <figcaption>
-        <strong>Genuine Mumble capture</strong>
-        <span>Current accepted Windows source surface</span>
+        <strong>{isListen ? 'Genuine Mumble Reader' : 'Genuine Mumble capture'}</strong>
+        <span>{isListen ? 'Current interface with clearly labelled demonstration library content' : 'Current accepted Windows source surface'}</span>
       </figcaption>
     </figure>
 
     <div class="write-closeup">
       <header class="write-closeup-header">
-        <h2 id={stageTitleId}>See where your words return.</h2>
+        <h2 id={stageTitleId}>{isListen ? 'See the complete Listen path.' : 'See where your words return.'}</h2>
         <p>{story.demonstration.note}</p>
+        {isListen && (
+          <p>Playback uses your configured online text-to-speech route; this website itself does not play audio.</p>
+        )}
       </header>
 
       <div class="write-demo-tabs" role="tablist" aria-label={`${job.label} demonstration steps`} data-job-tablist={job.id}>
@@ -86,11 +92,19 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
               <h3>{state.title}</h3>
               <p>{state.body}</p>
             </div>
-            <div class="write-field" aria-label={`Illustrative writing field during ${state.label}`}>
-              <span>Unbranded writing field</span>
-              <p>{state.field}<i aria-hidden="true"></i></p>
-            </div>
-            {state.id === 'speak' && (
+            {isListen ? (
+              <div class="listen-demo-field" aria-label={`Illustrative Reader close-up during ${state.label}`}>
+                <span>Illustrative Reader close-up</span>
+                <strong>{state.field}</strong>
+                <small>{'detail' in state ? state.detail : ''}</small>
+              </div>
+            ) : (
+              <div class="write-field" aria-label={`Illustrative writing field during ${state.label}`}>
+                <span>Unbranded writing field</span>
+                <p>{state.field}<i aria-hidden="true"></i></p>
+              </div>
+            )}
+            {state.id === 'speak' && 'spoken' in story.demonstration && (
               <p class="write-spoken-sample">
                 <strong>Example speech</strong>
                 <q>{story.demonstration.spoken}</q>
@@ -120,6 +134,22 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
       <p>{story.mechanism.summary}</p>
     </header>
 
+    {isListen && (
+      <figure class="reader-product-proof">
+        <img
+          src="/product/reader.webp"
+          width="1180"
+          height="820"
+          loading="lazy"
+          alt="Genuine Mumble Reader capture showing the online voice route and a saved library with demonstration document titles"
+        />
+        <figcaption>
+          <strong>Genuine Mumble Reader interface</strong>
+          <span>Demonstration library content; the controls and route shown are current product evidence.</span>
+        </figcaption>
+      </figure>
+    )}
+
     <ol class="job-sequence">
       {story.mechanism.steps.map((step, index) => (
         <li>
@@ -132,6 +162,27 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
         </li>
       ))}
     </ol>
+
+    {isListen && (
+      <div class="reader-route-boundaries">
+        <aside class="reader-online-boundary" role="note" aria-label="Reader speech online requirements">
+          <div>
+            <h3>Reader speech uses a configured online text-to-speech route.</h3>
+            <p>Short document passages go to the deliberately selected provider to create audio. Mumble does not describe this speech route as local or offline.</p>
+          </div>
+          <dl>
+            <div><dt>Connection</dt><dd>Network access required</dd></div>
+            <div><dt>Access</dt><dd>User provider key required</dd></div>
+            <div><dt>Service</dt><dd>Provider availability required</dd></div>
+            <div><dt>Cost boundary</dt><dd>Available provider credits required</dd></div>
+          </dl>
+        </aside>
+        <aside class="reader-summary-boundary" role="note" aria-label="Reader summary boundary">
+          <h3>Summary stays separate from playback.</h3>
+          <p>Only when you choose Summary and its configured analysis route is ready does Mumble send document text to that provider. Saved position and playback do not depend on a summary.</p>
+        </aside>
+      </div>
+    )}
   </section>
 )}
 
@@ -160,5 +211,11 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
         </article>
       ))}
     </div>
+    {isListen && (
+      <aside class="reader-task-route" role="note" aria-label="Listen task route">
+        <strong>Tasks rather than professions.</strong>
+        <p>Every Listen sequence keeps the configured online text-to-speech route visible. Network access, a user provider key, provider availability, and provider credits remain required for playback; optional Summary remains separate.</p>
+      </aside>
+    )}
   </section>
 )}

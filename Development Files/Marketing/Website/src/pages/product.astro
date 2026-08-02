@@ -6,14 +6,16 @@ import jobs from '../data/jobs.json';
 import release from '../data/release.json';
 
 const write = jobs.find((job) => job.id === 'write');
+const listen = jobs.find((job) => job.id === 'listen');
 const recovery = write?.story?.mechanism.steps.find((step) => step.id === 'recovery');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!listen?.story) throw new Error('Listen story authority is missing');
 if (!recovery) throw new Error('Write recovery authority is missing');
 ---
 
 <BaseLayout
-  title="Product — How Mumble Write returns text"
-  description="Follow Mumble Write from the deliberate global command and visible Island state through local transcription, intended-cursor return, and Deck recovery."
+  title="Product — How Mumble Write and Listen work"
+  description="Follow Mumble Write from speech to the intended cursor, then see Reader connect supported documents, a saved library, online playback, navigation, progress, and optional summaries."
   currentPath="/product/"
 >
   <section class="page-hero shell" aria-labelledby="product-title">
@@ -49,6 +51,16 @@ if (!recovery) throw new Error('Write recovery authority is missing');
       <a class="button button-quiet" href="/use-cases/">Follow three Write tasks</a>
     </div>
   </section>
+
+  <section class="listen-intro shell" aria-labelledby="listen-product-title">
+    <div>
+      <h2 id="listen-product-title">Listen keeps the document, the place, and the route together.</h2>
+      <p>{listen.summary}</p>
+    </div>
+    <p>{listen.proof}</p>
+  </section>
+
+  <JobStory job={listen} surface="product" />
 
   <section class="journey-next" aria-labelledby="product-next-title">
     <div class="shell journey-next-layout">

@@ -27,15 +27,17 @@ Node 22.12 or later is required.
 
 The current maintained site exposes six complete outputs:
 
-1. Home (`/`) introduces the local-first offer, one accepted product capture,
+1. Home (`/`) introduces the local-first offer, accepted product evidence,
    the five canonical jobs, privacy boundaries, the current release position,
-   and the Write journey.
+   the Write journey, and a genuine Reader-led Listen journey.
 2. Product (`/product/`) explains Write's deliberate command, visible Island
    states, local transcription default, Stop-time intended-cursor return, and
-   Deck recovery.
-3. Use Cases (`/use-cases/`) applies the same Write model to everyday notes,
-   longer text, and cross-application work without changing to profession-first
-   navigation.
+   Deck recovery. It also explains supported Reader documents, library and
+   collections, configured online playback, find, bookmarks, saved position,
+   progress, and optional summaries with distinct route and cost boundaries.
+3. Use Cases (`/use-cases/`) applies the shared task-first model to everyday
+   writing, long-document listening, resumed reading, passage finding, and
+   retained progress without changing to profession-first navigation.
 4. Privacy (`/privacy/`) explains Local Transcription and Mumble Find as
    separate local routes, keeps optional online routes distinct, and states the
    static website's zero-CDN, no-analytics, and no-tracking boundary.
@@ -54,6 +56,9 @@ the canonical and public Windows artifact bytes.
 
 - Core Home, navigation, release facts, and download access remain available
   without JavaScript.
+- The shared Write and Listen stories remain complete as text without
+  JavaScript; their direct-step controls add keyboard navigation when scripting
+  is available.
 - Operating-system detection changes only the recommended action; complete
   Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.
