@@ -1353,6 +1353,10 @@ code {
   font-size: clamp(3.2rem, 7.2vw, 5.8rem);
   font-weight: 650;
   letter-spacing: -0.04em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
 .write-product-stage {
   align-self: center;
 }
@@ -1686,6 +1690,10 @@ code {
 .website-privacy > div > p {
   max-width: var(--measure-narrow);
   margin-top: var(--space-4);
+  color: var(--text-soft);
+  line-height: 1.7;
+}
+
 .page-hero > div > p {
   max-width: var(--measure-prose);
   margin-top: var(--space-5);
@@ -1778,6 +1786,11 @@ code {
 .source-control-proof h3,
 .online-route-ledger h3 {
   font-size: 1.42rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
 .page-hero-support .text-link {
   display: inline-block;
   margin-top: var(--space-4);
@@ -1826,6 +1839,10 @@ code {
 .source-control-proof header p,
 .online-route-ledger p {
   max-width: var(--measure-narrow);
+  color: var(--text-soft);
+  line-height: 1.72;
+}
+
 .job-sequence p {
   max-width: 60ch;
   color: var(--text);
