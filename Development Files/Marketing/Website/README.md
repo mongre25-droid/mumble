@@ -25,13 +25,16 @@ Node 22.12 or later is required.
 
 ## Page structure
 
-The current tracer bullet exposes only complete destinations:
+The current static shell exposes only complete destinations:
 
 1. Home introduces the local-first offer, one accepted product capture, the five
    canonical jobs, privacy boundaries, and the current release position.
-2. Downloads presents the hash-bound Windows candidate and visible gated states
+2. Privacy exposes six separately controlled routes: Local Transcription, Cloud
+   Transcription, Text Shaping, Reader speech, Mumble Find, and Web Search. Each
+   keeps the same visual path and complete semantic-table alternative.
+3. Downloads presents the hash-bound Windows candidate and visible gated states
    for macOS and Linux from one release authority.
-3. The not-found page returns visitors to Home or Downloads.
+4. The not-found page returns visitors to Home or Downloads.
 
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,
@@ -46,6 +49,8 @@ the canonical and public Windows artifact bytes.
 - Operating-system detection changes only the recommended action; complete
   Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.
+- The Privacy explorer preserves all six local/online routes without JavaScript;
+  JavaScript adds orientation-aware keyboard tabs without changing route truth.
 - The shared shell preserves skip navigation, semantic landmarks, metadata,
   visible keyboard focus, reduced motion, forced colours, and narrow reflow.
 - Product media is local. The site uses no external fonts, analytics, CDN
