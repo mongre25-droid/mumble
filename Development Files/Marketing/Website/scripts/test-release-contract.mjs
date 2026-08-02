@@ -85,6 +85,23 @@ rejects(
   }),
   /publication\.state must remain/,
 );
+for (const [field, contradictoryValue] of [
+  ['label', 'Public release is available'],
+  ['statusLabel', 'Published'],
+  ['dateLabel', 'Published today'],
+  ['reason', 'Every release gate is complete.'],
+]) {
+  rejects(
+    `publication ${field} cannot contradict the gated state`,
+    changed((candidate) => { candidate.publication[field] = contradictoryValue; }),
+    new RegExp(`publication\\.${field} must remain`),
+  );
+}
+rejects(
+  'publisher signature label cannot contradict its unaccepted state',
+  changed((candidate) => { candidate.platforms[0].integrity.publisherSignature.label = 'Accepted'; }),
+  /windows\.integrity\.publisherSignature\.label must remain/,
+);
 rejects(
   'coordinated artifact replacement cannot redefine accepted bytes',
   changed((candidate) => {

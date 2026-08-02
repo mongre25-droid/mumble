@@ -15,6 +15,10 @@ export const acceptedReleaseContract = Object.freeze({
   publication: {
     state: 'gated',
     publishedAt: null,
+    label: 'Public release remains gated',
+    statusLabel: 'Gated',
+    dateLabel: 'Not published',
+    reason: 'Installation lifecycle, physical acceptance, signing, deployment, release, and owner acceptance are not complete.',
   },
   releaseNotes: {
     state: 'not-published',
@@ -29,7 +33,10 @@ export const acceptedReleaseContract = Object.freeze({
     integrity: {
       algorithm: 'SHA-256',
       value: '70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493',
-      publisherSignature: 'not-accepted',
+      publisherSignature: {
+        state: 'not-accepted',
+        label: 'Not accepted',
+      },
     },
   },
   gatedPlatformIds: ['macos', 'linux'],
@@ -60,6 +67,10 @@ export function validateReleaseAuthority(authority, evidence) {
   requireString(authority.publication?.reason, 'publication.reason');
   requireExact(authority.publication.state, accepted.publication.state, 'publication.state');
   requireExact(authority.publication.publishedAt, accepted.publication.publishedAt, 'publication.publishedAt');
+  requireExact(authority.publication.label, accepted.publication.label, 'publication.label');
+  requireExact(authority.publication.statusLabel, accepted.publication.statusLabel, 'publication.statusLabel');
+  requireExact(authority.publication.dateLabel, accepted.publication.dateLabel, 'publication.dateLabel');
+  requireExact(authority.publication.reason, accepted.publication.reason, 'publication.reason');
 
   requireString(authority.releaseNotes?.state, 'releaseNotes.state');
   requireString(authority.releaseNotes?.label, 'releaseNotes.label');
@@ -151,8 +162,13 @@ export function validateReleaseAuthority(authority, evidence) {
       requireExact(platform.integrity.value, accepted.windows.integrity.value, 'windows.integrity.value');
       requireExact(
         platform.integrity.publisherSignature.state,
-        accepted.windows.integrity.publisherSignature,
+        accepted.windows.integrity.publisherSignature.state,
         'windows.integrity.publisherSignature.state',
+      );
+      requireExact(
+        platform.integrity.publisherSignature.label,
+        accepted.windows.integrity.publisherSignature.label,
+        'windows.integrity.publisherSignature.label',
       );
 
       const artifact = evidence.artifactFacts(platform.artifactLocation);
