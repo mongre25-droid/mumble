@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 from typing import Any
+from urllib.parse import urlsplit
 
 
 AUTHORITY_ID = "mumble-current-state"
@@ -33,9 +34,9 @@ _EXPECTED_FIELDS = {
     "records_ci_status": "passed",
     "records_review_status": "rejected",
     "record_candidate_status": "awaiting-review",
-    "rejected_records_candidate": "bf778c698064023bd3fe8e33abb8a1093c1dd8a0",
+    "rejected_records_candidate": "21c21567029b1232e07ba85ca4d196820f3cfed9",
     "rejected_records_candidate_status": "rejected",
-    "records_correction_parent": "bf778c698064023bd3fe8e33abb8a1093c1dd8a0",
+    "records_correction_parent": "21c21567029b1232e07ba85ca4d196820f3cfed9",
     "records_review_task": "019fc013-3ab9-7bc0-9c39-f63385bb8359",
     "package_build_status": "passed",
     "package_install_status": "not-run",
@@ -60,8 +61,9 @@ _EXPECTED_FIELDS = {
     "windows_package_sha256": "70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493",
     "failed_ci_run": "30728545428",
     "cancelled_ci_runs": "30728750267,30730118039,30730292106",
+    "document_structure_sha256": "31704788AA7C423EB4BA7BAC8632512D368B7542BB6EDE9078886CF632D7962C",
     "non_projection_text_sha256": "7DF73E89BE7E3FD9F36B8CE8426E2FB60E96E2A8052D7C9A8BDB68CB85AEB07B",
-    "current_record": "Entry 96",
+    "current_record": "Entry 97",
     "pr_number": "49",
     "pr_status": "merged",
     "merge_status": "merged",
@@ -124,6 +126,7 @@ class CurrentStatus:
     windows_package_sha256: str
     failed_ci_run: str
     cancelled_ci_runs: str
+    document_structure_sha256: str
     non_projection_text_sha256: str
     current_record: str
     pr_number: str
@@ -156,14 +159,6 @@ _PROJECTION_TAGS = {
     "published-integration": "tr",
 }
 _PROJECTION_CLASSES = {"opening": "plain", "package": "callout"}
-_HUMAN_VISIBLE_ATTRIBUTES = {
-    "alt",
-    "aria-description",
-    "aria-label",
-    "placeholder",
-    "title",
-    "value",
-}
 
 
 def _state_attributes(**fields: str) -> dict[str, str]:
@@ -241,6 +236,110 @@ _PROJECTION_FIELDS = {
         "rollback_acceptance_status", "owner_acceptance_status",
     ),
 }
+
+_BASE_DOCUMENT_ATTRIBUTES = {
+    "a": {"href"},
+    "b": set(),
+    "blockquote": set(),
+    "body": set(),
+    "code": set(),
+    "div": {"class"},
+    "em": set(),
+    "h1": set(),
+    "h2": set(),
+    "head": set(),
+    "header": {"class"},
+    "html": {"lang"},
+    "li": set(),
+    "link": {"href", "rel"},
+    "meta": {"charset", "content", "name"},
+    "ol": set(),
+    "p": set(),
+    "script": {"data-current-state-authority", "id", "type"},
+    "span": {"class"},
+    "strong": set(),
+    "table": set(),
+    "tbody": set(),
+    "td": set(),
+    "th": set(),
+    "thead": set(),
+    "title": set(),
+    "tr": {"data-evidence-boundary"},
+    "ul": set(),
+    "wbr": set(),
+}
+_ALLOWED_CLASS_VALUES = {
+    "badge b-done",
+    "badge b-exist",
+    "badge b-gated",
+    "callout",
+    "doc-foot",
+    "doc-head",
+    "gold",
+    "ico",
+    "kicker",
+    "l",
+    "meta",
+    "n",
+    "plain",
+    "sec",
+    "tag",
+    "tile",
+    "tiles",
+    "wrap",
+}
+
+
+def _document_attributes() -> dict[str, set[str]]:
+    allowed = {tag: set(attributes) for tag, attributes in _BASE_DOCUMENT_ATTRIBUTES.items()}
+    for key, fields in _PROJECTION_FIELDS.items():
+        tag = _PROJECTION_TAGS[key]
+        allowed[tag].update(
+            {"id", "data-current-state-projection", "data-projection-schema"}
+        )
+        allowed[tag].update(f"data-state-{field.replace('_', '-')}" for field in fields)
+    return allowed
+
+
+_DOCUMENT_ATTRIBUTES = _document_attributes()
+
+
+def _validate_document_element(
+    tag: str, attributes: dict[str, str | None], *, is_authority: bool
+) -> None:
+    if tag not in _DOCUMENT_ATTRIBUTES:
+        raise CurrentStatusContractError(f"HTML element {tag!r} is not allowed in STATUS")
+    unexpected = sorted(set(attributes) - _DOCUMENT_ATTRIBUTES[tag])
+    if unexpected:
+        raise CurrentStatusContractError(
+            f"HTML element {tag!r} has unexpected attributes {unexpected}"
+        )
+
+    class_value = attributes.get("class")
+    if class_value is not None and class_value not in _ALLOWED_CLASS_VALUES:
+        raise CurrentStatusContractError(
+            f"HTML element {tag!r} has an unsupported class value"
+        )
+    if "data-evidence-boundary" in attributes and attributes["data-evidence-boundary"] != "merged-source":
+        raise CurrentStatusContractError("STATUS has an unsupported evidence-boundary value")
+    if tag == "html" and attributes != {"lang": "en"}:
+        raise CurrentStatusContractError("STATUS html element must declare exact language")
+    if tag == "meta" and attributes not in (
+        {"charset": "utf-8"},
+        {"name": "viewport", "content": "width=device-width, initial-scale=1"},
+    ):
+        raise CurrentStatusContractError("STATUS has an unsupported meta element")
+    if tag == "link" and attributes != {"rel": "stylesheet", "href": "../_assets/docs.css"}:
+        raise CurrentStatusContractError("STATUS has an unsupported linked resource")
+    if tag == "script" and not is_authority:
+        raise CurrentStatusContractError("only the canonical current-state script is allowed")
+    if tag == "a":
+        href = attributes.get("href")
+        if href is None:
+            raise CurrentStatusContractError("STATUS links must have an href")
+        parsed = urlsplit(href)
+        if parsed.scheme not in {"", "https"} or (not parsed.scheme and parsed.netloc):
+            raise CurrentStatusContractError("STATUS link href is not a safe local or HTTPS target")
 
 
 def _expected_projection_attributes(current: CurrentStatus) -> dict[str, dict[str, str]]:
@@ -434,6 +533,22 @@ class _AuthorityHTMLParser(HTMLParser):
         self._projection_content: list[str] = []
         self._projection_depth = 0
         self._outside_projection_content: list[str] = []
+        self._document_tokens: list[str] = []
+        self._doctype_count = 0
+
+    def handle_decl(self, decl: str) -> None:
+        if decl != "DOCTYPE html" or self._doctype_count:
+            raise CurrentStatusContractError("STATUS must have one exact HTML doctype")
+        self._doctype_count += 1
+        self._document_tokens.append("D:DOCTYPE html")
+
+    def handle_comment(self, data: str) -> None:
+        raise CurrentStatusContractError("HTML comments are not allowed in canonical STATUS")
+
+    def handle_pi(self, data: str) -> None:
+        raise CurrentStatusContractError(
+            "processing instructions are not allowed in canonical STATUS"
+        )
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attribute_names = [name for name, _value in attrs]
@@ -444,17 +559,15 @@ class _AuthorityHTMLParser(HTMLParser):
             for name, value in attrs
         )
         projection_key = attributes.get("data-current-state-projection")
-        visible_attribute_text = [
-            value
-            for name, value in attrs
-            if name in _HUMAN_VISIBLE_ATTRIBUTES and value is not None
-        ]
 
-        if (is_authority or projection_key is not None) and len(attribute_names) != len(
-            set(attribute_names)
-        ):
-            kind = "current-state authority" if is_authority else "current-state projection"
-            raise CurrentStatusContractError(f"{kind} has duplicate HTML attributes")
+        if len(attribute_names) != len(set(attribute_names)):
+            raise CurrentStatusContractError(
+                f"HTML element {tag!r} has duplicate HTML attributes"
+            )
+        _validate_document_element(tag, attributes, is_authority=is_authority)
+        self._document_tokens.append(
+            "S:" + json.dumps([tag, sorted(attrs)], separators=(",", ":"))
+        )
 
         if projection_key is not None:
             if self._projection_key is not None:
@@ -471,10 +584,7 @@ class _AuthorityHTMLParser(HTMLParser):
         elif self._projection_key is not None:
             if tag in {"div", "p", "td", "th", "li"}:
                 self._projection_content.append(" ")
-            self._projection_content.extend(visible_attribute_text)
             self._projection_depth += 1
-        elif not is_authority:
-            self._outside_projection_content.extend(visible_attribute_text)
 
         if is_authority:
             if self._capturing:
@@ -493,12 +603,21 @@ class _AuthorityHTMLParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self._capturing:
             self._content.append(data)
-        elif self._projection_key is not None:
-            self._projection_content.append(data)
         else:
-            self._outside_projection_content.append(data)
+            normalized = " ".join(data.split())
+            if normalized:
+                self._document_tokens.append(
+                    "T:" + json.dumps(normalized, separators=(",", ":"))
+                )
+            if self._projection_key is not None:
+                self._projection_content.append(data)
+            else:
+                self._outside_projection_content.append(data)
 
     def handle_endtag(self, tag: str) -> None:
+        if tag not in _DOCUMENT_ATTRIBUTES:
+            raise CurrentStatusContractError(f"HTML element {tag!r} is not allowed in STATUS")
+        self._document_tokens.append(f"E:{tag}")
         if self._capturing and tag == "script":
             self.authorities.append("".join(self._content))
             self._capturing = False
@@ -527,6 +646,10 @@ class _AuthorityHTMLParser(HTMLParser):
         normalized = " ".join(" ".join(self._outside_projection_content).split())
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest().upper()
 
+    def document_structure_sha256(self) -> str:
+        canonical = "\n".join(self._document_tokens)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest().upper()
+
 
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
@@ -543,6 +666,8 @@ def parse_current_status(status_html: str) -> CurrentStatus:
     parser = _AuthorityHTMLParser()
     parser.feed(status_html)
     parser.close()
+    if parser._doctype_count != 1:
+        raise CurrentStatusContractError("STATUS must have one exact HTML doctype")
     if parser._capturing:
         raise CurrentStatusContractError("current-state authority is not closed")
     if parser._projection_key is not None:
@@ -647,9 +772,12 @@ def parse_current_status(status_html: str) -> CurrentStatus:
         raise CurrentStatusContractError(
             "human-visible text outside current-state projections differs from the contract"
         )
-
     current = CurrentStatus(**fields)
     _validate_projections(parser.projections, current)
+    if parser.document_structure_sha256() != fields["document_structure_sha256"]:
+        raise CurrentStatusContractError(
+            "canonical STATUS document structure or attribute values differ from the contract"
+        )
     return current
 
 
@@ -663,7 +791,7 @@ def test_current_status_contract_accepts_the_canonical_authority() -> None:
 
     current = parse_current_status(status_path.read_text(encoding="utf-8"))
 
-    assert current.current_record == "Entry 96"
+    assert current.current_record == "Entry 97"
 
 
 def test_every_present_state_row_agrees_with_the_canonical_authority() -> None:

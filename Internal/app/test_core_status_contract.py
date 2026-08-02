@@ -109,7 +109,7 @@ def test_current_status_rejects_each_contradictory_prose_authority(
     assert current_fragment in status_html
     mutated = status_html.replace(current_fragment, contradictory_fragment, 1)
 
-    with pytest.raises(CurrentStatusContractError, match="projection"):
+    with pytest.raises(CurrentStatusContractError, match="not allowed|projection"):
         parse_current_status(mutated)
 
 
@@ -195,7 +195,10 @@ def test_current_status_rejects_unmarked_human_visible_current_claims() -> None:
     )
     mutated = status_html.replace(anchor, contradictory_paragraph + anchor, 1)
 
-    with pytest.raises(CurrentStatusContractError, match="outside current-state projections"):
+    with pytest.raises(
+        CurrentStatusContractError,
+        match="not allowed|outside current-state projections",
+    ):
         parse_current_status(mutated)
 
 
@@ -207,7 +210,7 @@ def test_current_status_rejects_additive_visible_attribute_inside_projection() -
     )
     mutated = status_html.replace(anchor, anchor + contradiction, 1)
 
-    with pytest.raises(CurrentStatusContractError, match="projection"):
+    with pytest.raises(CurrentStatusContractError, match="not allowed|projection"):
         parse_current_status(mutated)
 
 
@@ -219,7 +222,48 @@ def test_current_status_rejects_additive_visible_attribute_outside_projections()
     )
     mutated = status_html.replace(anchor, contradiction + anchor, 1)
 
-    with pytest.raises(CurrentStatusContractError, match="outside current-state projections"):
+    with pytest.raises(
+        CurrentStatusContractError,
+        match="not allowed|outside current-state projections",
+    ):
+        parse_current_status(mutated)
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        '<span aria-valuetext="PR #49 is open; exact-source CI failed"></span>',
+        '<span aria-roledescription="PR #49 is open; exact-source CI failed"></span>',
+    ),
+)
+def test_current_status_rejects_reported_accessibility_attacks_inside_projection(
+    attack: str,
+) -> None:
+    status_html = _status_html()
+    anchor = "Exact-source CI run <code>30730116960</code> status is passed."
+    mutated = status_html.replace(anchor, anchor + attack, 1)
+
+    with pytest.raises(CurrentStatusContractError):
+        parse_current_status(mutated)
+
+
+def test_current_status_rejects_reported_aria_valuetext_attack_outside_projections() -> None:
+    status_html = _status_html()
+    anchor = '<h2><span class="sec">4</span>Programme dependency board</h2>'
+    attack = '<span aria-valuetext="PR #49 is open; exact-source CI failed"></span>'
+    mutated = status_html.replace(anchor, attack + anchor, 1)
+
+    with pytest.raises(CurrentStatusContractError):
+        parse_current_status(mutated)
+
+
+def test_current_status_rejects_reported_iframe_srcdoc_attack_outside_projections() -> None:
+    status_html = _status_html()
+    anchor = '<h2><span class="sec">4</span>Programme dependency board</h2>'
+    attack = '<iframe srcdoc="PR #49 is open; exact-source CI failed; release completed"></iframe>'
+    mutated = status_html.replace(anchor, attack + anchor, 1)
+
+    with pytest.raises(CurrentStatusContractError):
         parse_current_status(mutated)
 
 
@@ -234,6 +278,28 @@ def test_current_status_rejects_duplicate_projection_attributes() -> None:
         parse_current_status(mutated)
 
 
+def test_current_status_rejects_duplicate_attributes_on_nested_elements() -> None:
+    mutated = _status_html().replace(
+        "<code>30730116960</code>",
+        '<code class="first" class="second">30730116960</code>',
+        1,
+    )
+
+    with pytest.raises(CurrentStatusContractError, match="duplicate HTML attributes"):
+        parse_current_status(mutated)
+
+
+def test_current_status_rejects_duplicate_attributes_outside_projections() -> None:
+    mutated = _status_html().replace(
+        '<span class="sec">4</span>',
+        '<span class="sec" class="other">4</span>',
+        1,
+    )
+
+    with pytest.raises(CurrentStatusContractError, match="duplicate HTML attributes"):
+        parse_current_status(mutated)
+
+
 def test_current_status_rejects_missing_projection_attributes() -> None:
     mutated = _status_html().replace(
         ' data-state-runtime-restart-status="not-run"',
@@ -241,7 +307,10 @@ def test_current_status_rejects_missing_projection_attributes() -> None:
         1,
     )
 
-    with pytest.raises(CurrentStatusContractError, match="semantic attributes differ"):
+    with pytest.raises(
+        CurrentStatusContractError,
+        match="unexpected attributes|semantic attributes differ",
+    ):
         parse_current_status(mutated)
 
 
@@ -252,7 +321,10 @@ def test_current_status_rejects_unexpected_projection_attributes() -> None:
         1,
     )
 
-    with pytest.raises(CurrentStatusContractError, match="semantic attributes differ"):
+    with pytest.raises(
+        CurrentStatusContractError,
+        match="unexpected attributes|semantic attributes differ",
+    ):
         parse_current_status(mutated)
 
 
@@ -265,3 +337,83 @@ def test_current_status_rejects_wrong_projection_identity() -> None:
 
     with pytest.raises(CurrentStatusContractError, match="identity attributes differ"):
         parse_current_status(mutated)
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        '<span aria-hidden="false"></span>',
+        '<span data-current-claim="PR #49 is open"></span>',
+    ),
+)
+def test_current_status_rejects_unapproved_aria_and_data_attributes(attack: str) -> None:
+    status_html = _status_html()
+    anchor = '<h2><span class="sec">4</span>Programme dependency board</h2>'
+    mutated = status_html.replace(anchor, attack + anchor, 1)
+
+    with pytest.raises(CurrentStatusContractError):
+        parse_current_status(mutated)
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        "<section></section>",
+        '<code style="display:block"></code>',
+    ),
+)
+def test_current_status_rejects_unexpected_safe_looking_markup(attack: str) -> None:
+    status_html = _status_html()
+    anchor = '<h2><span class="sec">4</span>Programme dependency board</h2>'
+    mutated = status_html.replace(anchor, attack + anchor, 1)
+
+    with pytest.raises(CurrentStatusContractError):
+        parse_current_status(mutated)
+
+
+def test_current_status_rejects_an_added_allowed_attribute_value() -> None:
+    status_html = _status_html()
+    anchor = '<h2><span class="sec">4</span>Programme dependency board</h2>'
+    mutated = status_html.replace(anchor, '<span class="gold"></span>' + anchor, 1)
+
+    with pytest.raises(CurrentStatusContractError, match="document structure"):
+        parse_current_status(mutated)
+
+
+def test_current_status_rejects_a_changed_allowed_link_destination() -> None:
+    status_html = _status_html()
+    current = "https://github.com/mongre25-droid/mumble/issues/15"
+    mutated = status_html.replace(
+        current,
+        "https://github.com/mongre25-droid/mumble/issues/999",
+        1,
+    )
+    assert mutated != status_html
+
+    with pytest.raises(CurrentStatusContractError, match="document structure"):
+        parse_current_status(mutated)
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        '<iframe srcdoc="PR #49 is open"></iframe>',
+        '<object data="PR #49 is open"></object>',
+        '<embed src="PR #49 is open">',
+        '<template data-claim="PR #49 is open"></template>',
+        '<script src="unexpected.js"></script>',
+    ),
+)
+def test_current_status_rejects_embedded_or_executable_channels(attack: str) -> None:
+    status_html = _status_html()
+    anchor = '<h2><span class="sec">4</span>Programme dependency board</h2>'
+    mutated = status_html.replace(anchor, attack + anchor, 1)
+
+    with pytest.raises(CurrentStatusContractError):
+        parse_current_status(mutated)
+
+
+def test_current_status_accepts_the_sole_canonical_authority_script() -> None:
+    current = parse_current_status(_status_html())
+
+    assert current.schema == "mumble.current-state.v1"

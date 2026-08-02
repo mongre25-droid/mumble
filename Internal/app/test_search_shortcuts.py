@@ -961,7 +961,7 @@ class CoreCurrentTruthTests(unittest.TestCase):
         self.assertEqual(current.record_candidate_status, "awaiting-review")
         self.assertEqual(
             current.rejected_records_candidate,
-            "bf778c698064023bd3fe8e33abb8a1093c1dd8a0",
+            "21c21567029b1232e07ba85ca4d196820f3cfed9",
         )
         self.assertEqual(current.package_build_status, "passed")
         self.assertEqual(current.package_install_status, "not-run")
@@ -969,7 +969,7 @@ class CoreCurrentTruthTests(unittest.TestCase):
         self.assertEqual(current.signing_status, "not-run")
         self.assertEqual(current.public_release_status, "not-run")
         self.assertEqual(current.owner_acceptance_status, "not-run")
-        self.assertEqual(current.current_record, "Entry 96")
+        self.assertEqual(current.current_record, "Entry 97")
         self.assertIn('id="entry-96"', logs)
         self.assertIn(
             'data-evidence-boundary="exact-current-projection-correction"', logs
