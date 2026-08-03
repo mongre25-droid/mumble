@@ -75,7 +75,7 @@ const jobGuidance = {
   },
   listen: {
     context: 'Everyday jobs · Listen',
-    keywords: 'listen reader document import library speech provider key cost credit online bookmark summary progress find pause resume',
+    keywords: 'listen reader document import library speech provider model one attempt key cost credit online bookmark summary progress find pause resume retry',
     steps: [
       'Open Reader and import a document through its supported-file picker, or reopen one from the library to resume its saved position.',
       'Use Find, bookmarks, summary, speed, and reading-position controls to prepare the reading session.',
@@ -85,7 +85,7 @@ const jobGuidance = {
     privacy: 'Reader speech is an explicit online route. Document text needed for playback is sent to the selected speech provider and requires network access, the matching key, and provider credits or billing.',
     recovery: [
       'If import fails, choose a format offered by the Reader picker and make sure the file is readable and not empty.',
-      'If speech fails, check the selected provider, key, network access, and credits. Mumble may try a compatible model only within that same frozen provider; it does not cross to another provider silently.',
+      'If speech fails, that failure stops playback after one attempt using the frozen selected provider and model. Verify the selected model, matching key, network access, and credits, then retry when ready. No sibling model or other provider is attempted.',
     ],
     link: null,
     linkNote: null,
@@ -390,7 +390,7 @@ const helpJobs = jobs.map((job) => {
             </div>
             <div data-route-kind="online">
               <dt><span>Online · optional</span>Reader speech</dt>
-              <dd>Document text needed for playback goes to the selected speech provider only when voice is used. The route needs network access, its matching key, and provider credits or billing.</dd>
+              <dd>Document text needed for playback goes online only when voice is used. One attempt uses the frozen selected provider and model; failure stops, and no sibling model or other provider is attempted. The route needs network access, its matching key, and provider credits or billing.</dd>
             </div>
             <div data-route-kind="local">
               <dt><span>Local · separate command</span>Mumble Find</dt>
@@ -458,7 +458,7 @@ const helpJobs = jobs.map((job) => {
             </details>
             <details id="reader-troubleshooting">
               <summary>Reader</summary>
-              <p>For import, choose a format offered by Reader's file picker and confirm the file is readable and not empty. For speech, check the selected provider, model, voice, network access, matching key, and credits. A playback failure pauses rather than skipping unread text, and a fallback cannot cross to another provider silently.</p>
+              <p>For import, choose a format offered by Reader's file picker and confirm the file is readable and not empty. For speech, Mumble makes one attempt using the frozen selected provider and model. A failure stops playback; it does not try a sibling model or another provider. Verify the selected model, matching key, network access, and credits, then retry when ready.</p>
             </details>
             <details>
               <summary>Deck recovery</summary>

@@ -722,6 +722,23 @@ async function helpJourney(browser) {
     }
   }
 
+  const readerGuideText = await page.locator('#listen-guide').innerText();
+  assert.match(
+    readerGuideText,
+    /one attempt using the frozen selected provider and model/i,
+    'Reader Help does not state the one-attempt frozen provider/model authority',
+  );
+  assert.match(
+    readerGuideText,
+    /failure stops.+verify the selected model.+key.+credits.+retry/is,
+    'Reader Help does not give honest one-attempt recovery guidance',
+  );
+  assert.doesNotMatch(
+    readerGuideText,
+    /may try (?:a )?compatible model|tries? (?:a )?sibling model/i,
+    'Reader Help promises an unauthorised compatible or sibling model attempt',
+  );
+
   const privacyRoutes = page.locator('#privacy-routes');
   for (const route of [
     'Local transcription',
@@ -737,6 +754,13 @@ async function helpJourney(browser) {
     await privacyRoutes.getByRole('link', { name: 'Privacy boundaries', exact: true }).getAttribute('href'),
     '/privacy/',
     'Help privacy ledger does not reach the canonical Privacy page',
+  );
+  const readerRouteText = await privacyRoutes.locator('dt')
+    .filter({ hasText: 'Reader speech' }).locator('..').innerText();
+  assert.match(
+    readerRouteText,
+    /one attempt.+frozen selected provider and model.+no sibling model/is,
+    'Reader privacy Help does not preserve the exact one-attempt route boundary',
   );
 
   const accessTable = page.getByRole('region', { name: 'Accessibility guidance table' });
@@ -765,6 +789,19 @@ async function helpJourney(browser) {
   for (const topic of troubleshootingTopics) {
     await page.locator('#troubleshooting summary').filter({ hasText: topic }).waitFor();
   }
+  const readerTroubleshooting = page.locator('#reader-troubleshooting');
+  await readerTroubleshooting.locator('summary').click();
+  const readerTroubleshootingText = await readerTroubleshooting.innerText();
+  assert.match(
+    readerTroubleshootingText,
+    /one attempt using the frozen selected provider and model.+failure stops.+verify the selected model.+key.+credits.+retry/is,
+    'Reader troubleshooting does not match the accepted one-attempt runtime behaviour',
+  );
+  assert.doesNotMatch(
+    readerTroubleshootingText,
+    /may try (?:a )?compatible model|tries? (?:a )?sibling model|fallback cannot cross/is,
+    'Reader troubleshooting still implies an unauthorised fallback attempt',
+  );
 
   const platformLinks = [
     ['Read the Windows candidate path', '#install-windows'],
@@ -864,7 +901,7 @@ async function helpJourney(browser) {
   const articles = page.getByRole('article');
   const articleCount = await articles.count();
   assert.equal(articleCount, helpArticleHeadings.length, 'Help article contract drifted');
-  await search.fill('Reader speech');
+  await search.fill('Reader speech one attempt');
   await page.getByRole('status').filter({ hasText: /help topics? shown/i }).waitFor();
   const visibleCount = await articles.count();
   assert.ok(visibleCount > 0 && visibleCount < articleCount, 'Help search did not filter the static article set');
@@ -900,7 +937,7 @@ async function mobileHelpJourney(browser) {
   const search = page.getByRole('searchbox', { name: 'Search Mumble Help' });
   const articles = page.getByRole('article');
   const articleCount = await articles.count();
-  await search.fill('Reader speech');
+  await search.fill('Reader speech one attempt');
   await page.getByRole('status').filter({ hasText: /help topics? shown/i }).waitFor();
   const visibleCount = await articles.count();
   assert.ok(visibleCount > 0 && visibleCount < articleCount, 'mobile Help search did not filter the article set');

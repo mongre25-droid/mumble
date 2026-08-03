@@ -333,7 +333,9 @@ def test_reader_sync_is_opt_in_and_disclosure_names_cloud_paths():
     source = APP_JS.read_text(encoding="utf-8")
     disclosure = source[source.index("async function confirmReaderCloudUse"):
                         source.index("function readerBuildPane")]
-    assert "another compatible model from that same provider may be tried" in disclosure
+    assert "Mumble makes one attempt with the selected provider and model" in disclosure
+    assert "it does not try a sibling model or another provider" in disclosure
+    assert "another compatible model" not in disclosure
     assert "Reader Sync, when enabled" in disclosure
     cloud = Path(__file__).with_name("cloud_sync.py").read_text(encoding="utf-8")
     assert 'payload.pop("source_path", None)' in cloud
