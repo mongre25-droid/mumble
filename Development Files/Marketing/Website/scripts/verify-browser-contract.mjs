@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
+import jobs from '../src/data/jobs.json' with { type: 'json' };
 import release from '../src/data/release.json' with { type: 'json' };
 
 const websiteRoot = resolve(import.meta.dirname, '..');
@@ -542,6 +543,8 @@ async function writeJourney(browser) {
 }
 
 async function findJourney(browser) {
+  const findJob = jobs.find((job) => job.id === 'find');
+  assert.ok(findJob?.story?.presentation, 'canonical Find presentation data is missing');
   const context = await browser.newContext({
     viewport: { width: 1365, height: 900 },
     reducedMotion: 'reduce',
@@ -558,11 +561,45 @@ async function findJourney(browser) {
     'Home must expose one major Find job stage, not only a small job-ledger entry',
   );
   const stageText = await stage.innerText();
+  for (const capture of findJob.story.presentation.captures) {
+    const figure = stage.locator(`[data-find-capture="${capture.route}"]`);
+    const image = figure.locator('img');
+    assert.equal(await figure.count(), 1, `${capture.route} product capture is missing from Home`);
+    await figure.scrollIntoViewIfNeeded();
+    await image.evaluate(async (element) => {
+      if (!element.complete || element.naturalWidth === 0) await element.decode();
+    });
+    assert.deepEqual(
+      await image.evaluate((element) => ({
+        src: element.getAttribute('src'),
+        width: element.getAttribute('width'),
+        height: element.getAttribute('height'),
+        naturalWidth: element.naturalWidth,
+        naturalHeight: element.naturalHeight,
+        alt: element.getAttribute('alt'),
+      })),
+      {
+        src: capture.src,
+        width: String(capture.width),
+        height: String(capture.height),
+        naturalWidth: capture.width,
+        naturalHeight: capture.height,
+        alt: capture.alt,
+      },
+      `${capture.route} product capture does not match canonical evidence metadata`,
+    );
+    const caption = await figure.locator('figcaption').textContent() ?? '';
+    assert.ok(caption.includes(capture.label), `${capture.route} capture label is missing`);
+    assert.ok(caption.includes(capture.truthLabel), `${capture.route} capture truth label is missing`);
+    assert.equal(await figure.locator('figcaption small').isVisible(), true, `${capture.route} capture truth label is hidden`);
+  }
   assert.match(stageText, /Genuine Mumble Deck capture/i);
+  assert.match(stageText, /Genuine Mumble Find capture/i);
+  assert.match(stageText, /Genuine Mumble Web Search capture/i);
   assert.match(stageText, /Mumble Find/i);
   assert.match(stageText, /Find apps & files/i);
   assert.match(stageText, /private on this device/i);
-  assert.match(stageText, /illustrative local results/i);
+  assert.match(stageText, /deterministic demonstration local result · not user data/i);
   assert.match(stageText, /Web Search/i);
   assert.match(stageText, /selected words/i);
   assert.match(stageText, /Google|Perplexity|Brave/i);
@@ -643,7 +680,7 @@ async function findJourney(browser) {
   assert.match(useCasesText, /selected words/i);
   assert.match(useCasesText, /Search online/i);
   assert.match(useCasesText, /browser could not open/i);
-  assert.match(useCasesText, /Illustrative selected text · not user data/i);
+  assert.match(useCasesText, /Deterministic demonstration selected text · not user data/i);
   assert.doesNotMatch(useCasesText, /Mumble Search/i);
   await noHorizontalOverflow(page, 'desktop Find Use Cases');
   assertNoBrowserErrors(browserErrors, 'desktop Find journey browser errors');
@@ -669,6 +706,7 @@ async function findJourney(browser) {
   await mobilePage.goto(`${origin}/`, { waitUntil: 'networkidle' });
   const mobileStage = mobilePage.locator('[data-job-story="find"][data-story-surface="home"]');
   assert.equal(await mobileStage.count(), 1, 'mobile Home Find stage is missing');
+  assert.equal(await mobileStage.locator('[data-find-capture]').count(), 3, 'mobile Home product captures are incomplete');
   assert.equal(await mobileStage.locator('[data-find-route]').count(), 2, 'mobile Home local and web routes merged');
   const mobileFindLink = mobileStage.getByRole('link', { name: 'See how Find works', exact: true });
   await mobileFindLink.focus();
@@ -1155,6 +1193,7 @@ async function noJavaScriptPath(browser) {
     }
     const noScriptFindStage = page.locator('[data-job-story="find"][data-story-surface="home"]');
     assert.equal(await noScriptFindStage.count(), 1, 'no-JavaScript Home Find stage is missing');
+    assert.equal(await noScriptFindStage.locator('[data-find-capture]').count(), 3, 'no-JavaScript Home product captures are incomplete');
     assert.equal(await noScriptFindStage.locator('[data-find-route]').count(), 2, 'no-JavaScript Home Find routes merged');
     assert.match(await noScriptFindStage.innerText(), /Private on this device/i);
     assert.match(await noScriptFindStage.innerText(), /Search online/i);
@@ -1208,7 +1247,7 @@ async function noJavaScriptPath(browser) {
     }
     const noScriptUseCasesFind = page.locator('[data-job-story="find"][data-story-surface="use-cases"]');
     assert.equal(await noScriptUseCasesFind.locator('article').count(), 4, 'no-JavaScript Find tasks are incomplete');
-    assert.match(await noScriptUseCasesFind.innerText(), /Illustrative selected text · not user data/i);
+    assert.match(await noScriptUseCasesFind.innerText(), /Deterministic demonstration selected text · not user data/i);
     assert.deepEqual(
       stopTimeDestinationFindings(
         await page.locator('main').innerText(),

@@ -7,6 +7,7 @@ The static marketing site for Mumble, built with Astro 7 and vanilla JavaScript.
 ```powershell
 npm.cmd ci --ignore-scripts
 npm.cmd run test:release
+npm.cmd run test:find
 node scripts/check-release.mjs
 npm.cmd run build
 npm.cmd exec -- astro check
@@ -51,6 +52,16 @@ publication state, platform facts, integrity, requirements, artifact location,
 release notes, and recommendation labels are in `src/data/release.json`.
 `npm.cmd run build` fails closed when that authority drifts from source version or
 the canonical and public Windows artifact bytes.
+
+The Find job's route cards, boundary rows, examples, actions, provider and
+consent facts, failure wording, capture labels, dimensions, alt text, and source
+provenance all come from `src/data/jobs.json`; `JobStory.astro` renders that
+schema without a Find-specific content branch. The genuine Deck capture remains
+bound to the accepted Focus Stage evidence manifest. The Mumble Find and Web
+Search captures are deterministic renders of the current accepted product
+source with visibly labelled demonstration data. Regenerate those two captures
+only with `npm.cmd run capture:find-evidence`, then update and verify their exact
+source and output hashes with `npm.cmd run test:find`.
 
 ## Interaction and accessibility
 

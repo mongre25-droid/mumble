@@ -12,6 +12,7 @@ export interface Props {
 const { job, surface } = Astro.props;
 if (!job.story) throw new Error(`${job.label} has no detailed job story`);
 const story = job.story;
+const presentation = 'presentation' in story ? story.presentation : undefined;
 const storyId = `job-${job.id}`;
 const stageTitleId = `${storyId}-stage-title`;
 const mechanismTitleId = `${storyId}-mechanism-title`;
@@ -108,7 +109,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   </section>
 )}
 
-{surface === 'home' && job.id === 'find' && (
+{surface === 'home' && presentation && (
   <section
     class="product-stage find-product-stage shell"
     aria-labelledby={stageTitleId}
@@ -117,7 +118,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   >
     <div class="stage-bar">
       <span class="stage-brand">Mumble / {job.label}</span>
-      <span class="stage-state"><i aria-hidden="true"></i>Local and online stay separate</span>
+      <span class="stage-state"><i aria-hidden="true"></i>{presentation.stage.status}</span>
     </div>
 
     <header class="find-stage-heading">
@@ -125,62 +126,62 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
         <h2 id={stageTitleId}>{story.opening.title}</h2>
         <p>{story.demonstration.note}</p>
       </div>
-      <a class="text-link" href="/product/#find-mechanism">See how Find works</a>
+      <a class="text-link" href={presentation.stage.actionHref}>{presentation.stage.actionLabel}</a>
     </header>
 
     <div class="find-stage-layout">
-      <figure class="find-deck-capture">
-        <img
-          src="/product/deck-command-surface.webp"
-          width="1152"
-          height="800"
-          loading="eager"
-          alt="Genuine current Mumble Deck capture showing searchable content types, Starred filtering, Pin or Unpin, and the separate Mumble Find command"
-        />
-        <figcaption>
-          <strong>Genuine Mumble Deck capture</strong>
-          <span>Search saved text, filter Starred material, then copy, paste, or shape it again.</span>
-        </figcaption>
-      </figure>
+      <div class="find-capture-grid" aria-label={presentation.capturesAriaLabel}>
+        {presentation.captures.map((capture) => (
+          <figure class:list={['find-capture', `find-capture-${capture.route}`]} data-find-capture={capture.route}>
+            <img
+              src={capture.src}
+              width={capture.width}
+              height={capture.height}
+              loading={capture.loading as 'eager' | 'lazy'}
+              fetchpriority={capture.fetchPriority as 'auto' | 'high' | 'low' | undefined}
+              alt={capture.alt}
+            />
+            <figcaption>
+              <strong>{capture.label}</strong>
+              <span>{capture.caption}</span>
+              <small>{capture.truthLabel}</small>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
 
       <div class="find-route-stack">
-        <article class="find-route find-route-local" data-find-route="local">
-          <header>
-            <span>Private on this device</span>
-            <h3>Mumble Find</h3>
-            <p>Find apps &amp; files from local indexed results. Hosted web results never enter this list.</p>
-          </header>
-          <div class="find-query" aria-label="Illustrative Mumble Find query">
-            <span>Illustrative query</span>
-            <strong>project brief</strong>
-          </div>
-          <div class="find-result-demo" aria-label="Illustrative local results, not user data">
-            <span class="find-demo-label">Interface illustration · illustrative local results</span>
-            <div>
-              <strong>Project brief.docx</strong>
-              <small>Illustrative file · not user data</small>
-            </div>
-            <p aria-label="Available result actions">Open · Show in folder · Drag to another app</p>
-          </div>
-        </article>
-
-        <article class="find-route find-route-web" data-find-route="web">
-          <header>
-            <span>Separate consent-gated action</span>
-            <h3>Web Search</h3>
-            <p>Selected words stay on this computer until a confirmation names the chosen provider.</p>
-          </header>
-          <blockquote>
-            <span>Illustrative selected text · not user data</span>
-            “Compare the quarterly outline with the launch notes.”
-          </blockquote>
-          <dl>
-            <div><dt>Chosen provider</dt><dd>Perplexity</dd></div>
-            <div><dt>Before confirmation</dt><dd>Words remain local</dd></div>
-            <div><dt>After Search online</dt><dd>Selected words go to Perplexity</dd></div>
-          </dl>
-          <p class="find-failure-truth">If the browser cannot open, Mumble reports that Web Search could not open. Failure never appears as browser success.</p>
-        </article>
+        {presentation.boundaries.filter((boundary) => boundary.showOnHome).map((boundary) => (
+          <article class:list={['find-route', `find-route-${boundary.route}`]} data-find-route={boundary.route}>
+            <header>
+              <span>{boundary.label}</span>
+              <h3>{boundary.title}</h3>
+              <p>{boundary.body}</p>
+            </header>
+            {boundary.example?.quote && (
+              <blockquote aria-label={boundary.example.ariaLabel}>
+                <span>{boundary.example.label}</span>
+                <q>{boundary.example.quote}</q>
+              </blockquote>
+            )}
+            {boundary.example?.title && (
+              <div class="find-result-demo" aria-label={boundary.example.ariaLabel}>
+                <span class="find-demo-label">{boundary.example.label}</span>
+                <div>
+                  <strong>{boundary.example.title}</strong>
+                  <small>{boundary.example.detail}</small>
+                </div>
+                <p aria-label={boundary.actionsLabel}>{boundary.actions.join(' · ')}</p>
+              </div>
+            )}
+            {boundary.facts && (
+              <dl>
+                {boundary.facts.map((fact) => <div><dt>{fact.term}</dt><dd>{fact.detail}</dd></div>)}
+              </dl>
+            )}
+            {boundary.failure && <p class="find-failure-truth">{boundary.failure}</p>}
+          </article>
+        ))}
       </div>
     </div>
   </section>
@@ -189,7 +190,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
 {surface === 'product' && (
   <section
     class="job-story job-story-mechanism shell"
-    id={job.id === 'find' ? 'find-mechanism' : undefined}
+    id={presentation?.mechanismId}
     aria-labelledby={mechanismTitleId}
     data-job-story={job.id}
     data-story-surface="product"
@@ -199,61 +200,35 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
       <p>{story.mechanism.summary}</p>
     </header>
 
-    {job.id === 'find' && (
-      <div class="find-boundary-ledger" aria-label="Deck, local Mumble Find, and Web Search boundaries">
-        <article data-find-boundary="deck">
-          <div class="find-boundary-name">
-            <span>Saved Mumble material</span>
-            <h3>Deck history</h3>
-          </div>
-          <div>
-            <p>Search all Deck content across Transcripts, Clipboard, Prompts, and Emails. Use Starred to return to material kept for reuse.</p>
-          </div>
-          <ul aria-label="Deck reuse actions">
-            <li>Read the full saved item</li>
-            <li>Copy or Paste latest</li>
-            <li>Select material to shape again</li>
-          </ul>
-        </article>
-
-        <article data-find-boundary="local">
-          <div class="find-boundary-name">
-            <span>Private on this device</span>
-            <h3>Mumble Find</h3>
-          </div>
-          <div>
-            <p>Find apps &amp; files from local apps and indexed files. Hosted web results never appear in this local list.</p>
-            <div class="find-product-result" aria-label="Illustrative local Mumble Find result, not user data">
-              <span>Interface illustration · illustrative local result</span>
-              <strong>Project brief.docx</strong>
-              <small>Demonstration file · not user data</small>
+    {presentation && (
+      <div class="find-boundary-ledger" aria-label={presentation.boundariesAriaLabel}>
+        {presentation.boundaries.map((boundary) => (
+          <article data-find-boundary={boundary.route}>
+            <div class="find-boundary-name">
+              <span>{boundary.label}</span>
+              <h3>{boundary.title}</h3>
             </div>
-          </div>
-          <ul aria-label="Mumble Find result actions">
-            <li>Open</li>
-            <li>Show in folder</li>
-            <li>Drag to another app</li>
-          </ul>
-        </article>
-
-        <article data-find-boundary="web">
-          <div class="find-boundary-name">
-            <span>Separate online route</span>
-            <h3>Web Search</h3>
-          </div>
-          <div>
-            <p>Selected words remain on this computer until a provider-named confirmation is accepted with Search online.</p>
-            <blockquote>
-              <span>Illustrative selected text · not user data</span>
-              “Compare the quarterly outline with the launch notes.”
-            </blockquote>
-          </div>
-          <ul aria-label="Web Search provider and outcome truth">
-            <li>Provider: Google, Perplexity, or Brave</li>
-            <li>Keep private cancels</li>
-            <li>Browser could not open is shown as failure</li>
-          </ul>
-        </article>
+            <div>
+              <p>{boundary.body}</p>
+              {boundary.example?.title && (
+                <div class="find-product-result" aria-label={boundary.example.ariaLabel}>
+                  <span>{boundary.example.label}</span>
+                  <strong>{boundary.example.title}</strong>
+                  <small>{boundary.example.detail}</small>
+                </div>
+              )}
+              {boundary.example?.quote && (
+                <blockquote aria-label={boundary.example.ariaLabel}>
+                  <span>{boundary.example.label}</span>
+                  <q>{boundary.example.quote}</q>
+                </blockquote>
+              )}
+            </div>
+            <ul aria-label={boundary.actionsLabel}>
+              {boundary.actions.map((action) => <li>{action}</li>)}
+            </ul>
+          </article>
+        ))}
       </div>
     )}
 
@@ -285,18 +260,18 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
           <header>
             <h2>{task.title}</h2>
             <p>{task.summary}</p>
-            {job.id === 'find' && task.id === 'local-app-file' && (
-              <div class="find-task-example" aria-label="Illustrative local result, not user data">
-                <span>Illustrative local result · not user data</span>
-                <strong>Project brief.docx</strong>
-                <small>Example action: Show in folder</small>
+            {'example' in task && task.example?.title && (
+              <div class="find-task-example" aria-label={task.example.ariaLabel}>
+                <span>{task.example.label}</span>
+                <strong>{task.example.title}</strong>
+                <small>{task.example.detail}</small>
               </div>
             )}
-            {job.id === 'find' && task.id === 'web-search' && (
-              <blockquote class="find-task-example">
-                <span>Illustrative selected text · not user data</span>
-                “Compare the quarterly outline with the launch notes.”
-                <small>Chosen provider in this demonstration: Perplexity</small>
+            {'example' in task && task.example?.quote && (
+              <blockquote class="find-task-example" aria-label={task.example.ariaLabel}>
+                <span>{task.example.label}</span>
+                <q>{task.example.quote}</q>
+                <small>{task.example.detail}</small>
               </blockquote>
             )}
           </header>

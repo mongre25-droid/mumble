@@ -139,8 +139,197 @@
       },
       "demonstration": {
         "spoken": "",
-        "note": "The Deck image is a genuine current capture. Local results and selected words in the two route illustrations are demonstrations, not user data.",
+        "note": "Genuine Deck, Mumble Find, and Web Search captures lead this stage. The Mumble Find results and Web Search selected words are deterministic demonstrations, not user data.",
         "states": []
+      },
+      "presentation": {
+        "mechanismId": "find-mechanism",
+        "capturesAriaLabel": "Genuine Deck, Mumble Find, and Web Search product evidence",
+        "boundariesAriaLabel": "Deck, local Mumble Find, and Web Search boundaries",
+        "stage": {
+          "status": "Local and online stay separate",
+          "actionLabel": "See how Find works",
+          "actionHref": "/product/#find-mechanism"
+        },
+        "captures": [
+          {
+            "route": "deck",
+            "src": "/product/deck-command-surface.webp",
+            "width": 1152,
+            "height": 800,
+            "loading": "eager",
+            "fetchPriority": "high",
+            "alt": "Genuine current Mumble Deck capture showing searchable content types, Starred filtering, Pin or Unpin, and the separate Mumble Find command",
+            "label": "Genuine Mumble Deck capture",
+            "caption": "Search saved text, filter Starred material, then copy, paste, or shape it again.",
+            "truthLabel": "Accepted Deck source capture",
+            "provenance": {
+              "kind": "accepted-product-capture",
+              "sourceCommit": "babdc38d2d3869540afb7bc1e7523151c5de4237",
+              "generatedBy": "Development Files/Tooling/focus-stage/verify-production-ui.ps1 -Case visual -Capture",
+              "outputSha256": "9bb7329866adb04c3a0dadd9670e519d2eb8ddc1f8be9a773f93c5c74679e4ea",
+              "sources": [
+                {
+                  "path": "Development Files/Research/focus-stage-production-screenshots/05-deck-command-surface.png",
+                  "sha256": "24ba940feb776bf2d867ae31d9afb0930670d3a6bfc98e56ccba50a5a50091d1"
+                },
+                {
+                  "path": "Development Files/Research/focus-stage-production-screenshots/evidence-manifest.json",
+                  "sha256": "9c6b2f7e3c3f3999e1744f526c0c94d93d2841db8f8f744b7864f802e684a2d4"
+                }
+              ]
+            }
+          },
+          {
+            "route": "local",
+            "src": "/product/mumble-find-capture.png",
+            "width": 900,
+            "height": 680,
+            "loading": "eager",
+            "alt": "Genuine Mumble Find product capture showing the private local app-and-file launcher with a demonstration query and three demonstration local results",
+            "label": "Genuine Mumble Find capture",
+            "caption": "The current local launcher rendered with deterministic app, file, and folder examples.",
+            "truthLabel": "Deterministic demonstration data · not user data",
+            "provenance": {
+              "kind": "deterministic-current-product-capture",
+              "sourceCommit": "babdc38d2d3869540afb7bc1e7523151c5de4237",
+              "generatedBy": "scripts/capture-find-evidence.mjs",
+              "outputSha256": "ca8495db0709050ec1434f1059e11ce3c05d1513620b685c72902b6872175e4c",
+              "sources": [
+                {
+                  "path": "Internal/app/experimental/system_search/ui.js",
+                  "sha256": "514554a5b1aba0058ca14bce93bfffc80917fdf386af65ec766330722686b6e7"
+                },
+                {
+                  "path": "Internal/app/experimental/system_search/ui.css",
+                  "sha256": "4c0f8046be9272691b1a0f01b6b78d37074a6c7352715130f4fb862ef33d62c6"
+                }
+              ]
+            }
+          },
+          {
+            "route": "web",
+            "src": "/product/web-search-consent-capture.png",
+            "width": 1180,
+            "height": 820,
+            "loading": "lazy",
+            "alt": "Genuine Web Search product capture showing provider-named Perplexity consent, demonstration selected words, Keep private, and Search online controls",
+            "label": "Genuine Mumble Web Search capture",
+            "caption": "The current provider-named confirmation rendered before any selected words are sent online.",
+            "truthLabel": "Deterministic demonstration data · not user data",
+            "provenance": {
+              "kind": "deterministic-current-product-capture",
+              "sourceCommit": "babdc38d2d3869540afb7bc1e7523151c5de4237",
+              "generatedBy": "scripts/capture-find-evidence.mjs",
+              "outputSha256": "35b708a550c7cad5ac9ce6a852f30fb48b95122fd08c3a32cf5ed7ac26bca170",
+              "sources": [
+                {
+                  "path": "Internal/app/webui/index.html",
+                  "sha256": "e806020d9c746eddff65a9f66e7bc6208eaa52c3863df560ed65ef95cf8b569c"
+                },
+                {
+                  "path": "Internal/app/webui/app.css",
+                  "sha256": "a3f0ddcf6cb03b54793ac339e622dce6aff7a33d6ef03381da83857a9b39e7c3"
+                },
+                {
+                  "path": "Internal/app/webui/enhanced.css",
+                  "sha256": "d1ee641efc235bb0588dccfac3e934f6da0b029277d261affb7580f47659f0b4"
+                },
+                {
+                  "path": "Internal/app/webui/remaster.css",
+                  "sha256": "88130b26c65c9ba4f923b7e1e50975e98e0b1aa75f9d3e8443b75031d9eb5a4b"
+                },
+                {
+                  "path": "Internal/app/webui/focus-stage.css",
+                  "sha256": "300a325d07ee7e921992b8f590bfc4f06cf6ced40c06eb4d9f24bd8d928cf45b"
+                },
+                {
+                  "path": "Internal/app/webui/focus-stage.js",
+                  "sha256": "bf37e9f567e8c202b4e2edbc7c63ea927951196400a13b0a0bd02cbb47ca364b"
+                },
+                {
+                  "path": "Internal/app/webui/app.js",
+                  "sha256": "ea5f17672205d8f2d93ca893b0d9996648f5c324097ec2644ef20ab5509a0aaa"
+                },
+                {
+                  "path": "Internal/app/webui/system-search-loader.js",
+                  "sha256": "60242de128f01fe69d57d7b04ac6885d8c0aed082835120c3a10d942764b6e36"
+                },
+                {
+                  "path": "Internal/app/webui/mumble.png",
+                  "sha256": "4f9b794bdabfbbaea6cc0e14523ea850d64d4c0591c4cdf69f5426556c15a842"
+                }
+              ]
+            }
+          }
+        ],
+        "boundaries": [
+          {
+            "route": "deck",
+            "showOnHome": false,
+            "label": "Saved Mumble material",
+            "title": "Deck history",
+            "body": "Search all Deck content across Transcripts, Clipboard, Prompts, and Emails. Use Starred to return to material kept for reuse.",
+            "actionsLabel": "Deck reuse actions",
+            "actions": [
+              "Read the full saved item",
+              "Copy or Paste latest",
+              "Select material to shape again"
+            ]
+          },
+          {
+            "route": "local",
+            "showOnHome": true,
+            "label": "Private on this device",
+            "title": "Mumble Find",
+            "body": "Find apps & files from local apps and indexed files. Hosted web results never appear in this local list.",
+            "example": {
+              "ariaLabel": "Illustrative local Mumble Find result, not user data",
+              "label": "Deterministic demonstration local result · not user data",
+              "title": "Project brief.docx",
+              "detail": "Demonstration file · not user data"
+            },
+            "actionsLabel": "Mumble Find result actions",
+            "actions": [
+              "Open",
+              "Show in folder",
+              "Drag to another app"
+            ]
+          },
+          {
+            "route": "web",
+            "showOnHome": true,
+            "label": "Separate consent-gated online route",
+            "title": "Web Search",
+            "body": "Selected words remain on this computer until a provider-named confirmation is accepted with Search online.",
+            "example": {
+              "ariaLabel": "Illustrative selected text, not user data",
+              "label": "Deterministic demonstration selected text · not user data",
+              "quote": "Compare the project brief with the launch notes."
+            },
+            "facts": [
+              {
+                "term": "Chosen provider",
+                "detail": "Perplexity"
+              },
+              {
+                "term": "Before confirmation",
+                "detail": "Words remain local"
+              },
+              {
+                "term": "After Search online",
+                "detail": "Selected words go to Perplexity"
+              }
+            ],
+            "actionsLabel": "Web Search provider and outcome truth",
+            "actions": [
+              "Provider: Google, Perplexity, or Brave",
+              "Keep private cancels",
+              "Browser could not open is shown as failure"
+            ],
+            "failure": "If the browser cannot open, Mumble reports that Web Search could not open. Failure never appears as browser success."
+          }
+        ]
       },
       "mechanism": {
         "title": "One Find job, three boundaries that never merge.",
@@ -205,6 +394,12 @@
           "id": "local-app-file",
           "title": "Locate a local app or file",
           "summary": "Use Mumble Find when the destination is an app, file, or folder on this computer.",
+          "example": {
+            "ariaLabel": "Illustrative local result, not user data",
+            "label": "Deterministic demonstration local result · not user data",
+            "title": "Project brief.docx",
+            "detail": "Example action: Show in folder"
+          },
           "steps": [
             "Invoke the separate Mumble Find command; the centred launcher identifies itself as Private on this device.",
             "Type the app or filename. The list contains local results only and never inserts hosted web results.",
@@ -216,6 +411,12 @@
           "id": "web-search",
           "title": "Search the web deliberately",
           "summary": "Send selected words to one chosen provider only after inspecting the confirmation.",
+          "example": {
+            "ariaLabel": "Illustrative selected text, not user data",
+            "label": "Deterministic demonstration selected text · not user data",
+            "quote": "Compare the project brief with the launch notes.",
+            "detail": "Chosen provider in this demonstration: Perplexity"
+          },
           "steps": [
             "Select the Deck text you intend to send, then choose the separate Search the web action.",
             "Read the confirmation: it names the chosen provider—Google, Perplexity, or Brave—and shows the selected words.",

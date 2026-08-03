@@ -1614,34 +1614,54 @@ code {
 
 .find-stage-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(340px, 0.88fr);
-  align-items: stretch;
 }
 
-.find-deck-capture {
+.find-capture-grid {
   display: grid;
-  min-width: 0;
-  margin: 0;
-  grid-template-rows: 1fr auto;
-  border-right: 1px solid var(--rule);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  border-bottom: 1px solid var(--rule);
   background: var(--ink);
 }
 
-.find-deck-capture img {
-  height: 100%;
-  aspect-ratio: auto;
-  object-fit: contain;
-  object-position: top center;
+.find-capture {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  grid-template-rows: auto 1fr;
+  align-self: stretch;
 }
 
-.find-deck-capture figcaption {
+.find-capture + .find-capture {
+  border-left: 1px solid var(--rule);
+}
+
+.find-capture img {
+  width: 100%;
+  aspect-ratio: 1.4 / 1;
+  object-fit: contain;
+  object-position: top center;
+  background: #080806;
+}
+
+.find-capture figcaption {
   align-items: flex-start;
   flex-direction: column;
   gap: var(--space-1);
 }
 
+.find-capture figcaption small {
+  color: var(--gold-strong);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
 .find-route-stack {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-width: 0;
 }
 
@@ -1654,7 +1674,7 @@ code {
 }
 
 .find-route + .find-route {
-  border-top: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
 }
 
 .find-route header > span,
@@ -3229,6 +3249,19 @@ code {
 }
 
 @media (max-width: 1020px) {
+  .find-capture-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .find-capture-deck {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .find-capture-local {
+    border-left: 0;
+  }
+
   .find-boundary-ledger > article {
     grid-template-columns: minmax(180px, 0.52fr) minmax(0, 1fr);
   }
@@ -3240,7 +3273,8 @@ code {
 
 @media (max-width: 820px) {
   .find-stage-heading,
-  .find-stage-layout,
+  .find-capture-grid,
+  .find-route-stack,
   .find-boundary-ledger > article {
     grid-template-columns: 1fr;
   }
@@ -3254,8 +3288,13 @@ code {
     justify-self: start;
   }
 
-  .find-deck-capture {
-    border-right: 0;
+  .find-capture {
+    grid-column: auto;
+  }
+
+  .find-capture + .find-capture,
+  .find-route + .find-route {
+    border-left: 0;
     border-bottom: 1px solid var(--rule);
   }
 
