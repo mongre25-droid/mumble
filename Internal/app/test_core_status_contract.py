@@ -503,6 +503,32 @@ def test_current_status_uses_stable_symbolic_publication_semantics() -> None:
     assert current.current_record == "Entry 100"
 
 
+def test_current_status_records_the_scoped_issue_48_local_source_candidate() -> None:
+    current = parse_current_status(_status_html())
+
+    assert current.authority_scope == "valid-when-read-from-refs/heads/main"
+    assert current.target_ref == "refs/heads/main"
+    assert current.website_candidate_scope == "local-issue-48-source-candidate"
+    assert current.website_candidate_containing_commit == "@self"
+    assert current.website_candidate_parent == (
+        "5e1e419a40cc7c27ab45f31425ef23aa2a95d313"
+    )
+    assert current.website_candidate_convergence_tree == (
+        "e00349c23a565c4a23d703f178bac1578b00a424"
+    )
+    assert current.website_candidate_source_checks_status == "passed"
+    assert current.website_candidate_review_status == "not-run"
+    assert current.website_candidate_ci_status == "not-run"
+    assert current.website_candidate_push_status == "not-run"
+    assert current.website_candidate_install_status == "not-run"
+    assert current.website_candidate_runtime_status == "not-run"
+    assert current.website_candidate_deployment_status == "not-run"
+    assert current.website_candidate_public_release_status == "not-run"
+    assert current.website_candidate_owner_acceptance_status == "not-run"
+    assert current.website_candidate_mobbin_status == "waived-unavailable"
+    assert current.website_candidate_record == "Entry 125"
+
+
 def test_current_receipt_preserves_the_accepted_predecessor_p3_history() -> None:
     current = parse_current_status(_status_html())
     logs = LOGS_PATH.read_text(encoding="utf-8")

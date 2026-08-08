@@ -97,6 +97,19 @@ def test_windows_tests_checkout_the_history_required_by_provenance():
     )
 
 
+def test_website_candidate_build_upload_contract_is_complete():
+    source = _source()
+    website = source.split("  website-build:", 1)[1].split(
+        "  website-windows-cleanliness:", 1
+    )[0]
+
+    assert "npm ci" in website
+    assert "npm run build" in website
+    assert "uses: actions/upload-artifact@v4" in website
+    assert "name: candidate-website" in website
+    assert "path: Development Files/Marketing/Website/dist" in website
+
+
 def test_linux_lifecycle_provisions_the_exact_packaged_python_minor():
     source = _source()
     lifecycle = source.split("  linux-lifecycle:", 1)[1].split(

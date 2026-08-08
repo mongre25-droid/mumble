@@ -2059,7 +2059,7 @@ async function helpJourney(browser) {
   assert.match(helpText, /result remains in (?:the )?Deck and History/i);
   assert.match(helpText, /Public release remains gated/i);
   assert.match(helpText, /Publisher signature.+Not accepted/is);
-  assert.match(helpText, /70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493/i);
+  assert.match(helpText, /b096b762be1075622bc443bd06564e568d709be129fc0fb4a0c87da382da4534/i);
   assert.doesNotMatch(helpText, /Mumble Search/i);
   assert.match(helpText, /public GitHub issue tracker.+sole support and defect-reporting route/is);
   assert.doesNotMatch(
@@ -2737,7 +2737,7 @@ async function noJavaScriptPath(browser) {
     await page.getByRole('heading', { level: 2, name: 'macOS' }).waitFor();
     await page.getByRole('heading', { level: 2, name: 'Linux' }).waitFor();
     const pageText = await page.locator('body').innerText();
-    assert.match(pageText, /70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493/i);
+    assert.match(pageText, /b096b762be1075622bc443bd06564e568d709be129fc0fb4a0c87da382da4534/i);
     assert.match(pageText, /Public release remains gated/i);
     assert.match(pageText, /No accepted artifact/i);
     await noHorizontalOverflow(page, `no-JavaScript Downloads ${viewport.width}px`);

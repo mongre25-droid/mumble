@@ -10,7 +10,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).parents[2]
-PACKAGE_PROVENANCE_BASE = "9d583ec31432b975e3a8955d2ebecf9c3ca87080"
+PACKAGE_PROVENANCE_BASE = "5e1e419a40cc7c27ab45f31425ef23aa2a95d313"
 BUILDER_PATH = (
     REPO_ROOT / "Development Files" / "Tooling" / "_rebuild_zip.py"
 )

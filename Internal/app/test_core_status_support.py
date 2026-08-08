@@ -76,8 +76,8 @@ _EXPECTED_FIELDS = {
     "windows_package_sha256": "70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493",
     "failed_ci_run": "30728545428",
     "cancelled_ci_runs": "30728750267,30730118039,30730292106",
-    "document_structure_sha256": "6917609244202E3C118A4602E1DDEDD50E177458B8A010C39C193D6A05B79D1F",
-    "non_projection_text_sha256": "7DF73E89BE7E3FD9F36B8CE8426E2FB60E96E2A8052D7C9A8BDB68CB85AEB07B",
+    "document_structure_sha256": "B3A3A739DF0D741C60A3EEF6DCA4B792E002CD1C1CAABCD41EC7F3CA21F7AE27",
+    "non_projection_text_sha256": "4C9C951A892E840C5AF161C4FC89F6BC1358DE26013C821EF3926FC92D3816CA",
     "current_record": "Entry 100",
     "pr_number": "49",
     "pr_status": "merged",
@@ -86,6 +86,21 @@ _EXPECTED_FIELDS = {
     "replacement_ci_status": "passed",
     "open_issues": "12,25,28,29,30",
     "acceptance_gates": "open",
+    "website_candidate_scope": "local-issue-48-source-candidate",
+    "website_candidate_containing_commit": "@self",
+    "website_candidate_parent": "5e1e419a40cc7c27ab45f31425ef23aa2a95d313",
+    "website_candidate_convergence_tree": "e00349c23a565c4a23d703f178bac1578b00a424",
+    "website_candidate_source_checks_status": "passed",
+    "website_candidate_review_status": "not-run",
+    "website_candidate_ci_status": "not-run",
+    "website_candidate_push_status": "not-run",
+    "website_candidate_install_status": "not-run",
+    "website_candidate_runtime_status": "not-run",
+    "website_candidate_deployment_status": "not-run",
+    "website_candidate_public_release_status": "not-run",
+    "website_candidate_owner_acceptance_status": "not-run",
+    "website_candidate_mobbin_status": "waived-unavailable",
+    "website_candidate_record": "Entry 125",
 }
 
 
@@ -161,6 +176,21 @@ class CurrentStatus:
     replacement_ci_status: str
     open_issues: str
     acceptance_gates: str
+    website_candidate_scope: str
+    website_candidate_containing_commit: str
+    website_candidate_parent: str
+    website_candidate_convergence_tree: str
+    website_candidate_source_checks_status: str
+    website_candidate_review_status: str
+    website_candidate_ci_status: str
+    website_candidate_push_status: str
+    website_candidate_install_status: str
+    website_candidate_runtime_status: str
+    website_candidate_deployment_status: str
+    website_candidate_public_release_status: str
+    website_candidate_owner_acceptance_status: str
+    website_candidate_mobbin_status: str
+    website_candidate_record: str
 
 
 @dataclass(frozen=True)
@@ -182,6 +212,7 @@ _PROJECTION_TAGS = {
     "verification": "p",
     "issue-30": "tr",
     "published-integration": "tr",
+    "website-source-candidate": "tr",
 }
 _PROJECTION_CLASSES = {"opening": "plain", "package": "callout"}
 
@@ -277,6 +308,16 @@ _PROJECTION_FIELDS = {
         "physical_status", "permissions_status", "signing_status", "notarisation_status",
         "artifact_promotion_status", "deployment_status", "public_release_status",
         "rollback_acceptance_status", "owner_acceptance_status",
+    ),
+    "website-source-candidate": (
+        "website_candidate_scope", "website_candidate_containing_commit",
+        "website_candidate_parent", "website_candidate_convergence_tree",
+        "website_candidate_source_checks_status", "website_candidate_review_status",
+        "website_candidate_ci_status", "website_candidate_push_status",
+        "website_candidate_install_status", "website_candidate_runtime_status",
+        "website_candidate_deployment_status", "website_candidate_public_release_status",
+        "website_candidate_owner_acceptance_status", "website_candidate_mobbin_status",
+        "website_candidate_record",
     ),
 }
 
@@ -557,6 +598,26 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
             f"{review_history_text} "
             f"{current.current_record} records the symbolic receipt. {receipt_ci_text} "
             f"{gate_statuses}."
+        ),
+        "website-source-candidate": (
+            "Issue #48 local website source candidate This projection is scoped only to "
+            f"{current.website_candidate_scope}. Symbolic containing commit "
+            f"{current.website_candidate_containing_commit} is the local certification candidate "
+            f"and has sole parent {current.website_candidate_parent}, whose tree "
+            f"{current.website_candidate_convergence_tree} is the clean accepted-lineage "
+            "convergence. Local source checks="
+            f"{current.website_candidate_source_checks_status}; independent Standards and "
+            f"Specification review={current.website_candidate_review_status}; CI="
+            f"{current.website_candidate_ci_status}; push={current.website_candidate_push_status}; "
+            f"install={current.website_candidate_install_status}; runtime="
+            f"{current.website_candidate_runtime_status}; deployment="
+            f"{current.website_candidate_deployment_status}; public release="
+            f"{current.website_candidate_public_release_status}; owner acceptance="
+            f"{current.website_candidate_owner_acceptance_status}. Mobbin="
+            f"{current.website_candidate_mobbin_status} under owner waiver comment 5160787339; "
+            "no Mobbin pass or substitute research is claimed. "
+            f"{current.website_candidate_record} records this boundary. This local source "
+            f"candidate does not supersede {current.target_ref} and closes no external gate."
         ),
     }
 def _validate_projections(
@@ -869,6 +930,16 @@ def parse_current_status(status_html: str) -> CurrentStatus:
         "workflow_status": {"unchanged", "changed"},
         "installer_status": {"unchanged", "changed"},
         "saved_checkout_status": {"unchanged", "changed"},
+        "website_candidate_source_checks_status": {"passed", "failed", "not-run"},
+        "website_candidate_review_status": {"accepted", "rejected", "not-run"},
+        "website_candidate_ci_status": {"passed", "failed", "not-run", "cancelled"},
+        "website_candidate_push_status": {"passed", "failed", "not-run"},
+        "website_candidate_install_status": {"passed", "failed", "not-run"},
+        "website_candidate_runtime_status": {"passed", "failed", "not-run"},
+        "website_candidate_deployment_status": {"completed", "failed", "not-run"},
+        "website_candidate_public_release_status": {"completed", "failed", "not-run"},
+        "website_candidate_owner_acceptance_status": {"accepted", "rejected", "not-run"},
+        "website_candidate_mobbin_status": {"waived-unavailable"},
     }
     for field, allowed in allowed_values.items():
         if fields[field] not in allowed:
@@ -881,6 +952,10 @@ def parse_current_status(status_html: str) -> CurrentStatus:
         raise CurrentStatusContractError("Windows package byte count must be numeric")
     if not re.fullmatch(r"[0-9A-F]{64}", fields["windows_package_sha256"]):
         raise CurrentStatusContractError("Windows package SHA-256 must be uppercase hexadecimal")
+    if not re.fullmatch(r"[0-9a-f]{40}", fields["website_candidate_parent"]):
+        raise CurrentStatusContractError("website candidate parent must be an exact Git commit")
+    if not re.fullmatch(r"[0-9a-f]{40}", fields["website_candidate_convergence_tree"]):
+        raise CurrentStatusContractError("website convergence tree must be an exact Git tree")
     if parser.non_projection_text_sha256() != fields["non_projection_text_sha256"]:
         raise CurrentStatusContractError(_NON_PROJECTION_TEXT_ERROR)
     current = CurrentStatus(**fields)

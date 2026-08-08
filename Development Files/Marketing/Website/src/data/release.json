@@ -119,7 +119,7 @@
           "statusLabel": "Downloadable candidate",
           "architecture": "x86_64",
           "format": "ZIP",
-          "sizeBytes": 1207711,
+          "sizeBytes": 1207763,
           "requirements": [
             "Windows 10 or 11 (64-bit)",
             "Internet access for first-time setup",
@@ -129,7 +129,7 @@
           "gate": "The repository candidate can be downloaded for inspection. Installation lifecycle, physical acceptance, publisher signing, deployment, and public release remain open.",
           "integrity": {
             "algorithm": "SHA-256",
-            "value": "70794b4d13c1c38662425deb5700865728955f4fac78dc2d083436f63fb99493",
+            "value": "b096b762be1075622bc443bd06564e568d709be129fc0fb4a0c87da382da4534",
             "checksumStatus": {
               "state": "matched",
               "label": "Matches canonical package bytes",
@@ -143,8 +143,8 @@
           },
           "provenance": {
             "schema": "mumble.release-provenance.v1",
-            "sourceCommit": "9d583ec31432b975e3a8955d2ebecf9c3ca87080",
-            "inputClosureDigest": "87f3031fababeb82a39e356e975efcedd2ce329466e0654a1ae2afb2d3b0a6a6",
+            "sourceCommit": "5e1e419a40cc7c27ab45f31425ef23aa2a95d313",
+            "inputClosureDigest": "d60eee33896367d82f7474e2f61b2ecebce850373b4e166c74e1031f631217ec",
             "memberCount": 147
           }
         }

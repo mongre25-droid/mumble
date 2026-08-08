@@ -10,7 +10,7 @@
 <header class="doc-head">
   <div class="kicker">Mumble 0.95 · Present state</div>
   <h1>STATUS</h1>
-  <div class="meta"><div><span class="ico">◆</span><b>Last refreshed:</b> 2 August 2026</div><div><span class="ico">◆</span><b>Release position:</b> pre-release hardening</div><div><span class="ico">◆</span><b>Companions:</b> <a href="README.html">README</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div></div>
+  <div class="meta"><div><span class="ico">◆</span><b>Last refreshed:</b> 8 August 2026</div><div><span class="ico">◆</span><b>Release position:</b> pre-release hardening</div><div><span class="ico">◆</span><b>Companions:</b> <a href="README.html">README</a> · <a href="HANDBOOK.html">HANDBOOK</a> · <a href="LOGS.html">LOGS</a></div></div>
 </header>
 
 <script id="mumble-current-state" type="application/json" data-current-state-authority="mumble.current-state.v1">
@@ -65,8 +65,8 @@
   "windows_package_sha256": "70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493",
   "failed_ci_run": "30728545428",
   "cancelled_ci_runs": "30728750267,30730118039,30730292106",
-  "document_structure_sha256": "6917609244202E3C118A4602E1DDEDD50E177458B8A010C39C193D6A05B79D1F",
-  "non_projection_text_sha256": "7DF73E89BE7E3FD9F36B8CE8426E2FB60E96E2A8052D7C9A8BDB68CB85AEB07B",
+  "document_structure_sha256": "B3A3A739DF0D741C60A3EEF6DCA4B792E002CD1C1CAABCD41EC7F3CA21F7AE27",
+  "non_projection_text_sha256": "4C9C951A892E840C5AF161C4FC89F6BC1358DE26013C821EF3926FC92D3816CA",
   "current_record": "Entry 100",
   "pr_number": "49",
   "pr_status": "merged",
@@ -74,7 +74,22 @@
   "promotion_status": "source-merged",
   "replacement_ci_status": "passed",
   "open_issues": "12,25,28,29,30",
-  "acceptance_gates": "open"
+  "acceptance_gates": "open",
+  "website_candidate_scope": "local-issue-48-source-candidate",
+  "website_candidate_containing_commit": "@self",
+  "website_candidate_parent": "5e1e419a40cc7c27ab45f31425ef23aa2a95d313",
+  "website_candidate_convergence_tree": "e00349c23a565c4a23d703f178bac1578b00a424",
+  "website_candidate_source_checks_status": "passed",
+  "website_candidate_review_status": "not-run",
+  "website_candidate_ci_status": "not-run",
+  "website_candidate_push_status": "not-run",
+  "website_candidate_install_status": "not-run",
+  "website_candidate_runtime_status": "not-run",
+  "website_candidate_deployment_status": "not-run",
+  "website_candidate_public_release_status": "not-run",
+  "website_candidate_owner_acceptance_status": "not-run",
+  "website_candidate_mobbin_status": "waived-unavailable",
+  "website_candidate_record": "Entry 125"
 }
 </script>
 
@@ -89,6 +104,7 @@
   <tr id="current-state-ci" data-current-state-projection="ci" data-projection-schema="mumble.current-state-projection.v1" data-state-ci-subject="b6fe674f6332a5cfb20bf35568152fe22798f55e" data-state-ci-run="30730116960" data-state-ci-status="passed" data-state-predecessor-published-records-head="ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f" data-state-predecessor-records-ci-run="30730441394" data-state-predecessor-records-ci-status="passed" data-state-predecessor-records-review-status="rejected" data-state-containing-commit="@self" data-state-final-receipt-ci-at-commit="not-run" data-state-final-receipt-ci-live-authority="github-checks-for-@self" data-state-failed-ci-run="30728545428" data-state-cancelled-ci-runs="30728750267,30730118039,30730292106"><td>CI</td><td>Exact-source run 30730116960 status is passed for subject b6fe674f6332a5cfb20bf35568152fe22798f55e. Predecessor records-head run 30730441394 status is passed for ce28abb4c665fc5216aecb083bdc8e5e30e8cc8f; predecessor semantic review status is rejected. For symbolic containing commit @self, final receipt CI at commit time was not-run; later live authority is github-checks-for-@self. Failed run 30728545428 remains red evidence. Cancelled runs 30728750267, 30730118039, 30730292106 are not evidence.</td></tr>
   <tr id="current-state-runtime" data-current-state-projection="runtime" data-projection-schema="mumble.current-state-projection.v1" data-state-runtime-restart-status="not-run" data-state-saved-checkout-status="unchanged"><td>Runtime</td><td>Runtime restart status is not-run; this Core-only receipt leaves saved checkout status unchanged.</td></tr>
   <tr id="current-state-physical-release-owner" data-current-state-projection="physical-release-owner" data-projection-schema="mumble.current-state-projection.v1" data-state-physical-status="not-run" data-state-package-install-status="not-run" data-state-permissions-status="not-run" data-state-signing-status="not-run" data-state-notarisation-status="not-run" data-state-deployment-status="not-run" data-state-public-release-status="not-run" data-state-rollback-acceptance-status="not-run" data-state-owner-acceptance-status="not-run" data-state-acceptance-gates="open"><td>Physical, release, and owner</td><td>Package install=not-run; physical=not-run; permissions=not-run; signing=not-run; notarisation=not-run; deployment=not-run; public release=not-run; rollback acceptance=not-run; owner acceptance=not-run. Acceptance gates are open.</td></tr>
+  <tr id="current-state-website-source-candidate" data-current-state-projection="website-source-candidate" data-projection-schema="mumble.current-state-projection.v1" data-state-website-candidate-scope="local-issue-48-source-candidate" data-state-website-candidate-containing-commit="@self" data-state-website-candidate-parent="5e1e419a40cc7c27ab45f31425ef23aa2a95d313" data-state-website-candidate-convergence-tree="e00349c23a565c4a23d703f178bac1578b00a424" data-state-website-candidate-source-checks-status="passed" data-state-website-candidate-review-status="not-run" data-state-website-candidate-ci-status="not-run" data-state-website-candidate-push-status="not-run" data-state-website-candidate-install-status="not-run" data-state-website-candidate-runtime-status="not-run" data-state-website-candidate-deployment-status="not-run" data-state-website-candidate-public-release-status="not-run" data-state-website-candidate-owner-acceptance-status="not-run" data-state-website-candidate-mobbin-status="waived-unavailable" data-state-website-candidate-record="Entry 125"><td>Issue #48 local website source candidate</td><td>This projection is scoped only to local-issue-48-source-candidate. Symbolic containing commit @self is the local certification candidate and has sole parent 5e1e419a40cc7c27ab45f31425ef23aa2a95d313, whose tree e00349c23a565c4a23d703f178bac1578b00a424 is the clean accepted-lineage convergence. Local source checks=passed; independent Standards and Specification review=not-run; CI=not-run; push=not-run; install=not-run; runtime=not-run; deployment=not-run; public release=not-run; owner acceptance=not-run. Mobbin=waived-unavailable under owner waiver comment 5160787339; no Mobbin pass or substitute research is claimed. Entry 125 records this boundary. This local source candidate does not supersede refs/heads/main and closes no external gate.</td></tr>
 </tbody></table>
 
 <div class="tiles"><div class="tile"><div class="n">0.95</div><div class="l">Current source version</div></div><div class="tile"><div class="n">Local</div><div class="l">Default transcription path</div></div><div class="tile"><div class="n">Windows</div><div class="l">Product-contract platform</div></div><div class="tile"><div class="n">Gated</div><div class="l">Public release readiness</div></div></div>
