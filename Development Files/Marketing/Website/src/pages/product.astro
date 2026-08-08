@@ -9,10 +9,12 @@ const write = jobs.find((job) => job.id === 'write');
 const find = jobs.find((job) => job.id === 'find');
 const capture = jobs.find((job) => job.id === 'capture');
 const shape = jobs.find((job) => job.id === 'shape');
+const listen = jobs.find((job) => job.id === 'listen');
 const recovery = write?.story?.mechanism.steps.find((step) => step.id === 'recovery');
 if (!write?.story) throw new Error('Write story authority is missing');
 if (!capture?.story) throw new Error('Capture story authority is missing');
 if (!shape?.story) throw new Error('Shape story authority is missing');
+if (!listen?.story) throw new Error('Listen story authority is missing');
 if (!find?.story) throw new Error('Find story authority is missing');
 if (!recovery) throw new Error('Write recovery authority is missing');
 const shapeModes = shape.story.modes;
@@ -20,8 +22,8 @@ if (!shapeModes) throw new Error('Shape mode authority is missing');
 ---
 
 <BaseLayout
-  title="Product — How Mumble Write, Capture, Shape, and Find work"
-  description="Follow local dictation and intended-cursor return through saved recordings, optional text shaping, Deck recovery, local Mumble Find, and deliberate Web Search."
+  title="Product — How Mumble's five jobs work"
+  description="Follow local dictation through saved recordings, optional text shaping, Reader's online speech route, Deck recovery, local Mumble Find, and deliberate Web Search."
   currentPath="/product/"
 >
   <section class="page-hero shell" aria-labelledby="product-title">
@@ -58,6 +60,16 @@ if (!shapeModes) throw new Error('Shape mode authority is missing');
     </div>
   </section>
 
+  <section class="capture-intro shell" aria-labelledby="capture-product-title">
+    <div>
+      <h2 id="capture-product-title">Capture keeps the original recording and the working record connected.</h2>
+      <p>{capture.summary}</p>
+    </div>
+    <p>{capture.proof}</p>
+  </section>
+
+  <JobStory job={capture} surface="product" />
+
   <JobStory job={shape} surface="product" />
 
   <section class="shape-modes shell" aria-labelledby="shape-modes-title">
@@ -76,15 +88,15 @@ if (!shapeModes) throw new Error('Shape mode authority is missing');
     </div>
   </section>
 
-  <section class="capture-intro shell" aria-labelledby="capture-product-title">
+  <section class="listen-intro shell" aria-labelledby="listen-product-title">
     <div>
-      <h2 id="capture-product-title">Capture keeps the original recording and the working record connected.</h2>
-      <p>{capture.summary}</p>
+      <h2 id="listen-product-title">Listen keeps the document, the place, and the route together.</h2>
+      <p>{listen.summary}</p>
     </div>
-    <p>{capture.proof}</p>
+    <p>{listen.proof}</p>
   </section>
 
-  <JobStory job={capture} surface="product" />
+  <JobStory job={listen} surface="product" />
   <JobStory job={find} surface="product" />
 
   <section class="journey-next" aria-labelledby="product-next-title">

@@ -14,6 +14,9 @@ if (!job.story) throw new Error(`${job.label} has no detailed job story`);
 const story = job.story;
 const findPresentation = 'presentation' in story ? story.presentation : undefined;
 const futureMedia = 'futureMedia' in story ? story.futureMedia : undefined;
+const productEvidence = 'productEvidence' in story ? story.productEvidence : undefined;
+const routeNotes = 'routeNotes' in story ? story.routeNotes : undefined;
+const taskNote = 'taskNote' in story ? story.taskNote : undefined;
 const storyId = `job-${job.id}`;
 const stageTitleId = `${storyId}-stage-title`;
 const mechanismTitleId = `${storyId}-mechanism-title`;
@@ -54,7 +57,7 @@ if (routePresentation && routeSteps.length === 0) {
     </div>
 
     {capturePresentation ? (
-      <figure class="write-capture">
+      <figure class:list={['write-capture', 'className' in capturePresentation && capturePresentation.className]}>
         <img
           src={capturePresentation.src}
           width={capturePresentation.width}
@@ -86,6 +89,9 @@ if (routePresentation && routeSteps.length === 0) {
       <header class="write-closeup-header">
         <h2 id={stageTitleId}>{'title' in story.demonstration ? story.demonstration.title : story.opening.title}</h2>
         <p>{story.demonstration.note}</p>
+        {'supportingNote' in story.demonstration && (
+          <p>{story.demonstration.supportingNote}</p>
+        )}
       </header>
 
       <div class="write-demo-tabs" role="tablist" aria-label={`${job.label} demonstration steps`} data-job-tablist={job.id}>
@@ -134,6 +140,12 @@ if (routePresentation && routeSteps.length === 0) {
                   <span>{'mediaCaptionDetail' in story.demonstration ? story.demonstration.mediaCaptionDetail : 'Current accepted product evidence'}</span>
                 </figcaption>
               </figure>
+            ) : 'detail' in state ? (
+              <div class="listen-demo-field" aria-label={`Illustrative Reader close-up during ${state.label}`}>
+                <span>Illustrative Reader close-up</span>
+                <strong>{state.field}</strong>
+                <small>{state.detail}</small>
+              </div>
             ) : (
               <div class="write-field" data-mode={'mode' in state ? state.mode : undefined} aria-label={`Illustrative writing field during ${state.label}`}>
                 <span>{'fieldLabel' in state ? state.fieldLabel : 'Unbranded writing field'}</span>
@@ -281,6 +293,22 @@ if (routePresentation && routeSteps.length === 0) {
       </div>
     )}
 
+    {productEvidence && (
+      <figure class={productEvidence.className}>
+        <img
+          src={productEvidence.src}
+          width={productEvidence.width}
+          height={productEvidence.height}
+          loading="lazy"
+          alt={productEvidence.alt}
+        />
+        <figcaption>
+          <strong>{productEvidence.captionTitle}</strong>
+          <span>{productEvidence.captionDetail}</span>
+        </figcaption>
+      </figure>
+    )}
+
     <ol class="job-sequence">
       {story.mechanism.steps.map((step, index) => (
         <li>
@@ -318,6 +346,22 @@ if (routePresentation && routeSteps.length === 0) {
           </dl>
         </aside>
       </>
+    )}
+
+    {routeNotes && (
+      <div class="reader-route-boundaries">
+        {routeNotes.map((note) => (
+          <aside class={note.className} role="note" aria-label={note.ariaLabel}>
+            <div>
+              <h3>{note.title}</h3>
+              <p>{note.body}</p>
+            </div>
+            {'facts' in note && note.facts && (
+              <dl>{note.facts.map((fact) => <div><dt>{fact.term}</dt><dd>{fact.detail}</dd></div>)}</dl>
+            )}
+          </aside>
+        ))}
+      </div>
     )}
   </section>
 )}
@@ -361,5 +405,11 @@ if (routePresentation && routeSteps.length === 0) {
         </article>
       ))}
     </div>
+    {taskNote && (
+      <aside class={taskNote.className} role="note" aria-label={taskNote.ariaLabel}>
+        <strong>{taskNote.title}</strong>
+        <p>{taskNote.body}</p>
+      </aside>
+    )}
   </section>
 )}

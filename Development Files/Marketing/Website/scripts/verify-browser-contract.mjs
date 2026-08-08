@@ -1077,6 +1077,155 @@ async function shapeJourney(browser) {
 }
 
 
+async function assertListenStage(page, viewportName) {
+  const stage = page.locator('[data-job-story="listen"][data-story-surface="home"]');
+  await stage.getByRole('heading', { level: 2, name: /complete Listen path/i }).waitFor();
+  const stageText = await stage.innerText();
+  assert.match(stageText, /Genuine Mumble Reader/i);
+  assert.match(stageText, /demonstration library content/i);
+  assert.match(stageText, /configured online text-to-speech route/i);
+
+  const tabs = stage.getByRole('tab');
+  assert.equal(await tabs.count(), 3, `${viewportName} Listen stage does not expose three direct steps`);
+  const listenTab = stage.getByRole('tab', { name: 'Listen', exact: true });
+  await listenTab.focus();
+  await assertVisibleFocus(page, `${viewportName} Listen direct-step focus`);
+  await page.keyboard.press('Enter');
+  assert.equal(await listenTab.getAttribute('aria-selected'), 'true');
+  const listenPanel = stage.getByRole('tabpanel', { name: 'Listen', exact: true });
+  await listenPanel.waitFor();
+  assert.match(await listenPanel.innerText(), /Play or pause/i);
+  assert.match(await listenPanel.innerText(), /voice and speed/i);
+
+  await page.keyboard.press('ArrowRight');
+  const returnTab = stage.getByRole('tab', { name: 'Return', exact: true });
+  assert.equal(await returnTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await returnTab.evaluate((element) => document.activeElement === element), true);
+  const returnPanel = stage.getByRole('tabpanel', { name: 'Return', exact: true });
+  await returnPanel.waitFor();
+  assert.match(await returnPanel.innerText(), /saved reading position/i);
+  assert.match(await returnPanel.innerText(), /find and bookmarks/i);
+  await page.waitForTimeout(550);
+  assert.equal(
+    await returnTab.getAttribute('aria-selected'),
+    'true',
+    `${viewportName} reduced-motion Listen stage advanced without visitor input`,
+  );
+  await stage.getByRole('button', { name: 'Previous Listen step' }).click();
+  assert.equal(await listenTab.getAttribute('aria-selected'), 'true');
+
+  const image = stage.locator('img');
+  assert.equal(await image.count(), 1, `${viewportName} Listen stage does not use one genuine Reader capture`);
+  await image.scrollIntoViewIfNeeded();
+  await image.evaluate(async (element) => {
+    if (!element.complete || element.naturalWidth === 0) await element.decode();
+  });
+  const imageFacts = await image.evaluate((element) => ({
+    src: element.getAttribute('src'),
+    alt: element.getAttribute('alt') || '',
+    naturalWidth: element.naturalWidth,
+    naturalHeight: element.naturalHeight,
+  }));
+  assert.equal(imageFacts.src, '/product/reader.webp');
+  assert.equal(imageFacts.naturalWidth, 1180);
+  assert.equal(imageFacts.naturalHeight, 820);
+  assert.match(imageFacts.alt, /Genuine Mumble Reader capture/i);
+  assert.match(imageFacts.alt, /demonstration library content/i);
+}
+
+async function listenJourney(browser) {
+  const cases = [
+    { name: 'desktop', viewport: { width: 1365, height: 900 }, mobile: false },
+    { name: 'mobile', viewport: { width: 390, height: 844 }, mobile: true },
+  ];
+
+  for (const item of cases) {
+    const context = await browser.newContext({
+      viewport: item.viewport,
+      reducedMotion: 'reduce',
+      userAgent: item.mobile
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+    });
+    await context.addInitScript(() => {
+      window.__mumbleMicrophoneRequests = 0;
+      if (navigator.mediaDevices?.getUserMedia) {
+        navigator.mediaDevices.getUserMedia = () => {
+          window.__mumbleMicrophoneRequests += 1;
+          return Promise.reject(new Error('Website microphone access is forbidden'));
+        };
+      }
+    });
+    const page = await context.newPage();
+    const browserErrors = browserErrorsFor(page);
+
+    await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
+    await assertSharedShell(page, 'Home');
+    await assertListenStage(page, item.name);
+    assert.equal(await page.evaluate(() => window.__mumbleMicrophoneRequests), 0);
+    await noHorizontalOverflow(page, `${item.name} Listen Home`);
+
+    await followPrimaryNavigation(page, 'Product', '/product/', item.mobile);
+    await assertSharedShell(page, 'Product');
+    const product = page.locator('[data-job-story="listen"][data-story-surface="product"]');
+    await product.waitFor();
+    const productText = await product.innerText();
+    for (const format of ['TXT', 'Markdown', 'PDF', 'DOCX', 'HTML', 'EPUB', 'RTF', 'CSV', 'XLSX', 'PPTX', 'ODT']) {
+      assert.match(productText, new RegExp(`\\b${format}\\b`, 'i'), `Product omits supported Reader format ${format}`);
+    }
+    for (const truth of [
+      /library/i,
+      /collections/i,
+      /play or pause/i,
+      /voice and speed/i,
+      /find/i,
+      /bookmark/i,
+      /saved reading position/i,
+      /progress/i,
+    ]) assert.match(productText, truth);
+
+    const onlineBoundary = product.getByRole('note', { name: 'Reader speech online requirements' });
+    await onlineBoundary.waitFor();
+    const onlineText = await onlineBoundary.innerText();
+    assert.match(onlineText, /configured online text-to-speech route/i);
+    assert.match(onlineText, /network access/i);
+    assert.match(onlineText, /provider key/i);
+    assert.match(onlineText, /provider availability/i);
+    assert.match(onlineText, /provider credits/i);
+    assert.doesNotMatch(onlineText, /speech (?:is|runs|stays) (?:local|offline)/i);
+
+    const summaryBoundary = product.getByRole('note', { name: 'Reader summary boundary' });
+    await summaryBoundary.waitFor();
+    const summaryText = await summaryBoundary.innerText();
+    assert.match(summaryText, /separate from playback/i);
+    assert.match(summaryText, /document text/i);
+    assert.match(summaryText, /only when you choose/i);
+    await page.locator('.journey-next [data-platform-action]').waitFor();
+    await noHorizontalOverflow(page, `${item.name} Listen Product`);
+
+    await followPrimaryNavigation(page, 'Use Cases', '/use-cases/', item.mobile);
+    await assertSharedShell(page, 'Use Cases');
+    for (const task of ['Long document', 'Resume reading', 'Find a passage', 'Retain progress']) {
+      const taskRegion = page.getByRole('article').filter({
+        has: page.getByRole('heading', { level: 2, name: task, exact: true }),
+      });
+      await taskRegion.waitFor();
+      assert.ok(await taskRegion.getByRole('listitem').count() >= 4, `${task} is not a complete Listen sequence`);
+    }
+    const useCasesText = await page.locator('[data-job-story="listen"][data-story-surface="use-cases"]').innerText();
+    assert.match(useCasesText, /configured online text-to-speech route/i);
+    assert.match(useCasesText, /provider credits/i);
+    assert.match(useCasesText, /tasks rather than professions/i);
+    assert.equal(await page.evaluate(() => window.__mumbleMicrophoneRequests), 0);
+    await page.locator('.journey-next [data-platform-action]').waitFor();
+    await noHorizontalOverflow(page, `${item.name} Listen Use Cases`);
+    assertNoBrowserErrors(browserErrors, `${item.name} Listen journey browser errors`);
+    await context.close();
+  }
+  record('Issue #40 desktop/mobile Listen journey, genuine Reader evidence, keyboard controls, reduced-motion stability, accepted formats, library/playback/navigation/progress truth, distinct summary route, visible online requirements, zero microphone requests, release action, and horizontal fit');
+}
+
+
 async function platformRecommendations(browser) {
   const cases = [
     {
@@ -1544,6 +1693,12 @@ async function noJavaScriptPath(browser) {
     for (const panelId of ['source', 'record', 'review']) {
       await captureStage.locator(`#job-capture-panel-${panelId}`).waitFor();
     }
+    const listenStage = page.locator('[data-job-story="listen"][data-story-surface="home"]');
+    assert.equal(await listenStage.getByRole('tabpanel').count(), 3, 'no-JavaScript Listen states are incomplete');
+    const noScriptListenStageText = await listenStage.innerText();
+    for (const state of ['Start from the document', 'Play or pause', 'Resume from the saved reading position']) {
+      assert.match(noScriptListenStageText, new RegExp(state, 'i'));
+    }
     assert.deepEqual(
       stopTimeDestinationFindings(
         await page.locator('main').innerText(),
@@ -1583,6 +1738,10 @@ async function noJavaScriptPath(browser) {
     await futureGate.waitFor();
     assert.equal(await futureGate.getByRole('link').count(), 0);
     assert.equal(await futureGate.getByRole('button').count(), 0);
+    assert.match(productText, /supported documents into a library-first listening workspace/i);
+    assert.match(productText, /network access/i);
+    assert.match(productText, /provider credits/i);
+    assert.match(productText, /Summary stays separate from playback/i);
     assert.deepEqual(
       stopTimeDestinationFindings(productText, 'product', `no-JavaScript Product ${viewport.width}px`),
       [],
@@ -1596,7 +1755,15 @@ async function noJavaScriptPath(browser) {
       useCasesLink.click(),
     ]);
     await assertSharedShell(page, 'Use Cases');
-    for (const task of ['Everyday notes', 'Longer text', 'Across applications']) {
+    for (const task of [
+      'Everyday notes',
+      'Longer text',
+      'Across applications',
+      'Long document',
+      'Resume reading',
+      'Find a passage',
+      'Retain progress',
+    ]) {
       await page.getByRole('heading', { level: 2, name: task }).waitFor();
     }
     const noScriptUseCasesFind = page.locator('[data-job-story="find"][data-story-surface="use-cases"]');
@@ -1605,6 +1772,10 @@ async function noJavaScriptPath(browser) {
     for (const task of ['Meeting', 'Lecture', 'Existing recording']) {
       await page.getByRole('heading', { level: 2, name: task, exact: true }).waitFor();
     }
+    const noScriptListenTasks = page.locator('[data-job-story="listen"][data-story-surface="use-cases"]');
+    const noScriptListenText = await noScriptListenTasks.innerText();
+    assert.match(noScriptListenText, /configured online text-to-speech route/i);
+    assert.match(noScriptListenText, /provider credits/i);
     assert.deepEqual(
       stopTimeDestinationFindings(
         await page.locator('main').innerText(),
@@ -1687,7 +1858,7 @@ async function noJavaScriptPath(browser) {
     assertNoBrowserErrors(browserErrors, `no-JavaScript ${viewport.width}px browser errors`);
     await context.close();
   }
-  record('no-JavaScript desktop/mobile Home-to-Product-to-Use-Cases-to-Downloads journeys retain complete Write, Capture, and Find states, distinct Deck/local/web boundaries, truthful destination/media/privacy guidance, ≥44px mobile header action geometry, mechanisms, task sequences, inactive future media gate, release facts, platform states, download access, and horizontal fit');
+  record('no-JavaScript desktop/mobile Home-to-Product-to-Use-Cases-to-Downloads journeys retain complete Write, Capture, Shape, Listen, and Find states, distinct Deck/local/web boundaries, truthful destination/media/privacy guidance, ≥44px mobile header action geometry, mechanisms, task sequences, inactive future media gate, online Reader requirements, release facts, platform states, download access, and horizontal fit');
 }
 
 let browser;
@@ -1700,6 +1871,7 @@ try {
   await captureJourney(browser);
   await writeJourney(browser);
   await shapeJourney(browser);
+  await listenJourney(browser);
   await findJourney(browser);
   await platformRecommendations(browser);
   await downloadsContract(browser);

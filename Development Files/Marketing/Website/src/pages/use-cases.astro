@@ -9,21 +9,23 @@ const write = jobs.find((job) => job.id === 'write');
 const find = jobs.find((job) => job.id === 'find');
 const capture = jobs.find((job) => job.id === 'capture');
 const shape = jobs.find((job) => job.id === 'shape');
+const listen = jobs.find((job) => job.id === 'listen');
 if (!write?.story) throw new Error('Write story authority is missing');
 if (!capture?.story) throw new Error('Capture story authority is missing');
 if (!shape?.story) throw new Error('Shape story authority is missing');
+if (!listen?.story) throw new Error('Listen story authority is missing');
 if (!find?.story) throw new Error('Find story authority is missing');
 ---
 
 <BaseLayout
   title="Use Cases — Complete Mumble job sequences"
-  description="Follow complete Mumble sequences for writing, capturing, shaping, and finding without profession-first navigation."
+  description="Follow complete Mumble Write, Capture, Shape, Listen, and Find sequences without profession-first navigation."
   currentPath="/use-cases/"
 >
   <section class="page-hero use-cases-hero shell" aria-labelledby="use-cases-title">
     <div>
       <h1 id="use-cases-title">Start with the task, not a persona.</h1>
-      <p>Write, Capture, Shape, and Find stay organised by tasks rather than professions. Local dictation needs no Mumble account, provider key, or paid service; hosted shaping sends finished text—not recorded audio—and external providers may charge.</p>
+      <p>Write, Capture, Shape, Listen, and Find stay organised by tasks rather than professions. Local dictation needs no Mumble account, provider key, or paid service; hosted shaping and Reader speech retain their separate online boundaries.</p>
     </div>
     <nav class="task-jump" aria-label="Write, Shape, and Find task sequences">
       <span>Write tasks</span>
@@ -49,6 +51,18 @@ if (!find?.story) throw new Error('Find story authority is missing');
   </section>
 
   <JobStory job={capture} surface="use-cases" />
+
+  <section class="listen-task-intro shell" aria-labelledby="listen-tasks-title">
+    <div>
+      <h2 id="listen-tasks-title">Listen begins with the document you need.</h2>
+      <p>Long documents, resumed reading, passage finding, and retained progress follow one library-first path with an explicit online speech boundary.</p>
+    </div>
+    <nav class="task-jump" aria-label="Listen task sequences">
+      {listen.story.tasks.map((task) => <a href={`#job-${listen.id}-task-${task.id}`}>{task.title}</a>)}
+    </nav>
+  </section>
+
+  <JobStory job={listen} surface="use-cases" />
   <JobStory job={find} surface="use-cases" />
 
   <section class="journey-next" aria-labelledby="use-cases-next-title">

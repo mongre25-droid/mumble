@@ -10,16 +10,18 @@ const write = jobs.find((job) => job.id === 'write');
 const find = jobs.find((job) => job.id === 'find');
 const capture = jobs.find((job) => job.id === 'capture');
 const shape = jobs.find((job) => job.id === 'shape');
+const listen = jobs.find((job) => job.id === 'listen');
 if (!windows) throw new Error('Windows release authority is missing');
 if (!write?.story) throw new Error('Write story authority is missing');
 if (!capture?.story) throw new Error('Capture story authority is missing');
 if (!shape?.story) throw new Error('Shape story authority is missing');
+if (!listen?.story) throw new Error('Listen story authority is missing');
 if (!find?.story) throw new Error('Find story authority is missing');
 ---
 
 <BaseLayout
   title="Mumble — Turn speech into useful work"
-  description="See Mumble write at the cursor, capture searchable records, shape finished text, and keep local and deliberate online finding distinct."
+  description="See Mumble write, capture, shape, listen, and find through one local-first voice workspace with explicit online boundaries."
   currentPath="/"
 >
   <section class="hero write-hero shell" aria-labelledby="home-title">
@@ -82,6 +84,16 @@ if (!find?.story) throw new Error('Find story authority is missing');
       <JobStory job={shape} surface="home" />
     </div>
   </section>
+
+  <section class="listen-intro shell" aria-labelledby="listen-home-title">
+    <div>
+      <h2 id="listen-home-title">A listening session should still feel like reading.</h2>
+      <p>{listen.story.opening.summary}</p>
+    </div>
+    <a class="text-link" href="/product/#job-listen-mechanism-title">How Listen works</a>
+  </section>
+
+  <JobStory job={listen} surface="home" />
 
   <section class="find-section" aria-labelledby="find-story-title">
     <div class="shell section-intro">
