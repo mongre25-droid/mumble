@@ -588,6 +588,19 @@ async function findJourney(browser) {
       },
       `${capture.route} product capture does not match canonical evidence metadata`,
     );
+    const accessibleImage = figure.getByRole('img', { name: capture.alt, exact: true });
+    assert.equal(
+      await accessibleImage.count(),
+      1,
+      `${capture.route} product capture is missing from the browser accessibility tree`,
+    );
+    if (capture.route === 'deck') {
+      assert.doesNotMatch(
+        await accessibleImage.ariaSnapshot(),
+        /\bMumble Find\b/i,
+        'Deck accessibility output must not claim the pinned Deck image shows Mumble Find',
+      );
+    }
     const caption = await figure.locator('figcaption').textContent() ?? '';
     assert.ok(caption.includes(capture.label), `${capture.route} capture label is missing`);
     assert.ok(caption.includes(capture.truthLabel), `${capture.route} capture truth label is missing`);

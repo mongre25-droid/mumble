@@ -159,7 +159,7 @@
             "height": 800,
             "loading": "eager",
             "fetchPriority": "high",
-            "alt": "Genuine current Mumble Deck capture showing searchable content types, Starred filtering, Pin or Unpin, and the separate Mumble Find command",
+            "alt": "Genuine current Mumble Deck capture showing Deck navigation, content-type and Starred filters, search, Unpin and More controls, and saved entries",
             "label": "Genuine Mumble Deck capture",
             "caption": "Search saved text, filter Starred material, then copy, paste, or shape it again.",
             "truthLabel": "Accepted Deck source capture",
