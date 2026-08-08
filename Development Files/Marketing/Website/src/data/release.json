@@ -89,7 +89,8 @@
     },
     {
       "id": "support",
-      "label": "Issue tracker",
+      "label": "Issue reporting",
+      "availability": "available",
       "href": "https://github.com/mongre25-droid/mumble/issues"
     }
   ],

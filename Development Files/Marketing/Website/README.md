@@ -27,7 +27,7 @@ Node 22.12 or later is required.
 
 ## Page structure
 
-The current maintained site exposes six complete outputs:
+The current maintained site exposes seven complete outputs:
 
 1. Home (`/`) opens with one voice-first line, the release-authority platform
    action, and one application-matched guided stage for Write, Capture, Shape,
@@ -62,11 +62,15 @@ The current maintained site exposes six complete outputs:
    no-tracking boundary.
 5. Downloads (`/downloads/`) presents the hash-bound Windows candidate and
    visible gated states for macOS and Linux from one release authority.
-6. The not-found recovery page (`/404.html`) returns visitors to Home or
-   Downloads.
+6. Help (`/help/`) provides a searchable, task-led Getting Started path,
+   accepted platform status, shortcut and insertion recovery, and complete
+   static topic browsing.
+7. The not-found recovery page (`/404.html`) returns visitors to Home,
+   Downloads, Help, or public issue reporting.
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,
-release notes, and recommendation labels are in `src/data/release.json`.
+release notes, visitor resources, public source and issue-reporting destinations,
+and recommendation labels are in `src/data/release.json`.
 Privacy route identity, explanatory content, visual steps, control evidence, and
 semantic facts are centralized in `src/data/privacy-routes.ts`; the browser
 contract keeps an independent expected fact matrix.
@@ -101,7 +105,7 @@ evidence.
 ## Interaction and accessibility
 
 - Core Home, complete Write, Capture, Shape, Listen, and Find journeys, navigation,
-  release facts, and download access remain available without JavaScript.
+  Help, release facts, and download access remain available without JavaScript.
 - The Home guide never requests microphone access or plays audio. Ordinary
   motion performs at most one guided pass and never loops; direct interaction,
   reduced motion, save-data, and completed playback settle into manual control.
@@ -117,6 +121,8 @@ evidence.
 - The Listen story remains complete as text without JavaScript; its direct-step
   controls add keyboard navigation when scripting
   is available.
+- Help search filters the maintained static article set; semantic category,
+  popular-task, and platform links remain the complete no-JavaScript path.
 - Operating-system detection changes only the recommended action; complete
   Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.

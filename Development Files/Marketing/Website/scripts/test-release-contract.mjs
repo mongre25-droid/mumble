@@ -71,6 +71,19 @@ assert.deepEqual(
 console.log('PASS complete desktop package matrix');
 passCount += 1;
 
+assert.deepEqual(
+  release.resources.find((resource) => resource.id === 'support'),
+  {
+    id: 'support',
+    label: 'Issue reporting',
+    availability: 'available',
+    href: 'https://github.com/mongre25-droid/mumble/issues',
+  },
+  'public issue reporting must remain an active exact release resource',
+);
+console.log('PASS public issue-reporting resource is active');
+passCount += 1;
+
 passes(
   'version follows source and packaged evidence instead of an assumed release literal',
   changed((candidate) => { candidate.version = '2.7'; }),
@@ -248,6 +261,21 @@ rejects(
   'resource destinations cannot leave the approved project boundary',
   changed((candidate) => { candidate.resources[3].href = 'https://example.com/source'; }),
   /must be a safe Mumble destination/,
+);
+rejects(
+  'active public support cannot lose its exact issue-tracker destination',
+  changed((candidate) => {
+    candidate.resources.find((resource) => resource.id === 'support').href =
+      'https://github.com/mongre25-droid/mumble';
+  }),
+  /resources\[5\]\.href must remain "https:\/\/github\.com\/mongre25-droid\/mumble\/issues"/,
+);
+rejects(
+  'a gated support resource cannot retain an active visitor destination',
+  changed((candidate) => {
+    candidate.resources.find((resource) => resource.id === 'support').availability = 'gated';
+  }),
+  /resources\[5\]\.availability must remain "available"/,
 );
 rejects(
   'integrity guidance cannot silently lose a verification step',

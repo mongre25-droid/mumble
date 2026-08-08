@@ -1,6 +1,15 @@
 ---
 import Logo from './Logo.astro';
 import release from '../data/release.json';
+
+const sourceResource = release.resources.find((resource) => resource.id === 'source');
+const supportResource = release.resources.find((resource) => resource.id === 'support');
+if (
+  !sourceResource || !('href' in sourceResource)
+  || !supportResource || supportResource.availability !== 'available' || !('href' in supportResource)
+) {
+  throw new Error('Footer requires canonical public source and support resources');
+}
 ---
 
 <footer class="site-footer" data-site-footer>
@@ -20,6 +29,7 @@ import release from '../data/release.json';
         <a href="/#jobs">Five jobs</a>
         <a href="/privacy/">Privacy</a>
         <a href="/downloads/">Downloads</a>
+        <a href="/help/">Help</a>
       </div>
       <div>
         <h2>Trust</h2>
@@ -29,8 +39,8 @@ import release from '../data/release.json';
       </div>
       <div>
         <h2>Project</h2>
-        <a href="https://github.com/mongre25-droid/mumble">Repository</a>
-        <a href="https://github.com/mongre25-droid/mumble/issues">Issue tracker</a>
+        <a href={sourceResource.href}>Repository</a>
+        <a href={supportResource.href}>{supportResource.label}</a>
         <span>{release.channel.label}</span>
       </div>
     </nav>
