@@ -161,6 +161,48 @@ async function assertSharedShell(page, currentLabel) {
   }
 }
 
+function homeMontageExpectations() {
+  const resolveMedia = (job) => {
+    const reference = job.homeMontage?.media;
+    if (reference?.kind === 'demonstration-presentation') {
+      return job.story?.demonstration?.presentation;
+    }
+    if (reference?.kind === 'demonstration-state') {
+      return job.story?.demonstration?.states?.find((state) => state.id === reference.stateId);
+    }
+    if (reference?.kind === 'job-demonstration-presentation') {
+      return jobs.find((candidate) => candidate.id === reference.jobId)?.story?.demonstration?.presentation;
+    }
+    if (reference?.kind === 'presentation-capture') {
+      return job.story?.presentation?.captures?.find((capture) => capture.route === reference.route);
+    }
+    assert.fail(`${job.id} has no supported canonical Home montage media reference`);
+  };
+
+  return jobs.map((job) => {
+    const montage = job.homeMontage;
+    assert.ok(montage, `${job.id} has no canonical Home montage projection`);
+    const media = resolveMedia(job);
+    assert.ok(media, `${job.id} Home montage media reference does not resolve`);
+    return {
+      id: job.id,
+      label: job.label,
+      action: montage.action,
+      title: montage.title,
+      body: montage.body,
+      evidence: montage.evidence,
+      route: montage.route ?? [],
+      routeLabel: montage.routeLabel,
+      media: {
+        src: media.src ?? media.image,
+        width: String(media.width),
+        height: String(media.height),
+        alt: montage.mediaAlt ?? media.alt,
+      },
+    };
+  });
+}
+
 async function homeMontageJourney(browser) {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
@@ -182,14 +224,43 @@ async function homeMontageJourney(browser) {
   assert.equal(await primary.getAttribute('data-platform-action'), '');
   const stage = page.locator('[data-home-montage]');
   await stage.waitFor();
+  const expectedGuidedJobList = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' })
+    .format(jobs.map((job) => job.label));
+  assert.equal(await stage.getAttribute('aria-label'), `${expectedGuidedJobList} guided product tour`);
   assert.equal(await stage.getAttribute('data-home-state'), 'playing');
   assert.equal(await stage.locator('[data-home-play]').isDisabled(), true);
   assert.equal(await stage.locator('[data-home-pause]').isEnabled(), true);
   assert.equal(await stage.locator('[data-home-play]').getAttribute('aria-label'), 'Guided pass is playing');
   assert.equal(await stage.locator('[data-home-step-select]').count(), 5);
   assert.equal(await stage.locator('[data-home-panel]').count(), 5);
-  for (const label of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
-    await stage.getByRole('tab', { name: new RegExp(`^${label}:`) }).waitFor();
+  const montageExpectations = homeMontageExpectations();
+  for (const expected of montageExpectations) {
+    const tabId = `home-montage-tab-${expected.id}`;
+    const panelId = `home-montage-panel-${expected.id}`;
+    const tab = stage.getByRole('tab', { name: `${expected.label}: ${expected.action}`, exact: true });
+    const panel = stage.locator(`[data-home-panel="${expected.id}"]`);
+    await tab.waitFor();
+    assert.equal(await tab.getAttribute('id'), tabId, `${expected.label} tab id is not stable`);
+    assert.equal(await tab.getAttribute('aria-controls'), panelId, `${expected.label} tab does not own its panel`);
+    assert.equal(await panel.getAttribute('role'), 'tabpanel', `${expected.label} panel has no tabpanel role`);
+    assert.equal(await panel.getAttribute('id'), panelId, `${expected.label} panel id is not stable`);
+    assert.equal(await panel.getAttribute('aria-labelledby'), tabId, `${expected.label} panel is not named by its tab`);
+
+    const copy = panel.locator('.home-montage-copy');
+    assert.equal(await copy.locator(':scope > span').innerText(), expected.label);
+    assert.equal(await copy.locator(':scope > h2').innerText(), expected.title);
+    assert.equal(await copy.locator(':scope > p').innerText(), expected.action);
+    assert.equal(await copy.locator(':scope > small').innerText(), expected.body);
+    assert.deepEqual(await copy.locator('.home-shape-route > li').allInnerTexts(), expected.route);
+    if (expected.route.length > 0) {
+      assert.equal(await copy.locator('.home-shape-route').getAttribute('aria-label'), expected.routeLabel);
+    }
+    const image = panel.locator('figure img');
+    assert.equal(await image.getAttribute('src'), expected.media.src);
+    assert.equal(await image.getAttribute('width'), expected.media.width);
+    assert.equal(await image.getAttribute('height'), expected.media.height);
+    assert.equal(await image.getAttribute('alt'), expected.media.alt);
+    assert.equal(await panel.locator('figcaption').innerText(), expected.evidence);
   }
   const viewportProof = await page.evaluate(() => {
     const stage = document.querySelector('[data-home-montage]').getBoundingClientRect();
@@ -199,9 +270,43 @@ async function homeMontageJourney(browser) {
   assert.ok(viewportProof.stageTop < 900 && viewportProof.primaryTop < 900, `Home offer escapes first viewport: ${JSON.stringify(viewportProof)}`);
   assert.ok(viewportProof.stageArea > 300000, `Home stage is not dominant: ${JSON.stringify(viewportProof)}`);
 
-  await stage.getByRole('tab', { name: /^Shape:/ }).click();
+  const writeTab = stage.getByRole('tab', { name: /^Write:/ });
+  const captureTab = stage.getByRole('tab', { name: /^Capture:/ });
+  const shapeTab = stage.getByRole('tab', { name: /^Shape:/ });
+  const findTab = stage.getByRole('tab', { name: /^Find:/ });
+  await writeTab.click();
+  for (const [index, expected] of montageExpectations.entries()) {
+    const tab = stage.getByRole('tab', { name: new RegExp(`^${expected.label}:`) });
+    const panel = stage.locator(`[data-home-panel="${expected.id}"]`);
+    assert.equal(await tab.getAttribute('aria-selected'), String(index === 0), `${expected.label} tab selection drifted`);
+    assert.equal(await tab.getAttribute('tabindex'), index === 0 ? '0' : '-1', `${expected.label} tab roving tabindex drifted`);
+    assert.equal(await panel.isHidden(), index !== 0, `${expected.label} panel hidden state drifted`);
+  }
+  const accessibilityTree = await stage.ariaSnapshot();
+  assert.match(accessibilityTree, /tablist "Choose a Mumble job"/);
+  assert.match(accessibilityTree, /tab "Write: Speak into the field already in front of you\." \[selected\]/);
+  assert.match(accessibilityTree, /tabpanel "Write: Speak into the field already in front of you\."/);
+
+  await writeTab.focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await captureTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'home-montage-tab-capture');
+  await assertVisibleFocus(page, 'Home Capture tab focus after ArrowRight');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await writeTab.getAttribute('aria-selected'), 'true');
+  await page.keyboard.press('End');
+  assert.equal(await findTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'home-montage-tab-find');
+  await page.keyboard.press('Home');
+  assert.equal(await writeTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'home-montage-tab-write');
+
+  await shapeTab.click();
   assert.equal(await stage.getAttribute('data-home-step'), '3');
   assert.equal(await stage.getAttribute('data-home-state'), 'manual');
+  assert.equal(await shapeTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await stage.locator('[data-home-panel="shape"]').isHidden(), false);
+  assert.equal(await stage.locator('[data-home-panel="write"]').isHidden(), true);
   assert.equal(await stage.locator('[data-home-play]').isEnabled(), true);
   assert.equal(await stage.locator('[data-home-pause]').isDisabled(), true);
   await stage.locator('[data-home-next]').click();
@@ -262,6 +367,7 @@ async function homeMontageJourney(browser) {
   await noJsPage.goto(`${origin}/`, { waitUntil: 'networkidle' });
   const noJsStage = noJsPage.locator('[data-home-montage]');
   assert.equal(await noJsStage.locator('[data-home-panel]:visible').count(), 5);
+  assert.equal(await noJsStage.getByRole('tabpanel').count(), 5);
   assert.equal(await noJsStage.locator('[data-home-controls]:visible').count(), 0);
   for (const label of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
     assert.match(await noJsStage.innerText(), new RegExp(label));

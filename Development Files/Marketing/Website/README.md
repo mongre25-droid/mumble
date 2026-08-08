@@ -8,6 +8,7 @@ The static marketing site for Mumble, built with Astro 7 and vanilla JavaScript.
 npm.cmd ci --ignore-scripts
 npm.cmd run test:release
 npm.cmd run test:find
+npm.cmd run test:home
 node scripts/check-release.mjs
 npm.cmd run build
 npm.cmd exec -- astro check
@@ -68,6 +69,15 @@ release notes, and recommendation labels are in `src/data/release.json`.
 `npm.cmd run build` fails closed when that authority drifts from source version or
 the canonical and public Windows artifact bytes.
 
+Each canonical job also owns its Home-montage copy and a reference to existing
+canonical media. `src/data/home-montage.mjs` validates and resolves that
+five-job projection; `HomeMontage.astro` only renders it. The structured Home
+authority test rejects missing claims, unsupported or broken media references,
+copied media paths or dimensions, and alternative text not owned by canonical
+job data.
+The installed-Chrome contract then compares the visitor-visible montage back to
+that canonical data so component-local copies cannot drift silently.
+
 The Find job's route cards, boundary rows, examples, actions, provider and
 consent facts, failure wording, capture labels, dimensions, alt text, and source
 provenance all come from `src/data/jobs.json`; `JobStory.astro` renders that
@@ -91,6 +101,10 @@ evidence.
 - The Home guide never requests microphone access or plays audio. Ordinary
   motion performs at most one guided pass and never loops; direct interaction,
   reduced motion, save-data, and completed playback settle into manual control.
+- The five Home job choices form one automatic-selection tab interface with
+  stable tab-to-panel relationships, roving keyboard focus, Left/Right/Home/End
+  navigation, visible focus, and one correctly hidden panel state. Without
+  JavaScript, all five labelled panels remain visible as ordinary content.
 - The shared Write and Capture stories remain complete as text without
   JavaScript; their step controls add direct keyboard navigation when scripting
   is available.

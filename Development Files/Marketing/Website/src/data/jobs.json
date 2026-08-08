@@ -4,6 +4,15 @@
     "label": "Write",
     "summary": "Turn speech into clean text for the field focused when you choose Stop, with a saved recovery path when delivery is blocked.",
     "proof": "Local transcription is the default; optional shaping is a separate decision.",
+    "homeMontage": {
+      "action": "Speak into the field already in front of you.",
+      "title": "Words return to the field chosen at Stop.",
+      "body": "Local transcription is the default. If one delivery cannot complete, the finished text remains recoverable in the Deck.",
+      "evidence": "Genuine current Mumble Home capture",
+      "media": {
+        "kind": "demonstration-presentation"
+      }
+    },
     "story": {
       "opening": {
         "title": "Speak once. Stop at the field where your words belong.",
@@ -129,6 +138,16 @@
     "label": "Capture",
     "summary": "Turn selected-microphone recordings and supported audio imports into durable, searchable working records.",
     "proof": "Mumble saves a private local recording before transcription; optional analysis uses transcript text, not the original audio.",
+    "homeMontage": {
+      "action": "Record with the selected microphone or import supported audio.",
+      "title": "A private recording becomes a working record.",
+      "body": "Pause, resume, Stop and save, then search, replay, review, and export from the local meeting library.",
+      "evidence": "Genuine current Meetings capture with demonstration records",
+      "media": {
+        "kind": "demonstration-state",
+        "stateId": "source"
+      }
+    },
     "story": {
       "opening": {
         "title": "Turn a recording into a working record.",
@@ -148,6 +167,8 @@
             "title": "Start with the selected microphone or accepted audio.",
             "body": "Use Mumble's selected microphone for a room recording, or import a WAV, MP3, FLAC, or OGG audio file. The app names the effective transcription route before capture begins.",
             "image": "/product/meetings-before.webp",
+            "width": 1152,
+            "height": 800,
             "alt": "Genuine Mumble Meetings capture before recording, showing Record meeting, Import audio, the local transcription route, and the private meeting library"
           },
           {
@@ -263,6 +284,23 @@
     "label": "Shape",
     "summary": "Give finished text a deliberate job: Prompt, Email, Reply, language assistance, presets, custom shaping, or analysis.",
     "proof": "Cloud text shaping is optional and sends finished text—not recorded audio—through the chosen route.",
+    "homeMontage": {
+      "action": "Choose a job for finished text.",
+      "title": "Prompt, Email, Reply, language help, or analysis stays deliberate.",
+      "body": "The effective route is frozen for one request. Local shaping stays local; configured online providers are optional and may charge.",
+      "evidence": "Genuine workspace capture · Shape route labelled below",
+      "media": {
+        "kind": "job-demonstration-presentation",
+        "jobId": "write"
+      },
+      "mediaAlt": "Genuine Mumble Home capture supporting the finished-text workspace used before a deliberate Shape action",
+      "routeLabel": "Illustrative Shape route",
+      "route": [
+        "Finished text",
+        "Chosen job",
+        "Frozen route"
+      ]
+    },
     "story": {
       "opening": {
         "title": "Start local. Shape only when the words need another job.",
@@ -451,6 +489,15 @@
     "label": "Listen",
     "summary": "Turn supported documents into a library-first listening workspace with saved progress, find, bookmarks, and optional summaries.",
     "proof": "Playback uses the configured online text-to-speech route and requires network access, a user provider key, provider availability, and provider credits.",
+    "homeMontage": {
+      "action": "Add a supported document and choose Play.",
+      "title": "A listening session keeps the document in view.",
+      "body": "Voice, speed, progress, find, bookmarks, and the saved reading position remain visible. Playback uses a configured online voice.",
+      "evidence": "Genuine current Reader capture with demonstration library content",
+      "media": {
+        "kind": "demonstration-presentation"
+      }
+    },
     "story": {
       "opening": {
         "title": "Let the document keep your place while you listen.",
@@ -632,6 +679,16 @@
     "label": "Find",
     "summary": "Use Mumble Find to search local apps and files without hosted results entering the list.",
     "proof": "Web Search is separate and sends selected text online only after provider-named confirmation.",
+    "homeMontage": {
+      "action": "Search this computer without mixing in the web.",
+      "title": "Mumble Find keeps local results local.",
+      "body": "Deck material, local apps and indexed files, and consent-gated Web Search remain three visibly separate boundaries.",
+      "evidence": "Genuine Mumble Find capture · deterministic demonstration data",
+      "media": {
+        "kind": "presentation-capture",
+        "route": "local"
+      }
+    },
     "story": {
       "opening": {
         "title": "Find what Mumble kept, what is on this computer, or deliberately go online.",

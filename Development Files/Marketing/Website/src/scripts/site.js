@@ -147,7 +147,11 @@ document.querySelectorAll('[data-home-montage]').forEach((montage) => {
       tab.tabIndex = active ? 0 : -1;
       if (focus && active) tab.focus();
     });
-    panels.forEach((panel, panelIndex) => panel.toggleAttribute('data-active', panelIndex === selectedIndex));
+    panels.forEach((panel, panelIndex) => {
+      const active = panelIndex === selectedIndex;
+      panel.toggleAttribute('data-active', active);
+      panel.hidden = !active;
+    });
     updateStatus(state);
   };
 
