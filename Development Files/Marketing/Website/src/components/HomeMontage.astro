@@ -1,0 +1,122 @@
+---
+const steps = [
+  {
+    id: 'write',
+    label: 'Write',
+    action: 'Speak into the field already in front of you.',
+    title: 'Words return to the field chosen at Stop.',
+    body: 'Local transcription is the default. If one delivery cannot complete, the finished text remains recoverable in the Deck.',
+    src: '/product/home.webp',
+    width: 1180,
+    height: 820,
+    alt: 'Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status',
+    evidence: 'Genuine current Mumble Home capture',
+  },
+  {
+    id: 'capture',
+    label: 'Capture',
+    action: 'Record with the selected microphone or import supported audio.',
+    title: 'A private recording becomes a working record.',
+    body: 'Pause, resume, Stop and save, then search, replay, review, and export from the local meeting library.',
+    src: '/product/meetings-before.webp',
+    width: 1152,
+    height: 800,
+    alt: 'Genuine Mumble Meetings capture before recording, showing Record meeting, Import audio, the local transcription route, and the private meeting library',
+    evidence: 'Genuine current Meetings capture with demonstration records',
+  },
+  {
+    id: 'shape',
+    label: 'Shape',
+    action: 'Choose a job for finished text.',
+    title: 'Prompt, Email, Reply, language help, or analysis stays deliberate.',
+    body: 'The effective route is frozen for one request. Local shaping stays local; configured online providers are optional and may charge.',
+    src: '/product/home.webp',
+    width: 1180,
+    height: 820,
+    alt: 'Genuine Mumble Home capture supporting the finished-text workspace used before a deliberate Shape action',
+    evidence: 'Genuine workspace capture · Shape route labelled below',
+    route: ['Finished text', 'Chosen job', 'Frozen route'],
+  },
+  {
+    id: 'listen',
+    label: 'Listen',
+    action: 'Add a supported document and choose Play.',
+    title: 'A listening session keeps the document in view.',
+    body: 'Voice, speed, progress, find, bookmarks, and the saved reading position remain visible. Playback uses a configured online voice.',
+    src: '/product/reader.webp',
+    width: 1180,
+    height: 820,
+    alt: 'Genuine Mumble Reader capture showing online voice selection, library tabs, Continue Reading progress, and demonstration library content',
+    evidence: 'Genuine current Reader capture with demonstration library content',
+  },
+  {
+    id: 'find',
+    label: 'Find',
+    action: 'Search this computer without mixing in the web.',
+    title: 'Mumble Find keeps local results local.',
+    body: 'Deck material, local apps and indexed files, and consent-gated Web Search remain three visibly separate boundaries.',
+    src: '/product/mumble-find-capture.png',
+    width: 900,
+    height: 680,
+    alt: 'Genuine Mumble Find product capture showing the private local app-and-file launcher with a demonstration query and three demonstration local results',
+    evidence: 'Genuine Mumble Find capture · deterministic demonstration data',
+  },
+];
+---
+
+<section
+  class="home-montage"
+  data-home-montage
+  data-home-step="1"
+  data-home-state="manual"
+  data-home-pass-count="0"
+  aria-label="Write, Capture, Shape, Listen, and Find guided product tour"
+>
+  <header class="home-montage-bar">
+    <strong>Mumble workspace</strong>
+    <span aria-live="polite" data-home-status>Guided pass ready</span>
+  </header>
+
+  <div class="home-montage-panels">
+    {steps.map((step, index) => (
+      <article
+        class="home-montage-panel"
+        data-home-panel={step.id}
+        data-active={index === 0 ? '' : undefined}
+        aria-labelledby={`home-montage-${step.id}`}
+      >
+        <div class="home-montage-copy">
+          <span>{step.label}</span>
+          <h2 id={`home-montage-${step.id}`}>{step.title}</h2>
+          <p>{step.action}</p>
+          <small>{step.body}</small>
+          {step.route && (
+            <ol class="home-shape-route" aria-label="Illustrative Shape route">
+              {step.route.map((item) => <li>{item}</li>)}
+            </ol>
+          )}
+        </div>
+        <figure>
+          <img src={step.src} width={step.width} height={step.height} alt={step.alt} loading={index === 0 ? 'eager' : 'lazy'} fetchpriority={index === 0 ? 'high' : 'auto'} />
+          <figcaption>{step.evidence}</figcaption>
+        </figure>
+      </article>
+    ))}
+  </div>
+
+  <div class="home-montage-controls" data-home-controls>
+    <div class="home-step-tabs" role="tablist" aria-label="Choose a Mumble job">
+      {steps.map((step, index) => (
+        <button type="button" role="tab" data-home-step-select={index + 1} aria-selected={index === 0 ? 'true' : 'false'} tabindex={index === 0 ? 0 : -1}>
+          {step.label}: {step.action}
+        </button>
+      ))}
+    </div>
+    <div class="home-transport" aria-label="Guided tour controls">
+      <button type="button" data-home-previous>Previous</button>
+      <button type="button" data-home-next>Next</button>
+      <button type="button" data-home-play>Play</button>
+      <button type="button" data-home-pause>Pause</button>
+    </div>
+  </div>
+</section>

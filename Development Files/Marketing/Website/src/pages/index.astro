@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PlatformAction from '../components/PlatformAction.astro';
 import JobStory from '../components/JobStory.astro';
+import HomeMontage from '../components/HomeMontage.astro';
 import jobs from '../data/jobs.json';
 import release from '../data/release.json';
 
@@ -24,24 +25,36 @@ if (!find?.story) throw new Error('Find story authority is missing');
   description="See Mumble write, capture, shape, listen, and find through one local-first voice workspace with explicit online boundaries."
   currentPath="/"
 >
-  <section class="hero write-hero shell" aria-labelledby="home-title">
-    <div class="hero-copy">
-      <h1 id="home-title">{write.story.opening.title}</h1>
-      <p class="hero-lead">{write.story.opening.summary}</p>
-
+  <section class="home-opening shell" aria-labelledby="home-title">
+    <header class="home-offer">
+      <h1 id="home-title">Speak once. Stop at the field where your words belong.</h1>
+      <p>Mumble turns speech into useful work across Write, Capture, Shape, Listen, and Find—with local-first routes and every online boundary named before it is used.</p>
       <div class="hero-actions">
-        <PlatformAction className="button button-primary" />
+        <PlatformAction className="button button-primary" homePrimary />
         <a class="button button-quiet" href="/downloads/">Release details and all platforms</a>
       </div>
+    </header>
+    <HomeMontage />
+  </section>
 
-      <ul class="release-strip" aria-label="Current release position">
-        <li><span>Source</span><strong>{release.version}</strong></li>
-        <li><span>Channel</span><strong>{release.channel.label}</strong></li>
-        <li><span>Windows</span><strong>{windows.availabilityLabel}</strong></li>
-        <li><span>Publication</span><strong>{release.publication.statusLabel}</strong></li>
+  <section class="home-privacy-brief" aria-labelledby="home-privacy-brief-title">
+    <div class="shell">
+      <h2 id="home-privacy-brief-title">Local by default. Online only by a named choice.</h2>
+      <ul>
+        <li><strong>Local transcription</strong><span>Recorded audio stays on this computer on the default route.</span></li>
+        <li><strong>Optional online routes</strong><span>Cloud transcription, shaping, and Reader speech cross their named provider boundary only when selected.</span></li>
+        <li><strong>Local Mumble Find</strong><span>Apps and indexed files stay separate from hosted web results.</span></li>
+        <li><strong>Consent-gated Web Search</strong><span>Selected words remain local until Search online is confirmed for the named provider.</span></li>
       </ul>
+      <a class="text-link" href="/privacy/">Read every privacy route</a>
     </div>
+  </section>
 
+  <section class="write-home-detail shell" aria-labelledby="write-home-title">
+    <header class="section-intro">
+      <h2 id="write-home-title">Write where the cursor already is.</h2>
+      <p>{write.story.opening.summary}</p>
+    </header>
     <JobStory job={write} surface="home" />
   </section>
 
@@ -131,21 +144,51 @@ if (!find?.story) throw new Error('Find story authority is missing');
           <p>Cloud shaping sends finished text—not the recorded audio—only through the deliberately selected route.</p>
           <strong>Optional · external providers may charge</strong>
         </article>
+        <article>
+          <span>Apps and files</span>
+          <h3>Local Mumble Find</h3>
+          <p>Local apps and indexed files remain on this computer; hosted results never enter the list.</p>
+          <strong>Private on this device</strong>
+        </article>
+        <article>
+          <span>Selected words</span>
+          <h3>Web Search</h3>
+          <p>The named provider receives only the selected words, and only after the user chooses Search online.</p>
+          <strong>Separate · consent-gated online route</strong>
+        </article>
       </div>
     </div>
   </section>
 
-  <section class="trust-section" aria-labelledby="trust-title">
+  <section class="home-supporting-proof" aria-labelledby="supporting-proof-title">
+    <div class="shell section-intro">
+      <h2 id="supporting-proof-title">Settings and Stats support the work.</h2>
+      <p>These current captures prove configuration and review remain available without competing with the five jobs.</p>
+    </div>
+    <div class="shell home-supporting-grid">
+      <figure>
+        <img src="/product/settings.webp" width="1180" height="820" loading="lazy" alt="Genuine Mumble Settings capture showing current route and application controls" />
+        <figcaption><strong>Supporting proof · Settings</strong><span>Choose devices, routes, and behaviour deliberately.</span></figcaption>
+      </figure>
+      <figure>
+        <img src="/product/stats.webp" width="1180" height="820" loading="lazy" alt="Genuine Mumble Stats capture showing current local activity review" />
+        <figcaption><strong>Supporting proof · Stats</strong><span>Review activity after the work, not as an invented marketing metric.</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="trust-section home-ending" data-home-ending aria-labelledby="trust-title">
     <div class="shell trust-layout">
       <div>
         <h2 id="trust-title">Free and MIT licensed. Honest about what is still gated.</h2>
         <p>
-          The local path needs no Mumble account or provider key, and no paid service. The current Windows candidate is hash-bound below; macOS, Linux, signing, deployment, and public release remain separate gates.
+          Mumble is free, MIT licensed, and publishes its source. The local path needs no Mumble account or provider key, and no paid service. Optional providers may require an account, key, credits, or other possible costs under their own terms. The current Windows candidate is hash-bound; macOS, Linux, signing, deployment, and public release remain separate gates.
         </p>
       </div>
       <div class="trust-actions">
-        <a class="button button-primary" href="/downloads/">Inspect download facts</a>
-        <a class="text-link" href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE">Read the MIT licence</a>
+        <PlatformAction className="button button-primary" />
+        <a class="button button-quiet" href="https://github.com/mongre25-droid/mumble/issues">Get Help in the issue tracker</a>
+        <a class="text-link" href="/downloads/">Inspect every download fact</a>
       </div>
     </div>
   </section>

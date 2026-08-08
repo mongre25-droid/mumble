@@ -161,6 +161,116 @@ async function assertSharedShell(page, currentLabel) {
   }
 }
 
+async function homeMontageJourney(browser) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/151.0 Safari/537.36',
+  });
+  await context.addInitScript(() => {
+    const mediaDevices = navigator.mediaDevices ?? {};
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { ...mediaDevices, getUserMedia: (...args) => { window.__homeMicrophoneCalls.push(args); return Promise.reject(new Error('Website microphone use is forbidden')); } },
+    });
+    window.__homeMicrophoneCalls = [];
+  });
+  const page = await context.newPage();
+  await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
+
+  await page.getByRole('heading', { level: 1, name: /speak once/i }).waitFor();
+  const primary = page.locator('[data-home-primary]');
+  assert.equal(await primary.getAttribute('data-platform-action'), '');
+  const stage = page.locator('[data-home-montage]');
+  await stage.waitFor();
+  assert.equal(await stage.getAttribute('data-home-state'), 'playing');
+  assert.equal(await stage.locator('[data-home-play]').isDisabled(), true);
+  assert.equal(await stage.locator('[data-home-pause]').isEnabled(), true);
+  assert.equal(await stage.locator('[data-home-play]').getAttribute('aria-label'), 'Guided pass is playing');
+  assert.equal(await stage.locator('[data-home-step-select]').count(), 5);
+  assert.equal(await stage.locator('[data-home-panel]').count(), 5);
+  for (const label of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
+    await stage.getByRole('tab', { name: new RegExp(`^${label}:`) }).waitFor();
+  }
+  const viewportProof = await page.evaluate(() => {
+    const stage = document.querySelector('[data-home-montage]').getBoundingClientRect();
+    const primary = document.querySelector('[data-home-primary]').getBoundingClientRect();
+    return { stageTop: stage.top, stageArea: stage.width * stage.height, primaryTop: primary.top };
+  });
+  assert.ok(viewportProof.stageTop < 900 && viewportProof.primaryTop < 900, `Home offer escapes first viewport: ${JSON.stringify(viewportProof)}`);
+  assert.ok(viewportProof.stageArea > 300000, `Home stage is not dominant: ${JSON.stringify(viewportProof)}`);
+
+  await stage.getByRole('tab', { name: /^Shape:/ }).click();
+  assert.equal(await stage.getAttribute('data-home-step'), '3');
+  assert.equal(await stage.getAttribute('data-home-state'), 'manual');
+  assert.equal(await stage.locator('[data-home-play]').isEnabled(), true);
+  assert.equal(await stage.locator('[data-home-pause]').isDisabled(), true);
+  await stage.locator('[data-home-next]').click();
+  assert.equal(await stage.getAttribute('data-home-step'), '4');
+  await stage.locator('[data-home-previous]').click();
+  assert.equal(await stage.getAttribute('data-home-step'), '3');
+  await stage.locator('[data-home-play]').click();
+  assert.equal(await stage.getAttribute('data-home-state'), 'playing');
+  assert.equal(await stage.locator('[data-home-play]').isDisabled(), true);
+  assert.equal(await stage.locator('[data-home-pause]').isEnabled(), true);
+  await stage.locator('[data-home-pause]').click();
+  assert.equal(await stage.getAttribute('data-home-state'), 'paused');
+  assert.equal(await stage.locator('[data-home-play]').getAttribute('aria-label'), 'Resume guided pass');
+  assert.equal(await stage.locator('[data-home-pause]').isDisabled(), true);
+  await stage.locator('[data-home-play]').click();
+  await page.waitForFunction(() => document.querySelector('[data-home-montage]')?.dataset.homeState === 'settled', null, { timeout: 15000 });
+  assert.equal(await stage.getAttribute('data-home-pass-count'), '1');
+  assert.equal(await stage.locator('[data-home-play]').isDisabled(), true, 'Play remains available after the only pass');
+  assert.equal(await stage.locator('[data-home-pause]').isDisabled(), true, 'Pause remains available while settled');
+  assert.equal(await stage.locator('[data-home-play]').getAttribute('aria-label'), 'Guided pass complete');
+  assert.equal(await stage.locator('[data-home-pause]').getAttribute('aria-label'), 'Guided pass is not playing');
+  await page.waitForTimeout(1800);
+  assert.equal(await stage.getAttribute('data-home-state'), 'settled', 'Home montage restarted after its single pass');
+  assert.equal(await stage.getAttribute('data-home-pass-count'), '1', 'Home montage looped');
+  assert.equal(await page.evaluate(() => window.__homeMicrophoneCalls.length), 0, 'Home requested microphone access');
+
+  const bodyText = await page.locator('body').innerText();
+  assert.match(bodyText, /local transcription/i);
+  assert.match(bodyText, /optional online routes/i);
+  assert.match(bodyText, /Mumble Find.*local|local.*Mumble Find/is);
+  assert.match(bodyText, /Web Search.*consent|consent.*Web Search/is);
+  assert.match(bodyText, /Free.*MIT.*no (?:Mumble )?account/is);
+  assert.match(bodyText, /provider.*may charge/is);
+  assert.doesNotMatch(bodyText, /testimonial|customers love|pricing|per month|trusted by|\d+[km]\+ users/i);
+  await page.locator('[data-home-ending]').getByRole('link', { name: /help/i }).waitFor();
+  await page.locator('[data-home-ending] [data-platform-action]').waitFor();
+  await noHorizontalOverflow(page, 'desktop Issue #42 Home');
+  await context.close();
+
+  for (const mode of ['reduced', 'save-data']) {
+    const constrained = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: mode === 'reduced' ? 'reduce' : 'no-preference' });
+    if (mode === 'save-data') {
+      await constrained.addInitScript(() => Object.defineProperty(navigator, 'connection', { configurable: true, value: { saveData: true } }));
+    }
+    const constrainedPage = await constrained.newPage();
+    await constrainedPage.goto(`${origin}/`, { waitUntil: 'networkidle' });
+    const constrainedStage = constrainedPage.locator('[data-home-montage]');
+    assert.equal(await constrainedStage.getAttribute('data-home-state'), 'manual', `${mode} Home montage auto-played`);
+    assert.equal(await constrainedStage.locator('[data-home-step-select]').count(), 5);
+    await constrainedStage.getByRole('tab', { name: /^Find:/ }).click();
+    assert.equal(await constrainedStage.getAttribute('data-home-step'), '5');
+    await noHorizontalOverflow(constrainedPage, `${mode} Issue #42 Home`);
+    await constrained.close();
+  }
+
+  const noJs = await browser.newContext({ viewport: { width: 390, height: 844 }, javaScriptEnabled: false });
+  const noJsPage = await noJs.newPage();
+  await noJsPage.goto(`${origin}/`, { waitUntil: 'networkidle' });
+  const noJsStage = noJsPage.locator('[data-home-montage]');
+  assert.equal(await noJsStage.locator('[data-home-panel]:visible').count(), 5);
+  assert.equal(await noJsStage.locator('[data-home-controls]:visible').count(), 0);
+  for (const label of ['Write', 'Capture', 'Shape', 'Listen', 'Find']) {
+    assert.match(await noJsStage.innerText(), new RegExp(label));
+  }
+  await noHorizontalOverflow(noJsPage, 'no-JavaScript Issue #42 Home');
+  await noJs.close();
+  record('Issue #42 Home first-viewport offer, five-job guided montage, direct/previous/next/play/pause controls, one-pass settlement, reduced-motion/save-data/no-JavaScript alternatives, privacy/trust truth, platform and Help ending, zero microphone use, and desktop/mobile fit');
+}
+
 async function desktopJourney(browser) {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
@@ -1866,6 +1976,7 @@ try {
   console.log(`Browser executable route: ${executablePath ?? 'Playwright-managed Chromium'}`);
   browser = await chromium.launch({ headless: true, executablePath });
   console.log(`Browser version: ${browser.version()}`);
+  await homeMontageJourney(browser);
   await desktopJourney(browser);
   await correctionConstraints(browser);
   await captureJourney(browser);

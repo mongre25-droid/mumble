@@ -98,6 +98,110 @@ document.querySelectorAll('[data-current-year]').forEach((year) => {
   year.textContent = String(new Date().getFullYear());
 });
 
+document.querySelectorAll('[data-home-montage]').forEach((montage) => {
+  const tabs = [...montage.querySelectorAll('[data-home-step-select]')];
+  const panels = [...montage.querySelectorAll('[data-home-panel]')];
+  const status = montage.querySelector('[data-home-status]');
+  const previous = montage.querySelector('[data-home-previous]');
+  const next = montage.querySelector('[data-home-next]');
+  const play = montage.querySelector('[data-home-play]');
+  const pause = montage.querySelector('[data-home-pause]');
+  if (tabs.length !== 5 || panels.length !== 5) return;
+
+  const constrained = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    || navigator.connection?.saveData === true;
+  let selectedIndex = 0;
+  let timer = null;
+  let passCount = 0;
+
+  const updateStatus = (state) => {
+    montage.dataset.homeState = state;
+    montage.dataset.homePassCount = String(passCount);
+    if (play) {
+      play.disabled = state === 'playing' || passCount >= 1;
+      play.setAttribute('aria-label', passCount >= 1
+        ? 'Guided pass complete'
+        : state === 'paused' ? 'Resume guided pass' : state === 'playing' ? 'Guided pass is playing' : 'Play one guided pass');
+    }
+    if (pause) {
+      pause.disabled = state !== 'playing';
+      pause.setAttribute('aria-label', state === 'playing' ? 'Pause guided pass' : 'Guided pass is not playing');
+    }
+    if (status) {
+      const descriptions = {
+        playing: `Guided pass playing · ${tabs[selectedIndex].textContent.trim().split(':')[0]}`,
+        paused: `Guided pass paused · ${tabs[selectedIndex].textContent.trim().split(':')[0]}`,
+        settled: 'Guided pass complete · manual controls ready',
+        manual: `Manual view · ${tabs[selectedIndex].textContent.trim().split(':')[0]}`,
+      };
+      status.textContent = descriptions[state];
+    }
+  };
+
+  const show = (index, { focus = false, state = montage.dataset.homeState } = {}) => {
+    selectedIndex = Math.max(0, Math.min(index, tabs.length - 1));
+    montage.dataset.homeStep = String(selectedIndex + 1);
+    tabs.forEach((tab, tabIndex) => {
+      const active = tabIndex === selectedIndex;
+      tab.setAttribute('aria-selected', String(active));
+      tab.tabIndex = active ? 0 : -1;
+      if (focus && active) tab.focus();
+    });
+    panels.forEach((panel, panelIndex) => panel.toggleAttribute('data-active', panelIndex === selectedIndex));
+    updateStatus(state);
+  };
+
+  const stop = (state = 'manual') => {
+    if (timer) window.clearInterval(timer);
+    timer = null;
+    updateStatus(state);
+  };
+
+  const start = () => {
+    if (passCount >= 1) {
+      updateStatus('settled');
+      return;
+    }
+    if (selectedIndex === tabs.length - 1) show(0, { state: 'playing' });
+    stop('playing');
+    timer = window.setInterval(() => {
+      if (selectedIndex < tabs.length - 1) {
+        show(selectedIndex + 1, { state: 'playing' });
+      } else {
+        passCount = 1;
+        stop('settled');
+      }
+    }, 2000);
+  };
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => {
+      stop('manual');
+      show(index, { state: 'manual' });
+    });
+    tab.addEventListener('keydown', (event) => {
+      const destinations = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: tabs.length - 1 };
+      if (!(event.key in destinations)) return;
+      event.preventDefault();
+      stop('manual');
+      show((destinations[event.key] + tabs.length) % tabs.length, { focus: true, state: 'manual' });
+    });
+  });
+  previous?.addEventListener('click', () => {
+    stop('manual');
+    show((selectedIndex - 1 + tabs.length) % tabs.length, { state: 'manual' });
+  });
+  next?.addEventListener('click', () => {
+    stop('manual');
+    show((selectedIndex + 1) % tabs.length, { state: 'manual' });
+  });
+  play?.addEventListener('click', start);
+  pause?.addEventListener('click', () => stop('paused'));
+
+  show(0, { state: 'manual' });
+  if (!constrained) start();
+});
+
 document.querySelectorAll('[data-job-demo]').forEach((demo) => {
   const jobId = demo.dataset.jobDemo;
   const tabs = Array.from(demo.querySelectorAll('[data-job-tab]'));

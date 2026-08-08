@@ -3,9 +3,10 @@ import release from '../data/release.json';
 
 export interface Props {
   className?: string;
+  homePrimary?: boolean;
 }
 
-const { className = '' } = Astro.props;
+const { className = '', homePrimary = false } = Astro.props;
 const fallback = release.recommendations.unknown;
 const recommendationData = Object.fromEntries(
   Object.entries(release.recommendations).flatMap(([platform, recommendation]) => [
@@ -20,6 +21,7 @@ const recommendationData = Object.fromEntries(
   class:list={['platform-action', className]}
   href={fallback.href}
   data-platform-action
+  data-home-primary={homePrimary ? '' : undefined}
   {...recommendationData}
 >
   <svg viewBox="0 0 24 24" aria-hidden="true">

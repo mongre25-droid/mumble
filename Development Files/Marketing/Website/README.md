@@ -28,12 +28,16 @@ Node 22.12 or later is required.
 
 The current maintained site exposes six complete outputs:
 
-1. Home (`/`) introduces the local-first offer, accepted product evidence, the
-   five canonical jobs, privacy boundaries, the current release position, and
-   complete Write, Capture, Shape, Listen, and Find journeys. Capture is led by
-   accepted Meetings evidence; Shape uses a clearly illustrative before/after
-   path; Listen is led by genuine Reader evidence; Find keeps searchable Deck
-   material, local Mumble Find, and deliberate Web Search visibly separate.
+1. Home (`/`) opens with one voice-first line, the release-authority platform
+   action, and one application-matched guided stage for Write, Capture, Shape,
+   Listen, and Find. Direct job selection, Previous, Next, Play, and Pause remain
+   manual after at most one ordinary-motion pass; reduced-motion and save-data
+   visitors start manual, while JavaScript-off and narrow layouts keep all five
+   jobs readable. The early privacy summary distinguishes local transcription,
+   optional online routes, local Mumble Find, and consent-gated Web Search.
+   Below the fold, the accepted complete per-job demonstrations, genuine and
+   labelled evidence, relevant Product actions, supporting Settings and Stats,
+   free/MIT/no-account/source truth, platform action, and Help route remain.
 2. Product (`/product/`) explains Write's deliberate command, visible Island
    states, local transcription default, Stop-time intended-cursor return, Deck
    recovery and reuse, selected-microphone capture, supported audio imports,
@@ -84,6 +88,9 @@ evidence.
 
 - Core Home, complete Write, Capture, Shape, Listen, and Find journeys, navigation,
   release facts, and download access remain available without JavaScript.
+- The Home guide never requests microphone access or plays audio. Ordinary
+  motion performs at most one guided pass and never loops; direct interaction,
+  reduced motion, save-data, and completed playback settle into manual control.
 - The shared Write and Capture stories remain complete as text without
   JavaScript; their step controls add direct keyboard navigation when scripting
   is available.
