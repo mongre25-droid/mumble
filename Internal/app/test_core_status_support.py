@@ -76,7 +76,7 @@ _EXPECTED_FIELDS = {
     "windows_package_sha256": "70794B4D13C1C38662425DEB5700865728955F4FAC78DC2D083436F63FB99493",
     "failed_ci_run": "30728545428",
     "cancelled_ci_runs": "30728750267,30730118039,30730292106",
-    "document_structure_sha256": "B3A3A739DF0D741C60A3EEF6DCA4B792E002CD1C1CAABCD41EC7F3CA21F7AE27",
+    "document_structure_sha256": "F4EC4470083AE576113DB01368D9608736CAAF96853800DAEBF324B89ECFCF02",
     "non_projection_text_sha256": "4C9C951A892E840C5AF161C4FC89F6BC1358DE26013C821EF3926FC92D3816CA",
     "current_record": "Entry 100",
     "pr_number": "49",
@@ -86,10 +86,10 @@ _EXPECTED_FIELDS = {
     "replacement_ci_status": "passed",
     "open_issues": "12,25,28,29,30",
     "acceptance_gates": "open",
-    "website_candidate_scope": "local-issue-48-source-candidate",
+    "website_candidate_scope": "local-issue-48-correction-candidate",
     "website_candidate_containing_commit": "@self",
-    "website_candidate_parent": "5e1e419a40cc7c27ab45f31425ef23aa2a95d313",
-    "website_candidate_convergence_tree": "e00349c23a565c4a23d703f178bac1578b00a424",
+    "website_candidate_parent": "f56204e30904f35b94fe5e60e6665caea788a470",
+    "website_candidate_convergence_tree": "2636dcac29a25ea9593e0414ebe5d3aaf24d2c81",
     "website_candidate_source_checks_status": "passed",
     "website_candidate_review_status": "not-run",
     "website_candidate_ci_status": "not-run",
@@ -100,7 +100,7 @@ _EXPECTED_FIELDS = {
     "website_candidate_public_release_status": "not-run",
     "website_candidate_owner_acceptance_status": "not-run",
     "website_candidate_mobbin_status": "waived-unavailable",
-    "website_candidate_record": "Entry 125",
+    "website_candidate_record": "Entry 126",
 }
 
 
@@ -600,12 +600,12 @@ def _expected_projection_text(current: CurrentStatus) -> dict[str, str]:
             f"{gate_statuses}."
         ),
         "website-source-candidate": (
-            "Issue #48 local website source candidate This projection is scoped only to "
+            "Issue #48 local website correction candidate This projection is scoped only to "
             f"{current.website_candidate_scope}. Symbolic containing commit "
-            f"{current.website_candidate_containing_commit} is the local certification candidate "
+            f"{current.website_candidate_containing_commit} is the local correction candidate "
             f"and has sole parent {current.website_candidate_parent}, whose tree "
-            f"{current.website_candidate_convergence_tree} is the clean accepted-lineage "
-            "convergence. Local source checks="
+            f"{current.website_candidate_convergence_tree} is preserved rejected-parent "
+            "evidence. Local source checks="
             f"{current.website_candidate_source_checks_status}; independent Standards and "
             f"Specification review={current.website_candidate_review_status}; CI="
             f"{current.website_candidate_ci_status}; push={current.website_candidate_push_status}; "

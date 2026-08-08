@@ -5,6 +5,7 @@ import JobStory from '../components/JobStory.astro';
 import HomeMontage from '../components/HomeMontage.astro';
 import jobs from '../data/jobs.json';
 import release from '../data/release.json';
+import { requireLinkedReleaseResource } from '../data/release-resources.mjs';
 
 const windows = release.platforms.find((platform) => platform.id === 'windows');
 const write = jobs.find((job) => job.id === 'write');
@@ -12,6 +13,7 @@ const find = jobs.find((job) => job.id === 'find');
 const capture = jobs.find((job) => job.id === 'capture');
 const shape = jobs.find((job) => job.id === 'shape');
 const listen = jobs.find((job) => job.id === 'listen');
+const supportResource = requireLinkedReleaseResource('support', 'available');
 if (!windows) throw new Error('Windows release authority is missing');
 if (!write?.story) throw new Error('Write story authority is missing');
 if (!capture?.story) throw new Error('Capture story authority is missing');
@@ -187,7 +189,7 @@ if (!find?.story) throw new Error('Find story authority is missing');
       </div>
       <div class="trust-actions">
         <PlatformAction className="button button-primary" />
-        <a class="button button-quiet" href="https://github.com/mongre25-droid/mumble/issues">Get Help in the issue tracker</a>
+        <a class="button button-quiet" href={supportResource.href}>Get Help in the issue tracker</a>
         <a class="text-link" href="/downloads/">Inspect every download fact</a>
       </div>
     </div>

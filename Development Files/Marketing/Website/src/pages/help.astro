@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import jobs from '../data/jobs.json';
 import release from '../data/release.json';
+import { requireLinkedReleaseResource } from '../data/release-resources.mjs';
 import '../styles/help.css';
 
 const windows = release.platforms.find((platform) => platform.id === 'windows');
@@ -12,14 +13,9 @@ if (!windows || !windowsVariant?.integrity || !macos || !linux) {
   throw new Error('Help requires complete accepted platform authority');
 }
 
-const sourceResource = release.resources.find((resource) => resource.id === 'source');
-const supportResource = release.resources.find((resource) => resource.id === 'support');
-if (
-  !sourceResource || !('href' in sourceResource)
-  || !supportResource || supportResource.availability !== 'available' || !('href' in supportResource)
-) {
-  throw new Error('Help requires canonical public source and support resources');
-}
+const sourceResource = requireLinkedReleaseResource('source');
+const licenceResource = requireLinkedReleaseResource('licence');
+const supportResource = requireLinkedReleaseResource('support', 'available');
 
 const jobGuidance = {
   write: {
@@ -513,7 +509,7 @@ const helpJobs = jobs.map((job) => {
             <a href="/downloads/#history-title" aria-label="Previous accepted versions"><span>Previous accepted versions</span><small>{release.history.statusLabel}</small></a>
             <a href="#known-limitations" aria-label="Known limitations"><span>Known limitations</span><small>Current source and evidence gates</small></a>
             <a href="/downloads/#platforms-title" aria-label="Platform status"><span>Platform status</span><small>Windows, macOS, and Linux</small></a>
-            <a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE" aria-label="MIT licence"><span>MIT licence</span><small>Read the project licence</small></a>
+            <a href={licenceResource.href} aria-label={licenceResource.label}><span>{licenceResource.label}</span><small>Read the project licence</small></a>
             <a href={sourceResource.href} aria-label="Inspect the source"><span>Inspect the source</span><small>Public Mumble repository</small></a>
           </nav>
           <section class="help-task-block" id="contribute">

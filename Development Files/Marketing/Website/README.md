@@ -9,6 +9,7 @@ npm.cmd ci --ignore-scripts
 npm.cmd run test:release
 npm.cmd run test:find
 npm.cmd run test:home
+npm.cmd run test:resources
 node scripts/check-release.mjs
 npm.cmd run build
 npm.cmd exec -- astro check

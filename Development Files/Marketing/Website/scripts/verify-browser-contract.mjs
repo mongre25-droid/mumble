@@ -14,14 +14,18 @@ const canonicalJobs = JSON.parse(
 const results = [];
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim() || undefined;
 const requestedGroup = process.env.MUMBLE_WEBSITE_BROWSER_GROUP?.trim() || undefined;
-const publicRepositoryUrl = 'https://github.com/mongre25-droid/mumble';
-const publicIssuesUrl = 'https://github.com/mongre25-droid/mumble/issues';
-const expectedPublicSupport = {
-  id: 'support',
-  label: 'Issue reporting',
-  availability: 'available',
-  href: publicIssuesUrl,
+const linkedResource = (id) => {
+  const resource = release.resources.find((candidate) => candidate.id === id);
+  assert.ok(resource && 'href' in resource, `canonical release resource ${id} has no destination`);
+  return resource;
 };
+const sourceResource = linkedResource('source');
+const licenceResource = linkedResource('licence');
+const supportResource = linkedResource('support');
+assert.equal(supportResource.availability, 'available', 'canonical support resource is not available');
+const publicRepositoryUrl = sourceResource.href;
+const publicIssuesUrl = supportResource.href;
+const publicLicenceUrl = licenceResource.href;
 
 const helpArticleHeadings = [
   'Choose the accepted package',
@@ -220,13 +224,6 @@ async function assertReducedMotion(page, name) {
 }
 
 async function assertPublicProjectDestinations(browser) {
-  const supportResource = release.resources.find((resource) => resource.id === 'support');
-  assert.deepEqual(
-    supportResource,
-    expectedPublicSupport,
-    'release support resource does not match the independently expected public destination',
-  );
-
   const routes = ['/', '/privacy/', '/downloads/', '/help/', '/missing-public-support-probe'];
   for (const javaScriptEnabled of [true, false]) {
     const context = await browser.newContext({
@@ -382,6 +379,51 @@ async function assertAcceptedPageGeometry(browser) {
       );
       await context.close();
     }
+  }
+
+}
+
+async function assertDeferredMediaContract(browser) {
+  const routes = ['/', '/product/', '/use-cases/', '/privacy/', '/downloads/', '/help/', '/missing-media-probe'];
+  const viewports = [
+    { name: 'desktop', size: { width: 1440, height: 900 } },
+    { name: 'mobile', size: { width: 390, height: 844 } },
+  ];
+  for (const viewport of viewports) {
+    const context = await browser.newContext({ viewport: viewport.size });
+    const page = await context.newPage();
+    for (const route of routes) {
+      await page.goto(`${origin}${route}`, { waitUntil: 'networkidle' });
+      const media = await page.locator('main img').evaluateAll((images) => images.map((image) => {
+        const rect = image.getBoundingClientRect();
+        const firstMontageMedia = Boolean(image.closest('[data-home-panel="write"]'));
+        return {
+          alt: image.getAttribute('alt'),
+          fetchPriority: image.getAttribute('fetchpriority') ?? 'auto',
+          firstMontageMedia,
+          height: image.getAttribute('height'),
+          loading: image.getAttribute('loading') ?? 'eager',
+          src: image.getAttribute('src'),
+          top: rect.top + window.scrollY,
+          viewportHeight: window.innerHeight,
+          width: image.getAttribute('width'),
+        };
+      }));
+      for (const image of media) {
+        assert.ok(Number(image.width) > 0 && Number(image.height) > 0, `${route} has undimensioned media: ${JSON.stringify(image)}`);
+        assert.ok(image.alt?.trim(), `${route} media loses its textual meaning: ${JSON.stringify(image)}`);
+        const eagerOrHigh = image.loading !== 'lazy' || image.fetchPriority === 'high';
+        if (!eagerOrHigh) continue;
+
+        // The first montage image is the sole priority exception, and only while
+        // its real geometry places it in or immediately beside the opening view.
+        assert.ok(
+          image.firstMontageMedia && image.top < image.viewportHeight * 1.25,
+          `${viewport.name} ${route} eagerly loads below-opening media: ${JSON.stringify(image)}`,
+        );
+      }
+    }
+    await context.close();
   }
 }
 
@@ -1040,6 +1082,8 @@ async function findJourney(browser) {
         naturalWidth: element.naturalWidth,
         naturalHeight: element.naturalHeight,
         alt: element.getAttribute('alt'),
+        fetchPriority: element.getAttribute('fetchpriority') ?? 'auto',
+        loading: element.getAttribute('loading') ?? 'eager',
       })),
       {
         src: capture.src,
@@ -1048,6 +1092,8 @@ async function findJourney(browser) {
         naturalWidth: capture.width,
         naturalHeight: capture.height,
         alt: capture.alt,
+        fetchPriority: capture.fetchPriority ?? 'auto',
+        loading: capture.loading,
       },
       `${capture.route} product capture does not match canonical evidence metadata`,
     );
@@ -2102,8 +2148,8 @@ async function helpJourney(browser) {
     ['Previous accepted versions', '/downloads/#history-title'],
     ['Known limitations', '#known-limitations'],
     ['Platform status', '/downloads/#platforms-title'],
-    ['MIT licence', 'https://github.com/mongre25-droid/mumble/blob/main/LICENSE'],
-    ['Inspect the source', 'https://github.com/mongre25-droid/mumble'],
+    ['MIT licence', publicLicenceUrl],
+    ['Inspect the source', publicRepositoryUrl],
     ['The public GitHub issue tracker', publicIssuesUrl],
   ]);
   for (const [name, href] of expectedDestinations) {
@@ -2826,13 +2872,17 @@ try {
   console.log(`Browser executable route: ${executablePath ?? 'Playwright-managed Chromium'}`);
   browser = await chromium.launch({ headless: true, executablePath });
   console.log(`Browser version: ${browser.version()}`);
-  if (requestedGroup === 'privacy') {
+  if (requestedGroup === 'media') {
+    await assertDeferredMediaContract(browser);
+    console.log('MEDIA_DEFERRAL_CONTRACT_OK');
+  } else if (requestedGroup === 'privacy') {
     await privacyRoutes(browser);
   } else if (requestedGroup) {
     throw new Error(`Unknown browser contract group: ${requestedGroup}`);
   } else {
     await assertPublicProjectDestinations(browser);
     await assertAcceptedPageGeometry(browser);
+    await assertDeferredMediaContract(browser);
     await homeMontageJourney(browser);
     await desktopJourney(browser);
     await correctionConstraints(browser);

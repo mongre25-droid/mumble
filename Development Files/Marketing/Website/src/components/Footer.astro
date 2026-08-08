@@ -1,15 +1,11 @@
 ---
 import Logo from './Logo.astro';
 import release from '../data/release.json';
+import { requireLinkedReleaseResource } from '../data/release-resources.mjs';
 
-const sourceResource = release.resources.find((resource) => resource.id === 'source');
-const supportResource = release.resources.find((resource) => resource.id === 'support');
-if (
-  !sourceResource || !('href' in sourceResource)
-  || !supportResource || supportResource.availability !== 'available' || !('href' in supportResource)
-) {
-  throw new Error('Footer requires canonical public source and support resources');
-}
+const sourceResource = requireLinkedReleaseResource('source');
+const licenceResource = requireLinkedReleaseResource('licence');
+const supportResource = requireLinkedReleaseResource('support', 'available');
 ---
 
 <footer class="site-footer" data-site-footer>
@@ -34,7 +30,7 @@ if (
       <div>
         <h2>Trust</h2>
         <a href="/privacy/">Privacy boundaries</a>
-        <a href="https://github.com/mongre25-droid/mumble/blob/main/LICENSE">MIT licence</a>
+        <a href={licenceResource.href}>{licenceResource.label}</a>
         <span>Zero-CDN website</span>
       </div>
       <div>
