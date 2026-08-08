@@ -501,8 +501,9 @@ class Api:
         return base64 audio. Never raises into the bridge. Remembers the last
         good provider/model/voice so the Reader resumes with the user's pick.
 
-        On failure, may try a compatible model from the same provider. A frozen
-        decision never authorizes a different provider."""
+        The frozen decision authorizes exactly one synthesis attempt with the
+        selected provider and model. Failure returns no audio and never tries
+        local speech, a sibling model, or another provider."""
         pid = provider or self.settings.get("reader_tts_provider", "openrouter")
         decision = self._reader_speech_decision(
             "reader_speech", provider=pid, model=model)

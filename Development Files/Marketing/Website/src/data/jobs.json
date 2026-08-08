@@ -869,7 +869,7 @@
             },
             "provenance": {
               "kind": "accepted-environment-bound-product-capture",
-              "sourceCommit": "babdc38d2d3869540afb7bc1e7523151c5de4237",
+              "sourceCommit": "5568399ccca48c29f2cfbf3a85220b40de1c6327",
               "generatedBy": "scripts/capture-find-evidence.mjs",
               "outputSha256": "35b708a550c7cad5ac9ce6a852f30fb48b95122fd08c3a32cf5ed7ac26bca170",
               "captureEnvironment": {
@@ -921,7 +921,7 @@
                 {
                   "role": "script-app",
                   "path": "Internal/app/webui/app.js",
-                  "sha256": "ea5f17672205d8f2d93ca893b0d9996648f5c324097ec2644ef20ab5509a0aaa"
+            "sha256": "c20856b1e80c248eac992a9f81210767b6fe2b9025aa6f8cc47d4e22694b49ba"
                 },
                 {
                   "role": "script-system-search-loader",

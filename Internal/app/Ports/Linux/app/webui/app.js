@@ -6144,7 +6144,7 @@ async function confirmReaderCloudUse(kind) {
   const provider = kind === "tts" ? (READER.provider || "the voice provider") :
     ((SET && SET.llm_provider) || "your AI provider");
   const body = kind === "tts"
-    ? `Reader voice sends each short passage to ${provider} to create audio. If one voice model is unavailable, another compatible model from that same provider may be tried. Reader Sync, when enabled, also stores your library in your account.`
+    ? `Reader voice sends each short passage to ${provider} to create audio. Mumble freezes that provider and the selected model for this request, makes one synthesis attempt with that exact pair, and fails closed without a local, sibling-model, or cross-provider fallback. Reader Sync, when enabled, also stores your library in your account.`
     : `Summarize sends the document text to ${provider}. Do not continue with confidential material unless you are comfortable sharing it with that provider.`;
   const ok = await confirmModal({ icon: "shield", title: "Send document text?",
     body, confirmText: "Continue", danger: false });

@@ -55,17 +55,21 @@ The current maintained site exposes six complete outputs:
    language-assisted text, long-document listening, resumed reading, passage
    finding, retained progress, prior Deck material, local apps/files and
    deliberate Web Search without changing to profession-first navigation.
-4. Privacy (`/privacy/`) explains Local Transcription and Mumble Find as
-   separate local routes, keeps optional online routes distinct, and states the
-   static website's zero-CDN, no-analytics, and no-tracking boundary.
+4. Privacy (`/privacy/`) exposes Local Transcription, Cloud Transcription, Text
+   Shaping, Reader speech, Mumble Find, and Web Search as six separately
+   controlled routes. Each keeps the same visual path and complete semantic-table
+   alternative, while the static website states its zero-CDN, no-analytics, and
+   no-tracking boundary.
 5. Downloads (`/downloads/`) presents the hash-bound Windows candidate and
    visible gated states for macOS and Linux from one release authority.
 6. The not-found recovery page (`/404.html`) returns visitors to Home or
    Downloads.
-
 Canonical job content is in `src/data/jobs.json`. Release channel, version,
 publication state, platform facts, integrity, requirements, artifact location,
 release notes, and recommendation labels are in `src/data/release.json`.
+Privacy route identity, explanatory content, visual steps, control evidence, and
+semantic facts are centralized in `src/data/privacy-routes.ts`; the browser
+contract keeps an independent expected fact matrix.
 `npm.cmd run build` fails closed when that authority drifts from source version or
 the canonical and public Windows artifact bytes.
 
@@ -116,6 +120,8 @@ evidence.
 - Operating-system detection changes only the recommended action; complete
   Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.
+- The Privacy explorer preserves all six local/online routes without JavaScript;
+  JavaScript adds orientation-aware keyboard tabs without changing route truth.
 - The shared shell preserves skip navigation, semantic landmarks, metadata,
   visible keyboard focus, reduced motion, forced colours, and narrow reflow.
 - Product media is local. The site uses no external fonts, analytics, CDN

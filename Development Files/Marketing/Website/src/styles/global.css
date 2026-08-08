@@ -2143,12 +2143,14 @@ code {
 
 .privacy-route-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
   margin-top: var(--space-7);
+  padding: var(--space-1);
   overflow: hidden;
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
-  background: var(--glass);
+  background: var(--ink);
 }
 
 .privacy-route-tab {
@@ -2157,13 +2159,13 @@ code {
   align-content: center;
   gap: var(--space-2);
   padding: var(--space-5);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--ink-raised);
   color: var(--text-soft);
   text-decoration: none;
 }
 
-.privacy-route-tab:first-child {
-  border-right: 1px solid var(--rule);
-}
 
 .privacy-route-tab:hover,
 .js .privacy-route-tab[aria-selected='true'] {
@@ -2220,7 +2222,6 @@ code {
 }
 
 .privacy-route-heading h2,
-.online-boundary h2,
 .website-privacy h2 {
   max-width: 18ch;
   font-size: var(--type-title);
@@ -2231,7 +2232,6 @@ code {
 }
 
 .privacy-route-heading p,
-.online-boundary header p,
 .website-privacy > div > p {
   max-width: var(--measure-narrow);
   margin-top: var(--space-4);
@@ -2328,8 +2328,7 @@ code {
 }
 
 .route-explanation h3,
-.source-control-proof h3,
-.online-route-ledger h3 {
+.source-control-proof h3 {
   font-size: 1.42rem;
   font-weight: 650;
   letter-spacing: -0.025em;
@@ -2381,8 +2380,7 @@ code {
 }
 
 .route-explanation p,
-.source-control-proof header p,
-.online-route-ledger p {
+.source-control-proof header p {
   max-width: var(--measure-narrow);
   color: var(--text-soft);
   line-height: 1.72;
@@ -2817,34 +2815,6 @@ code {
   font-size: var(--type-small);
 }
 
-.online-boundary {
-  padding-block: clamp(var(--space-8), 9vw, var(--space-10));
-  border-block: 1px solid var(--rule);
-  background: var(--gold-wash);
-}
-
-.online-boundary-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 0.62fr) minmax(0, 1.38fr);
-  align-items: start;
-  gap: var(--space-9);
-}
-
-.online-route-ledger {
-  border-top: 1px solid var(--rule-strong);
-}
-
-.online-route-ledger article {
-  display: grid;
-  grid-template-columns: minmax(140px, 0.42fr) minmax(0, 1fr);
-  gap: var(--space-6);
-  padding-block: var(--space-5);
-  border-bottom: 1px solid var(--rule);
-}
-
-.online-route-ledger strong {
-  color: var(--gold-strong);
-}
 
 .website-privacy {
   display: grid;
@@ -2875,9 +2845,12 @@ code {
 }
 
 @media (max-width: 820px) {
+  .privacy-route-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .privacy-route-heading,
   .route-evidence-layout,
-  .online-boundary-layout,
   .website-privacy {
     grid-template-columns: 1fr;
     gap: var(--space-6);
@@ -2907,7 +2880,6 @@ code {
 @media (max-width: 760px) {
   .privacy-hero,
   .privacy-explorer,
-  .online-boundary,
   .website-privacy {
     padding-block: var(--space-8);
   }
@@ -2921,10 +2893,6 @@ code {
     margin-top: var(--space-6);
   }
 
-  .privacy-route-tab:first-child {
-    border-right: 0;
-    border-bottom: 1px solid var(--rule);
-  }
 
   .privacy-route-heading,
   .route-path,
@@ -2946,8 +2914,7 @@ code {
     border-bottom: 1px solid var(--rule);
   }
 
-  .privacy-product-proof figcaption,
-  .online-route-ledger article {
+  .privacy-product-proof figcaption {
     grid-template-columns: 1fr;
     gap: var(--space-3);
   }
@@ -2969,7 +2936,6 @@ code {
 
 @media (max-width: 480px) {
   .privacy-route-heading h2,
-  .online-boundary h2,
   .website-privacy h2 {
     font-size: clamp(2rem, 10vw, 2.8rem);
   }
@@ -2982,6 +2948,46 @@ code {
 
   .source-control-proof dd {
     text-align: left;
+  }
+  .route-table {
+    table-layout: auto;
+  }
+
+  .route-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .route-table tbody,
+  .route-table tr,
+  .route-table th,
+  .route-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .route-table tbody tr {
+    padding-block: var(--space-4);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .route-table tbody th,
+  .route-table tbody td {
+    padding: 0;
+    border: 0;
+  }
+
+  .route-table tbody th {
+    color: var(--gold-strong);
+  }
+
+  .route-table tbody td {
+    margin-top: var(--space-2);
   }
 
   .privacy-next-actions .button {

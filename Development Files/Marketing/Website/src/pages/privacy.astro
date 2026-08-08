@@ -1,209 +1,117 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { privacyFactDefinitions, privacyRoutes } from '../data/privacy-routes';
 ---
 
 <BaseLayout
-  title="Privacy — Local Transcription and Mumble Find"
-  description="Inspect how Mumble's local transcription and local apps-and-files search handle microphone audio, queries, recovery data, outputs, and controls."
+  title="Privacy — Local and Optional Online Routes"
+  description="Inspect six distinct Mumble privacy routes: local and cloud transcription, text shaping, Reader speech, Mumble Find, and consent-gated Web Search."
   currentPath="/privacy/"
 >
   <section class="privacy-hero shell" aria-labelledby="privacy-page-title">
     <div class="privacy-hero-copy">
-      <h1 id="privacy-page-title">See what stays on your computer.</h1>
+      <h1 id="privacy-page-title">Choose when anything leaves your computer.</h1>
       <p>
-        Local Transcription and Mumble Find are two different local routes. One turns microphone audio into text; the other searches apps and files already indexed on the computer. Neither route needs a Mumble account or provider key.
+        Six inspectable routes separate local work from optional online processing. Local Transcription and Mumble Find stay on this computer. Cloud Transcription, Text Shaping, Reader speech, and Web Search each have their own input, provider boundary, requirements, controls, and failure state.
       </p>
       <p>
-        Choose a route to inspect its input, processing location, durable data, output, controls, and current limits. Optional online actions remain outside this explorer.
+        Local speech-to-text is the default. Mumble never supplies a provider key, absorbs an external provider's charges, or silently changes a local route into an online one. A saved online choice becomes effective only when its own requirements and controls permit it.
       </p>
     </div>
 
-    <nav class="privacy-route-tabs" aria-label="Explore local routes" data-route-tabs>
-      <a
-        id="privacy-tab-transcription"
-        class="privacy-route-tab"
-        href="#local-transcription"
-        data-route-tab="local-transcription"
-      >
-        <span>Local Transcription</span>
-        <small>Selected microphone audio becomes finished text</small>
-      </a>
-      <a
-        id="privacy-tab-find"
-        class="privacy-route-tab"
-        href="#mumble-find"
-        data-route-tab="mumble-find"
-      >
-        <span>Mumble Find</span>
-        <small>A typed query returns local apps, files, and folders</small>
-      </a>
+    <nav class="privacy-route-tabs" aria-label="Explore privacy routes" data-route-tabs>
+      {privacyRoutes.map((route) => (
+        <a
+          id={route.tabId}
+          class="privacy-route-tab"
+          href={`#${route.panelId}`}
+          data-route-tab={route.panelId}
+        >
+          <span>{route.label}</span>
+          <small>{route.tabSummary}</small>
+        </a>
+      ))}
     </nav>
   </section>
 
-  <section class="privacy-explorer shell" aria-label="Local privacy route details">
-    <article
-      class="privacy-route-panel"
-      id="local-transcription"
-      data-route-panel="local-transcription"
-      aria-labelledby="local-transcription-title"
-    >
-      <header class="privacy-route-heading">
-        <div>
-          <h2 id="local-transcription-title">Local Transcription</h2>
-          <p>Microphone audio is processed by faster-whisper on this computer. Local speech-to-text is the default route; text shaping is a separate later decision.</p>
-        </div>
-        <strong>Default · on this device</strong>
-      </header>
+  <section class="privacy-explorer shell" aria-label="Privacy route details">
+    {privacyRoutes.map((route) => (
+      <article
+        class="privacy-route-panel"
+        id={route.panelId}
+        data-route-panel={route.panelId}
+        aria-labelledby={route.titleId}
+      >
+        <header class="privacy-route-heading">
+          <div>
+            <h2 id={route.titleId}>{route.label}</h2>
+            <p>{route.summary}</p>
+          </div>
+          <strong>{route.status}</strong>
+        </header>
 
-      <div class="route-path" role="group" aria-labelledby="local-transcription-path-label">
-        <span id="local-transcription-path-label" class="route-path-label">Local Transcription data-path explanation · not an app screenshot</span>
-        <ol class="route-path-visual">
-          <li><strong>Selected microphone</strong><span>One-channel speech capture</span></li>
-          <li><strong>Recovery segments</strong><span>Bounded PCM16 files in Mumble app data</span></li>
-          <li><strong>faster-whisper</strong><span>Local CPU or available GPU</span></li>
-          <li><strong>Finished text</strong><span>Target cursor and local Deck history</span></li>
-        </ol>
-      </div>
-
-      <div class="route-evidence-layout">
-        <div class="route-explanation">
-          <h3>Audio is not treated as a slogan.</h3>
-          <p>
-            When dictation starts, Mumble saves accepted audio in local PCM16 files of no more than 30 seconds. A small record tracks which files belong to this dictation and whether it finished. That lets interrupted work stop safely or recover without inserting the same text twice.
-          </p>
-          <p>
-            These recovery files and the finished transcript are durable local data. The current source does not promise automatic deletion after a set time. Finished text is saved in local History/Deck before Mumble attempts to deliver it once at the intended cursor.
-          </p>
+        <div class="route-path" role="group" aria-labelledby={route.pathLabelId}>
+          <span id={route.pathLabelId} class="route-path-label">{route.pathLabel}</span>
+          <ol class="route-path-visual">
+            {route.pathSteps.map((step) => (
+              <li><strong>{step.title}</strong><span>{step.detail}</span></li>
+            ))}
+          </ol>
         </div>
 
-        <figure class="privacy-product-proof">
-          <img
-            src="/product/settings.webp"
-            width="1180"
-            height="820"
-            loading="lazy"
-            alt="Accepted Mumble Settings capture showing the processing setup with Transcription set to Local (private)"
-          />
-          <figcaption>
-            <strong>Real product capture</strong>
-            <span>Accepted Windows source view showing the saved Local (private) transcription state. Current source also exposes microphone selection, speech-to-text location, and route facts; this is not an installed-release claim.</span>
-          </figcaption>
-        </figure>
-      </div>
+        <div class:list={[
+          'route-evidence-layout',
+          { 'route-evidence-layout-find': route.evidenceLayout === 'find' },
+        ]}>
+          <div class="route-explanation">
+            <h3>{route.explanation.title}</h3>
+            {route.explanation.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+          </div>
 
-      <div class="route-table-wrap">
-        <table class="route-table">
-          <caption>Local Transcription data path</caption>
-          <thead>
-            <tr><th scope="col">Route fact</th><th scope="col">Current local behaviour</th></tr>
-          </thead>
-          <tbody>
-            <tr><th scope="row">Captured input</th><td>One-channel audio from the microphone selected in Settings. This route does not claim computer-audio capture or direct video import.</td></tr>
-            <tr><th scope="row">Processing location</th><td>faster-whisper runs on this computer, using local CPU or an available supported GPU.</td></tr>
-            <tr><th scope="row">Temporary and durable data</th><td>No temporary-only storage promise is made. Accepted audio is written to durable PCM16 recovery files of up to 30 seconds each in Mumble's private per-user application-data area.</td></tr>
-            <tr><th scope="row">Durable output</th><td>Finished text is saved in local History/Deck and one target-bound insertion is attempted. Durable session records support crash recovery.</td></tr>
-            <tr><th scope="row">What leaves the device</th><td>Nothing for speech-to-text on this route. Optional hosted text shaping is a separate route and may later receive the transcript text, not this recorded audio.</td></tr>
-            <tr><th scope="row">Requirements</th><td>A selected microphone, a present local speech model, and enough local compute and storage. Once the model is present, no account, provider key, or internet connection is required.</td></tr>
-            <tr><th scope="row">Controls</th><td>Start and Stop dictation; choose and test the microphone; choose where speech becomes text; keep every route on this device; adjust language or the advanced local model.</td></tr>
-            <tr><th scope="row">Current limitations</th><td>Higher-accuracy models use more local resources and can take longer. A safety stop can protect captured work if the device cannot keep up. No automatic deletion time is promised for recovery records.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </article>
-
-    <article
-      class="privacy-route-panel"
-      id="mumble-find"
-      data-route-panel="mumble-find"
-      aria-labelledby="mumble-find-title"
-    >
-      <header class="privacy-route-heading">
-        <div>
-          <h2 id="mumble-find-title">Mumble Find</h2>
-          <p>Find apps &amp; files is a local launcher route. It does not add hosted matches, open a browser on no result, or share a query with Web Search.</p>
-        </div>
-        <strong>Separate · local apps and files</strong>
-      </header>
-
-      <div class="route-path" role="group" aria-labelledby="mumble-find-path-label">
-        <span id="mumble-find-path-label" class="route-path-label">Mumble Find data-path explanation · not an app screenshot</span>
-        <ol class="route-path-visual">
-          <li><strong>Typed query</strong><span>Entered in the Mumble Find overlay</span></li>
-          <li><strong>Local indexes</strong><span>App catalogue and Windows Search SystemIndex</span></li>
-          <li><strong>Ranked rows</strong><span>Up to 12 apps, files, and folders</span></li>
-          <li><strong>Local action</strong><span>Open, Show in folder, or trusted drag</span></li>
-        </ol>
-      </div>
-
-      <div class="route-evidence-layout route-evidence-layout-find">
-        <div class="route-explanation">
-          <h3>The empty state stays local too.</h3>
-          <p>
-            The accepted Windows app searches a versioned application catalogue and the operating system's Windows Search SystemIndex. Each search has a result limit and time window, and Mumble can cancel it when a newer search starts. Text appears before optional icons. Loading, no-match, partial, and failed-search states never substitute Web Search.
-          </p>
-          <p>
-            The page does not receive or send full file paths as action data. For Open, Show in folder, and native drag, it sends only the selected result's identity back to Mumble, which checks the action.
-          </p>
+          {route.evidence.kind === 'product-proof' ? (
+            <figure class="privacy-product-proof">
+              <img
+                src={route.evidence.image.src}
+                width={route.evidence.image.width}
+                height={route.evidence.image.height}
+                loading="lazy"
+                alt={route.evidence.image.alt}
+              />
+              <figcaption>
+                <strong>{route.evidence.captionTitle}</strong>
+                <span>{route.evidence.caption}</span>
+              </figcaption>
+            </figure>
+          ) : (
+            <section class="source-control-proof" aria-labelledby={route.evidence.titleId}>
+              <header>
+                <h3 id={route.evidence.titleId}>{route.evidence.title}</h3>
+                <p>{route.evidence.description}</p>
+              </header>
+              <dl>
+                {route.evidence.items.map((item) => (
+                  <div><dt>{item.term}</dt><dd>{item.detail}</dd></div>
+                ))}
+              </dl>
+            </section>
+          )}
         </div>
 
-        <section class="source-control-proof" aria-labelledby="find-controls-title">
-          <header>
-            <h3 id="find-controls-title">Current controls in accepted source</h3>
-            <p>These labels and keys come from the Mumble Find surface, not from a decorative privacy illustration.</p>
-          </header>
-          <dl>
-            <div><dt>Open Mumble Find</dt><dd>Ctrl + Alt + F</dd></div>
-            <div><dt>Search categories</dt><dd>Everything · Apps · Files · Folders</dd></div>
-            <div><dt>Move selection</dt><dd>Up / Down arrow keys</dd></div>
-            <div><dt>Open result</dt><dd>Enter</dd></div>
-            <div><dt>Show in folder</dt><dd>Ctrl + Enter</dd></div>
-            <div><dt>Clear or close</dt><dd>Escape</dd></div>
-          </dl>
-        </section>
-      </div>
-
-      <div class="route-table-wrap">
-        <table class="route-table">
-          <caption>Mumble Find data path</caption>
-          <thead>
-            <tr><th scope="col">Route fact</th><th scope="col">Current local behaviour</th></tr>
-          </thead>
-          <tbody>
-            <tr><th scope="row">Query input</th><td>The words typed into the resident Mumble Find overlay.</td></tr>
-            <tr><th scope="row">Processing location</th><td>On this computer. The accepted Windows source queries a versioned app catalogue and Windows Search SystemIndex through bounded local workers.</td></tr>
-            <tr><th scope="row">What leaves the device</th><td>Nothing. The query and local result list have no hosted results and no automatic Web Search fallback.</td></tr>
-            <tr><th scope="row">Output</th><td>Up to 12 text-first rows for local apps, files, and folders; visible icons may appear later from the local system.</td></tr>
-            <tr><th scope="row">Controls</th><td>Global shortcut, category filters, keyboard selection, Open, Show in folder, refresh local index, and a checked native drag action.</td></tr>
-            <tr><th scope="row">Requirements</th><td>The current accepted reference uses Windows Search indexing for files and folders plus Mumble's local application catalogue.</td></tr>
-            <tr><th scope="row">Current limitations</th><td>Results depend on how current the operating-system index is. Index freshness on a real Windows installation, native drag, and installed-package timing remain separate acceptance gates.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </article>
-  </section>
-
-  <section class="online-boundary" aria-labelledby="online-boundary-title">
-    <div class="shell online-boundary-layout">
-      <header>
-        <h2 id="online-boundary-title">Online routes stay outside this explorer.</h2>
-        <p>They are explicit choices, never a fallback for either local route above.</p>
-      </header>
-
-      <div class="online-route-ledger">
-        <article>
-          <h3>Web Search</h3>
-          <p>
-            Web Search is a separate global action. Selected words remain in a bounded local request until one confirmation names the chosen Google, Perplexity, or Brave provider and the user chooses <strong>Search online</strong>. Choosing Keep private, expiry, replay, or a failed consent surface makes no browser request.
-          </p>
-        </article>
-        <article>
-          <h3>Other optional processing</h3>
-          <p>
-            Cloud transcription can send recorded audio to the configured transcription provider when explicitly selected. Hosted text shaping receives transcript text, not the recording. Settings keeps those choices separate from Local Transcription and Mumble Find.
-          </p>
-        </article>
-      </div>
-    </div>
+        <div class="route-table-wrap">
+          <table class="route-table">
+            <caption>{route.tableCaption}</caption>
+            <thead>
+              <tr><th scope="col">Route fact</th><th scope="col">Current behaviour</th></tr>
+            </thead>
+            <tbody>
+              {privacyFactDefinitions.map((fact) => (
+                <tr><th scope="row">{fact.label}</th><td>{route.facts[fact.key]}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    ))}
   </section>
 
   <section class="website-privacy shell" aria-labelledby="website-privacy-title">
