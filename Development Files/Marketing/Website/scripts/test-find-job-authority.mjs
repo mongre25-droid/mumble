@@ -1,78 +1,72 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 const websiteRoot = resolve(import.meta.dirname, '..');
-const jobs = JSON.parse(await readFile(resolve(websiteRoot, 'src/data/jobs.json'), 'utf8'));
-const componentSource = await readFile(resolve(websiteRoot, 'src/components/JobStory.astro'), 'utf8');
-const find = jobs.find((job) => job.id === 'find');
+const jobsPath = resolve(websiteRoot, 'src/data/jobs.json');
+const captureScript = resolve(websiteRoot, 'scripts/capture-find-evidence.mjs');
+const jobs = JSON.parse(await readFile(jobsPath, 'utf8'));
 
-assert.ok(find, 'jobs.json must define the canonical Find job');
-assert.ok(find.story?.presentation, 'Find presentation authority must live in jobs.json');
-assert.ok(Array.isArray(find.story.presentation.captures), 'Find capture data must live in jobs.json');
-assert.equal(find.story.presentation.captures.length, 3, 'Find must define Deck, local, and web captures');
-assert.deepEqual(
-  find.story.presentation.captures.map((capture) => capture.route),
-  ['deck', 'local', 'web'],
-  'Find captures must keep Deck, Mumble Find, and Web Search separate',
-);
-assert.ok(Array.isArray(find.story.presentation.boundaries), 'Find boundary cards must live in jobs.json');
-assert.deepEqual(
-  find.story.presentation.boundaries.map((boundary) => boundary.route),
-  ['deck', 'local', 'web'],
-  'Find boundary data must keep Deck, Mumble Find, and Web Search separate',
-);
-
-for (const boundary of find.story.presentation.boundaries) {
-  assert.ok(boundary.label && boundary.title && boundary.body, `${boundary.route} boundary copy is incomplete`);
-  assert.ok(boundary.actionsLabel, `${boundary.route} boundary action label is missing`);
-  assert.ok(Array.isArray(boundary.actions) && boundary.actions.length > 0, `${boundary.route} boundary actions are missing`);
+function findAuthority(jobData) {
+  const find = jobData.find((job) => job.id === 'find');
+  assert.ok(find?.story?.presentation, 'jobs.json must define the canonical Find presentation');
+  const { captures, boundaries } = find.story.presentation;
+  assert.deepEqual(captures.map((capture) => capture.route), ['deck', 'local', 'web']);
+  assert.deepEqual(boundaries.map((boundary) => boundary.route), ['deck', 'local', 'web']);
+  return {
+    find,
+    local: boundaries.find((boundary) => boundary.route === 'local'),
+    web: boundaries.find((boundary) => boundary.route === 'web'),
+  };
 }
 
-const local = find.story.presentation.boundaries.find((boundary) => boundary.route === 'local');
-const web = find.story.presentation.boundaries.find((boundary) => boundary.route === 'web');
-assert.ok(local?.example?.label && local.example.title && local.example.detail, 'local Find example authority is incomplete');
-assert.ok(Array.isArray(web?.facts) && web.facts.length >= 3, 'Web Search provider and consent facts are incomplete');
-assert.ok(web?.example?.label && web.example.quote, 'Web Search selected-text example authority is incomplete');
-assert.ok(web?.failure, 'Web Search failure label must live in jobs.json');
-
-for (const task of find.story.tasks) {
-  if (['local-app-file', 'web-search'].includes(task.id)) {
-    assert.ok(task.example?.label && task.example.detail, `${task.id} example authority must live beside the task in jobs.json`);
-  }
+function capturePlan(inputPath) {
+  return JSON.parse(execFileSync(
+    process.execPath,
+    [captureScript, '--plan', '--jobs', inputPath],
+    { cwd: websiteRoot, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 },
+  ));
 }
 
-assert.doesNotMatch(
-  componentSource,
-  /job\.id\s*===\s*['"]find['"]|job\.id\s*!==\s*['"]find['"]|['"]find['"]\s*===\s*job\.id/,
-  'JobStory.astro must render Find from the supplied schema without a Find-only authority branch',
-);
+function assertPlanMatchesAuthority(plan, authority) {
+  assert.equal(plan.schemaVersion, 1, 'capture generator must expose its structured canonical-data plan');
+  assert.deepEqual(plan.captures.map((capture) => capture.route), ['deck', 'local', 'web']);
+  const localPlan = plan.captures.find((capture) => capture.route === 'local');
+  const webPlan = plan.captures.find((capture) => capture.route === 'web');
 
-const copyKeys = new Set([
-  'label', 'title', 'summary', 'body', 'note', 'alt', 'caption', 'truthLabel',
-  'ariaLabel', 'actionsLabel', 'failure', 'quote', 'term', 'detail', 'actionLabel',
-]);
-const canonicalCopy = [];
-function collectCopy(value, key = '') {
-  if (Array.isArray(value)) {
-    for (const item of value) collectCopy(item, key);
-    return;
-  }
-  if (!value || typeof value !== 'object') {
-    if (typeof value === 'string' && copyKeys.has(key) && value.length >= 8) canonicalCopy.push(value);
-    return;
-  }
-  for (const [childKey, childValue] of Object.entries(value)) collectCopy(childValue, childKey);
+  assert.deepEqual(localPlan.semantic.example, authority.local.example);
+  assert.deepEqual(localPlan.semantic.actions, authority.local.actions);
+  assert.equal(localPlan.fixture.rows[0].name, authority.local.example.title);
+
+  assert.deepEqual(webPlan.semantic.example, authority.web.example);
+  assert.deepEqual(webPlan.semantic.facts, authority.web.facts);
+  assert.deepEqual(webPlan.semantic.actions, authority.web.actions);
+  assert.equal(webPlan.semantic.failure, authority.web.failure);
+  assert.equal(webPlan.fixture.query, authority.web.example.quote);
+  assert.equal(webPlan.fixture.provider, authority.web.facts[0].detail);
 }
-collectCopy(find.story.presentation);
-for (const task of find.story.tasks) collectCopy(task.example);
 
-const otherJobData = JSON.stringify(jobs.filter((job) => job.id !== 'find'));
-const duplicated = canonicalCopy.filter((copy) => componentSource.includes(copy) && !otherJobData.includes(copy));
-assert.deepEqual(
-  duplicated,
-  [],
-  `JobStory.astro duplicates canonical Find copy:\n${duplicated.map((copy) => `- ${copy}`).join('\n')}`,
-);
+const authority = findAuthority(jobs);
+assertPlanMatchesAuthority(capturePlan(jobsPath), authority);
+
+const temporaryRoot = await mkdtemp(join(tmpdir(), 'mumble-find-authority-'));
+try {
+  const changedJobs = structuredClone(jobs);
+  const changed = findAuthority(changedJobs);
+  changed.local.example.title = 'Authority mutation.pdf';
+  changed.local.actions[1] = 'Reveal authority mutation';
+  changed.web.example.quote = 'Authority mutation selected words.';
+  changed.web.facts[0].detail = 'Brave';
+  changed.web.actions[1] = 'Authority mutation stays private';
+  changed.web.failure = 'Authority mutation reports browser failure.';
+
+  const changedJobsPath = join(temporaryRoot, 'jobs.json');
+  await writeFile(changedJobsPath, `${JSON.stringify(changedJobs, null, 2)}\n`, 'utf8');
+  assertPlanMatchesAuthority(capturePlan(changedJobsPath), changed);
+} finally {
+  await rm(temporaryRoot, { recursive: true, force: true });
+}
 
 console.log('FIND_JOB_AUTHORITY_OK');

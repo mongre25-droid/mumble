@@ -166,14 +166,53 @@
             "provenance": {
               "kind": "accepted-product-capture",
               "sourceCommit": "babdc38d2d3869540afb7bc1e7523151c5de4237",
-              "generatedBy": "Development Files/Tooling/focus-stage/verify-production-ui.ps1 -Case visual -Capture",
-              "outputSha256": "9bb7329866adb04c3a0dadd9670e519d2eb8ddc1f8be9a773f93c5c74679e4ea",
+              "generatedBy": "scripts/capture-find-evidence.mjs",
+              "sourceCaptureGeneratedBy": "Development Files/Tooling/focus-stage/verify-production-ui.ps1 -Case visual -Capture",
+              "outputSha256": "7346aea7ffa5b629f516ced681b98593e9d3694613b7aec2ac11a74a0de078cc",
+              "replayBoundary": {
+                "kind": "pinned-byte-identical-conversion",
+                "byteIdenticalReplayRequired": true,
+                "verification": "The accepted source PNG is converted with the exact pinned tool, versions, dimensions, resize options, and WebP options below; replay must match outputSha256 byte for byte."
+              },
+              "conversion": {
+                "tool": "sharp",
+                "version": "0.35.3",
+                "libvipsVersion": "8.18.3",
+                "input": {
+                  "path": "Development Files/Research/focus-stage-production-screenshots/05-deck-command-surface.png",
+                  "format": "png",
+                  "width": 1440,
+                  "height": 1000
+                },
+                "output": {
+                  "path": "Development Files/Marketing/Website/public/product/deck-command-surface.webp",
+                  "format": "webp",
+                  "width": 1152,
+                  "height": 800
+                },
+                "resize": {
+                  "fit": "fill",
+                  "kernel": "lanczos3",
+                  "withoutEnlargement": true
+                },
+                "webp": {
+                  "quality": 80,
+                  "alphaQuality": 100,
+                  "lossless": false,
+                  "nearLossless": false,
+                  "smartSubsample": false,
+                  "preset": "default",
+                  "effort": 6
+                }
+              },
               "sources": [
                 {
+                  "role": "capture-input",
                   "path": "Development Files/Research/focus-stage-production-screenshots/05-deck-command-surface.png",
                   "sha256": "24ba940feb776bf2d867ae31d9afb0930670d3a6bfc98e56ccba50a5a50091d1"
                 },
                 {
+                  "role": "evidence-manifest",
                   "path": "Development Files/Research/focus-stage-production-screenshots/evidence-manifest.json",
                   "sha256": "9c6b2f7e3c3f3999e1744f526c0c94d93d2841db8f8f744b7864f802e684a2d4"
                 }
@@ -188,19 +227,68 @@
             "loading": "eager",
             "alt": "Genuine Mumble Find product capture showing the private local app-and-file launcher with a demonstration query and three demonstration local results",
             "label": "Genuine Mumble Find capture",
-            "caption": "The current local launcher rendered with deterministic app, file, and folder examples.",
+            "caption": "The current local launcher rendered with fixed app, file, and folder examples.",
             "truthLabel": "Deterministic demonstration data · not user data",
+            "fixture": {
+              "query": "project",
+              "rows": [
+                {
+                  "id": "demo-file-project-brief",
+                  "kind": "file",
+                  "exampleRef": "local",
+                  "subtitle": "Demonstration document · not user data",
+                  "meta": "Demo document · not user data",
+                  "source": "windows-search",
+                  "actions": ["open", "reveal"]
+                },
+                {
+                  "id": "demo-folder-project-notes",
+                  "kind": "folder",
+                  "name": "Project notes",
+                  "subtitle": "Demonstration folder · not user data",
+                  "meta": "Demo folder · not user data",
+                  "source": "windows-search",
+                  "actions": ["open", "reveal"]
+                },
+                {
+                  "id": "demo-app-project-board",
+                  "kind": "app",
+                  "name": "Project Board",
+                  "subtitle": "Demonstration application · not user data",
+                  "meta": "Demo application · not user data",
+                  "source": "start-menu",
+                  "actions": ["open", "reveal"]
+                }
+              ]
+            },
             "provenance": {
-              "kind": "deterministic-current-product-capture",
+              "kind": "accepted-environment-bound-product-capture",
               "sourceCommit": "babdc38d2d3869540afb7bc1e7523151c5de4237",
               "generatedBy": "scripts/capture-find-evidence.mjs",
               "outputSha256": "ca8495db0709050ec1434f1059e11ce3c05d1513620b685c72902b6872175e4c",
+              "captureEnvironment": {
+                "platform": "Windows",
+                "browser": "Google Chrome",
+                "browserVersion": "151.0.7922.71",
+                "playwrightVersion": "1.55.1",
+                "viewport": { "width": 900, "height": 680 },
+                "deviceScaleFactor": 1,
+                "colorScheme": "dark",
+                "reducedMotion": "reduce"
+              },
+              "replayBoundary": {
+                "kind": "environment-bound-browser-render",
+                "byteIdenticalReplayRequired": false,
+                "verification": "The accepted PNG remains fixed by source hashes, canonical fixture semantics, dimensions, and outputSha256. The original receipt did not retain the exact Windows build and font state, so browser regeneration is a comparison render and byte-identical replay is not claimed after environment drift."
+              },
               "sources": [
                 {
+                  "role": "script",
                   "path": "Internal/app/experimental/system_search/ui.js",
                   "sha256": "514554a5b1aba0058ca14bce93bfffc80917fdf386af65ec766330722686b6e7"
                 },
                 {
+                  "role": "style",
                   "path": "Internal/app/experimental/system_search/ui.css",
                   "sha256": "4c0f8046be9272691b1a0f01b6b78d37074a6c7352715130f4fb862ef33d62c6"
                 }
@@ -217,45 +305,74 @@
             "label": "Genuine Mumble Web Search capture",
             "caption": "The current provider-named confirmation rendered before any selected words are sent online.",
             "truthLabel": "Deterministic demonstration data · not user data",
+            "fixture": {
+              "requestId": "deterministic-issue-41-capture",
+              "providerFactId": "provider",
+              "privacy": "These demonstration words will be sent to {provider} over the internet only after you choose Search online. Mumble Find stays private on this device."
+            },
             "provenance": {
-              "kind": "deterministic-current-product-capture",
+              "kind": "accepted-environment-bound-product-capture",
               "sourceCommit": "babdc38d2d3869540afb7bc1e7523151c5de4237",
               "generatedBy": "scripts/capture-find-evidence.mjs",
               "outputSha256": "35b708a550c7cad5ac9ce6a852f30fb48b95122fd08c3a32cf5ed7ac26bca170",
+              "captureEnvironment": {
+                "platform": "Windows",
+                "browser": "Google Chrome",
+                "browserVersion": "151.0.7922.71",
+                "playwrightVersion": "1.55.1",
+                "viewport": { "width": 1180, "height": 820 },
+                "deviceScaleFactor": 1,
+                "colorScheme": "dark",
+                "reducedMotion": "reduce"
+              },
+              "replayBoundary": {
+                "kind": "environment-bound-browser-render",
+                "byteIdenticalReplayRequired": false,
+                "verification": "The accepted PNG remains fixed by source hashes, canonical fixture semantics, dimensions, and outputSha256. The original receipt did not retain the exact Windows build and font state, so browser regeneration is a comparison render and byte-identical replay is not claimed after environment drift."
+              },
               "sources": [
                 {
+                  "role": "document",
                   "path": "Internal/app/webui/index.html",
                   "sha256": "e806020d9c746eddff65a9f66e7bc6208eaa52c3863df560ed65ef95cf8b569c"
                 },
                 {
+                  "role": "style-base",
                   "path": "Internal/app/webui/app.css",
                   "sha256": "a3f0ddcf6cb03b54793ac339e622dce6aff7a33d6ef03381da83857a9b39e7c3"
                 },
                 {
+                  "role": "style-enhanced",
                   "path": "Internal/app/webui/enhanced.css",
                   "sha256": "d1ee641efc235bb0588dccfac3e934f6da0b029277d261affb7580f47659f0b4"
                 },
                 {
+                  "role": "style-remaster",
                   "path": "Internal/app/webui/remaster.css",
                   "sha256": "88130b26c65c9ba4f923b7e1e50975e98e0b1aa75f9d3e8443b75031d9eb5a4b"
                 },
                 {
+                  "role": "style-focus-stage",
                   "path": "Internal/app/webui/focus-stage.css",
                   "sha256": "300a325d07ee7e921992b8f590bfc4f06cf6ced40c06eb4d9f24bd8d928cf45b"
                 },
                 {
+                  "role": "script-focus-stage",
                   "path": "Internal/app/webui/focus-stage.js",
                   "sha256": "bf37e9f567e8c202b4e2edbc7c63ea927951196400a13b0a0bd02cbb47ca364b"
                 },
                 {
+                  "role": "script-app",
                   "path": "Internal/app/webui/app.js",
                   "sha256": "ea5f17672205d8f2d93ca893b0d9996648f5c324097ec2644ef20ab5509a0aaa"
                 },
                 {
+                  "role": "script-system-search-loader",
                   "path": "Internal/app/webui/system-search-loader.js",
                   "sha256": "60242de128f01fe69d57d7b04ac6885d8c0aed082835120c3a10d942764b6e36"
                 },
                 {
+                  "role": "asset-logo",
                   "path": "Internal/app/webui/mumble.png",
                   "sha256": "4f9b794bdabfbbaea6cc0e14523ea850d64d4c0591c4cdf69f5426556c15a842"
                 }
@@ -309,14 +426,17 @@
             },
             "facts": [
               {
+                "id": "provider",
                 "term": "Chosen provider",
                 "detail": "Perplexity"
               },
               {
+                "id": "before-confirmation",
                 "term": "Before confirmation",
                 "detail": "Words remain local"
               },
               {
+                "id": "after-confirmation",
                 "term": "After Search online",
                 "detail": "Selected words go to Perplexity"
               }

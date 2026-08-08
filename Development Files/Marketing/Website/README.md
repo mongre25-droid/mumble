@@ -57,11 +57,17 @@ The Find job's route cards, boundary rows, examples, actions, provider and
 consent facts, failure wording, capture labels, dimensions, alt text, and source
 provenance all come from `src/data/jobs.json`; `JobStory.astro` renders that
 schema without a Find-specific content branch. The genuine Deck capture remains
-bound to the accepted Focus Stage evidence manifest. The Mumble Find and Web
-Search captures are deterministic renders of the current accepted product
-source with visibly labelled demonstration data. Regenerate those two captures
-only with `npm.cmd run capture:find-evidence`, then update and verify their exact
-source and output hashes with `npm.cmd run test:find`.
+bound to the accepted Focus Stage evidence manifest and has one pinned,
+byte-identical PNG-to-WebP conversion through Sharp 0.35.3/libvips 8.18.3. The
+accepted Mumble Find and Web Search PNGs are environment-bound browser renders
+of current accepted product source with fixed, visibly labelled demonstration
+data. `npm.cmd run capture:find-evidence` consumes the same canonical structured
+fixtures and reports the exact runtime environment, but browser updates, the
+Windows build, and fonts can change PNG bytes; browser byte-identical replay is
+therefore not claimed. `npm.cmd run test:find` preserves each accepted public
+hash and dimensions, verifies source and semantic authority, replays Deck bytes
+exactly, and creates browser comparison renders without replacing accepted
+evidence.
 
 ## Interaction and accessibility
 

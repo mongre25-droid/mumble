@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
-    "playwright": "^1.55.1"
+    "playwright": "^1.55.1",
+    "sharp": "0.35.3"
   }
 }

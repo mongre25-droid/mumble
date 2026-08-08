@@ -1,130 +1,191 @@
-import { mkdir, readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { release as osRelease, version as osVersion } from 'node:os';
+import { basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
+import sharp from 'sharp';
+import { createFindCapturePlan, readJobs } from './find-job-authority.mjs';
 
 const websiteRoot = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(websiteRoot, '..', '..', '..');
-const appRoot = resolve(repoRoot, 'Internal/app');
-const outputRoot = resolve(websiteRoot, 'public/product');
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim()
   || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const playwrightVersion = JSON.parse(
+  await readFile(resolve(websiteRoot, 'node_modules/playwright/package.json'), 'utf8'),
+).version;
 
-await mkdir(outputRoot, { recursive: true });
+function argument(name, fallback) {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? fallback : process.argv[index + 1];
+}
 
-const browser = await chromium.launch({ headless: true, executablePath });
-try {
-  const localPage = await browser.newPage({
-    viewport: { width: 900, height: 680 },
-    deviceScaleFactor: 1,
-    colorScheme: 'dark',
-    reducedMotion: 'reduce',
-  });
-  const localCss = await readFile(resolve(appRoot, 'experimental/system_search/ui.css'), 'utf8');
-  const localScript = await readFile(resolve(appRoot, 'experimental/system_search/ui.js'), 'utf8');
-  await localPage.setContent('<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body class="search-popup-page enhanced"></body></html>');
-  await localPage.addStyleTag({ content: localCss });
-  await localPage.evaluate(() => {
-    const demonstrationRows = [
-      {
-        id: 'demo-file-project-brief',
-        kind: 'file',
-        name: 'Project brief.docx',
-        subtitle: 'Demonstration document · not user data',
-        meta: 'Demo document · not user data',
-        source: 'windows-search',
-        actions: ['open', 'reveal'],
+const jobsPath = resolve(argument('--jobs', resolve(websiteRoot, 'src/data/jobs.json')));
+const outputOverride = argument('--output', '');
+const planOnly = process.argv.includes('--plan');
+const plan = createFindCapturePlan(await readJobs(jobsPath));
+
+if (planOnly) {
+  console.log(JSON.stringify(plan));
+} else {
+  const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  const outputPath = (capture) => outputOverride
+    ? resolve(outputOverride, basename(capture.output.path))
+    : resolve(websiteRoot, capture.output.path);
+  const captureByRoute = Object.fromEntries(plan.captures.map((capture) => [capture.route, capture]));
+
+  async function stableScreenshot(page, path) {
+    let previous;
+    await page.waitForTimeout(600);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await page.waitForTimeout(120);
+      const current = await page.screenshot();
+      if (previous?.equals(current)) {
+        await writeFile(path, current);
+        return current;
+      }
+      previous = current;
+    }
+    throw new Error(`capture did not settle: ${path}`);
+  }
+
+  for (const capture of plan.captures) await mkdir(resolve(outputPath(capture), '..'), { recursive: true });
+
+  const deck = captureByRoute.deck;
+  if (sharp.versions.sharp !== deck.conversion.version || sharp.versions.vips !== deck.conversion.libvipsVersion) {
+    throw new Error(`Deck conversion requires sharp ${deck.conversion.version} / libvips ${deck.conversion.libvipsVersion}`);
+  }
+  const deckInput = resolve(repoRoot, deck.conversion.input.path);
+  const deckInputBytes = await readFile(deckInput);
+  const deckInputAuthority = deck.provenance.sources.find((source) => source.role === 'capture-input');
+  if (sha256(deckInputBytes) !== deckInputAuthority.sha256) {
+    throw new Error('Deck accepted source PNG hash drifted');
+  }
+  await sharp(deckInput)
+    .resize({
+      width: deck.conversion.output.width,
+      height: deck.conversion.output.height,
+      ...deck.conversion.resize,
+    })
+    .webp(deck.conversion.webp)
+    .toFile(outputPath(deck));
+
+  const browser = await chromium.launch({ headless: true, executablePath });
+  try {
+    const local = captureByRoute.local;
+    const localPage = await browser.newPage({
+      viewport: { width: local.output.width, height: local.output.height },
+      deviceScaleFactor: 1,
+      colorScheme: 'dark',
+      reducedMotion: 'reduce',
+    });
+    const localCss = await readFile(resolve(repoRoot, local.sources.style), 'utf8');
+    const localScript = await readFile(resolve(repoRoot, local.sources.script), 'utf8');
+    await localPage.setContent('<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body class="search-popup-page enhanced"></body></html>');
+    await localPage.addStyleTag({ content: localCss });
+    await localPage.evaluate((rows) => {
+      window.pywebview = { api: {
+        system_search_status: async () => ({
+          ok: true,
+          supported: true,
+          refreshing: false,
+          total: rows.length,
+          counts: Object.fromEntries(['app', 'file', 'folder'].map((kind) => [kind, rows.filter((row) => row.kind === kind).length])),
+          hotkey: 'ctrl+alt+f',
+          icon_version: 'deterministic:issue-41',
+          file_provider: { available: true, state: 'ready', name: 'Windows Search', message: '' },
+        }),
+        system_search_cancel: async () => true,
+        system_search_query: async (_query, category, limit, generation) => ({
+          ok: true,
+          results: rows.filter((row) => category === 'all' || row.kind === category).slice(0, limit),
+          total_matches: rows.length,
+          generation,
+          provider_state: 'complete',
+          icon_version: 'deterministic:issue-41',
+        }),
+        system_search_icons: async (_ids, generation, iconVersion) => ({
+          ok: true, icons: {}, stale: false, generation, icon_version: iconVersion,
+        }),
+        system_search_execute: async () => ({ ok: true }),
+        system_search_drag: async () => ({ ok: true, dropped: false, effect: 'none' }),
+        system_search_refresh: async () => ({ ok: true, refreshing: false }),
+        system_search_hide: async () => ({ ok: true, state: 'hidden' }),
+        system_search_show: async () => ({ ok: true, state: 'visible' }),
+      } };
+    }, local.fixture.rows);
+    await localPage.addScriptTag({ content: localScript });
+    await localPage.evaluate(() => {
+      window.bootSystemSearch();
+      window.showSystemSearch();
+    });
+    await localPage.locator('#ss-input').fill(local.fixture.query);
+    await localPage.locator('#ss-input').dispatchEvent('input');
+    await localPage.getByText(local.fixture.rows[0].name, { exact: true }).waitFor();
+    const localBytes = await stableScreenshot(localPage, outputPath(local));
+    await localPage.close();
+
+    const web = captureByRoute.web;
+    const webPage = await browser.newPage({
+      viewport: { width: web.output.width, height: web.output.height },
+      deviceScaleFactor: 1,
+      colorScheme: 'dark',
+      reducedMotion: 'reduce',
+    });
+    await webPage.goto(pathToFileURL(resolve(repoRoot, web.sources.document)).href, { waitUntil: 'load' });
+    await webPage.waitForFunction(() => typeof window.pyWebSearchConsent === 'function');
+    await webPage.evaluate((fixture) => window.pyWebSearchConsent({
+      request_id: fixture.requestId,
+      provider: fixture.provider,
+      query: fixture.query,
+      privacy: fixture.privacy,
+    }), web.fixture);
+    await webPage.getByRole('dialog', { name: web.fixture.dialogName }).waitFor();
+    const webBytes = await stableScreenshot(webPage, outputPath(web));
+    await webPage.close();
+
+    const deckBytes = await readFile(outputPath(deck));
+    const deckHash = sha256(deckBytes);
+    if (deckHash !== deck.provenance.outputSha256) {
+      throw new Error(`Deck byte replay drifted: ${deckHash}`);
+    }
+    const localHash = sha256(localBytes);
+    const webHash = sha256(webBytes);
+    console.log(JSON.stringify({
+      ok: true,
+      environment: {
+        platform: process.platform,
+        architecture: process.arch,
+        osRelease: osRelease(),
+        osVersion: osVersion(),
+        nodeVersion: process.version,
+        playwrightVersion,
+        browser: 'Google Chrome',
+        browserVersion: browser.version(),
+        browserExecutable: executablePath,
       },
-      {
-        id: 'demo-folder-project-notes',
-        kind: 'folder',
-        name: 'Project notes',
-        subtitle: 'Demonstration folder · not user data',
-        meta: 'Demo folder · not user data',
-        source: 'windows-search',
-        actions: ['open', 'reveal'],
-      },
-      {
-        id: 'demo-app-project-board',
-        kind: 'app',
-        name: 'Project Board',
-        subtitle: 'Demonstration application · not user data',
-        meta: 'Demo application · not user data',
-        source: 'start-menu',
-        actions: ['open', 'reveal'],
-      },
-    ];
-    window.pywebview = { api: {
-      system_search_status: async () => ({
-        ok: true,
-        supported: true,
-        refreshing: false,
-        total: demonstrationRows.length,
-        counts: { app: 1, file: 1, folder: 1 },
-        hotkey: 'ctrl+alt+f',
-        icon_version: 'deterministic:issue-41',
-        file_provider: { available: true, state: 'ready', name: 'Windows Search', message: '' },
-      }),
-      system_search_cancel: async () => true,
-      system_search_query: async (_query, category, limit, generation) => ({
-        ok: true,
-        results: demonstrationRows.filter((row) => category === 'all' || row.kind === category).slice(0, limit),
-        total_matches: demonstrationRows.length,
-        generation,
-        provider_state: 'complete',
-        icon_version: 'deterministic:issue-41',
-      }),
-      system_search_icons: async (_ids, generation, iconVersion) => ({
-        ok: true,
-        icons: {},
-        stale: false,
-        generation,
-        icon_version: iconVersion,
-      }),
-      system_search_execute: async () => ({ ok: true }),
-      system_search_drag: async () => ({ ok: true, dropped: false, effect: 'none' }),
-      system_search_refresh: async () => ({ ok: true, refreshing: false }),
-      system_search_hide: async () => ({ ok: true, state: 'hidden' }),
-      system_search_show: async () => ({ ok: true, state: 'visible' }),
-    } };
-  });
-  await localPage.addScriptTag({ content: localScript });
-  await localPage.evaluate(() => {
-    window.bootSystemSearch();
-    window.showSystemSearch();
-  });
-  await localPage.locator('#ss-input').fill('project');
-  await localPage.locator('#ss-input').dispatchEvent('input');
-  await localPage.getByText('Project brief.docx', { exact: true }).waitFor();
-  await localPage.screenshot({ path: resolve(outputRoot, 'mumble-find-capture.png') });
-  await localPage.close();
-
-  const webPage = await browser.newPage({
-    viewport: { width: 1180, height: 820 },
-    deviceScaleFactor: 1,
-    colorScheme: 'dark',
-    reducedMotion: 'reduce',
-  });
-  await webPage.goto(pathToFileURL(resolve(appRoot, 'webui/index.html')).href, { waitUntil: 'load' });
-  await webPage.waitForFunction(() => typeof window.pyWebSearchConsent === 'function');
-  await webPage.evaluate(() => window.pyWebSearchConsent({
-    request_id: 'deterministic-issue-41-capture',
-    provider: 'Perplexity',
-    query: 'Compare the project brief with the launch notes.',
-    privacy: 'These demonstration words will be sent to Perplexity over the internet only after you choose Search online. Mumble Find stays private on this device.',
-  }));
-  await webPage.getByRole('dialog', { name: 'Search online with Perplexity?' }).waitFor();
-  await webPage.screenshot({ path: resolve(outputRoot, 'web-search-consent-capture.png') });
-  await webPage.close();
-
-  console.log(JSON.stringify({
-    ok: true,
-    browser: browser.version(),
-    captures: [
-      { route: 'local', path: 'public/product/mumble-find-capture.png', width: 900, height: 680 },
-      { route: 'web', path: 'public/product/web-search-consent-capture.png', width: 1180, height: 820 },
-    ],
-  }));
-} finally {
-  await browser.close();
+      captures: [
+        {
+          route: 'deck', path: deck.output.path, width: deck.output.width, height: deck.output.height,
+          sha256: deckHash, acceptedSha256: deck.provenance.outputSha256,
+          byteIdenticalReplayRequired: deck.provenance.replayBoundary.byteIdenticalReplayRequired,
+          matchesAcceptedOutput: true,
+        },
+        {
+          route: 'local', path: local.output.path, width: local.output.width, height: local.output.height,
+          sha256: localHash, acceptedSha256: local.provenance.outputSha256,
+          byteIdenticalReplayRequired: local.provenance.replayBoundary.byteIdenticalReplayRequired,
+          matchesAcceptedOutput: localHash === local.provenance.outputSha256,
+        },
+        {
+          route: 'web', path: web.output.path, width: web.output.width, height: web.output.height,
+          sha256: webHash, acceptedSha256: web.provenance.outputSha256,
+          byteIdenticalReplayRequired: web.provenance.replayBoundary.byteIdenticalReplayRequired,
+          matchesAcceptedOutput: webHash === web.provenance.outputSha256,
+        },
+      ],
+    }));
+  } finally {
+    await browser.close();
+  }
 }
