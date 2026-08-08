@@ -8,26 +8,30 @@ import release from '../data/release.json';
 const write = jobs.find((job) => job.id === 'write');
 const find = jobs.find((job) => job.id === 'find');
 const capture = jobs.find((job) => job.id === 'capture');
+const shape = jobs.find((job) => job.id === 'shape');
 const recovery = write?.story?.mechanism.steps.find((step) => step.id === 'recovery');
 if (!write?.story) throw new Error('Write story authority is missing');
 if (!capture?.story) throw new Error('Capture story authority is missing');
+if (!shape?.story) throw new Error('Shape story authority is missing');
 if (!find?.story) throw new Error('Find story authority is missing');
 if (!recovery) throw new Error('Write recovery authority is missing');
+const shapeModes = shape.story.modes;
+if (!shapeModes) throw new Error('Shape mode authority is missing');
 ---
 
 <BaseLayout
-  title="Product — How Mumble Write, Capture, and Find work"
-  description="Follow Mumble from intended-cursor writing through saved microphone recordings and supported audio imports to Deck retrieval, private local Mumble Find, and separate consent-led Web Search."
+  title="Product — How Mumble Write, Capture, Shape, and Find work"
+  description="Follow local dictation and intended-cursor return through saved recordings, optional text shaping, Deck recovery, local Mumble Find, and deliberate Web Search."
   currentPath="/product/"
 >
   <section class="page-hero shell" aria-labelledby="product-title">
     <div>
-      <h1 id="product-title">Write keeps the destination in the story.</h1>
-      <p>{write.summary}</p>
+      <h1 id="product-title">Write lands the text. Shape gives it a job.</h1>
+      <p>{write.summary} {shape.summary}</p>
     </div>
     <div class="page-hero-support">
-      <p>{write.proof}</p>
-      <a class="text-link" href="/use-cases/">See complete Write tasks</a>
+      <p>{shape.proof} Local dictation stays useful with no Mumble account, provider key, or paid service.</p>
+      <a class="text-link" href="/use-cases/">See complete Write and Shape tasks</a>
     </div>
   </section>
 
@@ -50,7 +54,25 @@ if (!recovery) throw new Error('Write recovery authority is missing');
     <div>
       <h2 id="recovery-title">A blocked insertion becomes findable material, not a lost result.</h2>
       <p>{recovery.body} Search all Deck content, narrow by type, or filter to Starred material before you copy, paste, or shape it again.</p>
-      <a class="button button-quiet" href="/use-cases/#job-find-task-prior-text">Follow complete Find tasks</a>
+      <a class="button button-quiet" href="/use-cases/">Follow complete job tasks</a>
+    </div>
+  </section>
+
+  <JobStory job={shape} surface="product" />
+
+  <section class="shape-modes shell" aria-labelledby="shape-modes-title">
+    <header class="section-intro">
+      <h2 id="shape-modes-title">Five real modes, five different jobs.</h2>
+      <p>Gold remains Mumble’s brand accent. The application’s mode colours appear here only to identify the real processing form a visitor is reading about.</p>
+    </header>
+    <div class="shape-mode-ledger">
+      {shapeModes.map((mode) => (
+        <article data-mode={mode.id}>
+          <h3>{mode.label}</h3>
+          <p>{mode.summary}</p>
+          <small>{mode.boundary}</small>
+        </article>
+      ))}
     </div>
   </section>
 

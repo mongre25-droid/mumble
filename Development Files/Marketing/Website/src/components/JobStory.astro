@@ -12,17 +12,30 @@ export interface Props {
 const { job, surface } = Astro.props;
 if (!job.story) throw new Error(`${job.label} has no detailed job story`);
 const story = job.story;
-const presentation = 'presentation' in story ? story.presentation : undefined;
-const isCapture = job.id === 'capture';
+const findPresentation = 'presentation' in story ? story.presentation : undefined;
+const futureMedia = 'futureMedia' in story ? story.futureMedia : undefined;
 const storyId = `job-${job.id}`;
 const stageTitleId = `${storyId}-stage-title`;
 const mechanismTitleId = `${storyId}-mechanism-title`;
 const demonstrationTabId = (stateId: string) => `${storyId}-tab-${stateId}`;
 const demonstrationPanelId = (stateId: string) => `${storyId}-panel-${stateId}`;
 const taskId = (id: string) => `${storyId}-task-${id}`;
+const demonstrationPresentation = 'presentation' in story.demonstration
+  ? story.demonstration.presentation
+  : undefined;
+const capturePresentation = demonstrationPresentation?.kind === 'capture' ? demonstrationPresentation : null;
+const routePresentation = demonstrationPresentation?.kind === 'route' ? demonstrationPresentation : null;
+const routeSteps = routePresentation?.steps ?? [];
+const hasEvidenceStates = story.demonstration.states.some((state) => 'image' in state);
+if (demonstrationPresentation && !capturePresentation && !routePresentation) {
+  throw new Error(`${job.label} story has an unsupported demonstration presentation`);
+}
+if (routePresentation && routeSteps.length === 0) {
+  throw new Error(`${job.label} route presentation has no steps`);
+}
 ---
 
-{surface === 'home' && (job.id === 'write' || isCapture) && (
+{surface === 'home' && !findPresentation && (
   <section
     class:list={['product-stage', 'job-product-stage', `${job.id}-product-stage`]}
     aria-labelledby={stageTitleId}
@@ -32,29 +45,46 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   >
     <div class="stage-bar">
       <span class="stage-brand">Mumble / {job.label}</span>
-      <span class="stage-state"><i aria-hidden="true"></i>{isCapture ? 'Private recording saved first' : 'Local route by default'}</span>
+      <span class="stage-state">
+        <i aria-hidden="true"></i>
+        {'stageStatus' in story.demonstration
+          ? story.demonstration.stageStatus
+          : 'Current route visible'}
+      </span>
     </div>
 
-    {!isCapture && (
+    {capturePresentation ? (
       <figure class="write-capture">
         <img
-          src="/product/home.webp"
-          width="1180"
-          height="820"
-          loading="eager"
-          fetchpriority="high"
-          alt="Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status"
+          src={capturePresentation.src}
+          width={capturePresentation.width}
+          height={capturePresentation.height}
+          loading={capturePresentation.priority === 'high' ? 'eager' : 'lazy'}
+          fetchpriority={capturePresentation.priority === 'high' ? 'high' : 'auto'}
+          alt={capturePresentation.alt}
         />
         <figcaption>
-          <strong>Genuine Mumble capture</strong>
-          <span>Current accepted Windows source surface</span>
+          <strong>{capturePresentation.captionTitle}</strong>
+          <span>{capturePresentation.captionDetail}</span>
         </figcaption>
       </figure>
-    )}
+    ) : routePresentation ? (
+      <div class="job-route-summary" aria-label={routePresentation.ariaLabel}>
+        {routeSteps.map((step, index) => (
+          <>
+            {index > 0 && <i aria-hidden="true"></i>}
+            <div data-mode={'mode' in step ? step.mode : undefined}>
+              <span>{step.label}</span>
+              <strong>{step.value}</strong>
+            </div>
+          </>
+        ))}
+      </div>
+    ) : null}
 
-    <div class:list={['write-closeup', isCapture && 'capture-closeup']}>
+    <div class:list={['write-closeup', hasEvidenceStates && 'capture-closeup']}>
       <header class="write-closeup-header">
-        <h2 id={stageTitleId}>{isCapture ? 'See the complete Capture path.' : 'See where your words return.'}</h2>
+        <h2 id={stageTitleId}>{'title' in story.demonstration ? story.demonstration.title : story.opening.title}</h2>
         <p>{story.demonstration.note}</p>
       </header>
 
@@ -79,14 +109,14 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
         {story.demonstration.states.map((state) => (
           <section
             id={demonstrationPanelId(state.id)}
-            class:list={['write-demo-panel', isCapture && 'capture-demo-panel']}
+            class:list={['write-demo-panel', hasEvidenceStates && 'capture-demo-panel']}
             role="tabpanel"
             aria-labelledby={demonstrationTabId(state.id)}
             tabindex="0"
             data-job-panel={job.id}
           >
             <div class="write-panel-copy">
-              <span class="write-state-label">{state.status}</span>
+              <span class="write-state-label" data-mode={'mode' in state ? state.mode : undefined}>{state.status}</span>
               <h3>{state.title}</h3>
               <p>{state.body}</p>
             </div>
@@ -100,20 +130,20 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
                   alt={state.alt}
                 />
                 <figcaption>
-                  <strong>Genuine Mumble capture</strong>
-                  <span>Accepted Windows interface with demonstration meeting data</span>
+                  <strong>{'mediaCaptionTitle' in story.demonstration ? story.demonstration.mediaCaptionTitle : 'Genuine Mumble capture'}</strong>
+                  <span>{'mediaCaptionDetail' in story.demonstration ? story.demonstration.mediaCaptionDetail : 'Current accepted product evidence'}</span>
                 </figcaption>
               </figure>
             ) : (
-              <div class="write-field" aria-label={`Illustrative writing field during ${state.label}`}>
-                <span>Unbranded writing field</span>
+              <div class="write-field" data-mode={'mode' in state ? state.mode : undefined} aria-label={`Illustrative writing field during ${state.label}`}>
+                <span>{'fieldLabel' in state ? state.fieldLabel : 'Unbranded writing field'}</span>
                 <p>{state.field}<i aria-hidden="true"></i></p>
               </div>
             )}
-            {state.id === 'speak' && 'spoken' in story.demonstration && (
+            {('spoken' in state || (state.id === 'speak' && 'spoken' in story.demonstration)) && (
               <p class="write-spoken-sample">
                 <strong>Example speech</strong>
-                <q>{story.demonstration.spoken}</q>
+                <q>{'spoken' in state ? state.spoken : 'spoken' in story.demonstration ? story.demonstration.spoken : ''}</q>
               </p>
             )}
           </section>
@@ -128,7 +158,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   </section>
 )}
 
-{surface === 'home' && presentation && (
+{surface === 'home' && findPresentation && (
   <section
     class="product-stage find-product-stage shell"
     aria-labelledby={stageTitleId}
@@ -137,7 +167,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   >
     <div class="stage-bar">
       <span class="stage-brand">Mumble / {job.label}</span>
-      <span class="stage-state"><i aria-hidden="true"></i>{presentation.stage.status}</span>
+      <span class="stage-state"><i aria-hidden="true"></i>{findPresentation.stage.status}</span>
     </div>
 
     <header class="find-stage-heading">
@@ -145,12 +175,12 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
         <h2 id={stageTitleId}>{story.opening.title}</h2>
         <p>{story.demonstration.note}</p>
       </div>
-      <a class="text-link" href={presentation.stage.actionHref}>{presentation.stage.actionLabel}</a>
+      <a class="text-link" href={findPresentation.stage.actionHref}>{findPresentation.stage.actionLabel}</a>
     </header>
 
     <div class="find-stage-layout">
-      <div class="find-capture-grid" aria-label={presentation.capturesAriaLabel}>
-        {presentation.captures.map((capture) => (
+      <div class="find-capture-grid" aria-label={findPresentation.capturesAriaLabel}>
+        {findPresentation.captures.map((capture) => (
           <figure class:list={['find-capture', `find-capture-${capture.route}`]} data-find-capture={capture.route}>
             <img
               src={capture.src}
@@ -170,7 +200,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
       </div>
 
       <div class="find-route-stack">
-        {presentation.boundaries.filter((boundary) => boundary.showOnHome).map((boundary) => (
+        {findPresentation.boundaries.filter((boundary) => boundary.showOnHome).map((boundary) => (
           <article class:list={['find-route', `find-route-${boundary.route}`]} data-find-route={boundary.route}>
             <header>
               <span>{boundary.label}</span>
@@ -209,7 +239,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
 {surface === 'product' && (
   <section
     class="job-story job-story-mechanism shell"
-    id={presentation?.mechanismId}
+    id={findPresentation?.mechanismId}
     aria-labelledby={mechanismTitleId}
     data-job-story={job.id}
     data-story-surface="product"
@@ -219,9 +249,9 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
       <p>{story.mechanism.summary}</p>
     </header>
 
-    {presentation && (
-      <div class="find-boundary-ledger" aria-label={presentation.boundariesAriaLabel}>
-        {presentation.boundaries.map((boundary) => (
+    {findPresentation && (
+      <div class="find-boundary-ledger" aria-label={findPresentation.boundariesAriaLabel}>
+        {findPresentation.boundaries.map((boundary) => (
           <article data-find-boundary={boundary.route}>
             <div class="find-boundary-name">
               <span>{boundary.label}</span>
@@ -264,7 +294,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
       ))}
     </ol>
 
-    {isCapture && (
+    {futureMedia && (
       <>
         <div class="capture-proof-grid" aria-label="Accepted Capture interface evidence">
           {story.demonstration.states.map((state) => 'image' in state && (
@@ -278,14 +308,13 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
           ))}
         </div>
 
-        <aside class="future-media-gate" role="note" aria-label="Future media boundary">
+        <aside class="future-media-gate" role="note" aria-label={futureMedia.ariaLabel}>
           <div>
-            <h3>Future media stays visibly closed.</h3>
-            <p>These inputs are not available in the current product and are not presented as actions on this website.</p>
+            <h3>{futureMedia.title}</h3>
+            <p>{futureMedia.body}</p>
           </div>
           <dl>
-            <div><dt>Computer-audio capture</dt><dd>Not available in the current product</dd></div>
-            <div><dt>Direct video import</dt><dd>Not available in the current product</dd></div>
+            {futureMedia.items.map((item) => <div><dt>{item.term}</dt><dd>{item.detail}</dd></div>)}
           </dl>
         </aside>
       </>

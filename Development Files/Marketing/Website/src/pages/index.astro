@@ -9,15 +9,17 @@ const windows = release.platforms.find((platform) => platform.id === 'windows');
 const write = jobs.find((job) => job.id === 'write');
 const find = jobs.find((job) => job.id === 'find');
 const capture = jobs.find((job) => job.id === 'capture');
+const shape = jobs.find((job) => job.id === 'shape');
 if (!windows) throw new Error('Windows release authority is missing');
 if (!write?.story) throw new Error('Write story authority is missing');
 if (!capture?.story) throw new Error('Capture story authority is missing');
+if (!shape?.story) throw new Error('Shape story authority is missing');
 if (!find?.story) throw new Error('Find story authority is missing');
 ---
 
 <BaseLayout
-  title="Mumble — Write at your cursor and Capture searchable records"
-  description="See Mumble turn speech into finished text and selected-microphone recordings or supported audio imports into searchable working records."
+  title="Mumble — Turn speech into useful work"
+  description="See Mumble write at the cursor, capture searchable records, shape finished text, and keep local and deliberate online finding distinct."
   currentPath="/"
 >
   <section class="hero write-hero shell" aria-labelledby="home-title">
@@ -71,6 +73,16 @@ if (!find?.story) throw new Error('Find story authority is missing');
     </ol>
   </section>
 
+  <section class="shape-home-section" aria-labelledby="shape-home-title">
+    <div class="shell shape-home-layout">
+      <header class="section-intro">
+        <h2 id="shape-home-title">Finished text can take one more deliberate step.</h2>
+        <p>{shape.story.opening.summary}</p>
+      </header>
+      <JobStory job={shape} surface="home" />
+    </div>
+  </section>
+
   <section class="find-section" aria-labelledby="find-story-title">
     <div class="shell section-intro">
       <h2 id="find-story-title">Three clear ways back to what you need.</h2>
@@ -116,7 +128,7 @@ if (!find?.story) throw new Error('Find story authority is missing');
       <div>
         <h2 id="trust-title">Free and MIT licensed. Honest about what is still gated.</h2>
         <p>
-          The local path needs no Mumble account or provider key. The current Windows candidate is hash-bound below; macOS, Linux, signing, deployment, and public release remain separate gates.
+          The local path needs no Mumble account or provider key, and no paid service. The current Windows candidate is hash-bound below; macOS, Linux, signing, deployment, and public release remain separate gates.
         </p>
       </div>
       <div class="trust-actions">

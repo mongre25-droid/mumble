@@ -899,6 +899,184 @@ async function captureJourney(browser) {
 }
 
 
+function assertShapeBoundary(text, label) {
+  assert.match(
+    text,
+    /finished text(?:—|-|,|\s)+not (?:the )?(?:captured|recorded) audio/i,
+    `${label} does not distinguish finished-text shaping from recorded-audio transfer`,
+  );
+  assert.match(
+    text,
+    /no (?:Mumble )?account(?:,| or| and).*provider key(?:,| or| and).*paid service/i,
+    `${label} does not preserve the useful local dictation path`,
+  );
+  assert.match(
+    text,
+    /external provider(?:s)? may charge/i,
+    `${label} omits the possible external-provider cost boundary`,
+  );
+}
+
+async function shapeBoundaryText(region) {
+  return region.textContent();
+}
+
+async function assertShapeBoundaryInRegion(region, label) {
+  assertShapeBoundary(await shapeBoundaryText(region), label);
+}
+
+async function proveShapeBoundaryScope(page, region, label) {
+  await region.evaluate((element) => {
+    const replacements = [
+      [/finished text/gi, 'selected material'],
+      [/recorded audio/gi, 'source media'],
+      [/no Mumble account, provider key, or paid service/gi, 'the local path remains available'],
+      [/external providers may charge/gi, 'provider terms apply'],
+    ];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      for (const [pattern, replacement] of replacements) {
+        node.textContent = node.textContent.replace(pattern, replacement);
+      }
+      node = walker.nextNode();
+    }
+  });
+
+  assertShapeBoundary(
+    await page.locator('main').innerText(),
+    `${label} whole-page masking control`,
+  );
+  await assert.rejects(
+    () => assertShapeBoundaryInRegion(region, `${label} scoped adversarial probe`),
+    /does not distinguish|does not preserve|omits the possible external-provider cost boundary/,
+  );
+}
+
+async function shapeJourney(browser) {
+  const cases = [
+    { name: 'desktop', viewport: { width: 1365, height: 900 }, mobile: false },
+    { name: 'mobile', viewport: { width: 390, height: 844 }, mobile: true },
+  ];
+
+  for (const item of cases) {
+    const context = await browser.newContext({
+      viewport: item.viewport,
+      reducedMotion: 'reduce',
+      userAgent: item.mobile
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+    });
+    await context.addInitScript(() => {
+      window.__mumbleMicrophoneRequests = 0;
+      if (navigator.mediaDevices?.getUserMedia) {
+        navigator.mediaDevices.getUserMedia = () => {
+          window.__mumbleMicrophoneRequests += 1;
+          return Promise.reject(new Error('Website microphone access is forbidden'));
+        };
+      }
+    });
+    const page = await context.newPage();
+    const browserErrors = browserErrorsFor(page);
+
+    await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
+    const shapeStage = page.getByRole('region', { name: /finished thought become a structured prompt/i });
+    assert.equal(await shapeStage.count(), 1, `${item.name} Home is missing the Shape demonstration`);
+    assert.match(await shapeStage.innerText(), /Illustrative Shape demonstration—not a live provider result/i);
+    await assertShapeBoundaryInRegion(shapeStage, `${item.name} Home Shape region`);
+    await proveShapeBoundaryScope(page, shapeStage, `${item.name} Home Shape region`);
+    await page.reload({ waitUntil: 'networkidle' });
+
+    const tabs = shapeStage.getByRole('tab');
+    assert.equal(await tabs.count(), 3, `${item.name} Shape demonstration does not expose three direct steps`);
+    const sourceTab = shapeStage.getByRole('tab', { name: /Finished text/i });
+    await sourceTab.focus();
+    await assertVisibleFocus(page, `${item.name} Shape direct-step focus`);
+    await page.keyboard.press('ArrowRight');
+    const routeTab = shapeStage.getByRole('tab', { name: /Choose Prompt/i });
+    assert.equal(await routeTab.getAttribute('aria-selected'), 'true');
+    await page.keyboard.press('ArrowRight');
+    const resultTab = shapeStage.getByRole('tab', { name: /Shaped prompt/i });
+    assert.equal(await resultTab.getAttribute('aria-selected'), 'true');
+    assert.equal(await resultTab.evaluate((element) => document.activeElement === element), true);
+    const resultPanel = shapeStage.getByRole('tabpanel', { name: /Shaped prompt/i });
+    assert.match(await resultPanel.innerText(), /Illustrative result/i);
+    await page.waitForTimeout(550);
+    assert.equal(
+      await resultTab.getAttribute('aria-selected'),
+      'true',
+      `${item.name} reduced-motion Shape stage advanced without visitor input`,
+    );
+    await shapeStage.getByRole('button', { name: 'Previous Shape step' }).click();
+    assert.equal(await routeTab.getAttribute('aria-selected'), 'true');
+    await noHorizontalOverflow(page, `${item.name} Shape Home`);
+
+    await followPrimaryNavigation(page, 'Product', '/product/', item.mobile);
+    const productShape = page.getByRole('region', { name: /Shape routes finished text/i });
+    assert.equal(await productShape.count(), 1, `${item.name} Product is missing the Shape mechanism`);
+    const productText = await page.locator('main').innerText();
+    for (const mode of ['Text', 'Prompt', 'Email', 'Reply', 'Foreign']) {
+      assert.match(productText, new RegExp(`\\b${mode}\\b`), `${item.name} Product omits ${mode}`);
+    }
+    assert.match(productText, /built-in presets/i);
+    assert.match(productText, /custom shaping/i);
+    assert.match(productText, /Cerebras and OpenRouter/i);
+    assert.match(productText, /compatible local model/i);
+    assert.match(productText, /no local model is bundled or adopted/i);
+    await assertShapeBoundaryInRegion(productShape, `${item.name} Product Shape region`);
+    assert.doesNotMatch(productText, /\b[0-9]+(?:\.[0-9]+)?[×x]\s*(?:faster|speed)/i);
+    await noHorizontalOverflow(page, `${item.name} Shape Product`);
+
+    await followPrimaryNavigation(page, 'Use Cases', '/use-cases/', item.mobile);
+    for (const task of ['AI prompt', 'Business email', 'Contextual reply', 'Language-assisted text']) {
+      const taskRegion = page.getByRole('article').filter({
+        has: page.getByRole('heading', { level: 2, name: task }),
+      });
+      assert.equal(await taskRegion.count(), 1, `${item.name} Use Cases omits ${task}`);
+      assert.ok(await taskRegion.getByRole('listitem').count() >= 4, `${task} is not a complete shaping sequence`);
+    }
+    const useCasesText = await page.locator('main').innerText();
+    const useCasesShape = page.locator('[data-job-story="shape"][data-story-surface="use-cases"]');
+    assert.match(useCasesText, /tasks rather than professions/i);
+    await assertShapeBoundaryInRegion(useCasesShape, `${item.name} Use Cases Shape region`);
+    await noHorizontalOverflow(page, `${item.name} Shape Use Cases`);
+    assert.equal(await page.evaluate(() => window.__mumbleMicrophoneRequests), 0);
+    assertNoBrowserErrors(browserErrors, `${item.name} Shape journey browser errors`);
+    await context.close();
+  }
+
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    const context = await browser.newContext({ viewport, javaScriptEnabled: false });
+    const page = await context.newPage();
+    await page.goto(`${origin}/`, { waitUntil: 'load' });
+    const shapeStage = page.getByRole('region', { name: /finished thought become a structured prompt/i });
+    assert.equal(await shapeStage.getByRole('tabpanel').count(), 3, `no-JavaScript ${viewport.width}px Shape states are incomplete`);
+    for (const panel of ['Finished text', 'Choose Prompt', 'Shaped prompt']) {
+      await shapeStage.getByRole('tabpanel', { name: new RegExp(panel, 'i') }).waitFor();
+    }
+    await assertShapeBoundaryInRegion(shapeStage, `no-JavaScript ${viewport.width}px Home Shape region`);
+    await noHorizontalOverflow(page, `no-JavaScript ${viewport.width}px Shape Home`);
+
+    await followPrimaryNavigation(page, 'Product', '/product/', false);
+    const productShape = page.getByRole('region', { name: /Shape routes finished text/i });
+    assert.match(await page.locator('main').innerText(), /Cerebras and OpenRouter/i);
+    await assertShapeBoundaryInRegion(productShape, `no-JavaScript ${viewport.width}px Product Shape region`);
+    await noHorizontalOverflow(page, `no-JavaScript ${viewport.width}px Shape Product`);
+
+    await followPrimaryNavigation(page, 'Use Cases', '/use-cases/', false);
+    for (const task of ['AI prompt', 'Business email', 'Contextual reply', 'Language-assisted text']) {
+      await page.getByRole('heading', { level: 2, name: task }).waitFor();
+    }
+    const useCasesShape = page.locator('[data-job-story="shape"][data-story-surface="use-cases"]');
+    await assertShapeBoundaryInRegion(useCasesShape, `no-JavaScript ${viewport.width}px Use Cases Shape region`);
+    await noHorizontalOverflow(page, `no-JavaScript ${viewport.width}px Shape Use Cases`);
+    await context.close();
+  }
+
+  record('Issue #39 desktop/mobile Shape journey, before/after controls, optional-AI boundary, complete task sequences, reduced-motion stability, no-JavaScript completeness, no microphone request, and horizontal fit');
+}
+
+
 async function platformRecommendations(browser) {
   const cases = [
     {
@@ -1521,6 +1699,7 @@ try {
   await correctionConstraints(browser);
   await captureJourney(browser);
   await writeJourney(browser);
+  await shapeJourney(browser);
   await findJourney(browser);
   await platformRecommendations(browser);
   await downloadsContract(browser);
