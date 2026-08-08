@@ -748,6 +748,157 @@ async function findJourney(browser) {
 }
 
 
+async function assertCaptureStage(page, viewportName) {
+  const stage = page.locator('[data-job-story="capture"][data-story-surface="home"]');
+  await stage.getByRole('heading', { level: 2, name: /complete Capture path/i }).waitFor();
+  assert.match(await stage.innerText(), /Genuine Mumble interface/i);
+  assert.match(await stage.innerText(), /demonstration meeting data/i);
+  assert.match(await stage.innerText(), /website does not use your microphone/i);
+
+  const tabs = stage.getByRole('tab');
+  assert.equal(await tabs.count(), 3, `${viewportName} Capture stage does not expose three direct steps`);
+  const recordTab = stage.getByRole('tab', { name: 'Record', exact: true });
+  await recordTab.focus();
+  await assertVisibleFocus(page, `${viewportName} Capture direct-step focus`);
+  await page.keyboard.press('Enter');
+  assert.equal(await recordTab.getAttribute('aria-selected'), 'true');
+  const recordPanel = stage.getByRole('tabpanel', { name: 'Record', exact: true });
+  await recordPanel.waitFor();
+  assert.match(await recordPanel.innerText(), /Pause, resume, or Stop & save/i);
+
+  await page.keyboard.press('ArrowRight');
+  const reviewTab = stage.getByRole('tab', { name: 'Find record', exact: true });
+  assert.equal(await reviewTab.getAttribute('aria-selected'), 'true');
+  assert.equal(await reviewTab.evaluate((element) => document.activeElement === element), true);
+  const reviewPanel = stage.getByRole('tabpanel', { name: 'Find record', exact: true });
+  await reviewPanel.waitFor();
+  assert.match(await reviewPanel.innerText(), /Search the saved library/i);
+  await page.waitForTimeout(550);
+  assert.equal(
+    await reviewTab.getAttribute('aria-selected'),
+    'true',
+    `${viewportName} reduced-motion Capture stage advanced without visitor input`,
+  );
+  await stage.getByRole('button', { name: 'Previous Capture step' }).click();
+  assert.equal(await recordTab.getAttribute('aria-selected'), 'true');
+
+  const images = stage.locator('img');
+  assert.equal(await images.count(), 3, `${viewportName} Capture stage does not use all three accepted meeting captures`);
+  for (let index = 0; index < 3; index += 1) {
+    await tabs.nth(index).click();
+    const image = images.nth(index);
+    await image.scrollIntoViewIfNeeded();
+    await image.evaluate(async (element) => {
+      if (!element.complete || element.naturalWidth === 0) await element.decode();
+    });
+  }
+  const sources = await images.evaluateAll((items) => items.map((image) => ({
+    src: image.getAttribute('src'),
+    naturalWidth: image.naturalWidth,
+    naturalHeight: image.naturalHeight,
+    alt: image.getAttribute('alt') || '',
+  })));
+  assert.deepEqual(
+    sources.map((item) => item.src),
+    [
+      '/product/meetings-before.webp',
+      '/product/meetings-during.webp',
+      '/product/meetings-after.webp',
+    ],
+  );
+  for (const source of sources) {
+    assert.equal(source.naturalWidth, 1152, `${source.src} has an unexpected width`);
+    assert.equal(source.naturalHeight, 800, `${source.src} has an unexpected height`);
+    assert.match(source.alt, /Genuine Mumble Meetings capture/i);
+  }
+}
+
+async function captureJourney(browser) {
+  const cases = [
+    { name: 'desktop', viewport: { width: 1365, height: 900 }, mobile: false },
+    { name: 'mobile', viewport: { width: 390, height: 844 }, mobile: true },
+  ];
+
+  for (const item of cases) {
+    const context = await browser.newContext({
+      viewport: item.viewport,
+      reducedMotion: 'reduce',
+      userAgent: item.mobile
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148'
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+    });
+    await context.addInitScript(() => {
+      window.__mumbleMicrophoneRequests = 0;
+      if (navigator.mediaDevices?.getUserMedia) {
+        navigator.mediaDevices.getUserMedia = () => {
+          window.__mumbleMicrophoneRequests += 1;
+          return Promise.reject(new Error('Website microphone access is forbidden'));
+        };
+      }
+    });
+    const page = await context.newPage();
+    const browserErrors = browserErrorsFor(page);
+
+    await page.goto(`${origin}/`, { waitUntil: 'networkidle' });
+    await assertSharedShell(page, 'Home');
+    await assertCaptureStage(page, item.name);
+    await page.locator('[data-job-story="write"][data-story-surface="home"]').waitFor();
+    assert.equal(await page.evaluate(() => window.__mumbleMicrophoneRequests), 0);
+    await noHorizontalOverflow(page, `${item.name} Capture Home`);
+
+    await followPrimaryNavigation(page, 'Product', '/product/', item.mobile);
+    await assertSharedShell(page, 'Product');
+    const product = page.locator('[data-job-story="capture"][data-story-surface="product"]');
+    await product.waitFor();
+    const productText = await product.innerText();
+    for (const requirement of [
+      /selected microphone/i,
+      /pause, resume, and Stop & save/i,
+      /WAV, MP3, FLAC, or OGG/i,
+      /private local recording/i,
+      /search titles and full transcripts/i,
+      /play the original recording/i,
+      /TXT, Markdown, JSON, HTML, or the clipboard/i,
+      /best-effort speaker/i,
+      /original recording is never sent for analysis/i,
+    ]) {
+      assert.match(productText, requirement);
+    }
+    assert.match(productText, /Local transcription is the default/i);
+    assert.match(productText, /Cloud transcription sends meeting audio/i);
+    const futureGate = page.getByRole('note', { name: 'Future media boundary' });
+    await futureGate.waitFor();
+    const futureText = await futureGate.innerText();
+    assert.match(futureText, /Computer-audio capture/i);
+    assert.match(futureText, /Direct video import/i);
+    assert.match(futureText, /not available in the current product/i);
+    assert.equal(await futureGate.getByRole('link').count(), 0, 'future media gate exposes an active link');
+    assert.equal(await futureGate.getByRole('button').count(), 0, 'future media gate exposes an active button');
+    assert.equal(await page.getByRole('link', { name: /computer-audio|direct video/i }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: /computer-audio|direct video/i }).count(), 0);
+    await page.locator('[data-job-story="write"][data-story-surface="product"]').waitFor();
+    await noHorizontalOverflow(page, `${item.name} Capture Product`);
+
+    await followPrimaryNavigation(page, 'Use Cases', '/use-cases/', item.mobile);
+    await assertSharedShell(page, 'Use Cases');
+    const captureTasks = page.locator('[data-job-story="capture"][data-story-surface="use-cases"]');
+    for (const task of ['Meeting', 'Lecture', 'Existing recording']) {
+      const taskRegion = captureTasks.getByRole('article').filter({
+        has: page.getByRole('heading', { level: 2, name: task, exact: true }),
+      });
+      await taskRegion.waitFor();
+      assert.ok(await taskRegion.getByRole('listitem').count() >= 4, `${task} is not a complete Capture task sequence`);
+    }
+    await page.locator('[data-job-story="write"][data-story-surface="use-cases"]').waitFor();
+    await noHorizontalOverflow(page, `${item.name} Capture Use Cases`);
+    assert.equal(await page.evaluate(() => window.__mumbleMicrophoneRequests), 0);
+    assertNoBrowserErrors(browserErrors, `${item.name} Capture journey browser errors`);
+    await context.close();
+  }
+  record('Issue #38 desktop/mobile Capture journey, accepted meeting evidence, keyboard controls, reduced-motion stability, truthful recording/import/privacy/review/export boundaries, inactive future media gate, complete task sequences, zero microphone requests, and horizontal fit');
+}
+
+
 async function platformRecommendations(browser) {
   const cases = [
     {
@@ -1210,6 +1361,11 @@ async function noJavaScriptPath(browser) {
     assert.equal(await noScriptFindStage.locator('[data-find-route]').count(), 2, 'no-JavaScript Home Find routes merged');
     assert.match(await noScriptFindStage.innerText(), /Private on this device/i);
     assert.match(await noScriptFindStage.innerText(), /Search online/i);
+    const captureStage = page.locator('[data-job-story="capture"][data-story-surface="home"]');
+    assert.equal(await captureStage.getByRole('tabpanel').count(), 3, 'no-JavaScript Capture states are incomplete');
+    for (const panelId of ['source', 'record', 'review']) {
+      await captureStage.locator(`#job-capture-panel-${panelId}`).waitFor();
+    }
     assert.deepEqual(
       stopTimeDestinationFindings(
         await page.locator('main').innerText(),
@@ -1242,6 +1398,13 @@ async function noJavaScriptPath(browser) {
     assert.equal(await noScriptProductFind.count(), 1, 'no-JavaScript Product Find region is missing');
     assert.equal(await noScriptProductFind.locator('[data-find-boundary]').count(), 3, 'no-JavaScript Product Find boundaries merged');
     assert.match(await noScriptProductFind.innerText(), /browser could not open/i);
+    const captureProduct = page.locator('[data-job-story="capture"][data-story-surface="product"]');
+    await captureProduct.waitFor();
+    assert.match(await captureProduct.innerText(), /WAV, MP3, FLAC, or OGG/i);
+    const futureGate = page.getByRole('note', { name: 'Future media boundary' });
+    await futureGate.waitFor();
+    assert.equal(await futureGate.getByRole('link').count(), 0);
+    assert.equal(await futureGate.getByRole('button').count(), 0);
     assert.deepEqual(
       stopTimeDestinationFindings(productText, 'product', `no-JavaScript Product ${viewport.width}px`),
       [],
@@ -1261,6 +1424,9 @@ async function noJavaScriptPath(browser) {
     const noScriptUseCasesFind = page.locator('[data-job-story="find"][data-story-surface="use-cases"]');
     assert.equal(await noScriptUseCasesFind.locator('article').count(), 4, 'no-JavaScript Find tasks are incomplete');
     assert.match(await noScriptUseCasesFind.innerText(), /Deterministic demonstration selected text · not user data/i);
+    for (const task of ['Meeting', 'Lecture', 'Existing recording']) {
+      await page.getByRole('heading', { level: 2, name: task, exact: true }).waitFor();
+    }
     assert.deepEqual(
       stopTimeDestinationFindings(
         await page.locator('main').innerText(),
@@ -1343,7 +1509,7 @@ async function noJavaScriptPath(browser) {
     assertNoBrowserErrors(browserErrors, `no-JavaScript ${viewport.width}px browser errors`);
     await context.close();
   }
-  record('no-JavaScript desktop/mobile journeys retain complete Write and Find stages, distinct Deck/local/web boundaries, task sequences, release facts, download access, and horizontal fit');
+  record('no-JavaScript desktop/mobile Home-to-Product-to-Use-Cases-to-Downloads journeys retain complete Write, Capture, and Find states, distinct Deck/local/web boundaries, truthful destination/media/privacy guidance, ≥44px mobile header action geometry, mechanisms, task sequences, inactive future media gate, release facts, platform states, download access, and horizontal fit');
 }
 
 let browser;
@@ -1353,6 +1519,7 @@ try {
   console.log(`Browser version: ${browser.version()}`);
   await desktopJourney(browser);
   await correctionConstraints(browser);
+  await captureJourney(browser);
   await writeJourney(browser);
   await findJourney(browser);
   await platformRecommendations(browser);

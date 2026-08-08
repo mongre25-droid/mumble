@@ -7,15 +7,17 @@ import release from '../data/release.json';
 
 const write = jobs.find((job) => job.id === 'write');
 const find = jobs.find((job) => job.id === 'find');
+const capture = jobs.find((job) => job.id === 'capture');
 const recovery = write?.story?.mechanism.steps.find((step) => step.id === 'recovery');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!capture?.story) throw new Error('Capture story authority is missing');
 if (!find?.story) throw new Error('Find story authority is missing');
 if (!recovery) throw new Error('Write recovery authority is missing');
 ---
 
 <BaseLayout
-  title="Product — How Mumble Write and Find keep work recoverable"
-  description="Follow Mumble from intended-cursor writing into Deck retrieval, private local Mumble Find, and a separate provider-named Web Search confirmation."
+  title="Product — How Mumble Write, Capture, and Find work"
+  description="Follow Mumble from intended-cursor writing through saved microphone recordings and supported audio imports to Deck retrieval, private local Mumble Find, and separate consent-led Web Search."
   currentPath="/product/"
 >
   <section class="page-hero shell" aria-labelledby="product-title">
@@ -52,6 +54,15 @@ if (!recovery) throw new Error('Write recovery authority is missing');
     </div>
   </section>
 
+  <section class="capture-intro shell" aria-labelledby="capture-product-title">
+    <div>
+      <h2 id="capture-product-title">Capture keeps the original recording and the working record connected.</h2>
+      <p>{capture.summary}</p>
+    </div>
+    <p>{capture.proof}</p>
+  </section>
+
+  <JobStory job={capture} surface="product" />
   <JobStory job={find} surface="product" />
 
   <section class="journey-next" aria-labelledby="product-next-title">

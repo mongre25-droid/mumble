@@ -28,17 +28,21 @@ Node 22.12 or later is required.
 
 The current maintained site exposes six complete outputs:
 
-1. Home (`/`) introduces the local-first offer, accepted product captures, the
+1. Home (`/`) introduces the local-first offer, accepted product evidence, the
    five canonical jobs, privacy boundaries, the current release position, and
-   complete Write and Find journeys. Find keeps searchable Deck material,
-   local Mumble Find, and deliberate Web Search visibly separate.
+   complete Write, Capture, and Find journeys. Capture is led by accepted
+   Meetings evidence; Find keeps searchable Deck material, local Mumble Find,
+   and deliberate Web Search visibly separate.
 2. Product (`/product/`) explains Write's deliberate command, visible Island
    states, local transcription default, Stop-time intended-cursor return, Deck
-   recovery and reuse, local app/file finding, and consent-led Web Search.
-3. Use Cases (`/use-cases/`) turns Write and Find into complete task sequences:
-   everyday notes, longer text, cross-application work, finding prior text,
-   reopening useful Deck material, locating a local app or file, and choosing a
-   web provider deliberately.
+   recovery and reuse, selected-microphone capture, supported audio imports,
+   durable local records, explicit transcription routes, search, playback,
+   export, optional transcript-only analysis, local app/file finding, and
+   consent-led Web Search. Future media inputs remain visibly unavailable.
+3. Use Cases (`/use-cases/`) applies the shared job-story model to everyday
+   notes, longer text, cross-application writing, meetings, lectures, supported
+   existing audio, prior Deck material, local apps/files, and deliberate Web
+   Search without changing to profession-first navigation.
 4. Privacy (`/privacy/`) explains Local Transcription and Mumble Find as
    separate local routes, keeps optional online routes distinct, and states the
    static website's zero-CDN, no-analytics, and no-tracking boundary.
@@ -71,8 +75,11 @@ evidence.
 
 ## Interaction and accessibility
 
-- Core Home, complete Write and Find journeys, navigation, release facts, and
-  download access remain available without JavaScript.
+- Core Home, complete Write, Capture, and Find journeys, navigation, release
+  facts, and download access remain available without JavaScript.
+- The shared Write and Capture stories remain complete as text without
+  JavaScript; their step controls add direct keyboard navigation when scripting
+  is available.
 - Operating-system detection changes only the recommended action; complete
   Downloads access remains available.
 - The mobile menu contains focus and makes background content inert while open.

@@ -13,6 +13,7 @@ const { job, surface } = Astro.props;
 if (!job.story) throw new Error(`${job.label} has no detailed job story`);
 const story = job.story;
 const presentation = 'presentation' in story ? story.presentation : undefined;
+const isCapture = job.id === 'capture';
 const storyId = `job-${job.id}`;
 const stageTitleId = `${storyId}-stage-title`;
 const mechanismTitleId = `${storyId}-mechanism-title`;
@@ -21,9 +22,9 @@ const demonstrationPanelId = (stateId: string) => `${storyId}-panel-${stateId}`;
 const taskId = (id: string) => `${storyId}-task-${id}`;
 ---
 
-{surface === 'home' && job.id === 'write' && (
+{surface === 'home' && (job.id === 'write' || isCapture) && (
   <section
-    class="product-stage write-product-stage"
+    class:list={['product-stage', 'job-product-stage', `${job.id}-product-stage`]}
     aria-labelledby={stageTitleId}
     data-job-story={job.id}
     data-story-surface="home"
@@ -31,27 +32,29 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
   >
     <div class="stage-bar">
       <span class="stage-brand">Mumble / {job.label}</span>
-      <span class="stage-state"><i aria-hidden="true"></i>Local route by default</span>
+      <span class="stage-state"><i aria-hidden="true"></i>{isCapture ? 'Private recording saved first' : 'Local route by default'}</span>
     </div>
 
-    <figure class="write-capture">
-      <img
-        src="/product/home.webp"
-        width="1180"
-        height="820"
-        loading="eager"
-        fetchpriority="high"
-        alt="Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status"
-      />
-      <figcaption>
-        <strong>Genuine Mumble capture</strong>
-        <span>Current accepted Windows source surface</span>
-      </figcaption>
-    </figure>
+    {!isCapture && (
+      <figure class="write-capture">
+        <img
+          src="/product/home.webp"
+          width="1180"
+          height="820"
+          loading="eager"
+          fetchpriority="high"
+          alt="Genuine Mumble Home capture showing Start dictation, the Dictate shortcut, latest result, and local transcription status"
+        />
+        <figcaption>
+          <strong>Genuine Mumble capture</strong>
+          <span>Current accepted Windows source surface</span>
+        </figcaption>
+      </figure>
+    )}
 
-    <div class="write-closeup">
+    <div class:list={['write-closeup', isCapture && 'capture-closeup']}>
       <header class="write-closeup-header">
-        <h2 id={stageTitleId}>See where your words return.</h2>
+        <h2 id={stageTitleId}>{isCapture ? 'See the complete Capture path.' : 'See where your words return.'}</h2>
         <p>{story.demonstration.note}</p>
       </header>
 
@@ -76,7 +79,7 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
         {story.demonstration.states.map((state) => (
           <section
             id={demonstrationPanelId(state.id)}
-            class="write-demo-panel"
+            class:list={['write-demo-panel', isCapture && 'capture-demo-panel']}
             role="tabpanel"
             aria-labelledby={demonstrationTabId(state.id)}
             tabindex="0"
@@ -87,11 +90,27 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
               <h3>{state.title}</h3>
               <p>{state.body}</p>
             </div>
-            <div class="write-field" aria-label={`Illustrative writing field during ${state.label}`}>
-              <span>Unbranded writing field</span>
-              <p>{state.field}<i aria-hidden="true"></i></p>
-            </div>
-            {state.id === 'speak' && (
+            {'image' in state ? (
+              <figure class="capture-demo-media">
+                <img
+                  src={state.image}
+                  width="1152"
+                  height="800"
+                  loading="lazy"
+                  alt={state.alt}
+                />
+                <figcaption>
+                  <strong>Genuine Mumble capture</strong>
+                  <span>Accepted Windows interface with demonstration meeting data</span>
+                </figcaption>
+              </figure>
+            ) : (
+              <div class="write-field" aria-label={`Illustrative writing field during ${state.label}`}>
+                <span>Unbranded writing field</span>
+                <p>{state.field}<i aria-hidden="true"></i></p>
+              </div>
+            )}
+            {state.id === 'speak' && 'spoken' in story.demonstration && (
               <p class="write-spoken-sample">
                 <strong>Example speech</strong>
                 <q>{story.demonstration.spoken}</q>
@@ -244,6 +263,33 @@ const taskId = (id: string) => `${storyId}-task-${id}`;
         </li>
       ))}
     </ol>
+
+    {isCapture && (
+      <>
+        <div class="capture-proof-grid" aria-label="Accepted Capture interface evidence">
+          {story.demonstration.states.map((state) => 'image' in state && (
+            <figure>
+              <img src={state.image} width="1152" height="800" loading="lazy" alt={state.alt} />
+              <figcaption>
+                <strong>{state.status}</strong>
+                <span>Genuine Mumble interface with demonstration meeting data</span>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+
+        <aside class="future-media-gate" role="note" aria-label="Future media boundary">
+          <div>
+            <h3>Future media stays visibly closed.</h3>
+            <p>These inputs are not available in the current product and are not presented as actions on this website.</p>
+          </div>
+          <dl>
+            <div><dt>Computer-audio capture</dt><dd>Not available in the current product</dd></div>
+            <div><dt>Direct video import</dt><dd>Not available in the current product</dd></div>
+          </dl>
+        </aside>
+      </>
+    )}
   </section>
 )}
 

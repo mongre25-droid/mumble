@@ -7,29 +7,45 @@ import release from '../data/release.json';
 
 const write = jobs.find((job) => job.id === 'write');
 const find = jobs.find((job) => job.id === 'find');
+const capture = jobs.find((job) => job.id === 'capture');
 if (!write?.story) throw new Error('Write story authority is missing');
+if (!capture?.story) throw new Error('Capture story authority is missing');
 if (!find?.story) throw new Error('Find story authority is missing');
 ---
 
 <BaseLayout
-  title="Use Cases — Complete Mumble Write and Find tasks"
-  description="Follow complete Mumble sequences for writing, retrieving prior Deck material, locating local apps and files, and deliberately choosing a provider-named Web Search."
+  title="Use Cases — Complete Mumble Write, Capture, and Find tasks"
+  description="Follow complete Mumble sequences for writing, meetings, lectures, supported existing audio, Deck retrieval, local app and file finding, and deliberate Web Search."
   currentPath="/use-cases/"
 >
   <section class="page-hero use-cases-hero shell" aria-labelledby="use-cases-title">
     <div>
       <h1 id="use-cases-title">Start with the task, not a persona.</h1>
-      <p>Write and Find stay organised by tasks rather than professions. Follow the cursor and recovery model for new text, or choose the Deck, local Mumble Find, or Web Search boundary that matches what you need to retrieve.</p>
+      <p>Write, Capture, and Find stay organised by tasks rather than professions. Follow the cursor for new text, keep recordings as searchable records, or choose the Deck, local Mumble Find, or Web Search boundary that matches what you need to retrieve.</p>
     </div>
-    <nav class="task-jump" aria-label="Write and Find task sequences">
+    <nav class="task-jump" aria-label="Write, Capture, and Find task sequences">
       <span>Write tasks</span>
       {write.story.tasks.map((task) => <a href={`#job-${write.id}-task-${task.id}`}>{task.title}</a>)}
+      <span>Capture tasks</span>
+      {capture.story.tasks.map((task) => <a href={`#job-${capture.id}-task-${task.id}`}>{task.title}</a>)}
       <span>Find tasks</span>
       {find.story.tasks.map((task) => <a href={`#job-${find.id}-task-${task.id}`}>{task.title}</a>)}
     </nav>
   </section>
 
   <JobStory job={write} surface="use-cases" />
+
+  <section class="capture-task-intro shell" aria-labelledby="capture-tasks-title">
+    <div>
+      <h2 id="capture-tasks-title">Capture starts with the recording task.</h2>
+      <p>Meetings, lectures, and existing recordings use the same saved-first, route-visible, searchable-record model.</p>
+    </div>
+    <nav class="task-jump" aria-label="Capture task sequences">
+      {capture.story.tasks.map((task) => <a href={`#job-${capture.id}-task-${task.id}`}>{task.title}</a>)}
+    </nav>
+  </section>
+
+  <JobStory job={capture} surface="use-cases" />
   <JobStory job={find} surface="use-cases" />
 
   <section class="journey-next" aria-labelledby="use-cases-next-title">
@@ -39,7 +55,7 @@ if (!find?.story) throw new Error('Find story authority is missing');
         <p>{release.publication.label}. The current package wording and every unavailable platform state remain controlled by the shared release authority.</p>
       </div>
       <div class="journey-next-actions">
-        <a class="button button-quiet" href="/product/">How Write and Find work</a>
+        <a class="button button-quiet" href="/product/">How Write, Capture, and Find work</a>
         <PlatformAction className="button button-primary" />
         <a class="text-link" href="/downloads/">Release details and all platforms</a>
       </div>
