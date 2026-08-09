@@ -5,6 +5,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import sharp from 'sharp';
+import { browserLaunchOptions } from './browser-launch-options.mjs';
 
 const websiteRoot = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(websiteRoot, '..', '..', '..');
@@ -16,6 +17,12 @@ const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const sourceSha256 = (bytes, path) => sha256(/\.(?:css|html|js|json)$/i.test(path)
   ? Buffer.from(bytes.toString('utf8').replace(/\r\n/g, '\n'))
   : bytes);
+
+assert.deepEqual(browserLaunchOptions(''), { channel: 'chrome' });
+assert.deepEqual(
+  browserLaunchOptions('  C:\\Browsers\\chrome.exe  '),
+  { executablePath: 'C:\\Browsers\\chrome.exe' },
+);
 
 const acceptedBytes = new Map();
 for (const capture of captures) {

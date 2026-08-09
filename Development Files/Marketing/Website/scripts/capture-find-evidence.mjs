@@ -5,12 +5,12 @@ import { basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
+import { browserLaunchOptions } from './browser-launch-options.mjs';
 import { createFindCapturePlan, readJobs } from './find-job-authority.mjs';
 
 const websiteRoot = resolve(import.meta.dirname, '..');
 const repoRoot = resolve(websiteRoot, '..', '..', '..');
-const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?.trim()
-  || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const browserRoute = browserLaunchOptions(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH);
 const playwrightVersion = JSON.parse(
   await readFile(resolve(websiteRoot, 'node_modules/playwright/package.json'), 'utf8'),
 ).version;
@@ -70,7 +70,7 @@ if (planOnly) {
     .webp(deck.conversion.webp)
     .toFile(outputPath(deck));
 
-  const browser = await chromium.launch({ headless: true, executablePath });
+  const browser = await chromium.launch({ headless: true, ...browserRoute });
   try {
     const local = captureByRoute.local;
     const localPage = await browser.newPage({
@@ -162,7 +162,7 @@ if (planOnly) {
         playwrightVersion,
         browser: 'Google Chrome',
         browserVersion: browser.version(),
-        browserExecutable: executablePath,
+        browserExecutable: browserRoute.executablePath ?? `channel:${browserRoute.channel}`,
       },
       captures: [
         {
