@@ -110,6 +110,22 @@ def test_website_candidate_build_upload_contract_is_complete():
     assert "path: Development Files/Marketing/Website/dist" in website
 
 
+def test_website_provenance_jobs_checkout_complete_history():
+    source = _source()
+    website_build = source.split("  website-build:", 1)[1].split(
+        "  website-windows-cleanliness:", 1
+    )[0]
+    website_cleanliness = source.split(
+        "  website-windows-cleanliness:", 1
+    )[1].split("  windows-package:", 1)[0]
+
+    for job in (website_build, website_cleanliness):
+        assert re.search(
+            r"uses: actions/checkout@v4\s+with:\s+fetch-depth: 0",
+            job,
+        )
+
+
 def test_linux_lifecycle_provisions_the_exact_packaged_python_minor():
     source = _source()
     lifecycle = source.split("  linux-lifecycle:", 1)[1].split(
